@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    axum::serve(listener, server::router(state))
+    axum::serve(listener, server::router(state, actual_port))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

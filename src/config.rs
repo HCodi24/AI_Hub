@@ -81,6 +81,9 @@ impl Config {
 }
 
 pub fn config_file_path() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("AI_HUB_CONFIG_PATH") {
+        return Ok(PathBuf::from(path));
+    }
     let root =
         dirs::config_dir().context("Could not find the operating system config directory")?;
     Ok(root.join("ai-hub").join("config.json"))

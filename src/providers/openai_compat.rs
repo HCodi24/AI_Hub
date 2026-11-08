@@ -1,4 +1,4 @@
-use super::{emit_text, Provider, ProviderEvent, ProviderRequest};
+use super::{emit_text, error_value_text, safe_error_body, Provider, ProviderEvent, ProviderRequest};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -34,6 +34,7 @@ impl Provider for OpenAiCompatibleProvider {
             "stream": true
         });
         let client = reqwest::Client::new();
+        let secret = request.provider.api_key.clone();
         let response = tokio::select! {
             _ = cancel.cancelled() => return Ok(()),
             response = client
@@ -43,7 +44,12 @@ impl Provider for OpenAiCompatibleProvider {
                 .send() => response.context("Không thể kết nối tới API tương thích OpenAI")?,
         };
         if !response.status().is_success() {
-            bail!("API tương thích OpenAI trả về HTTP {}", response.status());
+            let status = response.status();
+            let response_body = response.text().await.unwrap_or_default();
+            bail!(
+                "API tương thích OpenAI trả về HTTP {status}: {}",
+                safe_error_body(&response_body, &secret)
+            );
         }
 
         let mut stream = response.bytes_stream();
@@ -58,17 +64,21 @@ impl Provider for OpenAiCompatibleProvider {
             pending.extend_from_slice(&chunk);
             while let Some(newline) = pending.iter().position(|byte| *byte == b'\n') {
                 let line: Vec<u8> = pending.drain(..=newline).collect();
-                process_line(&line, &events).await?;
+                process_line(&line, &events, &secret).await?;
             }
         }
         if !pending.is_empty() {
-            process_line(&pending, &events).await?;
+            process_line(&pending, &events, &secret).await?;
         }
         Ok(())
     }
 }
 
-async fn process_line(line: &[u8], events: &mpsc::Sender<ProviderEvent>) -> Result<()> {
+async fn process_line(
+    line: &[u8],
+    events: &mpsc::Sender<ProviderEvent>,
+    secret: &str,
+) -> Result<()> {
     let line = String::from_utf8_lossy(line)
         .trim()
         .trim_end_matches('\r')
@@ -83,6 +93,10 @@ async fn process_line(line: &[u8], events: &mpsc::Sender<ProviderEvent>) -> Resu
     let Ok(value) = serde_json::from_str::<Value>(data) else {
         return Ok(());
     };
+    if let Some(error) = error_value_text(&value) {
+        emit_text(events, "error", safe_error_body(&error, secret)).await?;
+        return Ok(());
+    }
     let delta = &value["choices"][0]["delta"];
     if let Some(content) = delta["content"].as_str() {
         emit_text(events, "delta", content.to_owned()).await?;

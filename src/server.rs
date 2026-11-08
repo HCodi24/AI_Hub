@@ -4,10 +4,11 @@ use crate::{
     providers::{self, ProviderEvent, ProviderRequest},
 };
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::StatusCode,
+    middleware::{self, Next},
     response::{sse::KeepAlive, sse::Sse, IntoResponse, Response},
-    routing::{delete, get, post, put},
+    routing::{get, post, put},
     Json, Router,
 };
 use futures_util::StreamExt;
@@ -16,13 +17,13 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     convert::Infallible,
-    path::{Path as FsPath, PathBuf},
+    ffi::OsString,
+    path::PathBuf,
     process::Stdio,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::{
-    process::Command,
     sync::{mpsc, Mutex, RwLock},
     time::timeout,
 };
@@ -119,7 +120,7 @@ struct CliInfo {
     version: Option<String>,
 }
 
-pub fn router(state: AppState) -> Router {
+pub fn router(state: AppState, port: u16) -> Router {
     Router::new()
         .route("/", get(index))
         .route("/app.js", get(app_js))
@@ -136,7 +137,35 @@ pub fn router(state: AppState) -> Router {
         .route("/api/chats", get(list_chats))
         .route("/api/chats/{chat_id}", get(get_chat).delete(delete_chat))
         .route("/api/cli-status", get(cli_status))
+        .layer(middleware::from_fn_with_state(port, enforce_local_host))
         .with_state(state)
+}
+
+async fn enforce_local_host(State(port): State<u16>, request: Request, next: Next) -> Response {
+    let ipv4 = format!("127.0.0.1:{port}");
+    let localhost = format!("localhost:{port}");
+    let host = request
+        .headers()
+        .get("host")
+        .and_then(|value| value.to_str().ok());
+    if !host.is_some_and(|host| {
+        host == ipv4 || host.eq_ignore_ascii_case(&localhost)
+    }) {
+        return (StatusCode::FORBIDDEN, "Forbidden").into_response();
+    }
+    if request.method() != axum::http::Method::GET {
+        if let Some(origin) = request.headers().get("origin") {
+            let origin = origin.to_str().unwrap_or_default();
+            let ipv4_origin = format!("http://{ipv4}");
+            let localhost_origin = format!("http://localhost:{port}");
+            if !origin.eq_ignore_ascii_case(&ipv4_origin)
+                && !origin.eq_ignore_ascii_case(&localhost_origin)
+            {
+                return (StatusCode::FORBIDDEN, "Forbidden").into_response();
+            }
+        }
+    }
+    next.run(request).await
 }
 
 async fn index() -> impl IntoResponse {
@@ -436,13 +465,13 @@ async fn chat_handler(
                 .await;
         }
     });
-    drop(provider_sender);
 
     let task_state = state.clone();
     let chat_id = request.chat_id;
     let task_cancel = cancel.clone();
     tokio::spawn(async move {
         let mut record = record;
+        let mut last_persist = Instant::now();
         loop {
             tokio::select! {
                 _ = task_cancel.cancelled() => break,
@@ -452,7 +481,7 @@ async fn chat_handler(
                 }
                 event = provider_receiver.recv() => {
                     let Some(event) = event else { break };
-                    persist_event(&task_state.chats, &mut record, &event);
+                    persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
                     if sse_sender.send(chat::sse_event(event.name, &event.data)).await.is_err() {
                         task_cancel.cancel();
                         break;
@@ -490,7 +519,23 @@ async fn chat_handler(
         .into_response())
 }
 
-fn persist_event(store: &ChatStore, record: &mut ChatRecord, event: &ProviderEvent) {
+fn persist_event(
+    store: &ChatStore,
+    record: &mut ChatRecord,
+    event: &ProviderEvent,
+    last_persist: &mut Instant,
+) {
+    if event.name == "session" {
+        if let Some(session_id) = event.data["session_id"]
+            .as_str()
+            .or_else(|| event.data["text"].as_str())
+        {
+            record.session_id = Some(session_id.to_owned());
+            let _ = chat::save_record(store, record);
+            *last_persist = Instant::now();
+        }
+        return;
+    }
     let Some(message) = record
         .messages
         .last_mut()
@@ -499,14 +544,29 @@ fn persist_event(store: &ChatStore, record: &mut ChatRecord, event: &ProviderEve
         return;
     };
     let text = event.data["text"].as_str().unwrap_or_default();
-    match event.name {
-        "delta" => message.content.push_str(text),
-        "reasoning" => message.reasoning.push_str(text),
-        "log" => message.logs.push(text.to_owned()),
-        "error" => message.error = Some(text.to_owned()),
+    let force_persist = match event.name {
+        "delta" => {
+            message.content.push_str(text);
+            false
+        }
+        "reasoning" => {
+            message.reasoning.push_str(text);
+            false
+        }
+        "log" => {
+            message.logs.push(text.to_owned());
+            true
+        }
+        "error" => {
+            message.error = Some(text.to_owned());
+            true
+        }
         _ => return,
+    };
+    if force_persist || last_persist.elapsed() >= Duration::from_secs(1) {
+        let _ = chat::save_record(store, record);
+        *last_persist = Instant::now();
     }
-    let _ = chat::save_record(store, record);
 }
 
 struct CancelOnDrop(CancellationToken);
@@ -596,20 +656,25 @@ async fn cli_status() -> Json<CliStatus> {
 }
 
 async fn cli_info(name: &str) -> CliInfo {
-    let Some(path) = resolve_executable(name) else {
+    let Some(path) = providers::cli_support::resolve_executable(name) else {
         return CliInfo {
             installed: false,
             version: None,
         };
     };
-    let mut command = command_for(&path);
+    let mut command = providers::cli_support::command_for(&path, &[OsString::from("--version")]);
     command
-        .arg("--version")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     let version = match timeout(Duration::from_secs(5), command.output()).await {
         Ok(Ok(output)) => {
+            if !output.status.success() {
+                return CliInfo {
+                    installed: true,
+                    version: None,
+                };
+            }
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
             let value = if stdout.trim().is_empty() {
@@ -629,47 +694,6 @@ async fn cli_info(name: &str) -> CliInfo {
         installed: true,
         version,
     }
-}
-
-fn resolve_executable(name: &str) -> Option<PathBuf> {
-    let paths = std::env::var_os("PATH")?;
-    let candidates = [
-        format!("{name}.exe"),
-        format!("{name}.cmd"),
-        name.to_owned(),
-    ];
-    for candidate in candidates {
-        for directory in std::env::split_paths(&paths) {
-            let path = directory.join(&candidate);
-            if path.is_file() {
-                return Some(path);
-            }
-        }
-    }
-    None
-}
-
-fn command_for(path: &FsPath) -> Command {
-    let is_cmd = path
-        .extension()
-        .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("cmd"));
-    let mut command = if cfg!(windows) && is_cmd {
-        let mut command = Command::new("cmd");
-        command
-            .arg("/S")
-            .arg("/C")
-            .arg(format!("\"\"{}\" --version\"", path.display()));
-        command
-    } else {
-        Command::new(path)
-    };
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        command.as_std_mut().creation_flags(CREATE_NO_WINDOW);
-    }
-    command
 }
 
 fn validate_provider(id: &str, input: &ProviderInput) -> ApiResult<()> {
