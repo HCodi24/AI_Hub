@@ -1,6 +1,7 @@
 use super::{
     cli_support, Provider, ProviderEvent, ProviderRequest,
 };
+use crate::chat::Permission;
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -21,34 +22,34 @@ impl Provider for CodexCliProvider {
         if !cli_support::valid_model(&request.model) {
             bail!("Tên model chỉ được chứa chữ, số, ., _, :, / và -");
         }
-        let mut args = vec![OsString::from("exec")];
         if let Some(session_id) = request.session_id.as_deref() {
             if !cli_support::safe_session_id(session_id) {
                 bail!("Codex session id không hợp lệ");
             }
-            // This Codex version places options before the optional session and prompt
-            // positional arguments: exec resume [OPTIONS] [SESSION_ID] [PROMPT].
-            args.extend([
-                OsString::from("resume"),
-                OsString::from("--json"),
-                OsString::from("--skip-git-repo-check"),
-            ]);
-            if !request.model.is_empty() {
-                args.extend([OsString::from("-m"), OsString::from(&request.model)]);
-            }
-            args.extend([OsString::from(session_id), OsString::from("-")]);
-        } else {
-            args.extend([
-                OsString::from("--json"),
-                OsString::from("--skip-git-repo-check"),
-                OsString::from("-C"),
-                OsString::from(&request.folder),
-            ]);
-            if !request.model.is_empty() {
-                args.extend([OsString::from("-m"), OsString::from(&request.model)]);
-            }
-            args.push(OsString::from("-"));
         }
+        let mut args = vec![OsString::from("exec")];
+        if request.session_id.is_some() {
+            args.push(OsString::from("resume"));
+        }
+        // Both exec and exec resume accept configuration overrides. Keep options
+        // before the optional session and prompt positional arguments.
+        let sandbox_mode = match request.permission {
+            Permission::Read => "read-only",
+            Permission::Write => "workspace-write",
+        };
+        args.extend([
+            OsString::from("--json"),
+            OsString::from("--skip-git-repo-check"),
+            OsString::from("-c"),
+            OsString::from(format!("sandbox_mode=\"{sandbox_mode}\"")),
+        ]);
+        if !request.model.is_empty() {
+            args.extend([OsString::from("-m"), OsString::from(&request.model)]);
+        }
+        if let Some(session_id) = request.session_id.as_deref() {
+            args.push(OsString::from(session_id));
+        }
+        args.push(OsString::from("-"));
         let prompt = cli_support::compose_prompt(&request.messages, request.session_id.is_some());
         cli_support::run_jsonl(
             cli_support::JsonlCommand {
@@ -93,7 +94,12 @@ fn parse_codex_line(line: &str) -> Vec<ProviderEvent> {
     }
 
     match event_type {
-        "thread.started" | "turn.started" | "turn.completed" | "turn.interrupted" => {}
+        "thread.started" | "turn.started" | "turn.interrupted" => {}
+        "turn.completed" => {
+            if let Some(usage) = cli_support::token_usage_log(&value["usage"], None) {
+                events.push(ProviderEvent::text("log", usage));
+            }
+        }
         "error" | "turn.failed" => {
             let error = value["error"]["message"]
                 .as_str()
@@ -181,8 +187,13 @@ fn parse_codex_line(line: &str) -> Vec<ProviderEvent> {
                     }
                 }
                 "error" => {
-                    let message = item["message"].as_str().unwrap_or("Codex item error");
-                    events.push(ProviderEvent::text("error", message.to_owned()));
+                    let message = item["message"]
+                        .as_str()
+                        .unwrap_or("Lỗi không nghiêm trọng từ Codex");
+                    events.push(ProviderEvent::text(
+                        "log",
+                        format!("Cảnh báo: {}", cli_support::one_line(message, 220)),
+                    ));
                 }
                 "" => {
                     if is_delta {

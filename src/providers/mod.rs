@@ -4,7 +4,7 @@ pub mod anthropic;
 pub(crate) mod cli_support;
 pub mod openai_compat;
 
-use crate::{chat::ChatMessage, config::ProviderConfig};
+use crate::{chat::{ChatMessage, Permission}, config::ProviderConfig};
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -16,6 +16,7 @@ pub struct ProviderRequest {
     pub provider: ProviderConfig,
     pub model: String,
     pub folder: String,
+    pub permission: Permission,
     pub messages: Vec<ChatMessage>,
     pub session_id: Option<String>,
 }

@@ -374,6 +374,11 @@ async fn chat_handler(
             "Thư mục làm việc không tồn tại",
         ));
     }
+    let folder = PathBuf::from(folder)
+        .canonicalize()
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Không thể giải quyết thư mục làm việc"))?
+        .to_string_lossy()
+        .into_owned();
     if request.model.trim().is_empty() {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Hãy chọn model"));
     }
@@ -413,7 +418,8 @@ async fn chat_handler(
         .unwrap_or_else(|| chat::new_record(&request));
     record.provider_id = request.provider_id.clone();
     record.model = request.model.clone();
-    record.folder = folder.to_owned();
+    record.folder = folder.clone();
+    record.permission = request.permission;
     record.messages = request.messages.clone();
     record.messages.push(ChatMessage {
         role: "assistant".to_owned(),
@@ -450,7 +456,8 @@ async fn chat_handler(
     let provider_request = ProviderRequest {
         provider: provider_config,
         model: request.model,
-        folder: folder.to_owned(),
+        folder,
+        permission: request.permission,
         messages: request.messages,
         session_id: record.session_id.clone(),
     };

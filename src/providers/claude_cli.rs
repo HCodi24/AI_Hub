@@ -1,4 +1,5 @@
 use super::{cli_support, Provider, ProviderEvent, ProviderRequest};
+use crate::chat::Permission;
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -25,6 +26,14 @@ impl Provider for ClaudeCliProvider {
             OsString::from("stream-json"),
             OsString::from("--verbose"),
         ];
+        let permission_mode = match request.permission {
+            Permission::Read => "plan",
+            Permission::Write => "acceptEdits",
+        };
+        args.extend([
+            OsString::from("--permission-mode"),
+            OsString::from(permission_mode),
+        ]);
         if !request.model.is_empty() {
             args.extend([OsString::from("--model"), OsString::from(&request.model)]);
         }
@@ -98,8 +107,13 @@ fn parse_claude_line(line: &str) -> Vec<ProviderEvent> {
                 let message = value["result"]
                     .as_str()
                     .or_else(|| value["error"].as_str())
-                    .unwrap_or("Claude Code CLI returned an error");
+                    .unwrap_or("Claude Code CLI trả về lỗi");
                 events.push(ProviderEvent::text("error", message.to_owned()));
+            }
+            if let Some(usage) =
+                cli_support::token_usage_log(&value["usage"], value.get("total_cost_usd"))
+            {
+                events.push(ProviderEvent::text("log", usage));
             }
         }
         _ => events.push(ProviderEvent::text(

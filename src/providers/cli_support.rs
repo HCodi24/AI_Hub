@@ -1,5 +1,6 @@
 use super::ProviderEvent;
 use anyhow::{anyhow, Context, Result};
+use serde_json::Value;
 use std::{
     collections::VecDeque,
     ffi::OsString,
@@ -89,33 +90,46 @@ pub async fn run_jsonl(
     cancel: CancellationToken,
     mut parse_line: impl FnMut(&str) -> Vec<ProviderEvent> + Send,
 ) -> Result<()> {
+    let cli_name = command_spec.cli_name;
+    let folder = tokio::fs::canonicalize(command_spec.folder)
+        .await
+        .with_context(|| format!("Không thể giải quyết thư mục làm việc cho {cli_name}"))?;
+    let folder_text = folder.to_string_lossy();
+    if folder_text.contains('%') || folder_text.contains('"') {
+        let _ = events
+            .send(ProviderEvent::text(
+                "error",
+                "Đường dẫn thư mục làm việc không được chứa ký tự % hoặc dấu ngoặc kép.",
+            ))
+            .await;
+        return Ok(());
+    }
     let path = resolve_executable(command_spec.executable_name)
         .ok_or_else(|| anyhow!(command_spec.missing_message))?;
-    let cli_name = command_spec.cli_name;
     let mut command = command_for(&path, &command_spec.args);
     command
-        .current_dir(command_spec.folder)
+        .current_dir(folder)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     let mut child = command
         .spawn()
-        .with_context(|| format!("Khong the khoi dong {cli_name}"))?;
+        .with_context(|| format!("Không thể khởi động {cli_name}"))?;
 
     let Some(stdout) = child.stdout.take() else {
         terminate_child_tree(&mut child).await;
-        return Err(anyhow!("{cli_name} khong mo duoc stdout"));
+        return Err(anyhow!("{cli_name} không thể mở stdout"));
     };
     let Some(stderr) = child.stderr.take() else {
         terminate_child_tree(&mut child).await;
-        return Err(anyhow!("{cli_name} khong mo duoc stderr"));
+        return Err(anyhow!("{cli_name} không thể mở stderr"));
     };
     let stderr_task = tokio::spawn(collect_stderr(stderr));
     let Some(stdin) = child.stdin.take() else {
         terminate_child_tree(&mut child).await;
         let _ = stderr_task.await;
-        return Err(anyhow!("{cli_name} khong mo duoc stdin"));
+        return Err(anyhow!("{cli_name} không thể mở stdin"));
     };
 
     let write_result = tokio::select! {
@@ -129,7 +143,7 @@ pub async fn run_jsonl(
     if let Err(error) = write_result {
         terminate_child_tree(&mut child).await;
         let _ = stderr_task.await;
-        return Err(error).with_context(|| format!("Khong the gui prompt toi {cli_name}"));
+        return Err(error).with_context(|| format!("Không thể gửi nội dung đến {cli_name}"));
     }
 
     let mut stdout = BufReader::new(stdout).lines();
@@ -145,7 +159,7 @@ pub async fn run_jsonl(
                 Err(error) => {
                     terminate_child_tree(&mut child).await;
                     let _ = stderr_task.await;
-                    return Err(error).context("Khong the doc stdout cua CLI");
+                    return Err(error).context("Không thể đọc stdout của CLI");
                 }
             },
         };
@@ -185,7 +199,7 @@ pub async fn run_jsonl(
         Err(error) => {
             terminate_child_tree(&mut child).await;
             let _ = stderr_task.await;
-            return Err(error).with_context(|| format!("Khong the doi {cli_name} ket thuc"));
+            return Err(error).with_context(|| format!("Không thể chờ {cli_name} kết thúc"));
         }
     };
     let stderr_lines = stderr_task.await.unwrap_or_default();
@@ -193,16 +207,48 @@ pub async fn run_jsonl(
         let stderr = stderr_lines.join("\n");
         let status = status
             .code()
-            .map(|code| format!("ma thoat {code}"))
-            .unwrap_or_else(|| "bi dung boi he thong".to_owned());
+            .map(|code| format!("với mã thoát {code}"))
+            .unwrap_or_else(|| "bị dừng bởi hệ thống".to_owned());
         let message = if stderr.is_empty() {
-            format!("{cli_name} ket thuc voi {status}.")
+            format!("{cli_name} kết thúc {status}.")
         } else {
-            format!("{cli_name} ket thuc voi {status}:\n{stderr}")
+            format!("{cli_name} kết thúc {status}:\n{stderr}")
         };
         let _ = events.send(ProviderEvent::text("error", message)).await;
     }
     Ok(())
+}
+
+pub fn token_usage_log(usage: &Value, total_cost_usd: Option<&Value>) -> Option<String> {
+    let input_tokens = usage["input_tokens"].as_u64()?;
+    let output_tokens = usage["output_tokens"].as_u64()?;
+    let cached_tokens = usage["cached_input_tokens"].as_u64().unwrap_or_else(|| {
+        usage["cache_read_input_tokens"]
+            .as_u64()
+            .unwrap_or_default()
+            .saturating_add(
+                usage["cache_creation_input_tokens"]
+                    .as_u64()
+                    .unwrap_or_default(),
+            )
+    });
+    let reasoning_tokens = usage["reasoning_output_tokens"]
+        .as_u64()
+        .or_else(|| usage["thinking_tokens"].as_u64());
+    let mut line = format!(
+        "Token: vào {input_tokens} (cache {cached_tokens}), ra {output_tokens}"
+    );
+    if let Some(reasoning_tokens) = reasoning_tokens {
+        line.push_str(&format!(" (suy luận {reasoning_tokens})"));
+    }
+    if let Some(cost) = total_cost_usd.filter(|value| !value.is_null()) {
+        let cost = cost
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| cost.to_string());
+        line.push_str(&format!(", chi phí ${cost}"));
+    }
+    Some(line)
 }
 
 pub fn compose_prompt(messages: &[crate::chat::ChatMessage], has_session: bool) -> String {

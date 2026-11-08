@@ -17,6 +17,7 @@ const providerSelect = $("#provider-select");
 const modelInput = $("#model-input");
 const modelOptions = $("#model-options");
 const folderInput = $("#folder-input");
+const permissionSelect = $("#permission-select");
 const messagesRoot = $("#messages");
 const welcome = $("#welcome");
 const messageInput = $("#message-input");
@@ -61,9 +62,18 @@ function setupProviderControls(providerId, preferredModel = "") {
     providerSelect.append(option);
   }
   const selected = state.config.providers.find((provider) => provider.id === providerId) || state.config.providers[0];
-  if (!selected) return;
+  if (!selected) {
+    updatePermissionControl();
+    return;
+  }
   providerSelect.value = selected.id;
   updateModels(preferredModel || selected.models[0] || "");
+  updatePermissionControl();
+}
+
+function updatePermissionControl() {
+  const kind = currentProvider()?.kind;
+  $("#permission-control").hidden = !["codex_cli", "claude_cli"].includes(kind);
 }
 
 function updateModels(preferredModel = "") {
@@ -83,6 +93,7 @@ function newChat() {
   state.messages = [];
   state.memoryChats.set(state.chatId, { id: state.chatId, title: "Chat mới", updated_at: Date.now() / 1000 });
   setupProviderControls(providerSelect.value || state.config?.providers[0]?.id);
+  permissionSelect.value = "write";
   folderInput.value = state.config?.default_folder || "";
   rememberCurrentChat();
   renderMessages();
@@ -98,6 +109,7 @@ async function loadChat(id) {
     state.chatId = id;
     state.messages = cached.messages.map((message) => ({ ...message, logs: [...(message.logs || [])] }));
     setupProviderControls(cached.provider_id, cached.model);
+    permissionSelect.value = cached.permission || "write";
     folderInput.value = cached.folder || state.config?.default_folder || "";
     renderMessages();
     renderChatList();
@@ -109,6 +121,7 @@ async function loadChat(id) {
     state.messages = chat.messages || [];
     state.memoryChats.set(chat.id, { id: chat.id, title: chat.title, updated_at: chat.updated_at });
     setupProviderControls(chat.provider_id, chat.model);
+    permissionSelect.value = chat.permission || "write";
     folderInput.value = chat.folder || state.config?.default_folder || "";
     renderMessages();
     renderChatList();
@@ -173,9 +186,12 @@ function renderMessages() {
     row.className = `message ${message.role === "user" ? "user" : "assistant"}`;
     const body = document.createElement("div");
     body.className = "message-body";
+    const tokenLog = message.role === "assistant"
+      ? [...(message.logs || [])].reverse().find((entry) => entry.startsWith("Token:"))
+      : null;
     if (message.role === "assistant") {
       if (message.reasoning) appendFoldout(body, "Đang suy nghĩ", message.reasoning);
-      if (message.logs?.length) appendFoldout(body, "Hoạt động", message.logs.join("\n"));
+      if (message.logs?.length) appendActivityFoldout(body, message.logs, tokenLog);
       if (message.error) {
         const error = document.createElement("div");
         error.className = "error-text";
@@ -184,6 +200,12 @@ function renderMessages() {
       }
     }
     renderMarkdown(body, message.content || "");
+    if (tokenLog) {
+      const usage = document.createElement("div");
+      usage.className = "token-usage";
+      usage.textContent = tokenLog;
+      body.append(usage);
+    }
     row.append(body);
     messagesRoot.append(row);
   }
@@ -196,6 +218,7 @@ function rememberCurrentChat() {
     provider_id: providerSelect.value,
     model: modelInput.value,
     folder: folderInput.value,
+    permission: permissionSelect.value || "write",
     messages: state.messages.map((message) => ({ ...message, logs: [...(message.logs || [])] })),
   });
 }
@@ -208,6 +231,27 @@ function appendFoldout(parent, title, text) {
   const content = document.createElement("div");
   content.className = "foldout-content";
   content.textContent = text;
+  details.append(summary, content);
+  parent.append(details);
+}
+
+function appendActivityFoldout(parent, logs, tokenLog) {
+  const details = document.createElement("details");
+  details.className = "foldout activity-foldout";
+  const summary = document.createElement("summary");
+  const label = document.createElement("span");
+  label.textContent = "Hoạt động";
+  summary.append(label);
+  if (tokenLog) {
+    const preview = document.createElement("span");
+    preview.className = "activity-preview";
+    preview.textContent = tokenLog;
+    preview.title = tokenLog;
+    summary.append(preview);
+  }
+  const content = document.createElement("div");
+  content.className = "foldout-content";
+  content.textContent = logs.join("\n");
   details.append(summary, content);
   parent.append(details);
 }
@@ -297,6 +341,7 @@ function setStreaming(value) {
   providerSelect.disabled = value;
   modelInput.disabled = value;
   folderInput.disabled = value;
+  permissionSelect.disabled = value;
   $("#new-chat").disabled = value;
   renderChatList();
 }
@@ -335,6 +380,7 @@ async function sendMessage() {
         provider_id: providerSelect.value,
         model: modelInput.value.trim(),
         folder: folderInput.value.trim(),
+        permission: permissionSelect.value || "write",
         messages: state.messages.filter((message) => message !== assistant).map(({ role, content }) => ({ role, content })),
       }),
     });
@@ -555,7 +601,7 @@ $("#settings-open").addEventListener("click", async () => {
   else clearProviderForm();
   await refreshCliStatus();
 });
-$("#provider-select").addEventListener("change", () => { updateModels(); rememberCurrentChat(); });
+$("#provider-select").addEventListener("change", () => { updateModels(); updatePermissionControl(); rememberCurrentChat(); });
 $("#model-input").addEventListener("input", rememberCurrentChat);
 $("#composer").addEventListener("submit", (event) => { event.preventDefault(); sendMessage(); });
 $("#stop-button").addEventListener("click", stopChat);
@@ -567,6 +613,7 @@ $("#message-input").addEventListener("keydown", (event) => {
   }
 });
 $("#folder-input").addEventListener("input", rememberCurrentChat);
+permissionSelect.addEventListener("change", rememberCurrentChat);
 $("#folder-input").addEventListener("change", saveDefaultFolder);
 $("#provider-add").addEventListener("click", clearProviderForm);
 $("#provider-kind").addEventListener("change", updateProviderFormKind);

@@ -1,6 +1,26 @@
 # AI Hub
 
-AI Hub là ứng dụng Rust chạy cục bộ, cung cấp giao diện tiếng Việt để trò chuyện với các API tương thích OpenAI và Anthropic.
+AI Hub là ứng dụng Rust chạy cục bộ, cung cấp giao diện tiếng Việt để trò chuyện với API và công cụ lập trình AI.
+
+## Nhà cung cấp
+
+- **OpenAI-compatible:** kết nối các API tương thích với giao thức OpenAI bằng URL, API key và model do bạn cấu hình.
+- **Anthropic:** kết nối trực tiếp với Anthropic API bằng API key.
+- **Codex CLI:** gửi yêu cầu tới Codex CLI trong thư mục làm việc đã chọn và tiếp tục cuộc trò chuyện qua session.
+- **Claude Code CLI:** gửi yêu cầu tới Claude Code CLI trong thư mục làm việc đã chọn và tiếp tục cuộc trò chuyện qua session.
+
+Hai nhà cung cấp HTTP cần API key. Hai nhà cung cấp CLI dùng chương trình CLI đã cài và đăng nhập trên máy này.
+
+### Cài Claude Code CLI
+
+Cài Node.js và npm, sau đó chạy trong PowerShell:
+
+```powershell
+npm i -g @anthropic-ai/claude-code
+claude
+```
+
+Lệnh `claude` mở bước đăng nhập. Đăng nhập một lần trước khi chọn Claude Code CLI trong AI Hub.
 
 ## Biên dịch và chạy
 
@@ -13,8 +33,17 @@ cargo run --release
 
 Ứng dụng lắng nghe tại `127.0.0.1:7878` và tự mở trình duyệt. Dùng `--no-open` để bỏ qua việc mở trình duyệt, hoặc `--port 9000` để đổi cổng. Có thể đặt cổng mặc định bằng `$env:AI_HUB_PORT=9000` trong PowerShell.
 
+## Quyền truy cập CLI
+
+Với Codex CLI và Claude Code CLI, chọn **Quyền** cho từng chat:
+
+- **Chỉ đọc**: Codex dùng chế độ `read-only`; Claude Code dùng chế độ `plan`.
+- **Được sửa file**: Codex dùng chế độ `workspace-write`; Claude Code dùng chế độ `acceptEdits`. Đây là lựa chọn mặc định.
+
+Thiết lập quyền được lưu cùng chat. Các nhà cung cấp HTTP không dùng tùy chọn này.
+
 ## Cấu hình và lịch sử chat
 
-Cấu hình nằm tại `<config_dir>/ai-hub/config.json` (trên Windows là `%APPDATA%\ai-hub\config.json`). Các cuộc trò chuyện được lưu thành tệp JSON trong `<config_dir>/ai-hub/chats/`.
+Cấu hình nằm tại `<config_dir>/ai-hub/config.json`; trên Windows, đường dẫn thường là `%APPDATA%\ai-hub\config.json`. Các cuộc trò chuyện được lưu thành tệp JSON trong `<config_dir>/ai-hub/chats/`; trên Windows là `%APPDATA%\ai-hub\chats\`.
 
-API key được che trong phản hồi cài đặt và không được ghi vào log. Ở bước 1, Codex CLI và Claude Code CLI chỉ được phát hiện phiên bản; gửi chat qua CLI sẽ báo chưa hỗ trợ.
+API key được che trong phản hồi cài đặt và không được ghi vào log.

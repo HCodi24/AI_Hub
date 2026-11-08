@@ -35,6 +35,13 @@
           <span>Thư mục</span>
           <input id="folder-input" type="text" spellcheck="false" placeholder="Đường dẫn thư mục">
         </label>
+        <label id="permission-control" class="control-group permission-control" hidden>
+          <span>Quyền</span>
+          <select id="permission-select" aria-label="Quyền">
+            <option value="read">Chỉ đọc</option>
+            <option value="write">Được sửa file</option>
+          </select>
+        </label>
       </header>
 
       <section id="messages" class="messages" aria-live="polite" aria-label="Tin nhắn">

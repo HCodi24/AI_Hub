@@ -8,6 +8,14 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Permission {
+    Read,
+    #[default]
+    Write,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -27,6 +35,8 @@ pub struct ChatRecord {
     pub provider_id: String,
     pub model: String,
     pub folder: String,
+    #[serde(default)]
+    pub permission: Permission,
     pub messages: Vec<ChatMessage>,
     #[serde(default)]
     pub session_id: Option<String>,
@@ -46,6 +56,8 @@ pub struct ChatRequest {
     pub provider_id: String,
     pub model: String,
     pub folder: String,
+    #[serde(default)]
+    pub permission: Permission,
     pub messages: Vec<ChatMessage>,
 }
 
@@ -150,6 +162,7 @@ pub fn new_record(request: &ChatRequest) -> ChatRecord {
         provider_id: request.provider_id.clone(),
         model: request.model.clone(),
         folder: request.folder.clone(),
+        permission: request.permission,
         messages: request.messages.clone(),
         session_id: None,
         updated_at: unix_time(),
