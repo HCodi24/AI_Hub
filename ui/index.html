@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>AI Hub</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">✦</span><span>AI Hub</span></div>
+      <button id="new-chat" class="new-chat"><span aria-hidden="true">＋</span> Chat mới</button>
+      <div class="section-label">LỊCH SỬ</div>
+      <nav id="chat-list" class="chat-list" aria-label="Danh sách chat"></nav>
+      <div class="sidebar-bottom">
+        <div class="local-note"><span class="status-dot"></span> Chỉ chạy trên máy này</div>
+        <button id="settings-open" class="settings-open"><span aria-hidden="true">⚙</span> Cài đặt</button>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="toolbar">
+        <label class="control-group">
+          <span>Nguồn</span>
+          <select id="provider-select" aria-label="Nguồn"></select>
+        </label>
+        <label class="control-group model-control">
+          <span>Model</span>
+          <input id="model-input" list="model-options" autocomplete="off" aria-label="Model">
+          <datalist id="model-options"></datalist>
+        </label>
+        <label class="control-group folder-control">
+          <span>Thư mục</span>
+          <input id="folder-input" type="text" spellcheck="false" placeholder="Đường dẫn thư mục">
+        </label>
+      </header>
+
+      <section id="messages" class="messages" aria-live="polite" aria-label="Tin nhắn">
+        <div id="welcome" class="welcome">
+          <div class="welcome-icon">✦</div>
+          <h1>Bạn muốn làm gì hôm nay?</h1>
+          <p>Chọn nguồn, model và thư mục làm việc rồi bắt đầu trò chuyện.</p>
+        </div>
+      </section>
+
+      <form id="composer" class="composer">
+        <textarea id="message-input" rows="1" placeholder="Nhắn tin với AI…" aria-label="Tin nhắn"></textarea>
+        <div class="composer-footer">
+          <span class="composer-hint">Enter để gửi · Shift+Enter xuống dòng</span>
+          <div class="composer-actions">
+            <button id="stop-button" class="stop-button" type="button" hidden>Dừng</button>
+            <button id="send-button" class="send-button" type="submit" aria-label="Gửi tin nhắn">↑</button>
+          </div>
+        </div>
+      </form>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+  </div>
+
+  <dialog id="settings-dialog" class="settings-dialog">
+    <form method="dialog" class="dialog-head">
+      <div><p class="eyebrow">TÙY CHỈNH</p><h2>Cài đặt</h2></div>
+      <button class="icon-button" value="cancel" aria-label="Đóng">×</button>
+    </form>
+    <div class="settings-content">
+      <section class="provider-settings">
+        <div class="section-heading"><h3>Nguồn AI</h3><button id="provider-add" class="subtle-button" type="button">＋ Thêm nguồn</button></div>
+        <div id="provider-settings-list" class="provider-settings-list"></div>
+        <form id="provider-form" class="provider-form">
+          <input id="provider-id" type="hidden">
+          <div class="field-row">
+            <label>Tên<input id="provider-name" required placeholder="Ví dụ: Máy chủ của tôi"></label>
+            <label>Loại<select id="provider-kind"><option value="openai_compat">OpenAI-compatible</option><option value="anthropic">Anthropic</option><option value="codex_cli">Codex CLI</option><option value="claude_cli">Claude Code CLI</option></select></label>
+          </div>
+          <label id="base-url-field">URL cơ sở<input id="provider-url" type="url" placeholder="https://api.example.com/v1"></label>
+          <label>API key<input id="provider-key" type="password" autocomplete="new-password" placeholder="Để trống để giữ key đã lưu"></label>
+          <label>Danh sách model <span class="muted-inline">(mỗi dòng một model)</span><textarea id="provider-models" rows="3" placeholder="model-name"></textarea></label>
+          <div class="form-actions">
+            <button id="models-load" class="subtle-button" type="button">Tải danh sách model</button>
+            <span class="spacer"></span>
+            <button id="provider-delete" class="danger-button" type="button" hidden>Xóa</button>
+            <button id="provider-save" class="primary-button" type="submit">Lưu nguồn</button>
+          </div>
+          <p id="provider-form-note" class="form-note" aria-live="polite"></p>
+        </form>
+      </section>
+      <section class="cli-settings">
+        <div class="section-heading"><h3>CLI trên máy</h3><button id="cli-refresh" class="subtle-button" type="button">Làm mới</button></div>
+        <div id="cli-status" class="cli-status"><span class="muted">Đang kiểm tra…</span></div>
+      </section>
+    </div>
+  </dialog>
+  <script src="/app.js" defer></script>
+</body>
+</html>
