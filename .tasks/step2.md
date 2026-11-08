@@ -1,7 +1,22 @@
 You are implementing step 2 of the AI Hub app in C:\TOOL\ai-hub. Read SPEC.md and the existing code first.
 Step 1 (server, config, HTTP providers, UI) is already done; keep its structure.
 
-Step 2 scope: implement the two CLI providers in `src/providers/codex_cli.rs` and `src/providers/claude_cli.rs`
+## Part A — fix review findings from step 1 (do these first)
+Dependencies are now cached and Cargo.lock exists: build with `cargo build --release --offline`
+(and `cargo clippy --offline`); the sandbox has no reliable network.
+1. Compile error E0382 in src/server.rs:439 — `drop(provider_sender)` after it was moved into the spawned
+   task. Remove that line (the provider task owns the sender; the channel closes when it finishes).
+2. Unused import `delete` in server.rs.
+3. `persist_event` rewrites the chat JSON file on EVERY streamed token. Throttle it: keep updating the
+   in-memory record, but write to disk at most once per second plus on log/error and at the end.
+4. openai_compat.rs / anthropic.rs: on non-2xx, include the response body (first ~500 chars, keys never
+   included) in the error so the user sees e.g. "model not found". Also surface `{"error": ...}` objects
+   that arrive inside the SSE stream as an `error` event.
+5. DNS-rebinding protection: add a middleware that rejects requests whose `Host` header is not
+   `127.0.0.1:<port>` or `localhost:<port>`, and rejects non-GET requests whose `Origin` header is present
+   and not one of those origins (403).
+
+## Part B — Step 2 scope: implement the two CLI providers in `src/providers/codex_cli.rs` and `src/providers/claude_cli.rs`
 and wire them into the existing Provider abstraction, replacing the "Chưa hỗ trợ ở bước 1" stub.
 
 Requirements:
