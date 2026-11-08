@@ -1,0 +1,7 @@
+Implemented CLI discovery and Settings support.
+
+- [cli_support.rs](C:/TOOL/ai-hub/src/providers/cli_support.rs:20) now checks a configured executable first, then searches the process `PATH`, fresh user and machine registry `PATH` values, and the specified install directories. Registry paths are expanded, unresolved or empty `PATH` entries are skipped, and versioned Codex installs are ordered by modification time. `.cmd` children get the shim and discovered `node.exe` directories prepended to `PATH`; missing CLI errors list the locations checked.
+- [config.rs](C:/TOOL/ai-hub/src/config.rs:18), [codex_cli.rs](C:/TOOL/ai-hub/src/providers/codex_cli.rs:59), [claude_cli.rs](C:/TOOL/ai-hub/src/providers/claude_cli.rs:52), and [server.rs](C:/TOOL/ai-hub/src/server.rs:662) carry the optional executable setting through chat and CLI status. Empty executable values clear the setting; the existing “keep saved value” behavior remains limited to API keys. CLI status returns the resolved `path`.
+- [index.html](C:/TOOL/ai-hub/ui/index.html:86), [app.js](C:/TOOL/ai-hub/ui/app.js:508), and [style.css](C:/TOOL/ai-hub/ui/style.css:140) add the CLI-only path field and show the resolved path in Settings.
+
+**Verification:** `cargo clippy --offline` passed, and `git diff --check` reported no whitespace errors. The default release output was locked by an already running `ai-hub.exe`; `cargo build --release --offline` succeeded using a separate `target-step4` target directory. I did not run Codex or Claude.

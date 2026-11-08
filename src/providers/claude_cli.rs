@@ -49,6 +49,7 @@ impl Provider for ClaudeCliProvider {
                 cli_name: "Claude Code CLI",
                 executable_name: "claude",
                 missing_message: "Chưa cài Claude Code CLI: npm i -g @anthropic-ai/claude-code",
+                configured_executable: request.provider.executable.clone(),
                 folder: &request.folder,
                 args,
                 prompt,

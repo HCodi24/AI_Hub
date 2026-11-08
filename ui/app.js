@@ -465,6 +465,7 @@ function clearProviderForm() {
   $("#provider-kind").value = "openai_compat";
   $("#provider-url").value = "";
   $("#provider-key").value = "";
+  $("#provider-executable").value = "";
   $("#provider-key").placeholder = "Nhập API key (không bắt buộc với CLI)";
   $("#provider-models").value = "";
   $("#provider-delete").hidden = true;
@@ -495,6 +496,7 @@ function editProvider(id) {
   $("#provider-kind").value = provider.kind;
   $("#provider-url").value = provider.base_url || "";
   $("#provider-key").value = "";
+  $("#provider-executable").value = provider.executable || "";
   $("#provider-key").placeholder = provider.api_key ? "Key đã lưu — để trống để giữ nguyên" : "Nhập API key (không bắt buộc với CLI)";
   $("#provider-models").value = (provider.models || []).join("\n");
   $("#provider-delete").hidden = false;
@@ -504,8 +506,11 @@ function editProvider(id) {
 }
 
 function updateProviderFormKind() {
-  const showUrl = $("#provider-kind").value === "openai_compat";
+  const kind = $("#provider-kind").value;
+  const showUrl = kind === "openai_compat";
+  const showExecutable = kind === "codex_cli" || kind === "claude_cli";
   $("#base-url-field").hidden = !showUrl;
+  $("#provider-executable-field").hidden = !showExecutable;
   $("#models-load").hidden = !showUrl;
 }
 
@@ -518,6 +523,7 @@ async function saveProvider(event) {
     kind: $("#provider-kind").value,
     base_url: $("#provider-url").value.trim(),
     api_key: $("#provider-key").value,
+    executable: $("#provider-executable").value.trim(),
     models,
   };
   try {
@@ -580,8 +586,14 @@ async function refreshCliStatus() {
       const title = document.createElement("strong");
       title.textContent = label;
       const detail = document.createElement("span");
-      detail.textContent = item.installed ? (item.version || "Đã cài, không đọc được phiên bản") : "Chưa tìm thấy trong PATH";
+      detail.textContent = item.installed ? (item.version || "Đã cài, không đọc được phiên bản") : "Chưa tìm thấy ở các vị trí đã kiểm tra";
       card.append(title, detail);
+      if (item.path) {
+        const path = document.createElement("span");
+        path.className = "cli-path";
+        path.textContent = `Đường dẫn: ${item.path}`;
+        card.append(path);
+      }
       root.append(card);
     }
   } catch (error) { root.textContent = error.message; }

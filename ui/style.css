@@ -137,6 +137,7 @@ button { cursor: pointer; }
 .cli-card { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
 .cli-card strong { display: block; margin-bottom: 4px; font-size: 11px; }
 .cli-card span { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.cli-card .cli-path { display: block; margin-top: 5px; }
 
 @media (max-width: 760px) {
   .sidebar { width: 205px; flex-basis: 205px; padding: 14px 9px 10px; }

@@ -3,10 +3,11 @@ use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
 use std::{
     collections::VecDeque,
+    env,
     ffi::OsString,
     path::{Path, PathBuf},
-    process::Stdio,
-    time::Duration,
+    process::{Command as StdCommand, Stdio},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -16,18 +17,195 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-pub fn resolve_executable(name: &str) -> Option<PathBuf> {
-    let paths = std::env::var_os("PATH")?;
-    for suffix in [".exe", ".cmd", ""] {
-        let candidate = format!("{name}{suffix}");
-        for directory in std::env::split_paths(&paths) {
-            let path = directory.join(&candidate);
-            if path.is_file() {
+pub fn resolve_executable(name: &str, explicit_path: Option<&str>) -> Option<PathBuf> {
+    if let Some(path) = explicit_path.map(str::trim).filter(|path| !path.is_empty()) {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    let names = [format!("{name}.exe"), format!("{name}.cmd"), name.to_owned()];
+    let process_path = env::var_os("PATH").into_iter().flat_map(|value| {
+        env::split_paths(&value)
+            .filter(|path| valid_path_entry(path))
+            .collect::<Vec<_>>()
+    });
+    if let Some(path) = find_in_directories(&names, process_path) {
+        return Some(path);
+    }
+
+    #[cfg(windows)]
+    {
+        if let Some(path) = find_in_directories(&names, registry_path_directories()) {
+            return Some(path);
+        }
+
+        let directories = well_known_directories();
+        if let Some(path) = find_in_directories(&names, directories) {
+            return Some(path);
+        }
+
+        if name.eq_ignore_ascii_case("codex") {
+            if let Some(path) = newest_codex_install() {
                 return Some(path);
             }
         }
     }
+
     None
+}
+
+pub fn searched_locations(name: &str, explicit_path_was_set: bool) -> String {
+    let mut locations = Vec::new();
+    if explicit_path_was_set {
+        locations.push("configured file path");
+    }
+    locations.push("process PATH");
+    #[cfg(windows)]
+    {
+        locations.push("user/machine registry PATH");
+        locations.push("%APPDATA%\\npm");
+        locations.push("%LOCALAPPDATA%\\Programs\\nodejs");
+        locations.push("%USERPROFILE%\\.local\\bin");
+        if name.eq_ignore_ascii_case("codex") {
+            locations.push("%LOCALAPPDATA%\\OpenAI\\Codex\\bin\\*");
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = name;
+    locations.join(", ")
+}
+
+fn valid_path_entry(path: &Path) -> bool {
+    let path = path.to_string_lossy();
+    !path.trim().is_empty() && !path.contains('$') && !path.contains('%')
+}
+
+fn find_in_directories(
+    names: &[String],
+    directories: impl IntoIterator<Item = PathBuf>,
+) -> Option<PathBuf> {
+    let directories = directories
+        .into_iter()
+        .filter(|directory| valid_path_entry(directory))
+        .collect::<Vec<_>>();
+    for name in names {
+        for directory in &directories {
+            let candidate = directory.join(name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(windows)]
+fn registry_path_directories() -> Vec<PathBuf> {
+    [
+        r"HKCU\Environment",
+        r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+    ]
+    .into_iter()
+    .filter_map(read_registry_path)
+    .flat_map(|path| env::split_paths(std::ffi::OsStr::new(&path)).collect::<Vec<_>>())
+    .filter(|path| valid_path_entry(path))
+    .collect()
+}
+
+#[cfg(windows)]
+fn read_registry_path(key: &str) -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let output = StdCommand::new("reg")
+        .args(["query", key, "/v", "Path"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let output = String::from_utf8_lossy(&output.stdout);
+    output.lines().find_map(|line| {
+        let mut fields = line.split_whitespace();
+        let name = fields.next()?;
+        let value_type = fields.next()?;
+        if !name.eq_ignore_ascii_case("Path")
+            || !matches!(value_type, "REG_SZ" | "REG_EXPAND_SZ")
+        {
+            return None;
+        }
+        let value_start = line.find(value_type)? + value_type.len();
+        let value = line[value_start..].trim();
+        Some(expand_windows_variables(value))
+    })
+}
+
+#[cfg(windows)]
+fn expand_windows_variables(value: &str) -> String {
+    let mut expanded = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find('%') {
+        expanded.push_str(&rest[..start]);
+        let after_start = &rest[start + 1..];
+        let Some(end) = after_start.find('%') else {
+            expanded.push_str(&rest[start..]);
+            return expanded;
+        };
+        let variable = &after_start[..end];
+        if let Some(value) = env::var_os(variable) {
+            expanded.push_str(&value.to_string_lossy());
+        } else {
+            expanded.push('%');
+            expanded.push_str(variable);
+            expanded.push('%');
+        }
+        rest = &after_start[end + 1..];
+    }
+    expanded.push_str(rest);
+    expanded
+}
+
+#[cfg(windows)]
+fn well_known_directories() -> Vec<PathBuf> {
+    [
+        env::var_os("APPDATA").map(|path| PathBuf::from(path).join("npm")),
+        env::var_os("LOCALAPPDATA").map(|path| PathBuf::from(path).join("Programs").join("nodejs")),
+        env::var_os("USERPROFILE").map(|path| PathBuf::from(path).join(".local").join("bin")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+#[cfg(windows)]
+fn newest_codex_install() -> Option<PathBuf> {
+    let root = PathBuf::from(env::var_os("LOCALAPPDATA")?)
+        .join("OpenAI")
+        .join("Codex")
+        .join("bin");
+    let mut candidates = std::fs::read_dir(root)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            if !entry.file_type().ok()?.is_dir() {
+                return None;
+            }
+            let executable = entry.path().join("codex.exe");
+            if !executable.is_file() {
+                return None;
+            }
+            let modified = executable
+                .metadata()
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(UNIX_EPOCH);
+            Some((modified, executable))
+        })
+        .collect::<Vec<(SystemTime, PathBuf)>>();
+    candidates.sort_by(|(left, _), (right, _)| right.cmp(left));
+    candidates.into_iter().next().map(|(_, path)| path)
 }
 
 pub fn command_for(path: &Path, args: &[OsString]) -> Command {
@@ -60,6 +238,27 @@ pub fn command_for(path: &Path, args: &[OsString]) -> Command {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         command.as_std_mut().creation_flags(CREATE_NO_WINDOW);
+
+        if is_cmd {
+            let mut prepend = Vec::new();
+            if let Some(parent) = path.parent() {
+                prepend.push(parent.to_path_buf());
+            }
+            if let Some(node) = resolve_executable("node", None).filter(|node| {
+                node.extension()
+                    .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("exe"))
+            }) {
+                if let Some(parent) = node.parent() {
+                    prepend.push(parent.to_path_buf());
+                }
+            }
+            if let Some(existing) = env::var_os("PATH") {
+                prepend.extend(env::split_paths(&existing));
+            }
+            if let Ok(path) = env::join_paths(prepend) {
+                command.env("PATH", path);
+            }
+        }
     }
     command
 }
@@ -79,6 +278,7 @@ pub struct JsonlCommand<'a> {
     pub cli_name: &'static str,
     pub executable_name: &'static str,
     pub missing_message: &'static str,
+    pub configured_executable: String,
     pub folder: &'a str,
     pub args: Vec<OsString>,
     pub prompt: String,
@@ -104,8 +304,18 @@ pub async fn run_jsonl(
             .await;
         return Ok(());
     }
-    let path = resolve_executable(command_spec.executable_name)
-        .ok_or_else(|| anyhow!(command_spec.missing_message))?;
+    let configured_executable = command_spec.configured_executable.trim();
+    let path = resolve_executable(command_spec.executable_name, Some(configured_executable))
+        .ok_or_else(|| {
+            anyhow!(
+                "{} (đã tìm: {})",
+                command_spec.missing_message,
+                searched_locations(
+                    command_spec.executable_name,
+                    !configured_executable.is_empty()
+                )
+            )
+        })?;
     let mut command = command_for(&path, &command_spec.args);
     command
         .current_dir(folder)

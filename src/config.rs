@@ -15,6 +15,8 @@ pub struct ProviderConfig {
     #[serde(default)]
     pub api_key: String,
     #[serde(default)]
+    pub executable: String,
+    #[serde(default)]
     pub models: Vec<String>,
 }
 
@@ -40,6 +42,7 @@ impl Config {
                     kind: "openai_compat".to_owned(),
                     base_url: "https://api.deploy.com/api/v1".to_owned(),
                     api_key: String::new(),
+                    executable: String::new(),
                     models: vec!["deepseek-ai/deepseek-v4.1-flash-1017".to_owned()],
                 },
                 ProviderConfig {
@@ -48,6 +51,7 @@ impl Config {
                     kind: "openai_compat".to_owned(),
                     base_url: "https://api.openai.com/v1".to_owned(),
                     api_key: String::new(),
+                    executable: String::new(),
                     models: vec!["gpt-5.1".to_owned()],
                 },
                 ProviderConfig {
@@ -56,6 +60,7 @@ impl Config {
                     kind: "anthropic".to_owned(),
                     base_url: "https://api.anthropic.com".to_owned(),
                     api_key: String::new(),
+                    executable: String::new(),
                     models: vec!["claude-opus-5-5".to_owned(), "claude-sonnet-5-5".to_owned()],
                 },
                 ProviderConfig {
@@ -64,6 +69,7 @@ impl Config {
                     kind: "codex_cli".to_owned(),
                     base_url: String::new(),
                     api_key: String::new(),
+                    executable: String::new(),
                     models: vec!["gpt-6-luna".to_owned()],
                 },
                 ProviderConfig {
@@ -72,6 +78,7 @@ impl Config {
                     kind: "claude_cli".to_owned(),
                     base_url: String::new(),
                     api_key: String::new(),
+                    executable: String::new(),
                     models: vec!["opus".to_owned(), "sonnet".to_owned()],
                 },
             ],

@@ -90,6 +90,8 @@ struct ProviderInput {
     #[serde(default)]
     api_key: Option<String>,
     #[serde(default)]
+    executable: String,
+    #[serde(default)]
     models: Vec<String>,
 }
 
@@ -118,6 +120,7 @@ struct CliStatus {
 struct CliInfo {
     installed: bool,
     version: Option<String>,
+    path: Option<String>,
 }
 
 pub fn router(state: AppState, port: u16) -> Router {
@@ -237,6 +240,7 @@ async fn create_provider(
         kind: input.kind,
         base_url: input.base_url.trim().trim_end_matches('/').to_owned(),
         api_key: input.api_key.unwrap_or_default(),
+        executable: input.executable.trim().to_owned(),
         models: clean_models(input.models),
     };
     config.providers.push(provider);
@@ -274,6 +278,7 @@ async fn update_provider(
         kind: input.kind,
         base_url: input.base_url.trim().trim_end_matches('/').to_owned(),
         api_key,
+        executable: input.executable.trim().to_owned(),
         models: clean_models(input.models),
     };
     persist_config(&state, &config)?;
@@ -654,21 +659,41 @@ async fn delete_chat(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn cli_status() -> Json<CliStatus> {
-    let (codex_cli, claude_cli) = tokio::join!(cli_info("codex"), cli_info("claude"));
+async fn cli_status(State(state): State<AppState>) -> Json<CliStatus> {
+    let config = state.config.read().await;
+    let codex_executable = config
+        .providers
+        .iter()
+        .find(|provider| provider.kind == "codex_cli")
+        .map(|provider| provider.executable.clone())
+        .unwrap_or_default();
+    let claude_executable = config
+        .providers
+        .iter()
+        .find(|provider| provider.kind == "claude_cli")
+        .map(|provider| provider.executable.clone())
+        .unwrap_or_default();
+    drop(config);
+    let (codex_cli, claude_cli) = tokio::join!(
+        cli_info("codex", codex_executable),
+        cli_info("claude", claude_executable)
+    );
     Json(CliStatus {
         codex_cli,
         claude_cli,
     })
 }
 
-async fn cli_info(name: &str) -> CliInfo {
-    let Some(path) = providers::cli_support::resolve_executable(name) else {
+async fn cli_info(name: &str, explicit_path: String) -> CliInfo {
+    let explicit_path = explicit_path.trim();
+    let Some(path) = providers::cli_support::resolve_executable(name, Some(explicit_path)) else {
         return CliInfo {
             installed: false,
             version: None,
+            path: None,
         };
     };
+    let path_text = path.to_string_lossy().into_owned();
     let mut command = providers::cli_support::command_for(&path, &[OsString::from("--version")]);
     command
         .stdout(Stdio::piped())
@@ -680,6 +705,7 @@ async fn cli_info(name: &str) -> CliInfo {
                 return CliInfo {
                     installed: true,
                     version: None,
+                    path: Some(path_text),
                 };
             }
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -700,6 +726,7 @@ async fn cli_info(name: &str) -> CliInfo {
     CliInfo {
         installed: true,
         version,
+        path: Some(path_text),
     }
 }
 

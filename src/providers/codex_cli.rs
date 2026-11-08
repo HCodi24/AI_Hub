@@ -56,6 +56,7 @@ impl Provider for CodexCliProvider {
                 cli_name: "Codex CLI",
                 executable_name: "codex",
                 missing_message: "Chưa cài Codex CLI: npm i -g @openai/codex",
+                configured_executable: request.provider.executable.clone(),
                 folder: &request.folder,
                 args,
                 prompt,
