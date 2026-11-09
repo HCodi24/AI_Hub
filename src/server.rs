@@ -157,6 +157,7 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/style.css", get(style_css))
         .route("/api/config", get(get_config).put(put_config))
         .route("/api/mutis", get(get_orchestration).put(put_orchestration))
+        .route("/api/mutis/roles/resolve", get(resolve_mutis_roles))
         .route(
             "/api/mutis/events",
             get(orchestration_events).post(record_orchestration_event),
@@ -266,7 +267,13 @@ async fn verify_handler(
     }
     let (tx, rx) = mpsc::channel::<String>(32);
     tokio::spawn(async move {
-        let report = crate::verify::run(&folder, &config.mutis.verify_command, tx.clone()).await;
+        let report = crate::verify::run(
+            &folder,
+            &config.mutis.verify_command,
+            &config.mutis.verify_ignore,
+            tx.clone(),
+        )
+        .await;
         let _ = tx
             .send(format!(
                 "__VERIFY__{}",
@@ -303,6 +310,86 @@ async fn plan_diff_handler(Json(input): Json<PlanDiffRequest>) -> ApiResult<Json
 
 async fn get_orchestration(State(state): State<AppState>) -> Json<config::MutisConfig> {
     Json(state.config.read().await.mutis.clone())
+}
+#[derive(Serialize)]
+struct ResolvedRole {
+    configured_provider: Option<ProviderConfig>,
+    live_status: Option<ConnectionTest>,
+    used_provider: Option<ProviderConfig>,
+}
+async fn resolve_mutis_roles(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    let cfg = state.config.read().await.clone();
+    let mut output = serde_json::Map::new();
+    for (name, role, fallback) in [
+        (
+            "lead",
+            &cfg.mutis.roles.lead,
+            ["claude_cli", "anthropic", "codex_cli"].as_slice(),
+        ),
+        (
+            "big",
+            &cfg.mutis.roles.big,
+            ["codex_cli", "claude_cli", "anthropic"].as_slice(),
+        ),
+        (
+            "small",
+            &cfg.mutis.roles.small,
+            ["deepseek_agent", "codex_cli", "claude_cli"].as_slice(),
+        ),
+    ] {
+        let configured = cfg
+            .providers
+            .iter()
+            .find(|p| p.id == role.provider_id)
+            .cloned();
+        let mut candidates = Vec::new();
+        if let Some(provider) = &configured {
+            candidates.push(provider.clone());
+        }
+        for kind in fallback {
+            for provider in cfg.providers.iter().filter(|p| p.kind == *kind) {
+                if !candidates.iter().any(|x| x.id == provider.id) {
+                    candidates.push(provider.clone());
+                }
+            }
+        }
+        let results = join_all(
+            candidates
+                .iter()
+                .map(|p| cached_provider_test(&state, &p.id)),
+        )
+        .await;
+        let statuses = candidates
+            .iter()
+            .cloned()
+            .zip(results.into_iter().map(Result::ok))
+            .collect::<Vec<_>>();
+        let configured_status = configured.as_ref().and_then(|c| {
+            statuses
+                .iter()
+                .find(|(p, _)| p.id == c.id)
+                .and_then(|(_, s)| s.clone())
+        });
+        let used = statuses
+            .iter()
+            .find(|(_, s)| s.as_ref().is_some_and(|s| s.status == "connected"))
+            .map(|(p, _)| p.clone());
+        // Never send raw API keys to the browser.
+        let mask = |mut provider: ProviderConfig| {
+            provider.api_key = config::masked_key(&provider.api_key);
+            provider
+        };
+        output.insert(
+            name.into(),
+            serde_json::to_value(ResolvedRole {
+                configured_provider: configured.map(mask),
+                live_status: configured_status,
+                used_provider: used.map(mask),
+            })
+            .unwrap_or(Value::Null),
+        );
+    }
+    Ok(Json(Value::Object(output)))
 }
 async fn put_orchestration(
     State(state): State<AppState>,

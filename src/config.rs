@@ -63,6 +63,8 @@ pub struct MutisConfig {
     pub verify_gate: bool,
     #[serde(default)]
     pub verify_command: String,
+    #[serde(default = "default_verify_ignore")]
+    pub verify_ignore: Vec<String>,
     #[serde(default)]
     pub auto_review: bool,
     #[serde(default)]
@@ -124,6 +126,7 @@ impl Default for MutisConfig {
             deepseek_max_steps: 15,
             verify_gate: false,
             verify_command: String::new(),
+            verify_ignore: default_verify_ignore(),
             auto_review: false,
             reviewer_provider_id: String::new(),
             reviewer_model: String::new(),
@@ -163,6 +166,9 @@ fn default_fix_rounds() -> u32 {
 }
 fn default_event_log() -> bool {
     true
+}
+fn default_verify_ignore() -> Vec<String> {
+    vec![".tasks/**".into(), "plans/**".into(), "**/*.md".into()]
 }
 fn default_routing() -> Vec<RoutingRule> {
     [
