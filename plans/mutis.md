@@ -32,7 +32,7 @@ tính năng **bật/tắt được**, gồm các cải tiến đã chốt:
   chỉ được trích dẫn → giao sửa ở đầu 10b. (Lưu ý test: `task_id` gửi dạng chuỗi.)
 - [x] 10b — đổi tên → MutiS (`mutis.rs`, `/api/mutis`, alias `orchestration`); sửa lỗi resume;
   DeepSeek agent worker (kind `deepseek_agent`); diff; định tuyến.
-- [ ] 10b2 — MutiS 3 vai trò (lead = lập kế hoạch & review, big = làm việc lớn, small = làm việc nhỏ), mỗi vai trò
+- [x] 10b2 — MutiS 3 vai trò (lead = lập kế hoạch & review, big = làm việc lớn, small = làm việc nhỏ), mỗi vai trò
   provider/model/effort; thanh chế độ hiện 3 model + 3 chấm; popover "✦ MutiS (3 AI)" + Đội MutiS; Gửi ở chế độ
   MutiS = lập kế hoạch. Nhiệm vụ: .tasks/step10b2.md (yêu cầu của người dùng sau khi thấy popover chỉ 1 model).
 - [ ] 10c — Cổng kiểm tra + Claude review tự động + vòng sửa trong luồng chạy kế hoạch.
@@ -67,3 +67,5 @@ rồi review: build/test/clippy, quét chữ hỏng, chạy thật trên cổng 
 ## Nhật ký tiến độ
 (Claude ghi sau mỗi bước)
 - 10a (2026-11-09): Đã thêm cấu hình/API điều phối, giao diện cài đặt và định tuyến, nhật ký JSONL task plan, retry HTTP, Codex watchdog và tự tiếp tục theo cụm từ dừng sớm.\n
+
+- 10b2 (2026-11-09): Added MutiS lead/big/small role config with legacy planner/reviewer and routing migration, role-based task assignment, role effort/model propagation, composer source selection and per-chat local source memory, three-role popover/settings controls, and DeepSeek path-validation progress logging. Offline release build, clippy, 23 unit tests, JavaScript syntax check, and UTF-8 scan passed. No live AI calls made.

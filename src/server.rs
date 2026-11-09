@@ -214,18 +214,31 @@ async fn put_orchestration(
         if !matches!(
             rule.kind.as_str(),
             "small_edit" | "code" | "test" | "docs" | "plan" | "review"
-        ) || !matches!(
-            rule.assignee_kind.as_str(),
-            "deepseek_agent" | "codex_cli" | "claude_cli" | "openai_compat" | "anthropic"
-        ) {
+        ) || !matches!(rule.role.as_str(), "lead" | "big" | "small")
+        {
             return Err(ApiError::new(
                 StatusCode::BAD_REQUEST,
                 "Quy tắc định tuyến không hợp lệ",
             ));
         }
     }
+    for role in [&value.roles.lead, &value.roles.big, &value.roles.small] {
+        if !matches!(
+            role.effort.as_str(),
+            "default" | "low" | "medium" | "high" | "xhigh" | "max"
+        ) {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Mức suy luận không hợp lệ",
+            ));
+        }
+    }
     let mut config = state.config.write().await;
+    config.planner_provider_id = value.roles.lead.provider_id.clone();
+    config.planner_model = value.roles.lead.model.clone();
     config.mutis = value.clone();
+    config.mutis.reviewer_provider_id = value.roles.lead.provider_id.clone();
+    config.mutis.reviewer_model = value.roles.lead.model.clone();
     config::save(&state.config_path, &config)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
     Ok(Json(value))
@@ -411,8 +424,23 @@ async fn generate_plan(
                 StatusCode::BAD_REQUEST,
                 "Choose a connected planner provider in Settings",
             )
-        })?;
-    let model = if input.model.trim().is_empty() {
+        });
+    let planner = match planner {
+        Ok(planner) => planner,
+        Err(error) if cfg.mutis.enabled => {
+            let fallback_kinds = ["claude_cli", "anthropic", "codex_cli"];
+            connected
+                .iter()
+                .find(|provider| fallback_kinds.iter().any(|kind| provider.kind == *kind))
+                .and_then(|provider| cfg.providers.iter().find(|item| item.id == provider.id))
+                .cloned()
+                .ok_or(error)?
+        }
+        Err(error) => return Err(error),
+    };
+    let model = if planner.id != requested {
+        planner.models.first().cloned().unwrap_or_default()
+    } else if input.model.trim().is_empty() {
         if cfg.planner_model.is_empty() {
             planner.models.first().cloned().unwrap_or_default()
         } else {
@@ -441,7 +469,7 @@ async fn generate_plan(
         .collect::<Vec<_>>()
         .join("\n");
     let routes = if cfg.mutis.enabled {
-        format!("\nMutiS routing table (kind -> provider kind):\n{}\nUse deepseek_agent only for: việc nhỏ 1–3 file, đã biết chính xác vị trí, theo mẫu có sẵn; không chạy lệnh.", cfg.mutis.routing.iter().map(|r|format!("{} -> {}",r.kind,r.assignee_kind)).collect::<Vec<_>>().join("\n"))
+        format!("\nMutiS routing table (kind -> role):\n{}\nRoles: lead={}, big={}, small={}. Use deepseek_agent only for small tasks; never run commands.", cfg.mutis.routing.iter().map(|r|format!("{} -> {}",r.kind,r.role)).collect::<Vec<_>>().join("\n"), cfg.mutis.roles.lead.provider_id, cfg.mutis.roles.big.provider_id, cfg.mutis.roles.small.provider_id)
     } else {
         String::new()
     };
@@ -504,65 +532,97 @@ async fn generate_plan(
                 }
             }
         }
-        let result = (|| -> Result<Plan, String> {
-            if let Some(e) = error {
-                return Err(e);
-            };
-            let parsed = extract_json(&raw)
-                .and_then(|v| serde_json::from_str::<Value>(v).ok())
-                .ok_or_else(|| format!("Could not parse planner JSON: {raw}"))?;
-            let source = parsed["tasks"]
-                .as_array()
-                .ok_or_else(|| "Missing tasks array".to_owned())?;
-            let tasks = source
-                .iter()
-                .enumerate()
-                .map(|(i, t)| {
-                    let old = t["assignee"].as_str().unwrap_or(&planner_id).to_owned();
-                    let kind = t["kind"].as_str().unwrap_or("code").to_owned();
-                    let valid = connected.iter().any(|p| p.id == old);
-                    let assignee = if valid {
-                        old.clone()
-                    } else {
-                        crate::plans::reassign_with_routing(
-                            &kind,
-                            &connected,
-                            &planner_id,
-                            &cfg.mutis.routing,
-                            cfg.mutis.enabled,
-                        )
-                    };
-                    PlanTask {
-                        id: t["id"].as_u64().unwrap_or(i as u64 + 1) as u32,
-                        title: t["title"].as_str().unwrap_or("Task").into(),
-                        detail: t["detail"].as_str().unwrap_or("").into(),
-                        assignee,
-                        model: t["model"].as_str().map(str::to_owned),
-                        effort: t["effort"].as_str().unwrap_or("default").into(),
-                        reassigned_from: if valid { None } else { Some(old) },
-                        depends_on: t["depends_on"]
-                            .as_array()
-                            .into_iter()
-                            .flatten()
-                            .filter_map(Value::as_u64)
-                            .map(|v| v as u32)
-                            .collect(),
-                        kind,
-                        status: "chờ".into(),
-                        summary: String::new(),
-                        log: Vec::new(),
-                        tokens: 0,
-                        chat_id: None,
-                    }
-                })
-                .collect();
-            Ok(Plan::new(
-                parsed["title"].as_str().unwrap_or("New plan").into(),
-                folder_text,
-                request_text,
-                tasks,
-            ))
-        })();
+        let result =
+            (|| -> Result<Plan, String> {
+                if let Some(e) = error {
+                    return Err(e);
+                };
+                let parsed = extract_json(&raw)
+                    .and_then(|v| serde_json::from_str::<Value>(v).ok())
+                    .ok_or_else(|| format!("Could not parse planner JSON: {raw}"))?;
+                let source = parsed["tasks"]
+                    .as_array()
+                    .ok_or_else(|| "Missing tasks array".to_owned())?;
+                let tasks =
+                    source
+                        .iter()
+                        .enumerate()
+                        .map(|(i, t)| {
+                            let old = t["assignee"].as_str().unwrap_or(&planner_id).to_owned();
+                            let kind = t["kind"].as_str().unwrap_or("code").to_owned();
+                            let valid = connected.iter().any(|p| p.id == old);
+                            let assignee = if cfg.mutis.enabled {
+                                crate::plans::reassign_with_routing(
+                                    &kind,
+                                    &connected,
+                                    &planner_id,
+                                    &cfg.mutis.routing,
+                                    &cfg.mutis.roles,
+                                    cfg.mutis.enabled,
+                                )
+                            } else if valid {
+                                old.clone()
+                            } else {
+                                crate::plans::reassign_with_routing(
+                                    &kind,
+                                    &connected,
+                                    &planner_id,
+                                    &cfg.mutis.routing,
+                                    &cfg.mutis.roles,
+                                    false,
+                                )
+                            };
+                            let role = cfg.mutis.routing.iter().find(|rule| rule.kind == kind).map(
+                                |rule| match rule.role.as_str() {
+                                    "big" => &cfg.mutis.roles.big,
+                                    "small" => &cfg.mutis.roles.small,
+                                    _ => &cfg.mutis.roles.lead,
+                                },
+                            );
+                            let assigned_provider =
+                                connected.iter().find(|provider| provider.id == assignee);
+                            let routed_role = role.filter(|role| role.provider_id == assignee);
+                            let reassigned_from = if assignee == old { None } else { Some(old) };
+                            PlanTask {
+                                id: t["id"].as_u64().unwrap_or(i as u64 + 1) as u32,
+                                title: t["title"].as_str().unwrap_or("Task").into(),
+                                detail: t["detail"].as_str().unwrap_or("").into(),
+                                assignee,
+                                model: routed_role
+                                    .map(|role| role.model.clone())
+                                    .or_else(|| t["model"].as_str().map(str::to_owned))
+                                    .filter(|model| !model.is_empty())
+                                    .or_else(|| {
+                                        assigned_provider
+                                            .and_then(|provider| provider.models.first().cloned())
+                                    }),
+                                effort: routed_role.map(|role| role.effort.clone()).unwrap_or_else(
+                                    || t["effort"].as_str().unwrap_or("default").into(),
+                                ),
+                                reassigned_from,
+                                depends_on: t["depends_on"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .filter_map(Value::as_u64)
+                                    .map(|v| v as u32)
+                                    .collect(),
+                                kind,
+                                status: "chờ".into(),
+                                summary: String::new(),
+                                log: Vec::new(),
+                                tokens: 0,
+                                chat_id: None,
+                            }
+                        })
+                        .collect();
+                Ok(Plan::new(
+                    parsed["title"].as_str().unwrap_or("New plan").into(),
+                    folder_text,
+                    request_text,
+                    tasks,
+                ))
+            })();
         match result {
             Ok(plan) => match task_state.plans.save(&plan) {
                 Ok(()) => {
@@ -672,6 +732,10 @@ async fn put_config(
     config.default_folder = input.default_folder.trim().to_owned();
     config.planner_provider_id = input.planner_provider_id;
     config.planner_model = input.planner_model;
+    config.mutis.roles.lead.provider_id = config.planner_provider_id.clone();
+    config.mutis.roles.lead.model = config.planner_model.clone();
+    config.mutis.reviewer_provider_id = config.planner_provider_id.clone();
+    config.mutis.reviewer_model = config.planner_model.clone();
     config::save(&state.config_path, &config)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
     let mut response = config.clone();

@@ -15,6 +15,7 @@ const state = {
   providerStatuses: new Map(),
   providerChecking: new Set(),
   plans: [], currentPlan: null, planRunning: false,
+  selectedSource: "provider",
 };
 
 const EFFORT_KINDS = new Set(["codex_cli", "openai_compat", "anthropic"]);
@@ -123,21 +124,68 @@ function renderModePicker() {
   const provider = currentProvider();
   const chip = $("#mode-chip");
   if (!chip) return;
+  const isMutis = state.selectedSource === "mutis";
   const shortName = provider?.name?.split(/\s*\(/)[0] || "";
-  $("#mode-chip-provider").textContent = shortName && provider.name !== shortName ? `${shortName} · ` : "";
-  $("#mode-chip-model").textContent = prettyModel(modelInput.value);
+  chip.classList.toggle("mutis-chip", isMutis);
+  $("#mode-chip-provider").textContent = isMutis ? "MutiS · " : (shortName && provider.name !== shortName ? `${shortName} · ` : "");
+  if (isMutis) {
+    const roles = state.orchestration?.roles || {};
+    const roleNames = ["lead", "big", "small"].map(key => prettyModel(roles[key]?.model || "—"));
+    $("#mode-chip-model").textContent = roleNames.join(" · ");
+    $("#mode-chip-effort").textContent = "";
+    chip.title = ["lead", "big", "small"].map(key => {
+      const role = roles[key] || {};
+      const selected = state.config.providers.find(item => item.id === role.provider_id);
+      return `${key} → ${selected?.name || role.provider_id} · ${role.model} · ${role.effort}`;
+    }).join("\n");
+    chip.dataset.status = "connected";
+    const dots = $("#mode-status-dots");
+    dots.replaceChildren(...["lead", "big", "small"].map(key => {
+      const id = roles[key]?.provider_id;
+      const status = state.providerStatuses.get(id);
+      const color = state.providerChecking.has(id) ? "checking" : status?.ok ? "connected" : status?.status || "unknown";
+      return el("i", { className: `status-dot ${color}`, title: status?.detail || "Chưa kiểm tra" });
+    }));
+    $("#mode-models").closest("section").hidden = true;
+    $("#mode-effort-section").hidden = true;
+    $("#mode-mutis-section").hidden = false;
+    renderMutisRoleRows("mode-mutis-roles"); renderMutisSwitches("mode-mutis-switches");
+  } else {
+    $("#mode-chip-provider").textContent = shortName && provider?.name !== shortName ? `${shortName} · ` : "";
+    $("#mode-chip-model").textContent = prettyModel(modelInput.value);
+    $("#mode-models").closest("section").hidden = false;
+    $("#mode-mutis-section").hidden = true;
+  }
   const supported = EFFORT_KINDS.has(provider?.kind);
   $("#mode-chip-effort").textContent = supported ? ` ${EFFORT_LABELS[state.effort] || EFFORT_LABELS.default}` : "";
+  const providers = $("#mode-providers");
+  providers.replaceChildren();
+  const mutisRow = document.createElement("button");
+  mutisRow.type = "button";
+  mutisRow.className = "mode-row";
+  mutisRow.setAttribute("role", "radio");
+  mutisRow.setAttribute("aria-checked", String(isMutis));
+  mutisRow.dataset.source = "mutis";
+  mutisRow.textContent = state.orchestration?.enabled ? "✦ MutiS (3 AI)" : "✦ MutiS — bật trong Cài đặt";
+  mutisRow.disabled = !state.orchestration?.enabled;
+  providers.append(mutisRow);
+  for (const item of state.config?.providers || []) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "mode-row";
+    row.setAttribute("role", "radio");
+    row.setAttribute("aria-checked", String(!isMutis && item.id === provider?.id));
+    row.dataset.provider = item.id;
+    row.textContent = item.name;
+    providers.append(row);
+  }
+  if (isMutis) return;
   chip.title = modelInput.value;
   const status = state.providerStatuses.get(provider?.id);
+  $("#mode-status-dots").replaceChildren(el("i",{className:"status-dot"}));
   chip.dataset.status = state.providerChecking.has(provider?.id) ? "checking" : (status?.status || "unknown");
   chip.title = `${modelInput.value}${status ? ` · ${status.detail}` : " · Chưa kiểm tra"}`;
   $("#mode-effort-section").hidden = !supported;
-  const providers = $("#mode-providers"); providers.replaceChildren();
-  for (const item of state.config?.providers || []) {
-    const row = document.createElement("button"); row.type = "button"; row.className = "mode-row"; row.setAttribute("role", "radio"); row.setAttribute("aria-checked", String(item.id === provider?.id)); row.dataset.provider = item.id; row.textContent = item.name;
-    providers.append(row);
-  }
   const models = $("#mode-models"); models.replaceChildren();
   for (const model of provider?.models || []) {
     const row = document.createElement("button"); row.type = "button"; row.className = "mode-row"; row.setAttribute("role", "radio"); row.setAttribute("aria-checked", String(model === modelInput.value)); row.dataset.model = model; row.textContent = prettyModel(model); row.title = model;
@@ -149,8 +197,110 @@ function renderModePicker() {
   }
 }
 
+function renderMutisRoleRows(containerId) {
+  const root = $(`#${containerId}`);
+  if (!root) return;
+  root.replaceChildren();
+  const roleDefinitions = [
+    ["lead", "Lập kế hoạch & review", "✦"],
+    ["big", "Làm việc lớn", "▣"],
+    ["small", "Làm việc nhỏ", "◦"],
+  ];
+  for (const [key, label, icon] of roleDefinitions) {
+    const role = state.orchestration.roles?.[key] || { provider_id: "", model: "", effort: "default" };
+    const row = el("div", { className: "mutis-role-row" });
+    const provider = el("select", { dataset: { roleProvider: key }, ariaLabel: `Nguồn ${label}` });
+    provider.append(...(state.config.providers || []).map(item => el("option", { value: item.id, textContent: item.name })));
+    provider.value = role.provider_id;
+
+    const selected = state.config.providers.find(item => item.id === role.provider_id);
+    const model = el("select", { dataset: { roleModel: key }, ariaLabel: `Model ${label}` });
+    model.append(...(selected?.models || []).map(value => el("option", { value, textContent: prettyModel(value) })));
+    if (role.model && !(selected?.models || []).includes(role.model)) {
+      model.append(el("option", { value: role.model, textContent: prettyModel(role.model) }));
+    }
+    model.append(el("option", { value: "__other", textContent: "Model khác…" }));
+    model.value = role.model || "__other";
+    row.append(el("span", { textContent: `${icon} ${label}` }), provider, model);
+
+    if (EFFORT_KINDS.has(selected?.kind)) {
+      const effort = el("select", { dataset: { roleEffort: key }, ariaLabel: `Mức suy luận ${label}` });
+      effort.append(...EFFORTS.map(value => el("option", { value, textContent: EFFORT_LABELS[value] })));
+      effort.value = role.effort || "default";
+      row.append(effort);
+    }
+
+    const status = state.providerStatuses.get(role.provider_id);
+    const dot = el("span", {
+      className: `status-dot ${status?.ok ? "connected" : status?.status || "unknown"}`,
+      title: status?.detail || "Chưa kiểm tra",
+    });
+    row.append(dot);
+    if (!status?.ok) {
+      const fallbackKinds = key === "big"
+        ? ["codex_cli", "claude_cli"]
+        : ["claude_cli", "anthropic", "codex_cli"];
+      const fallbacks = state.config.providers.filter(item =>
+        item.id !== role.provider_id && fallbackKinds.includes(item.kind));
+      const fallback = fallbacks.find(item => state.providerStatuses.get(item.id)?.ok) || fallbacks[0];
+      const fallbackName = key === "small"
+        ? state.config.providers.find(item => item.id === state.orchestration.roles?.lead?.provider_id)?.name
+        : fallback?.name;
+      row.append(el("small", { textContent: `⚠ chưa kết nối — sẽ dùng ${fallbackName || "planner"}` }));
+    }
+    root.append(row);
+  }
+}
+function renderMutisSwitches(containerId) {
+  const root = $(`#${containerId}`);
+  if (!root) return;
+  root.replaceChildren();
+  const switches = [["verify_gate", "Kiểm tra tự động"], ["auto_review", "Claude review"], ["auto_fix", "Tự sửa lỗi"]];
+  for (const [key, label] of switches) {
+    const input = el("input", {
+      type: "checkbox",
+      checked: Boolean(state.orchestration?.[key]),
+      dataset: { mutisSwitch: key },
+    });
+    root.append(el("label", {}, [input, document.createTextNode(` ${label}`)]));
+  }
+}
+
+async function saveMutisRoles(containerId = "mode-mutis-section") {
+  const root = $(`#${containerId}`);
+  if (!root) return;
+  const next = { ...state.orchestration, roles: { ...state.orchestration.roles } };
+  for (const key of ["lead", "big", "small"]) {
+    const role = { ...next.roles[key] };
+    const provider = root.querySelector(`[data-role-provider="${key}"]`);
+    const model = root.querySelector(`[data-role-model="${key}"]`);
+    const effort = root.querySelector(`[data-role-effort="${key}"]`);
+    const customModel = model?.value === "__other";
+    if (provider) role.provider_id = provider.value;
+    const selectedProvider = state.config.providers.find(item => item.id === role.provider_id);
+    if (model) {
+      if (model.value === "__other") {
+        role.model = window.prompt("Nhập mã model", role.model) || role.model;
+      } else {
+        role.model = model.value;
+      }
+    }
+    if (!customModel && !(selectedProvider?.models || []).includes(role.model)) {
+      role.model = selectedProvider?.models?.[0] || role.model;
+    }
+    if (effort) role.effort = effort.value;
+    next.roles[key] = role;
+  }
+  for (const input of root.querySelectorAll("[data-mutis-switch]")) {
+    next[input.dataset.mutisSwitch] = input.checked;
+  }
+  state.orchestration = await api("/api/mutis", { method: "PUT", body: JSON.stringify(next) });
+  renderModePicker();
+  renderMutisRoleRows("settings-mutis-roles");
+}
+
 function saveLastMode() {
-  try { localStorage.setItem("ai-hub-last-mode", JSON.stringify({ provider_id: providerSelect.value, model: modelInput.value, effort: state.effort })); } catch (_) { /* Storage may be disabled. */ }
+  try { const value={source:state.selectedSource,provider_id: providerSelect.value, model: modelInput.value, effort: state.effort };localStorage.setItem("ai-hub-last-mode", JSON.stringify(value));if(state.chatId)localStorage.setItem(`ai-hub-last-mode-${state.chatId}`,JSON.stringify(value)); } catch (_) { /* Storage may be disabled. */ }
 }
 
 function newChat() {
@@ -162,6 +312,8 @@ function newChat() {
   try { lastMode = JSON.parse(localStorage.getItem("ai-hub-last-mode") || "null"); } catch (_) { /* Ignore invalid or unavailable storage. */ }
   if (!state.config?.providers.some((provider) => provider.id === lastMode?.provider_id)) lastMode = null;
   setupProviderControls(lastMode?.provider_id || providerSelect.value || state.config?.providers[0]?.id, lastMode?.model || "");
+  state.selectedSource = lastMode?.source === "mutis" ? "mutis" : "provider";
+  messageInput.placeholder = state.selectedSource === "mutis" ? "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…" : "Nhắn tin với AI…";
   state.effort = EFFORTS.includes(lastMode?.effort) ? lastMode.effort : "default";
   renderModePicker();
   permissionSelect.value = "write";
@@ -179,6 +331,10 @@ async function loadChat(id) {
   if (!saved && cached) {
     state.chatId = id;
     state.messages = cached.messages.map((message) => ({ ...message, logs: [...(message.logs || [])] }));
+    let mode = null;
+    try { mode = JSON.parse(localStorage.getItem(`ai-hub-last-mode-${id}`) || "null"); } catch (_) { /* Ignore invalid mode cache. */ }
+    state.selectedSource = mode?.source === "mutis" ? "mutis" : "provider";
+    messageInput.placeholder = state.selectedSource === "mutis" ? "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…" : "Nhắn tin với AI…";
     setupProviderControls(cached.provider_id, cached.model);
     permissionSelect.value = cached.permission || "write";
     state.effort = cached.effort || "default";
@@ -192,6 +348,10 @@ async function loadChat(id) {
     const chat = await api(`/api/chats/${encodeURIComponent(id)}`);
     state.chatId = chat.id;
     state.messages = chat.messages || [];
+    let mode = null;
+    try { mode = JSON.parse(localStorage.getItem(`ai-hub-last-mode-${id}`) || "null"); } catch (_) { /* Ignore invalid mode cache. */ }
+    state.selectedSource = mode?.source === "mutis" ? "mutis" : "provider";
+    messageInput.placeholder = state.selectedSource === "mutis" ? "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…" : "Nhắn tin với AI…";
     state.memoryChats.set(chat.id, { id: chat.id, title: chat.title, updated_at: chat.updated_at });
     setupProviderControls(chat.provider_id, chat.model);
     permissionSelect.value = chat.permission || "write";
@@ -428,6 +588,23 @@ async function sendMessage() {
   const text = messageInput.value.trim();
   if (!text || state.streaming) return;
   if (!state.chatId) newChat();
+  if (state.selectedSource === "mutis") {
+    const lead = state.orchestration?.roles?.lead;
+    if (!state.orchestration?.enabled) {
+      showToast("Hãy bật MutiS trong Cài đặt.");
+      return;
+    }
+    if (lead) {
+      providerSelect.value = lead.provider_id;
+      state.config.planner_provider_id = lead.provider_id;
+      state.config.planner_model = lead.model;
+      $("#planner-provider").value = lead.provider_id;
+      $("#planner-model").value = lead.model;
+    }
+    await planFromRequest(text);
+    saveLastMode();
+    return;
+  }
   if (!currentProvider()) {
     showToast("Hãy thêm hoặc chọn một nguồn AI trong Cài đặt.");
     return;
@@ -536,15 +713,17 @@ async function loadConfig() {
   state.config = await api("/api/config");
   state.orchestration = await api("/api/mutis");
   renderOrchestrationSettings();
+  renderModePicker();
   setupProviderControls(state.config.providers[0]?.id);
   folderInput.value = state.config.default_folder || "";
   renderPlannerSettings();
 }
 
 const ROUTE_KINDS = ["small_edit", "code", "test", "docs", "plan", "review"];
-const ASSIGNEE_KINDS = ["deepseek_agent", "codex_cli", "claude_cli", "openai_compat", "anthropic"];
+const ASSIGNEE_KINDS = ["lead", "big", "small"];
 function renderOrchestrationSettings() {
   const config = state.orchestration || {};
+  renderMutisRoleRows("settings-mutis-roles");
   for (const input of document.querySelectorAll("[data-orch]")) {
     const key = input.dataset.orch;
     if (input.type === "checkbox") input.checked = Boolean(config[key]); else input.value = config[key] ?? "";
@@ -558,24 +737,30 @@ function renderOrchestrationSettings() {
   reviewerModel.value = config.reviewer_model || reviewerProvider?.models?.[0] || "";
   const routes = $("#orchestration-routing"); routes.replaceChildren();
   for (const kind of ROUTE_KINDS) {
-    const rule = (config.routing || []).find(r => r.kind === kind) || {kind,assignee_kind:"codex_cli",note:""};
+    const rule = (config.routing || []).find(r => r.kind === kind) || {kind,role:(kind==="small_edit"||kind==="docs"?"small":kind==="plan"||kind==="review"?"lead":"big"),note:""};
     const select = el("select", {dataset:{route:kind}}, ASSIGNEE_KINDS.map(value => el("option", {value,textContent:value})));
-    select.value = rule.assignee_kind;
+    select.value = rule.role || ({deepseek_agent:"small",codex_cli:"big",claude_cli:"lead"}[rule.assignee_kind]||"big");
     routes.append(el("label", {className:"route-row"}, [el("span", {textContent:kind}), select]));
   }
   updateOrchestrationDisabled();
 }
 function updateOrchestrationDisabled() {
   const enabled = $('[data-orch="enabled"]').checked;
+  if (!enabled && state.selectedSource === "mutis") {
+    state.selectedSource = "provider";
+    messageInput.placeholder = "Nhắn tin với AI…";
+    saveLastMode();
+  }
   $("#orchestration-controls").classList.toggle("orchestration-disabled", !enabled);
   for (const input of $("#orchestration-controls").querySelectorAll("input,select")) input.disabled = !enabled;
   $("#orchestration-badge").textContent = `MutiS: ${enabled ? "BẬT" : "TẮT"}`;
+  const sourceRow=$("#mode-providers")?.querySelector('[data-source="mutis"]');if(sourceRow){sourceRow.disabled=!enabled;sourceRow.textContent=enabled?"✦ MutiS (3 AI)":"✦ MutiS — bật trong Cài đặt";} renderModePicker();
 }
 let orchestrationSaveTimer;
 async function saveOrchestration() {
   const next = {...state.orchestration};
   for (const input of document.querySelectorAll("[data-orch]")) next[input.dataset.orch] = input.type === "checkbox" ? input.checked : (input.type === "number" ? Number(input.value) : input.value);
-  next.routing = ROUTE_KINDS.map(kind => ({kind,assignee_kind:$(`[data-route="${kind}"]`).value,note:""}));
+  next.routing = ROUTE_KINDS.map(kind => ({kind,role:$(`[data-route="${kind}"]`).value,note:""}));
   try { state.orchestration = await api("/api/mutis", {method:"PUT",body:JSON.stringify(next)}); updateOrchestrationDisabled(); }
   catch(error) { showToast(error.message); renderOrchestrationSettings(); }
 }
@@ -594,13 +779,13 @@ function renderPlannerSettings() {
   if (!select) return;
   select.replaceChildren(...(state.config?.providers || []).map(provider =>
     el("option", { value: provider.id, textContent: provider.name })));
-  const preferred = state.config?.planner_provider_id || ["claude_cli", "anthropic", "codex_cli"]
+  const preferred = state.orchestration?.roles?.lead?.provider_id || state.config?.planner_provider_id || ["claude_cli", "anthropic", "codex_cli"]
     .map(kind => state.config?.providers.find(provider => provider.kind === kind))
     .find(provider => provider && (state.providerStatuses.get(provider.id)?.ok ?? true))?.id
     || state.config?.providers[0]?.id;
   select.value = preferred || "";
   const provider = state.config?.providers.find(item => item.id === select.value);
-  $("#planner-model").value = state.config?.planner_model || provider?.models[0] || "";
+  $("#planner-model").value = state.orchestration?.roles?.lead?.model || state.config?.planner_model || provider?.models[0] || "";
   $("#planner-model-options").replaceChildren(...(provider?.models || []).map(model => el("option", { value: model })));
 }
 
@@ -654,7 +839,7 @@ async function planFromRequest(text) {
   const timer = setInterval(() => { const seconds = Math.floor((Date.now() - started) / 1000); label.textContent = `Đang lập kế hoạch bằng ${provider?.name || "provider"} · ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`; }, 1000);
   try {
     const response = await fetch("/api/plans", { method: "POST", signal: controller.signal,
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request, folder: folderInput.value.trim(), provider_id: $("#planner-provider").value || state.config.planner_provider_id, model: $("#planner-model").value || state.config.planner_model }) });
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request, folder: folderInput.value.trim(), provider_id: state.orchestration?.roles?.lead?.provider_id || $("#planner-provider").value || state.config.planner_provider_id, model: state.orchestration?.roles?.lead?.model || $("#planner-model").value || state.config.planner_model }) });
     if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
     if (!response.body) throw new Error("Browser does not support response streaming");
     let receivedPlan = null;
@@ -1166,7 +1351,7 @@ $("#settings-open").addEventListener("click", async () => {
   testAllProviders();
   await refreshCliStatus();
 });
-$("#provider-select").addEventListener("change", () => { updateModels(); updatePermissionControl(); rememberCurrentChat(); saveLastMode(); });
+$("#provider-select").addEventListener("change", () => { state.selectedSource="provider";messageInput.placeholder="Nhắn tin với AI…";updateModels(); updatePermissionControl(); rememberCurrentChat(); saveLastMode(); });
 $("#model-input").addEventListener("input", () => { renderModePicker(); rememberCurrentChat(); saveLastMode(); });
 $("#mode-chip").addEventListener("click", () => {
   const pop = $("#mode-popover"); pop.hidden = !pop.hidden;
@@ -1174,15 +1359,33 @@ $("#mode-chip").addEventListener("click", () => {
   if (!pop.hidden) pop.querySelector("button:not([disabled])")?.focus();
 });
 $("#mode-popover").addEventListener("click", (event) => {
+  const source=event.target.closest("[data-source]")?.dataset.source;
+  if(source==="mutis"&&state.orchestration?.enabled){state.selectedSource="mutis";messageInput.placeholder="Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…";renderModePicker();saveLastMode();return;}
   const providerId = event.target.closest("[data-provider]")?.dataset.provider;
   const model = event.target.closest("[data-model]")?.dataset.model;
   const effort = event.target.closest("[data-effort]")?.dataset.effort;
-  if (providerId) { providerSelect.value = providerId; updateModels(); updatePermissionControl(); }
+  if (providerId) { state.selectedSource="provider";messageInput.placeholder="Nhắn tin với AI…";providerSelect.value = providerId; updateModels(); updatePermissionControl(); }
   if (model) modelInput.value = model;
   if (effort) state.effort = effort;
   if (providerId || model || effort) { renderModePicker(); rememberCurrentChat(); saveLastMode(); }
   if (providerId || model) { $("#mode-popover").hidden = true; $("#mode-chip").setAttribute("aria-expanded", "false"); $("#mode-chip").focus(); }
 });
+$("#mode-popover").addEventListener("change", (event) => {
+  const provider = event.target.closest("[data-role-provider]");
+  if (provider) {
+    const key = provider.dataset.roleProvider;
+    const selected = state.config.providers.find(item => item.id === provider.value);
+    state.orchestration.roles[key].provider_id = provider.value;
+    state.orchestration.roles[key].model = selected?.models?.[0] || "";
+    renderMutisRoleRows("mode-mutis-roles");
+    saveMutisRoles("mode-mutis-section").catch(error => showToast(error.message));
+  } else if (event.target.matches("[data-role-model], [data-role-effort], [data-mutis-switch]")) {
+    saveMutisRoles("mode-mutis-section").catch(error => showToast(error.message));
+  }
+});
+$("#settings-mutis-roles").addEventListener("change", () => saveMutisRoles("settings-mutis-roles").catch(error => showToast(error.message)));
+$("#mode-mutis-roles").addEventListener("change", () => saveMutisRoles("mode-mutis-section").catch(error => showToast(error.message)));
+$("#mode-mutis-switches").addEventListener("change", () => saveMutisRoles("mode-mutis-section").catch(error => showToast(error.message)));
 $("#mode-other").addEventListener("click", () => {
   const model = window.prompt("Nhập mã model", modelInput.value);
   if (model?.trim()) { modelInput.value = model.trim(); renderModePicker(); rememberCurrentChat(); saveLastMode(); }

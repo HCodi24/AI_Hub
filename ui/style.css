@@ -151,9 +151,17 @@ button { cursor: pointer; }
 [data-status="connected"] .status-dot { background: #45c878; }
 [data-status="error"] .status-dot { background: #ed6268; }
 [data-status="checking"] .status-dot { background: #d9a441; animation: pulse 1s ease-in-out infinite; }
-#mode-chip[data-status="connected"] > .status-dot { background: #45c878; }
-#mode-chip[data-status="error"] > .status-dot { background: #ed6268; }
-#mode-chip[data-status="checking"] > .status-dot { background: #d9a441; animation: pulse 1s ease-in-out infinite; }
+#mode-chip[data-status="connected"] .status-dot.connected { background: #45c878; }
+#mode-chip[data-status="error"] .status-dot.error { background: #ed6268; }
+#mode-chip[data-status="checking"] .status-dot.checking { background: #d9a441; animation: pulse 1s ease-in-out infinite; }
+#mode-chip .status-dot.error { background:#ed6268; }
+#mode-chip .status-dot.checking { background:#d9a441; animation:pulse 1s ease-in-out infinite; }
+#mode-status-dots { display:inline-flex; gap:2px; }
+.mutis-role-row { display:grid; grid-template-columns:minmax(105px,1fr) minmax(90px,1fr) minmax(85px,1fr) auto; align-items:center; gap:5px; padding:5px 2px; }
+.mutis-role-row select { min-width:0; max-width:145px; border:1px solid var(--line); border-radius:5px; padding:5px; background:var(--panel); color:var(--text); font-size:10px; }
+.mutis-role-row small { grid-column:1/-1; color:#d9a441; }
+.mutis-chip #mode-chip-model { font-size:11px; }
+.legacy-role-settings { display:none !important; }
 @keyframes pulse { 50% { opacity: .25; } }
 .connection-row { display: flex; align-items: center; gap: 10px; }
 .connection-detail { flex: 1; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }

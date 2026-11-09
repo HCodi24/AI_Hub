@@ -60,11 +60,12 @@
         <textarea id="message-input" rows="1" placeholder="Nhắn tin với AI…" aria-label="Tin nhắn"></textarea>
         <div class="composer-footer">
           <div class="mode-picker">
-            <button id="mode-chip" type="button" aria-expanded="false" aria-controls="mode-popover"><span class="status-dot"></span><span id="mode-chip-provider"></span><span id="mode-chip-model"></span><span id="mode-chip-effort" class="muted-inline"></span><span aria-hidden="true" class="mode-chevron">⌃</span></button>
+            <button id="mode-chip" type="button" aria-expanded="false" aria-controls="mode-popover"><span id="mode-status-dots"><i class="status-dot"></i></span><span id="mode-chip-provider"></span><span id="mode-chip-model"></span><span id="mode-chip-effort" class="muted-inline"></span><span aria-hidden="true" class="mode-chevron">⌃</span></button>
             <div id="mode-popover" class="mode-popover" hidden>
               <section><h3>Nguồn</h3><div id="mode-providers" role="radiogroup" aria-label="Nguồn"></div></section>
               <section><h3>Model</h3><div id="mode-models" role="radiogroup" aria-label="Model"></div><button id="mode-other" type="button" class="mode-row">Model khác…</button></section>
               <section id="mode-effort-section"><h3>Mức suy luận</h3><div id="mode-efforts" class="effort-options"></div></section>
+              <section id="mode-mutis-section" hidden><h3>Đội MutiS</h3><div id="mode-mutis-roles"></div><div id="mode-mutis-switches"></div></section>
             </div>
           </div>
           <div class="composer-actions">
@@ -91,18 +92,18 @@
       <button class="icon-button" value="cancel" aria-label="Đóng">×</button>
     </form>
     <div class="settings-content">
-      <section class="planner-settings orchestration-settings"><div class="section-heading"><h3>MutiS</h3></div><label><span><input type="checkbox" data-orch="enabled"> Bật MutiS</span><small>Claude lập kế hoạch & review · Codex làm việc lớn · DeepSeek làm việc nhỏ</small></label><div id="orchestration-controls" class="orchestration-controls">
+      <section class="planner-settings orchestration-settings"><div class="section-heading"><h3>MutiS</h3></div><label><span><input type="checkbox" data-orch="enabled"> Bật MutiS</span><small>Claude lập kế hoạch & review · Codex làm việc lớn · DeepSeek làm việc nhỏ</small></label><div id="settings-mutis-roles"></div><div id="orchestration-controls" class="orchestration-controls">
         <label><span><input type="checkbox" data-orch="retry_api"> Thử lại API</span><small>Thử lại khi kết nối lỗi hoặc máy chủ trả lỗi tạm thời.</small><div class="field-row"><input type="number" min="1" max="5" data-orch="retry_attempts" aria-label="Số lần thử lại"><input type="number" min="100" max="60000" data-orch="retry_base_ms" aria-label="Thời gian chờ cơ sở (ms)"></div></label>
         <label><span><input type="checkbox" data-orch="codex_watchdog"> Codex watchdog</span><small>Dừng Codex nếu không có dòng đầu ra quá thời gian quy định.</small><input type="number" min="1" max="60" data-orch="watchdog_minutes" aria-label="Watchdog (phút)"></label>
         <label><span><input type="checkbox" data-orch="codex_auto_resume"> Tự tiếp tục Codex</span><small>Tiếp tục lượt Codex có dấu hiệu dừng khi chưa hoàn tất.</small><input type="number" min="0" max="3" data-orch="resume_max" aria-label="Số lần tiếp tục tối đa"></label>
         <label><span><input type="checkbox" data-orch="deepseek_agent"> DeepSeek làm việc trên file</span><small>Cho phép chế độ agent DeepSeek.</small><div class="field-row"><input type="number" min="50" max="5000" data-orch="deepseek_max_file_lines" aria-label="Ngưỡng số dòng"><input type="number" min="5" max="40" data-orch="deepseek_max_steps" aria-label="Số bước tối đa"></div></label>
         <label><span><input type="checkbox" data-orch="verify_gate"> Cổng kiểm tra</span><small>Chạy kiểm tra sau mỗi công việc.</small><input type="text" data-orch="verify_command" placeholder="Để trống để tự nhận diện"></label>
-        <label><span><input type="checkbox" data-orch="auto_review"> Claude review tự động</span><small>Chọn nhà cung cấp và model dùng để review.</small><select data-orch="reviewer_provider_id"></select><select data-orch="reviewer_model" aria-label="Model reviewer"></select></label>
+        <label class="legacy-role-settings"><span><input type="checkbox" data-orch="auto_review"> Claude review tự động</span><small>Chọn nhà cung cấp và model dùng để review.</small><select data-orch="reviewer_provider_id"></select><select data-orch="reviewer_model" aria-label="Model reviewer"></select></label>
         <label><span><input type="checkbox" data-orch="auto_fix"> Tạo task sửa khi review thất bại</span><small>Giới hạn số vòng sửa tự động.</small><input type="number" min="0" max="5" data-orch="fix_rounds_max"></label>
         <label><span><input type="checkbox" data-orch="event_log"> Ghi nhật ký sự kiện</span><small>Lưu thời gian, token và trạng thái của task plan.</small></label>
         <div><strong>Định tuyến mặc định</strong><div id="orchestration-routing"></div></div>
       </div></section>
-      <section class="planner-settings"><div class="section-heading"><h3>Người lập kế hoạch</h3></div><label>Nhà cung cấp<select id="planner-provider"></select></label><label>Model<input id="planner-model" list="planner-model-options"><datalist id="planner-model-options"></datalist></label></section>
+      <section class="planner-settings legacy-role-settings"><div class="section-heading"><h3>Người lập kế hoạch</h3></div><label>Nhà cung cấp<select id="planner-provider"></select></label><label>Model<input id="planner-model" list="planner-model-options"><datalist id="planner-model-options"></datalist></label></section>
       <section class="provider-settings">
         <div class="section-heading"><h3>Nguồn AI</h3><button id="provider-add" class="subtle-button" type="button">＋ Thêm nguồn</button></div>
         <div id="provider-settings-list" class="provider-settings-list"></div>

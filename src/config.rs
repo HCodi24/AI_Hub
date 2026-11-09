@@ -77,11 +77,32 @@ pub struct MutisConfig {
     pub event_log: bool,
     #[serde(default = "default_routing")]
     pub routing: Vec<RoutingRule>,
+    #[serde(default)]
+    pub roles: MutisRoles,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MutisRoles {
+    pub lead: MutisRole,
+    pub big: MutisRole,
+    pub small: MutisRole,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MutisRole {
+    #[serde(default)]
+    pub provider_id: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default = "default_effort")]
+    pub effort: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RoutingRule {
     pub kind: String,
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
     pub assignee_kind: String,
     #[serde(default)]
     pub note: String,
@@ -110,6 +131,7 @@ impl Default for MutisConfig {
             fix_rounds_max: 2,
             event_log: true,
             routing: default_routing(),
+            roles: MutisRoles::default(),
         }
     }
 }
@@ -144,17 +166,18 @@ fn default_event_log() -> bool {
 }
 fn default_routing() -> Vec<RoutingRule> {
     [
-        ("small_edit", "deepseek_agent"),
-        ("docs", "deepseek_agent"),
-        ("code", "codex_cli"),
-        ("test", "codex_cli"),
-        ("plan", "claude_cli"),
-        ("review", "claude_cli"),
+        ("small_edit", "small"),
+        ("docs", "small"),
+        ("code", "big"),
+        ("test", "big"),
+        ("plan", "lead"),
+        ("review", "lead"),
     ]
     .into_iter()
-    .map(|(kind, assignee_kind)| RoutingRule {
+    .map(|(kind, role)| RoutingRule {
         kind: kind.into(),
-        assignee_kind: assignee_kind.into(),
+        role: role.into(),
+        assignee_kind: String::new(),
         note: String::new(),
     })
     .collect()
@@ -246,6 +269,7 @@ pub fn load_or_seed(path: &Path) -> Result<Config> {
             .with_context(|| format!("Could not read config file at {}", path.display()))?;
         let mut config: Config = serde_json::from_str(&content)
             .with_context(|| format!("Could not parse config file at {}", path.display()))?;
+        migrate_mutis(&mut config);
         if !config
             .providers
             .iter()
@@ -259,14 +283,103 @@ pub fn load_or_seed(path: &Path) -> Result<Config> {
             {
                 config.providers.push(provider);
             }
-            save(path, &config)?;
         }
+        save(path, &config)?;
         Ok(config)
     } else {
-        let config = Config::seeded();
+        let mut config = Config::seeded();
+        migrate_mutis(&mut config);
         save(path, &config)?;
         Ok(config)
     }
+}
+
+fn default_effort() -> String {
+    "default".into()
+}
+fn migrate_mutis(config: &mut Config) {
+    let mut roles = config.mutis.roles.clone();
+    let find = |kinds: &[&str]| {
+        config
+            .providers
+            .iter()
+            .find(|p| kinds.contains(&p.kind.as_str()))
+            .map(|p| p.id.clone())
+            .unwrap_or_default()
+    };
+    if roles.lead.provider_id.is_empty() {
+        roles.lead.provider_id = if !config.mutis.reviewer_provider_id.is_empty() {
+            config.mutis.reviewer_provider_id.clone()
+        } else if !config.planner_provider_id.is_empty() {
+            config.planner_provider_id.clone()
+        } else {
+            find(&["claude_cli", "anthropic", "codex_cli"])
+        };
+    }
+    if roles.lead.effort.is_empty() {
+        roles.lead.effort = "default".into();
+    }
+    if roles.lead.model.is_empty() {
+        roles.lead.model = if !config.mutis.reviewer_model.is_empty() {
+            config.mutis.reviewer_model.clone()
+        } else if !config.planner_model.is_empty() {
+            config.planner_model.clone()
+        } else {
+            config
+                .providers
+                .iter()
+                .find(|p| p.id == roles.lead.provider_id)
+                .and_then(|p| p.models.first())
+                .cloned()
+                .unwrap_or_default()
+        };
+    }
+    if roles.big.provider_id.is_empty() {
+        roles.big.provider_id = find(&["codex_cli"]);
+    }
+    if roles.big.model.is_empty() {
+        roles.big.model = config
+            .providers
+            .iter()
+            .find(|p| p.id == roles.big.provider_id)
+            .and_then(|p| p.models.first())
+            .cloned()
+            .unwrap_or_default();
+    }
+    if roles.big.effort.is_empty() {
+        roles.big.effort = "high".into();
+    }
+    if roles.small.provider_id.is_empty() {
+        roles.small.provider_id = find(&["deepseek_agent"]);
+    }
+    if roles.small.model.is_empty() {
+        roles.small.model = config
+            .providers
+            .iter()
+            .find(|p| p.id == roles.small.provider_id)
+            .and_then(|p| p.models.first())
+            .cloned()
+            .unwrap_or_default();
+    }
+    if roles.small.effort.is_empty() {
+        roles.small.effort = "default".into();
+    }
+    for rule in &mut config.mutis.routing {
+        if rule.role.is_empty() {
+            rule.role = match rule.assignee_kind.as_str() {
+                "deepseek_agent" => "small",
+                "codex_cli" => "big",
+                "claude_cli" => "lead",
+                _ => "lead",
+            }
+            .into();
+        }
+    }
+    config.mutis.roles = roles;
+    config.planner_provider_id = config.mutis.roles.lead.provider_id.clone();
+    config.planner_model = config.mutis.roles.lead.model.clone();
+    config.mutis.reviewer_provider_id = config.mutis.roles.lead.provider_id.clone();
+    config.mutis.reviewer_model = config.mutis.roles.lead.model.clone();
 }
 
 pub fn save(path: &Path, config: &Config) -> Result<()> {
@@ -301,6 +414,32 @@ pub fn masked_key(key: &str) -> String {
     }
 }
 
+#[cfg(test)]
+mod role_tests {
+    use super::*;
+    #[test]
+    fn legacy_planner_reviewer_and_routing_migrate_to_roles() {
+        let mut config = Config::seeded();
+        config.planner_provider_id = "codex-cli".into();
+        config.planner_model = "gpt-6-luna".into();
+        config.mutis.reviewer_provider_id = "claude-cli".into();
+        config.mutis.reviewer_model = "opus".into();
+        config.mutis.routing[0].role.clear();
+        config.mutis.routing[0].assignee_kind = "deepseek_agent".into();
+        config.mutis.routing[2].role.clear();
+        config.mutis.routing[2].assignee_kind = "codex_cli".into();
+        config.mutis.routing[4].role.clear();
+        config.mutis.routing[4].assignee_kind = "claude_cli".into();
+        migrate_mutis(&mut config);
+        assert_eq!(config.mutis.roles.lead.provider_id, "claude-cli");
+        assert_eq!(config.mutis.roles.lead.model, "opus");
+        assert_eq!(config.mutis.routing[0].role, "small");
+        assert_eq!(config.mutis.routing[2].role, "big");
+        assert_eq!(config.mutis.routing[4].role, "lead");
+    }
+}
+
+#[allow(clippy::items_after_test_module)]
 pub fn is_masked_key(value: &str) -> bool {
     value.contains('…') || value.contains("••") || value.starts_with("****")
 }

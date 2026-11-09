@@ -192,7 +192,15 @@ impl Provider for DeepSeekAgentProvider {
                     }
                 }
                 if matches!(name, "edit_file" | "write_file") {
-                    let _ = emit_text(&events, "log", format!("Sửa {path}")).await;
+                    match safe_path(&root, path) {
+                        Ok(_) => {
+                            let _ = emit_text(&events, "log", format!("Sửa {path}")).await;
+                        }
+                        Err(error) => {
+                            let _ = emit_text(&events, "log", format!("Từ chối: {path} ({error})"))
+                                .await;
+                        }
+                    }
                 }
                 let result = run_tool(
                     &root,

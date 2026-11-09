@@ -69,15 +69,22 @@ pub fn reassign_with_routing(
     connected: &[ProviderSummary],
     planner_id: &str,
     routing: &[crate::config::RoutingRule],
+    roles: &crate::config::MutisRoles,
     enabled: bool,
 ) -> String {
     if enabled {
         if let Some(rule) = routing.iter().find(|rule| rule.kind == kind) {
-            if let Some(provider) = connected
+            let role = match rule.role.as_str() {
+                "lead" => &roles.lead,
+                "big" => &roles.big,
+                "small" => &roles.small,
+                _ => &roles.lead,
+            };
+            if connected
                 .iter()
-                .find(|provider| provider.kind == rule.assignee_kind)
+                .any(|provider| provider.id == role.provider_id)
             {
-                return provider.id.clone();
+                return role.provider_id.clone();
             }
         }
     }
@@ -278,15 +285,34 @@ mod tests {
         ];
         let routes = vec![crate::config::RoutingRule {
             kind: "code".into(),
+            role: "small".into(),
             assignee_kind: "deepseek_agent".into(),
             note: String::new(),
         }];
+        let roles = crate::config::MutisRoles {
+            small: crate::config::MutisRole {
+                provider_id: "ds".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         assert_eq!(
-            reassign_with_routing("code", &connected, "p", &routes, true),
+            reassign_with_routing("code", &connected, "p", &routes, &roles, true),
             "ds"
         );
+        let unavailable = crate::config::MutisRoles {
+            small: crate::config::MutisRole {
+                provider_id: "missing".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
         assert_eq!(
-            reassign_with_routing("code", &connected, "p", &routes, false),
+            reassign_with_routing("code", &connected, "p", &routes, &unavailable, true),
+            "codex"
+        );
+        assert_eq!(
+            reassign_with_routing("code", &connected, "p", &routes, &roles, false),
             "codex"
         );
     }
