@@ -67,3 +67,7 @@ AI Hub có thể đề xuất kế hoạch công việc từ nội dung đang so
 MutiS là tính năng điều phối có thể bật hoặc tắt trong **Cài đặt → MutiS**. Có thể cấu hình vai trò lead, big và small (nguồn, model, mức suy luận), cùng bảng định tuyến theo loại việc. DeepSeek làm việc (Deploy) chỉnh sửa file bằng công cụ giới hạn trong thư mục, không chạy lệnh và trả diff. Các tùy chọn gồm retry/backoff API, watchdog và resume Codex, cổng verify tự nhận diện lệnh hoặc dùng lệnh riêng, review tự động và số vòng auto-fix tối đa. Quy tắc worker nhiều dòng được thêm vào prompt các task kế hoạch khi MutiS bật.
 
 Nhật ký sự kiện JSONL được lưu tại `<config_dir>/ai-hub/mutis/events.jsonl`; `GET /api/mutis/stats?days=30` tổng hợp số liệu trong phạm vi nhật ký hiện có. Verify kiểm tra dự án và UTF-8/mojibake, review dùng vai trò lead với quyền chỉ đọc. Review hoặc verify FAIL có thể tạo task sửa tự động nếu còn vòng. Vai trò và API key được che khi trả về qua API.
+
+### MutiS trạng thái 10d
+
+Trang MutiS hiện có thẻ tổng quan, bảng thống kê theo provider và task kind, cùng bộ lọc 50 sự kiện gần nhất. /api/mutis/stats?days=N tính số liệu từ JSONL còn được giữ; lỗi được chuẩn hóa và xếp top 5. 	ask_kind là trường tùy chọn nên sự kiện cũ có thể hiện là không rõ. Chức năng tự chẩn đoán hiện mới lưu và liệt kê kết quả placeholder; phân tích bằng reviewer và áp dụng đề xuất chưa hoàn tất.

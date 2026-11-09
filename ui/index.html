@@ -20,6 +20,7 @@
         <div id="orchestration-badge" class="local-note">MutiS: TẮT</div>
         <button id="settings-open" class="settings-open"><span aria-hidden="true">⚙</span> Cài đặt</button>
         <button id="extensions-open" class="settings-open"><span aria-hidden="true">◇</span> Tiện ích</button>
+        <button id="mutis-open" class="settings-open" type="button">✦ MutiS</button>
       </div>
     </aside>
 
@@ -77,6 +78,12 @@
         </div>
       </form>
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+    <main id="mutis-view" class="extensions-view" hidden>
+      <header class="extensions-header"><div><p class="eyebrow">AI HUB</p><h1>MutiS</h1><p class="muted">Thống kê vận hành và tự chẩn đoán.</p></div><div><button id="mutis-diagnose" class="subtle-button">Tự chẩn đoán</button> <button id="mutis-back" class="subtle-button">Quay lại chat</button></div></header>
+      <section id="mutis-summary" class="mutis-cards"></section><section><h2>Theo nhà cung cấp</h2><div id="mutis-providers"></div></section><section><h2>Theo loại công việc</h2><div id="mutis-kinds"></div></section>
+      <section><h2>Sự kiện gần đây</h2><div class="mutis-filters"><select id="mutis-filter-kind"><option value="">Mọi loại</option></select><select id="mutis-filter-provider"><option value="">Mọi nhà cung cấp</option></select><select id="mutis-filter-status"><option value="">Mọi trạng thái</option><option value="ok">Thành công</option><option value="failed">Thất bại</option></select></div><div id="mutis-events"></div></section>
+      <section><h2>Kết quả chẩn đoán</h2><div id="mutis-diagnoses"></div></section>
     </main>
     <main id="plans-view" class="extensions-view" hidden><header class="extensions-header"><div><p class="eyebrow">AI HUB</p><h1>Chia việc</h1><p class="muted">Lập kế hoạch, chỉnh sửa và duyệt trước khi chạy từng công việc.</p></div><button id="plans-back" class="subtle-button">Quay lại chat</button></header><section id="plans-list"></section><section id="plan-editor" hidden></section></main>
     <main id="extensions-view" class="extensions-view" hidden>

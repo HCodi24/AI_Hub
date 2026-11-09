@@ -821,6 +821,27 @@ async function loadPlans() {
   renderPlanList();
 }
 
+function statsTable(groups) {
+  const table = el("table", { className: "plan-table" });
+  table.innerHTML = "<thead><tr><th>Nhóm</th><th>Task</th><th>Thành công</th><th>Thời lượng TB</th><th>Token</th><th>Retry</th><th>Watchdog</th><th>Resume</th><th>Verify lỗi</th><th>Review lỗi</th><th>Sửa</th><th>Lỗi phổ biến</th></tr></thead>";
+  const body = el("tbody");
+  for (const [name, row] of Object.entries(groups || {})) body.append(el("tr", {}, [name, row.tasks_run, `${(row.success_rate * 100).toFixed(0)}%`, `${row.avg_duration_ms} ms`, row.total_tokens, row.retries, row.watchdog_kills, row.resumes, `${(row.verify_fail_rate * 100).toFixed(0)}%`, `${(row.review_fail_rate * 100).toFixed(0)}%`, row.fix_rounds, (row.top_errors || []).map(x => `${x.message} (${x.count})`).join("; ")].map(value => el("td", { textContent: String(value) }))));
+  table.append(body); return table;
+}
+async function loadMutisPage() {
+  const stats = await api("/api/mutis/stats?days=30");
+  const summary = $("#mutis-summary"); summary.replaceChildren();
+  for (const [label, value] of [["Sự kiện", stats.events.length], ["Nhà cung cấp", Object.keys(stats.providers).length], ["Loại công việc", Object.keys(stats.task_kinds).length], ["Khoảng thời gian", `${stats.days} ngày`]]) summary.append(el("article", { className: "mutis-stat-card" }, [el("strong", { textContent: String(value) }), el("span", { textContent: label })]));
+  $("#mutis-providers").replaceChildren(statsTable(stats.providers)); $("#mutis-kinds").replaceChildren(statsTable(stats.task_kinds));
+  const events = stats.events || [], kinds = [...new Set(events.map(x => x.kind))], providers = [...new Set(events.map(x => x.provider_id).filter(Boolean))];
+  const fill = (selector, vals) => { const select = $(selector), selected = select.value; select.replaceChildren(el("option", { value: "", textContent: selector.endsWith("kind") ? "Mọi loại" : "Mọi nhà cung cấp" })); vals.forEach(v => select.append(el("option", { value: v, textContent: v }))); select.value = selected; };
+  fill("#mutis-filter-kind", kinds); fill("#mutis-filter-provider", providers);
+  const render = () => { const filtered = events.filter(x => (!$("#mutis-filter-kind").value || x.kind === $("#mutis-filter-kind").value) && (!$("#mutis-filter-provider").value || x.provider_id === $("#mutis-filter-provider").value) && (!$("#mutis-filter-status").value || ($("#mutis-filter-status").value === "ok") === x.ok));
+    const table = el("table", { className: "plan-table" }); table.innerHTML = "<thead><tr><th>Thời điểm</th><th>Loại</th><th>Provider</th><th>Task kind</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead>"; const body = el("tbody"); filtered.forEach(x => body.append(el("tr", {}, [new Date(x.ts * 1000).toLocaleString(), x.kind, x.provider_id, x.task_kind || "—", x.ok ? "OK" : "Lỗi", x.detail || ""].map(value => el("td", { textContent: String(value) }))))); table.append(body); $("#mutis-events").replaceChildren(table); };
+  ["#mutis-filter-kind", "#mutis-filter-provider", "#mutis-filter-status"].forEach(id => $(id).onchange = render); render();
+  const diagnoses = await api("/api/mutis/diagnoses"); $("#mutis-diagnoses").replaceChildren(...diagnoses.map(d => el("article", { className: "mutis-finding" }, [el("strong", { textContent: `${d.health} · ${new Date(d.ts * 1000).toLocaleString()}` }), el("p", { textContent: d.summary || "" }), ...(d.findings || []).map(f => el("p", { textContent: `${f.severity || ""}: ${f.problem || ""} — ${f.evidence || ""} ${f.suggestion || ""}` }))])));
+}
+
 function renderPlanList() {
   const root = $("#plans-list");
   root.replaceChildren();
@@ -1040,7 +1061,7 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
     const response = await api("/api/chat", {
       method: "POST",
       body: JSON.stringify({
-        chat_id: chatId, plan_id: plan.id, task_id: String(task.id), provider_id: provider.id,
+        chat_id: chatId, plan_id: plan.id, task_id: String(task.id), task_kind: task.kind, provider_id: provider.id,
         model: task.model || provider.models[0] || "", effort: task.effort || "default",
         folder: plan.folder,
         permission: ["code", "test", "docs"].includes(task.kind) ? "write" : "read",
@@ -1084,6 +1105,30 @@ function extractJson(text) {
   } return null;
 }
 
+// Build a fix task that keeps the ORIGINAL task context (title + detail) so the worker knows what the task was,
+// instead of nesting "Sửa lỗi …: Sửa lỗi …: X" and losing the original request.
+function buildFixTask(plan, task, label, issuesText) {
+  const rootTitle = task.fix_root_title || task.title;
+  const rootDetail = task.fix_root_detail ?? task.detail;
+  const round = (task.fix_rounds_used || 0);
+  return {
+    ...structuredClone(task),
+    id: Math.max(0, ...plan.tasks.map(t => t.id)) + 1,
+    title: `${label}: ${rootTitle} (vòng ${round})`,
+    detail: `Nhiệm vụ gốc: ${rootTitle}\n${rootDetail}\n\nLỗi cần sửa (${label.toLowerCase()}):\n${issuesText}`,
+    fix_root_title: rootTitle,
+    fix_root_detail: rootDetail,
+    depends_on: [task.id],
+    status: "chờ",
+    summary: "",
+    log: [],
+    tokens: 0,
+    chat_id: undefined,
+    verify: null,
+    review: null,
+  };
+}
+
 async function runTaskGates(task) {
   const plan = state.currentPlan, cfg = state.orchestration;
   if (!cfg?.enabled) return;
@@ -1094,7 +1139,7 @@ async function runTaskGates(task) {
       const action = nextReviewAction(task, { verdict: "FAIL", issues: (task.verify?.summary_lines || []).map(problem => ({ severity: "high", problem })) }, task.fix_rounds_used ?? 0, cfg.fix_rounds_max);
       if (cfg.auto_fix && action === "create_fix") {
         task.status = "cần sửa"; task.fix_rounds_used = (task.fix_rounds_used || 0) + 1;
-        const fix = { ...structuredClone(task), id: Math.max(0, ...plan.tasks.map(t => t.id)) + 1, title: `Sửa lỗi kiểm tra: ${task.title}`, detail: (task.verify.summary_lines || []).join("\n"), depends_on: [task.id], status: "waiting", verify: null, review: null };
+        const fix = buildFixTask(plan, task, "Sửa lỗi kiểm tra", (task.verify.summary_lines || []).join("\n"));
         plan.tasks.push(fix); await persistPlan(); await runPlanTask(fix);
         await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(fix.id), provider_id: fix.assignee, kind: "fix_task", ok: fix.status === "xong", detail: `Task sửa verify được tạo cho ${task.id}` }) });
         task.status = fix.status === "xong" ? "xong" : "lỗi";
@@ -1112,14 +1157,14 @@ async function runTaskGates(task) {
     const prompt = `Review task và trả CHỈ JSON theo schema {"verdict":"PASS|FAIL","issues":[{"severity":"high|medium|low","file":"","line":0,"problem":"","fix":""}],"notes":""}. Task: ${task.title}\nChi tiết: ${task.detail}\nTóm tắt: ${task.summary}\nVerify: ${(task.verify?.summary_lines || []).join("\n")}\nDiff (nếu có):\n${(task.diff || gitDiff || "").slice(0, 30000)}`;
     const reviewModel = resolvedLead.used_provider.id === lead?.provider_id ? (lead?.model || reviewer.models[0] || "") : (reviewer.models[0] || "");
     let answer = ""; const chatId = crypto.randomUUID();
-    const response = await api("/api/chat", { method: "POST", body: JSON.stringify({ chat_id: chatId, plan_id: plan.id, task_id: String(task.id), provider_id: reviewer.id, model: reviewModel, effort: lead?.effort || "default", folder: plan.folder, permission: "read", messages: [{ role: "user", content: prompt }] }) });
+    const response = await api("/api/chat", { method: "POST", body: JSON.stringify({ chat_id: chatId, plan_id: plan.id, task_id: String(task.id), task_kind: task.kind, provider_id: reviewer.id, model: reviewModel, effort: lead?.effort || "default", folder: plan.folder, permission: "read", messages: [{ role: "user", content: prompt }] }) });
     await readSse(response.body, (event, data) => { if (event === "delta") answer += data.text || ""; });
     task.review = extractJson(answer) || { verdict: "FAIL", issues: [{ severity: "high", file: "", line: 0, problem: "Reviewer trả JSON không hợp lệ", fix: "Review lại" }], notes: answer.slice(-1000) };
     await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(task.id), provider_id: reviewer.id, kind: "review", ok: task.review.verdict === "PASS", detail: JSON.stringify(task.review).slice(0, 4000) }) });
     if (task.review.verdict === "FAIL") {
       if (cfg.auto_fix && nextReviewAction(task, task.review, task.fix_rounds_used ?? 0, cfg.fix_rounds_max) === "create_fix") {
         task.status = "cần sửa"; task.fix_rounds_used++;
-        const fix = { ...structuredClone(task), id: Math.max(0, ...plan.tasks.map(t => t.id)) + 1, title: `Sửa lỗi review: ${task.title}`, detail: (task.review.issues || []).map(i => `${i.severity} ${i.file}:${i.line} ${i.problem} — ${i.fix}`).join("\n"), depends_on: [task.id], status: "waiting", verify: null, review: null, fix_rounds_used: task.fix_rounds_used };
+        const fix = buildFixTask(plan, task, "Sửa lỗi review", (task.review.issues || []).map(i => `${i.severity} ${i.file}:${i.line} ${i.problem} — ${i.fix}`).join("\n"));
         plan.tasks.push(fix); await persistPlan(); await runPlanTask(fix);
         await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(fix.id), provider_id: reviewer.id, kind: "fix_task", ok: fix.status === "xong", detail: `Task sửa được tạo cho ${task.id}` }) });
         if (fix.status === "xong") task.status = "xong";
@@ -1442,6 +1487,9 @@ async function runExtensionAction(card,action){
   }catch(error){showToast(`✗ ${error.message}`);log.textContent+=`${error.message}\n`}finally{$("#extension-stop").hidden=true;await loadExtensions()}
 }
 $("#extensions-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=false;try{await loadExtensions()}catch(e){showToast(e.message)}});
+$("#mutis-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=true;$("#mutis-view").hidden=false;try{await loadMutisPage()}catch(e){showToast(e.message)}});
+$("#mutis-back").addEventListener("click",()=>{$("#mutis-view").hidden=true;$(".main-panel").hidden=false});
+$("#mutis-diagnose").addEventListener("click", async () => { try { const response=await fetch("/api/mutis/diagnose",{method:"POST"}); await readSse(response.body,(event,data)=>{if(event==="diagnosis") showToast(data.summary||"Đã chẩn đoán");}); await loadMutisPage(); } catch(e) { showToast(e.message); } });
 $("#extensions-back").addEventListener("click",()=>{$("#extensions-view").hidden=true;$(".main-panel").hidden=false});
 $("#plans-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=false;$("#plan-editor").hidden=true;try{await loadPlans()}catch(e){showToast(e.message)}});
 $("#plans-back").addEventListener("click",()=>{$("#plans-view").hidden=true;$(".main-panel").hidden=false});

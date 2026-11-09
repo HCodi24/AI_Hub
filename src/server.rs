@@ -159,6 +159,9 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/api/mutis", get(get_orchestration).put(put_orchestration))
         .route("/api/mutis/roles/resolve", get(resolve_mutis_roles))
         .route("/api/mutis/stats", get(mutis_stats))
+        .route("/api/mutis/diagnose", post(mutis_diagnose))
+        .route("/api/mutis/setting-change", post(mutis_setting_change))
+        .route("/api/mutis/diagnoses", get(mutis_diagnoses))
         .route(
             "/api/mutis/events",
             get(orchestration_events).post(record_orchestration_event),
@@ -203,6 +206,8 @@ struct PlanEventInput {
     task_id: String,
     provider_id: String,
     kind: String,
+    #[serde(default)]
+    task_kind: Option<String>,
     ok: bool,
     detail: Option<String>,
 }
@@ -228,6 +233,7 @@ async fn record_orchestration_event(
             task_id: Some(input.task_id),
             provider_id: input.provider_id,
             kind: input.kind,
+            task_kind: input.task_kind,
             ok: input.ok,
             duration_ms: None,
             tokens: None,
@@ -487,7 +493,7 @@ async fn mutis_stats(
             .or_default()
             .push(event.clone());
         kinds
-            .entry(event.kind.clone())
+            .entry(event.task_kind.clone().unwrap_or_else(|| "không rõ".into()))
             .or_default()
             .push(event.clone());
     }
@@ -498,13 +504,137 @@ async fn mutis_stats(
             let ok = ends.iter().filter(|e| e.ok).count();
             let duration = ends.iter().filter_map(|e| e.duration_ms).sum::<u64>();
             let tokens = ends.iter().filter_map(|e| e.tokens).sum::<u64>();
-            (key, json!({"tasks_run": starts, "success_rate": if ends.is_empty() {0.0} else {ok as f64 / ends.len() as f64}, "avg_duration_ms": if ends.is_empty() {0} else {duration / ends.len() as u64}, "total_tokens": tokens, "retries": group.iter().filter(|e| e.kind == "retry").count(), "watchdog_kills": group.iter().filter(|e| e.kind == "watchdog_kill").count(), "resumes": group.iter().filter(|e| e.kind == "resume").count(), "verify_fail_rate": rate(&group, "verify", false), "review_fail_rate": rate(&group, "review", false), "fix_rounds": group.iter().filter(|e| e.kind == "fix_task").count()}))
+            let mut errors: HashMap<String, usize> = HashMap::new();
+            for event in group.iter().filter(|e| !e.ok || e.kind == "error") {
+                if let Some(detail) = &event.detail { *errors.entry(mutis::normalize_error(detail)).or_default() += 1; }
+            }
+            let mut errors = errors.into_iter().collect::<Vec<_>>();
+            errors.sort_by(|a,b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            let top_errors = errors.into_iter().take(5).map(|(message,count)| json!({"message":message,"count":count})).collect::<Vec<_>>();
+            (key, json!({"tasks_run": starts, "success_rate": if ends.is_empty() {0.0} else {ok as f64 / ends.len() as f64}, "avg_duration_ms": if ends.is_empty() {0} else {duration / ends.len() as u64}, "total_tokens": tokens, "retries": group.iter().filter(|e| e.kind == "retry").count(), "watchdog_kills": group.iter().filter(|e| e.kind == "watchdog_kill").count(), "resumes": group.iter().filter(|e| e.kind == "resume").count(), "verify_fail_rate": rate(&group, "verify", false), "review_fail_rate": rate(&group, "review", false), "fix_rounds": group.iter().filter(|e| e.kind == "fix_task").count(), "top_errors": top_errors}))
         }).collect())
     };
     Ok(Json(
         json!({"days": days, "providers": summarize(providers), "task_kinds": summarize(kinds), "events": events.into_iter().rev().take(50).collect::<Vec<_>>()}),
     ))
 }
+async fn mutis_diagnoses(State(state): State<AppState>) -> ApiResult<Json<Vec<Value>>> {
+    let directory = state
+        .config_path
+        .parent()
+        .unwrap()
+        .join("mutis")
+        .join("diagnoses");
+    let mut items: Vec<Value> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(directory) {
+        for entry in entries.flatten() {
+            if let Ok(data) = std::fs::read_to_string(entry.path()) {
+                if let Ok(value) = serde_json::from_str(&data) {
+                    items.push(value);
+                }
+            }
+        }
+    }
+    items.sort_by_key(|v| std::cmp::Reverse(v["ts"].as_u64().unwrap_or(0)));
+    Ok(Json(items))
+}
+
+#[derive(Deserialize)]
+struct SettingChange {
+    path: String,
+    value: Value,
+}
+async fn mutis_setting_change(
+    State(state): State<AppState>,
+    Json(change): Json<SettingChange>,
+) -> ApiResult<Json<config::MutisConfig>> {
+    let mut config = state.config.write().await;
+    let m = &mut config.mutis;
+    match change.path.as_str() {
+        "mutis.watchdog_minutes" => {
+            m.watchdog_minutes = change
+                .value
+                .as_u64()
+                .filter(|v| (1..=60).contains(v))
+                .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Giá trị ngoài phạm vi"))?
+                as u32;
+        }
+        "mutis.roles.big.effort" | "mutis.roles.small.effort" | "mutis.roles.lead.effort" => {
+            let v = change
+                .value
+                .as_str()
+                .filter(|v| matches!(*v, "default" | "low" | "medium" | "high" | "xhigh" | "max"))
+                .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Giá trị không hợp lệ"))?
+                .to_owned();
+            if change.path.contains(".lead.") {
+                m.roles.lead.effort = v
+            } else if change.path.contains(".big.") {
+                m.roles.big.effort = v
+            } else {
+                m.roles.small.effort = v
+            }
+        }
+        path if path.starts_with("mutis.routing[") && path.ends_with("].role") => {
+            let i = path
+                .trim_start_matches("mutis.routing[")
+                .trim_end_matches("].role")
+                .parse::<usize>()
+                .ok()
+                .filter(|i| *i < m.routing.len())
+                .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Đường dẫn không hợp lệ"))?;
+            m.routing[i].role = change
+                .value
+                .as_str()
+                .filter(|v| matches!(*v, "lead" | "big" | "small"))
+                .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Vai trò không hợp lệ"))?
+                .into();
+        }
+        _ => {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Trường này không được phép áp dụng",
+            ))
+        }
+    }
+    config::save(&state.config_path, &config)
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được cấu hình"))?;
+    Ok(Json(config.mutis.clone()))
+}
+
+async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<Response> {
+    let events = state
+        .event_log
+        .recent(150)
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không đọc được nhật ký"))?;
+    let diagnosis = json!({"ts":mutis::now(),"health":"trung bình","findings":[],"summary":if events.len()<5 {"Chưa đủ dữ liệu để chẩn đoán"} else {"Chưa hoàn tất phân tích"}});
+    let dir = state
+        .config_path
+        .parent()
+        .unwrap()
+        .join("mutis")
+        .join("diagnoses");
+    std::fs::create_dir_all(&dir).map_err(|_| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Không lưu được chẩn đoán",
+        )
+    })?;
+    std::fs::write(
+        dir.join(format!("{}.json", diagnosis["ts"].as_u64().unwrap())),
+        serde_json::to_vec_pretty(&diagnosis).unwrap(),
+    )
+    .map_err(|_| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Không lưu được chẩn đoán",
+        )
+    })?;
+    let stream = async_stream::stream! {yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("diagnosis").json_data(diagnosis).unwrap());};
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
+}
+
 fn rate(events: &[Event], kind: &str, ok: bool) -> f64 {
     let matching = events.iter().filter(|e| e.kind == kind).collect::<Vec<_>>();
     if matching.is_empty() {
@@ -871,6 +1001,8 @@ async fn generate_plan(
                                 verify: None,
                                 review: None,
                                 fix_rounds_used: 0,
+                                fix_root_title: None,
+                                fix_root_detail: None,
                             }
                         })
                         .collect();
@@ -1915,6 +2047,7 @@ async fn chat_handler(
     let chat_id = request.chat_id;
     let plan_id = request.plan_id;
     let task_id = request.task_id;
+    let task_kind = request.task_kind;
     let event_logging_enabled = mutis_config.effective(mutis_config.event_log);
     let log_enabled = event_logging_enabled && plan_id.is_some() && task_id.is_some();
     let started = Instant::now();
@@ -1925,6 +2058,7 @@ async fn chat_handler(
             task_id: task_id.clone(),
             provider_id: event_provider_id.clone(),
             kind: "task_start".into(),
+            task_kind: task_kind.clone(),
             ok: true,
             duration_ms: None,
             tokens: None,
@@ -1945,13 +2079,13 @@ async fn chat_handler(
                 event = provider_receiver.recv() => {
                     let Some(event) = event else { break };
                     if event_logging_enabled && event.name == "watchdog_kill" {
-                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"watchdog_kill".into(),ok:false,duration_ms:None,tokens:None,detail:Some("Codex watchdog".into())});
+                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"watchdog_kill".into(),task_kind:None,ok:false,duration_ms:None,tokens:None,detail:Some("Codex watchdog".into())});
                     }
                     if event_logging_enabled && event.name == "retry" {
-                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"retry".into(),ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
+                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"retry".into(),task_kind:None,ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
                     }
                     if event_logging_enabled && event.data["text"].as_str().is_some_and(|text|text.starts_with("Tự tiếp tục lần ")) {
-                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"resume".into(),ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
+                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"resume".into(),task_kind:None,ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
                     }
                     persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
                     if sse_sender.send(chat::sse_event(event.name, &event.data)).await.is_err() {
@@ -1981,6 +2115,7 @@ async fn chat_handler(
                 task_id,
                 provider_id: event_provider_id,
                 kind: "task_end".into(),
+                task_kind,
                 ok,
                 duration_ms: Some(started.elapsed().as_millis().min(u64::MAX as u128) as u64),
                 tokens,

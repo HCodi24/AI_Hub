@@ -50,6 +50,11 @@ pub struct PlanTask {
     pub review: Option<serde_json::Value>,
     #[serde(default)]
     pub fix_rounds_used: u32,
+    /// For fix tasks: the original task's title/detail, so later rounds keep the real context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fix_root_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fix_root_detail: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -237,6 +242,8 @@ mod tests {
             verify: None,
             review: None,
             fix_rounds_used: 0,
+            fix_root_title: None,
+            fix_root_detail: None,
         }
     }
 

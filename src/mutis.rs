@@ -15,6 +15,8 @@ pub struct Event {
     pub task_id: Option<String>,
     pub provider_id: String,
     pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_kind: Option<String>,
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
@@ -22,6 +24,55 @@ pub struct Event {
     pub tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
+}
+
+pub fn normalize_error(value: &str) -> String {
+    let mut out = String::new();
+    let mut digits = false;
+    for ch in value.chars() {
+        if ch.is_ascii_digit() {
+            if !digits {
+                out.push('#');
+            }
+            digits = true;
+        } else {
+            digits = false;
+            out.push(ch);
+        }
+    }
+    out.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(180)
+        .collect()
+}
+
+#[allow(dead_code)]
+pub fn parse_diagnosis(text: &str) -> anyhow::Result<serde_json::Value> {
+    let start = text
+        .find('{')
+        .ok_or_else(|| anyhow::anyhow!("Thiếu JSON"))?;
+    let mut depth = 0;
+    for (offset, ch) in text[start..].char_indices() {
+        if ch == '{' {
+            depth += 1;
+        }
+        if ch == '}' {
+            depth -= 1;
+            if depth == 0 {
+                let value: serde_json::Value =
+                    serde_json::from_str(&text[start..start + offset + 1])?;
+                if !matches!(value["health"].as_str(), Some("tốt" | "trung bình" | "kém"))
+                    || !value["findings"].is_array()
+                {
+                    anyhow::bail!("Sai cấu trúc chẩn đoán");
+                }
+                return Ok(value);
+            }
+        }
+    }
+    anyhow::bail!("JSON chưa hoàn chỉnh")
 }
 #[derive(Clone)]
 pub struct EventLog {
@@ -85,4 +136,22 @@ pub fn now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+#[cfg(test)]
+mod diagnosis_tests {
+    use super::{normalize_error, parse_diagnosis};
+
+    #[test]
+    fn parses_diagnosis_json_and_normalizes_numbered_errors() {
+        let parsed = parse_diagnosis(
+            "```json\n{\"health\":\"tốt\",\"findings\":[],\"summary\":\"Ổn\"}\n```",
+        )
+        .unwrap();
+        assert_eq!(parsed["health"], "tốt");
+        assert_eq!(
+            normalize_error("HTTP 503 on attempt 12"),
+            "HTTP # on attempt #"
+        );
+    }
 }

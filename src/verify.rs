@@ -161,6 +161,25 @@ fn command_available(name: &str) -> bool {
         })
     })
 }
+/// Run a user-written command line through `cmd.exe` exactly as typed.
+/// `Command::args` would re-quote it (turning `"C:\a b\x.py"` into `\"C:\a b\x.py\"`, which cmd does not
+/// understand), so pass it raw: `cmd /D /S /C "<command>"` — with /S, cmd strips only the outer quotes.
+#[cfg(windows)]
+fn windows_shell_command(command: &str) -> Command {
+    use std::os::windows::process::CommandExt;
+    let mut c = Command::new("cmd");
+    c.args(["/D", "/S", "/C"]);
+    c.as_std_mut().raw_arg(format!("\"{command}\""));
+    c
+}
+
+#[cfg(not(windows))]
+fn windows_shell_command(command: &str) -> Command {
+    let mut c = Command::new("sh");
+    c.args(["-lc", command]);
+    c
+}
+
 async fn run_command(
     folder: &Path,
     command: &str,
@@ -168,9 +187,7 @@ async fn run_command(
     tx: &tokio::sync::mpsc::Sender<String>,
 ) -> (bool, String) {
     let mut cmd = if cfg!(windows) {
-        let mut c = Command::new("cmd");
-        c.args(["/C", command]);
-        c
+        windows_shell_command(command)
     } else {
         let mut c = Command::new("sh");
         c.args(["-lc", command]);

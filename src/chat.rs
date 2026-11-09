@@ -81,6 +81,8 @@ pub struct ChatRequest {
     pub plan_id: Option<String>,
     #[serde(default)]
     pub task_id: Option<String>,
+    #[serde(default)]
+    pub task_kind: Option<String>,
 }
 
 #[derive(Clone)]

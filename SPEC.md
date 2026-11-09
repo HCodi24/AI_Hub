@@ -91,3 +91,7 @@ Backend cung cấp `GET /api/extensions?folder=...`, cùng `POST /api/extensions
 - Review uses the configured lead source and read-only access. FAIL creates a bounded fix task when enabled.
 - Event history is JSONL under `ai-hub/mutis/events.jsonl`; `GET /api/mutis/stats?days=N` summarizes available provider and event-kind aggregates and returns recent events. Stats are limited to retained event history.
 - MutiS page provides operational statistics and recent-event filtering. Self-diagnosis sends settings without keys, aggregates and recent failure events to the read-only reviewer. Findings must be JSON and may propose a single whitelisted setting change; applying one requires confirmation and normal MutiS validation. Diagnoses are stored under `ai-hub/mutis/diagnoses/`. With fewer than five events, diagnosis is local and reports insufficient data.
+
+## Trạng thái triển khai MutiS 10d (2026-11-09)
+
+Trang MutiS hiện hiển thị thống kê provider/task kind, top lỗi đã chuẩn hóa và 50 sự kiện gần đây có lọc. 	ask_kind tùy chọn; dữ liệu trước khi có trường này hiển thị nhóm không rõ. Endpoint chẩn đoán hiện trả về placeholder được lưu lịch sử; phân tích AI, thẻ findings, SSE log tiến trình và xác nhận áp dụng đề xuất chưa được triển khai đầy đủ.
