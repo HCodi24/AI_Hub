@@ -537,22 +537,168 @@ async function loadConfig() {
   renderPlannerSettings();
 }
 
-function renderPlannerSettings() {
-  const select=$("#planner-provider"); if(!select)return; select.replaceChildren();
-  for(const p of state.config?.providers||[]){const o=document.createElement("option");o.value=p.id;o.textContent=p.name;select.append(o)}
-  const preferred=state.config?.planner_provider_id||["claude_cli","anthropic","codex_cli"].map(k=>state.config?.providers.find(p=>p.kind===k)).find(Boolean)?.id||state.config?.providers[0]?.id;
-  select.value=preferred||""; $("#planner-model").value=state.config?.planner_model||state.config?.providers.find(p=>p.id===select.value)?.models[0]||"";
-  const datalist=$("#planner-model-options");datalist.replaceChildren();for(const m of state.config?.providers.find(p=>p.id===select.value)?.models||[]){const o=document.createElement("option");o.value=m;datalist.append(o)}
+function el(tag, props = {}, children = []) {
+  const node = document.createElement(tag);
+  Object.assign(node, props);
+  node.append(...children);
+  return node;
 }
-async function savePlannerConfig(){state.config.planner_provider_id=$("#planner-provider").value;state.config.planner_model=$("#planner-model").value.trim();await api("/api/config",{method:"PUT",body:JSON.stringify({default_folder:state.config.default_folder,planner_provider_id:state.config.planner_provider_id,planner_model:state.config.planner_model})})}
-async function loadPlans(){state.plans=await api("/api/plans");renderPlanList()}
-function renderPlanList(){const root=$("#plans-list");root.replaceChildren();if(!state.plans.length){root.textContent="Chưa có kế hoạch.";return}for(const p of state.plans){const b=document.createElement("button");b.className="plan-list-item";b.textContent=`${p.title} · ${p.tasks.length} công việc${p.approved?" · đã duyệt":" · bản nháp"}`;b.addEventListener("click",()=>openPlan(p));root.append(b)}}
-async function planFromRequest(text){const request=text.trim()||[...state.messages].reverse().find(m=>m.role==="user")?.content||"";if(!request){showToast("Nhập yêu cầu hoặc mở chat có yêu cầu trước.");return}try{const p=await api("/api/plans",{method:"POST",body:JSON.stringify({request,folder:folderInput.value.trim(),provider_id:$("#planner-provider").value||state.config.planner_provider_id,model:$("#planner-model").value||state.config.planner_model})});await loadPlans();openPlan(p)}catch(e){$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=false;const root=$("#plans-list");root.replaceChildren();const raw=document.createElement("pre");raw.className="task-log";raw.textContent=e.message;const retry=document.createElement("button");retry.className="primary-button";retry.textContent="Th\u1eed l\u1ea1i";retry.onclick=()=>planFromRequest(text);root.append(raw,retry)}}
-function openPlan(p){state.currentPlan=structuredClone(p);$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=false;renderPlanEditor()}
-function renderPlanEditor(){const root=$("#plan-editor"),p=state.currentPlan;if(!p)return;root.hidden=false;root.replaceChildren();const title=document.createElement("input");title.value=p.title;title.className="plan-title";title.oninput=()=>p.title=title.value;root.append(title);const table=document.createElement("table");table.className="plan-table";table.innerHTML="<thead><tr><th>#</th><th>Công việc</th><th>Giao cho</th><th>Phụ thuộc</th><th>Loại</th><th>Trạng thái</th><th></th></tr></thead>";const body=document.createElement("tbody");for(const [i,t] of p.tasks.entries()){const tr=document.createElement("tr");const cell=(x)=>{const td=document.createElement("td");td.append(x);tr.append(td)};const id=document.createElement("span");id.textContent=t.id;cell(id);const editor=document.createElement("div");const name=document.createElement("input");name.value=t.title;name.placeholder="Tên việc";name.oninput=()=>t.title=name.value;const detail=document.createElement("textarea");detail.value=t.detail;detail.placeholder="Tệp cần sửa và kết quả mong đợi";detail.oninput=()=>t.detail=detail.value;editor.append(name,detail);cell(editor);const ass=document.createElement("select");for(const prov of state.config.providers){const o=document.createElement("option");o.value=prov.id;o.textContent=prov.name;ass.append(o)}ass.value=t.assignee;ass.onchange=()=>t.assignee=ass.value;cell(ass);const deps=document.createElement("input");deps.value=(t.depends_on||[]).join(",");deps.onchange=()=>t.depends_on=deps.value.split(",").map(v=>+v.trim()).filter(Number.isFinite);cell(deps);const kind=document.createElement("select");for(const k of ["plan","code","test","docs","review"]){const o=document.createElement("option");o.value=k;o.textContent=k;kind.append(o)}kind.value=t.kind;kind.onchange=()=>t.kind=kind.value;cell(kind);const status=document.createElement("span");status.textContent=`${t.status}${t.tokens?` \u00b7 ${t.tokens} tokens`:""}${t.log?.length?` \u00b7 ${t.log.at(-1)}`:""}`;cell(status);const actions=document.createElement("div");const up=document.createElement("button");up.textContent="\u2191";up.disabled=i===0;up.onclick=()=>{[p.tasks[i-1],p.tasks[i]]=[p.tasks[i],p.tasks[i-1]];renderPlanEditor()};const down=document.createElement("button");down.textContent="\u2193";down.disabled=i===p.tasks.length-1;down.onclick=()=>{[p.tasks[i+1],p.tasks[i]]=[p.tasks[i],p.tasks[i+1]];renderPlanEditor()};actions.append(up,down);const del=document.createElement("button");del.textContent="×";del.onclick=()=>{p.tasks.splice(i,1);renderPlanEditor()};actions.append(del);if(p.approved){const run=document.createElement("button");run.textContent=["xong","l\u1ed7i","\u0111\u00e3 d\u1eebng"].includes(t.status)?"Ch\u1ea1y l\u1ea1i":"Ch\u1ea1y";run.disabled=t.depends_on.some(d=>p.tasks.find(x=>x.id===d)?.status!=="xong");run.onclick=()=>runPlanTask(t);actions.append(run);if(t.status==="\u0111ang ch\u1ea1y"){const stop=document.createElement("button");stop.textContent="D\u1eebng";stop.onclick=async()=>{await api(`/api/chat/${encodeURIComponent(t.chat_id)}/stop`,{method:"POST"});t._stopped=true;t.status="\u0111\u00e3 d\u1eebng";await persistPlan();renderPlanEditor()};actions.append(stop)}const done=document.createElement("button");done.textContent="Đánh dấu xong";done.onclick=()=>{t.status="xong";persistPlan();renderPlanEditor()};actions.append(done)}cell(actions);body.append(tr)}table.append(body);root.append(table);const add=document.createElement("button");add.textContent="+ Thêm công việc";add.onclick=()=>{p.tasks.push({id:Math.max(0,...p.tasks.map(t=>t.id))+1,title:"Công việc mới",detail:"",assignee:state.config.providers[0]?.id||"",depends_on:[],kind:"code",status:"chờ",summary:"",log:[],tokens:0});renderPlanEditor()};const regen=document.createElement("button");regen.textContent="Lập lại kế hoạch";regen.onclick=()=>planFromRequest(p.request);const approve=document.createElement("button");approve.textContent=p.approved?"Đã duyệt":"Duyệt kế hoạch";approve.disabled=p.approved;approve.onclick=async()=>{p.approved=true;await persistPlan();renderPlanEditor()};const total=document.createElement("p");total.className="token-usage";total.textContent=`T\u1ed5ng token k\u1ebf ho\u1ea1ch: ${p.tasks.reduce((n,t)=>n+(t.tokens||0),0)}`;root.append(total,add,regen,approve);for(const t of p.tasks){if(t.log?.length){const logs=document.createElement("pre");logs.className="task-log";logs.textContent=t.log.join("\n");root.append(logs)}}}
-async function persistPlan(){state.currentPlan=await api(`/api/plans/${state.currentPlan.id}`,{method:"PUT",body:JSON.stringify(state.currentPlan)});await loadPlans()}
-async function runPlanTask(t){t._stopped=false;const p=state.currentPlan, provider=state.config.providers.find(x=>x.id===t.assignee);if(!provider)return;const prompt=`Kế hoạch: ${p.title}\nCông việc: ${t.title}\nChi tiết: ${t.detail}\nTóm tắt công việc phụ thuộc đã hoàn tất:\n${t.depends_on.map(id=>p.tasks.find(x=>x.id===id)?.summary||"").join("\n")}`;const cid=t.chat_id||crypto.randomUUID();t.chat_id=cid;t.status="đang chạy";t.log=[];await persistPlan();renderPlanEditor();try{const r=await api("/api/chat",{method:"POST",body:JSON.stringify({chat_id:cid,provider_id:provider.id,model:provider.models[0]||"",folder:p.folder,permission:["code","test","docs"].includes(t.kind)?"write":"read",messages:[{role:"user",content:prompt}]})});await readSse(r.body,(event,d)=>{if(event==="error"){t.status="l\u1ed7i";t.log.push(d.text||"L\u1ed7i")};if(event==="delta")t.summary=(t.summary||"")+(d.text||"");if(event==="log"){t.log.push(d.text||"");if((d.text||"").startsWith("Token:")){const m=d.text.match(/Token:.*?(\d+) \(cache \d+\), ra (\d+)/);t.tokens=m?Number(m[1])+Number(m[2]):t.tokens}}renderPlanEditor()});t.status=t._stopped?"\u0111\u00e3 d\u1eebng":"xong"}catch(e){t.status="lỗi";t.log.push(e.message)}await persistPlan();renderPlanEditor()}
 
+function renderPlannerSettings() {
+  const select = $("#planner-provider");
+  if (!select) return;
+  select.replaceChildren(...(state.config?.providers || []).map(provider =>
+    el("option", { value: provider.id, textContent: provider.name })));
+  const preferred = state.config?.planner_provider_id || ["claude_cli", "anthropic", "codex_cli"]
+    .map(kind => state.config?.providers.find(provider => provider.kind === kind))
+    .find(provider => provider && (state.providerStatuses.get(provider.id)?.ok ?? true))?.id
+    || state.config?.providers[0]?.id;
+  select.value = preferred || "";
+  const provider = state.config?.providers.find(item => item.id === select.value);
+  $("#planner-model").value = state.config?.planner_model || provider?.models[0] || "";
+  $("#planner-model-options").replaceChildren(...(provider?.models || []).map(model => el("option", { value: model })));
+}
+
+async function savePlannerConfig() {
+  state.config.planner_provider_id = $("#planner-provider").value;
+  state.config.planner_model = $("#planner-model").value.trim();
+  await api("/api/config", { method: "PUT", body: JSON.stringify({
+    default_folder: state.config.default_folder,
+    planner_provider_id: state.config.planner_provider_id,
+    planner_model: state.config.planner_model,
+  }) });
+}
+
+async function loadPlans() {
+  state.plans = await api("/api/plans");
+  renderPlanList();
+}
+
+function renderPlanList() {
+  const root = $("#plans-list");
+  root.replaceChildren();
+  if (!state.plans.length) { root.textContent = "Ch�a c� k? ho?ch."; return; }
+  for (const plan of state.plans) {
+    root.append(el("button", { className: "plan-list-item",
+      textContent: `${plan.title} � ${plan.tasks.length} c�ng vi?c${plan.approved ? " � �? duy?t" : " � b?n nh�p"}`,
+      onclick: () => openPlan(plan) }));
+  }
+}
+
+async function planFromRequest(text) {
+  const request = text.trim() || [...state.messages].reverse().find(message => message.role === "user")?.content || "";
+  if (!request) { showToast("Nh?p y�u c?u ho?c m? chat c� y�u c?u tr�?c."); return; }
+  const buttons = [$("#plan-button"), $("#hint-plan")];
+  buttons.forEach(button => { if (button) button.disabled = true; });
+  $(".main-panel").hidden = true;
+  $("#extensions-view").hidden = true;
+  $("#plans-view").hidden = false;
+  const provider = state.config.providers.find(item => item.id === $("#planner-provider").value);
+  const root = $("#plans-list");
+  root.replaceChildren();
+  const card = el("section", { className: "plan-progress" });
+  const label = el("p", { textContent: `�ang l?p k? ho?ch b?ng ${provider?.name || "provider"} � 00:00` });
+  const spinner = el("span", { className: "spinner", ariaLabel: "�ang l?p k? ho?ch" });
+  const logs = el("pre", { className: "task-log" });
+  const cancel = el("button", { className: "subtle-button", textContent: "Hu?" });
+  const controller = new AbortController();
+  cancel.onclick = () => controller.abort();
+  card.append(label, spinner, logs, cancel);
+  root.append(card);
+  const started = Date.now();
+  const timer = setInterval(() => { const seconds = Math.floor((Date.now() - started) / 1000); label.textContent = `�ang l?p k? ho?ch b?ng ${provider?.name || "provider"} � ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`; }, 1000);
+  try {
+    const response = await fetch("/api/plans", { method: "POST", signal: controller.signal,
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request, folder: folderInput.value.trim(), provider_id: $("#planner-provider").value || state.config.planner_provider_id, model: $("#planner-model").value || state.config.planner_model }) });
+    if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
+    const plan = await response.json();
+    await loadPlans(); openPlan(plan);
+  } catch (error) {
+    if (error.name === "AbortError") { logs.textContent += "�? hu? y�u c?u.\n"; }
+    else { logs.textContent += `${error.message}\n`; }
+  } finally { clearInterval(timer); buttons.forEach(button => { if (button) button.disabled = false; }); }
+}
+
+function openPlan(plan) {
+  state.currentPlan = structuredClone(plan);
+  $(".main-panel").hidden = true;
+  $("#extensions-view").hidden = true;
+  $("#plans-view").hidden = false;
+  renderPlanEditor();
+}
+
+function renderPlanEditor() {
+  const root = $("#plan-editor"), plan = state.currentPlan;
+  if (!plan) return;
+  root.hidden = false;
+  root.replaceChildren();
+  const title = el("input", { className: "plan-title", value: plan.title, oninput: event => plan.title = event.target.value });
+  root.append(title);
+  const table = el("table", { className: "plan-table" });
+  table.innerHTML = "<thead><tr><th>#</th><th>C�ng vi?c</th><th>Giao cho</th><th>Model / effort</th><th>Ph? thu?c</th><th>Lo?i</th><th>Tr?ng th�i</th><th></th></tr></thead>";
+  const body = el("tbody");
+  for (const [index, task] of plan.tasks.entries()) {
+    const row = el("tr"), cell = child => row.append(el("td", {}, [child]));
+    cell(el("span", { textContent: task.id }));
+    const editor = el("div");
+    editor.append(el("input", { value: task.title, placeholder: "T�n vi?c", oninput: event => task.title = event.target.value }), el("textarea", { value: task.detail, placeholder: "T?p c?n s?a v� k?t qu? mong �?i", oninput: event => task.detail = event.target.value })); cell(editor);
+    const assignee = el("select");
+    for (const provider of state.config.providers) assignee.append(el("option", { value: provider.id, textContent: provider.name }));
+    assignee.value = task.assignee; assignee.onchange = () => { task.assignee = assignee.value; task.model = state.config.providers.find(p => p.id === task.assignee)?.models[0] || ""; renderPlanEditor(); }; cell(assignee);
+    const provider = state.config.providers.find(item => item.id === task.assignee);
+    const settings = el("div"), model = el("select");
+    for (const item of provider?.models || []) model.append(el("option", { value: item, textContent: item }));
+    model.value = task.model || provider?.models[0] || ""; model.onchange = () => task.model = model.value;
+    const effort = el("select");
+    for (const item of EFFORTS) effort.append(el("option", { value: item, textContent: item }));
+    effort.value = task.effort || "default"; effort.onchange = () => task.effort = effort.value;
+    settings.append(model, effort); cell(settings);
+    const deps = el("input", { value: (task.depends_on || []).join(",") });
+    const depError = el("small", { className: "dependency-error" });
+    const validateDeps = () => { task.depends_on = deps.value.split(",").map(value => value.trim()).filter(Boolean).map(Number); const invalid = task.depends_on.some(id => !plan.tasks.some(item => item.id === id)); depError.textContent = invalid ? "M? ph? thu?c kh�ng t?n t?i." : ""; approve.disabled = invalid || hasCycle(plan.tasks); };
+    deps.oninput = validateDeps; const depwrap = el("div"); depwrap.append(deps, depError); cell(depwrap);
+    const kind = el("select"); for (const value of ["plan", "code", "test", "docs", "review"]) kind.append(el("option", { value, textContent: value })); kind.value = task.kind; kind.onchange = () => task.kind = kind.value; cell(kind);
+    const status = el("span", { textContent: `${task.status}${task.tokens ? ` � ${task.tokens} tokens` : ""}${task.log?.length ? ` � ${task.log.at(-1)}` : ""}`, dataset: { taskStatus: String(task.id) } }); cell(status);
+    const actions = el("div");
+    actions.append(el("button", { textContent: "?", disabled: index === 0, onclick: () => { [plan.tasks[index - 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index - 1]]; renderPlanEditor(); } }), el("button", { textContent: "?", disabled: index === plan.tasks.length - 1, onclick: () => { [plan.tasks[index + 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index + 1]]; renderPlanEditor(); } }), el("button", { textContent: "�", onclick: () => { plan.tasks.splice(index, 1); renderPlanEditor(); } }));
+    if (plan.approved) actions.append(el("button", { textContent: "Ch?y", onclick: () => runPlanTask(task) }));
+    cell(actions); body.append(row);
+  }
+  table.append(body); root.append(table);
+  const approve = el("button", { textContent: plan.approved ? "�? duy?t" : "Duy?t k? ho?ch", disabled: plan.approved || hasCycle(plan.tasks), onclick: async () => { plan.approved = true; await persistPlan(); renderPlanEditor(); } });
+  const add = el("button", { textContent: "+ Th�m c�ng vi?c", onclick: () => { plan.tasks.push({ id: Math.max(0, ...plan.tasks.map(task => task.id)) + 1, title: "C�ng vi?c m?i", detail: "", assignee: state.config.providers[0]?.id || "", model: "", effort: "default", depends_on: [], kind: "code", status: "ch?", summary: "", log: [], tokens: 0 }); renderPlanEditor(); } });
+  const regen = el("button", { textContent: "L?p l?i k? ho?ch", onclick: () => planFromRequest(plan.request) });
+  root.append(el("p", { className: "token-usage", textContent: `T?ng token k? ho?ch: ${plan.tasks.reduce((sum, task) => sum + (task.tokens || 0), 0)}` }), add, regen, approve);
+  for (const task of plan.tasks) if (task.log?.length) root.append(el("pre", { className: "task-log", textContent: task.log.join("\n") }));
+}
+
+function hasCycle(tasks) {
+  const byId = new Map(tasks.map(task => [task.id, task]));
+  const visiting = new Set(), done = new Set();
+  const visit = id => { if (done.has(id)) return false; if (visiting.has(id)) return true; visiting.add(id); for (const dep of byId.get(id)?.depends_on || []) if (byId.has(dep) && visit(dep)) return true; visiting.delete(id); done.add(id); return false; };
+  return tasks.some(task => visit(task.id));
+}
+
+async function persistPlan() {
+  state.currentPlan = await api(`/api/plans/${state.currentPlan.id}`, { method: "PUT", body: JSON.stringify(state.currentPlan) });
+  await loadPlans();
+}
+
+async function runPlanTask(task) {
+  task._stopped = false; task.summary = "";
+  const plan = state.currentPlan, provider = state.config.providers.find(item => item.id === task.assignee);
+  if (!provider) return;
+  const prompt = `K? ho?ch: ${plan.title}\nC�ng vi?c: ${task.title}\nChi ti?t: ${task.detail}\nT�m t?t c�ng vi?c ph? thu?c �? ho�n t?t:\n${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || "").join("\n")}`;
+  const chatId = task.chat_id || crypto.randomUUID(); task.chat_id = chatId; task.status = "�ang ch?y"; task.log = [];
+  await persistPlan(); renderPlanEditor();
+  let hadError = false;
+  try {
+    const response = await api("/api/chat", { method: "POST", body: JSON.stringify({ chat_id: chatId, provider_id: provider.id, model: task.model || provider.models[0] || "", effort: task.effort || "default", folder: plan.folder, permission: ["code", "test", "docs"].includes(task.kind) ? "write" : "read", messages: [{ role: "user", content: prompt }] }) });
+    await readSse(response.body, (event, data) => { if (event === "error") { hadError = true; task.log.push(data.text || "L?i"); } if (event === "delta") task.summary += data.text || ""; if (event === "log") task.log.push(data.text || ""); const node = $(`[data-task-status="${task.id}"]`); if (node) node.textContent = `${task.status} � ${task.log.at(-1) || ""}`; });
+    task.status = task._stopped ? "�? d?ng" : hadError ? "l?i" : "xong";
+  } catch (error) { hadError = true; task.status = task._stopped ? "�? d?ng" : "l?i"; task.log.push(error.message); }
+  await persistPlan(); renderPlanEditor();
+}
 function clearProviderForm() {
   state.settingsProviderId = null;
   $("#provider-id").value = "";
@@ -872,4 +1018,4 @@ $("#cli-refresh").addEventListener("click", refreshCliStatus);
   } catch (error) {
     showToast(error.message);
   }
-})();
+})();

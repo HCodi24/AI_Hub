@@ -271,6 +271,12 @@ async fn save_plan(
             "Công việc chưa hợp lệ",
         ));
     }
+    if plan.approved && crate::plans::has_dependency_cycle(&plan.tasks) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Phụ thuộc công việc có chu trình",
+        ));
+    }
     plan.touch();
     state
         .plans
@@ -429,6 +435,9 @@ async fn generate_plan(
             title: t["title"].as_str().unwrap_or("Công việc").into(),
             detail: t["detail"].as_str().unwrap_or("").into(),
             assignee: t["assignee"].as_str().unwrap_or(&provider_id).into(),
+            model: t["model"].as_str().map(str::to_owned),
+            effort: t["effort"].as_str().unwrap_or("default").into(),
+            reassigned_from: None,
             depends_on: t["depends_on"]
                 .as_array()
                 .into_iter()
@@ -482,6 +491,21 @@ fn extract_json(raw: &str) -> Option<&str> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod plan_tests {
+    use super::extract_json;
+    use serde_json::Value;
+
+    #[test]
+    fn extracts_json_from_planner_answer_with_surrounding_text() {
+        let answer = "Here is the plan:\n```json\n{\"title\":\"Ship it\",\"tasks\":[{\"id\":1}]}\n```\nDone.";
+        let extracted = extract_json(answer).expect("JSON object should be extracted");
+        let value: Value = serde_json::from_str(extracted).expect("extracted JSON should parse");
+        assert_eq!(value["title"], "Ship it");
+        assert_eq!(value["tasks"][0]["id"], 1);
+    }
 }
 fn file_tree(root: &std::path::Path) -> String {
     fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {

@@ -24,6 +24,12 @@ pub struct PlanTask {
     pub detail: String,
     pub assignee: String,
     #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default = "default_effort")]
+    pub effort: String,
+    #[serde(default)]
+    pub reassigned_from: Option<String>,
+    #[serde(default)]
     pub depends_on: Vec<u32>,
     pub kind: String,
     #[serde(default = "waiting")]
@@ -36,6 +42,46 @@ pub struct PlanTask {
     pub tokens: u64,
     #[serde(default)]
     pub chat_id: Option<String>,
+}
+fn default_effort() -> String {
+    "default".into()
+}
+
+pub fn has_dependency_cycle(tasks: &[PlanTask]) -> bool {
+    fn visit(
+        id: u32,
+        by_id: &std::collections::HashMap<u32, &PlanTask>,
+        visiting: &mut std::collections::HashSet<u32>,
+        done: &mut std::collections::HashSet<u32>,
+    ) -> bool {
+        if done.contains(&id) {
+            return false;
+        }
+        if !visiting.insert(id) {
+            return true;
+        }
+        if let Some(task) = by_id.get(&id) {
+            for dep in &task.depends_on {
+                if by_id.contains_key(dep) && visit(*dep, by_id, visiting, done) {
+                    return true;
+                }
+            }
+        }
+        visiting.remove(&id);
+        done.insert(id);
+        false
+    }
+    let by_id = tasks
+        .iter()
+        .map(|t| (t.id, t))
+        .collect::<std::collections::HashMap<_, _>>();
+    let (mut visiting, mut done) = (
+        std::collections::HashSet::new(),
+        std::collections::HashSet::new(),
+    );
+    by_id
+        .keys()
+        .any(|id| visit(*id, &by_id, &mut visiting, &mut done))
 }
 fn waiting() -> String {
     "chờ".into()
@@ -110,4 +156,20 @@ fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn task(id: u32, depends_on: Vec<u32>) -> PlanTask {
+        PlanTask { id, title: "task".into(), detail: "detail".into(), assignee: "worker".into(), model: None, effort: "default".into(), reassigned_from: None, depends_on, kind: "code".into(), status: waiting(), summary: String::new(), log: Vec::new(), tokens: 0, chat_id: None }
+    }
+
+    #[test]
+    fn dependency_cycle_detection_handles_valid_and_cyclic_graphs() {
+        assert!(!has_dependency_cycle(&[task(1, vec![]), task(2, vec![1]), task(3, vec![2])]));
+        assert!(has_dependency_cycle(&[task(1, vec![2]), task(2, vec![1])]));
+        assert!(has_dependency_cycle(&[task(1, vec![1])]));
+    }
 }
