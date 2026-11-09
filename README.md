@@ -64,4 +64,6 @@ AI Hub có thể đề xuất kế hoạch công việc từ nội dung đang so
 
 ## MutiS
 
-Mở **Cài đặt → MutiS** để bật định tuyến và DeepSeek làm việc trên file. Nguồn **DeepSeek làm việc (Deploy)** dùng URL/model Deploy và có thể sao chép key từ nguồn Deploy (DeepSeek) ngay trên máy chủ.
+MutiS là tính năng điều phối có thể bật hoặc tắt trong **Cài đặt → MutiS**. Có thể cấu hình vai trò lead, big và small (nguồn, model, mức suy luận), cùng bảng định tuyến theo loại việc. DeepSeek làm việc (Deploy) chỉnh sửa file bằng công cụ giới hạn trong thư mục, không chạy lệnh và trả diff. Các tùy chọn gồm retry/backoff API, watchdog và resume Codex, cổng verify tự nhận diện lệnh hoặc dùng lệnh riêng, review tự động và số vòng auto-fix tối đa. Quy tắc worker nhiều dòng được thêm vào prompt các task kế hoạch khi MutiS bật.
+
+Nhật ký sự kiện JSONL được lưu tại `<config_dir>/ai-hub/mutis/events.jsonl`; `GET /api/mutis/stats?days=30` tổng hợp số liệu trong phạm vi nhật ký hiện có. Verify kiểm tra dự án và UTF-8/mojibake, review dùng vai trò lead với quyền chỉ đọc. Review hoặc verify FAIL có thể tạo task sửa tự động nếu còn vòng. Vai trò và API key được che khi trả về qua API.

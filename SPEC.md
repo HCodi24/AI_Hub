@@ -84,3 +84,10 @@ Backend cung cấp `GET /api/extensions?folder=...`, cùng `POST /api/extensions
 - Plans persist as `<config_dir>/ai-hub/plans/<uuid>.json`. Users can edit task title/detail, assignee, dependencies and kind, add/remove tasks, then approve.
 - Approved tasks are manually started in task chats. Code/test/docs use write permission; plan/review use read. Dependencies gate the Run button. No automatic chaining.
 - The composer offers explicit planning and a dismissible hint for long/large requests; neither runs automatically.
+
+## MutiS
+- Settings expose the master toggle, per-feature retry, Codex watchdog/resume, DeepSeek file worker, verify, review, auto-fix, event log, routing, role choices and editable multi-line worker rules. Worker rules are prepended to plan-task prompts only while MutiS is enabled.
+- Verify runs after tasks when enabled and scans command output and changed files for UTF-8/mojibake problems. Failure summaries become a fix task on the same assignee when auto-fix has rounds remaining; the fix task is verified and reviewed again.
+- Review uses the configured lead source and read-only access. FAIL creates a bounded fix task when enabled.
+- Event history is JSONL under `ai-hub/mutis/events.jsonl`; `GET /api/mutis/stats?days=N` summarizes available provider and event-kind aggregates and returns recent events. Stats are limited to retained event history.
+- MutiS page provides operational statistics and recent-event filtering. Self-diagnosis sends settings without keys, aggregates and recent failure events to the read-only reviewer. Findings must be JSON and may propose a single whitelisted setting change; applying one requires confirmation and normal MutiS validation. Diagnoses are stored under `ai-hub/mutis/diagnoses/`. With fewer than five events, diagnosis is local and reports insufficient data.

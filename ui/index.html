@@ -101,6 +101,7 @@
         <label class="legacy-role-settings"><span><input type="checkbox" data-orch="auto_review"> Claude review tự động</span><small>Chọn nhà cung cấp và model dùng để review.</small><select data-orch="reviewer_provider_id"></select><select data-orch="reviewer_model" aria-label="Model reviewer"></select></label>
         <label><span><input type="checkbox" data-orch="auto_fix"> Tạo task sửa khi review thất bại</span><small>Giới hạn số vòng sửa tự động.</small><input type="number" min="0" max="5" data-orch="fix_rounds_max"></label>
         <label><span><input type="checkbox" data-orch="event_log"> Ghi nhật ký sự kiện</span><small>Lưu thời gian, token và trạng thái của task plan.</small></label>
+        <label>Quy tắc cho worker<textarea data-orch="worker_rules" rows="5" aria-label="Quy tắc worker"></textarea></label>
         <div><strong>Định tuyến mặc định</strong><div id="orchestration-routing"></div></div>
       </div></section>
       <section class="planner-settings legacy-role-settings"><div class="section-heading"><h3>Người lập kế hoạch</h3></div><label>Nhà cung cấp<select id="planner-provider"></select></label><label>Model<input id="planner-model" list="planner-model-options"><datalist id="planner-model-options"></datalist></label></section>

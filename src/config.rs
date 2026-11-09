@@ -37,6 +37,8 @@ pub struct Config {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MutisConfig {
+    #[serde(default = "default_worker_rules")]
+    pub worker_rules: String,
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
@@ -113,6 +115,7 @@ pub struct RoutingRule {
 impl Default for MutisConfig {
     fn default() -> Self {
         Self {
+            worker_rules: default_worker_rules(),
             enabled: false,
             retry_api: false,
             retry_attempts: 3,
@@ -137,6 +140,9 @@ impl Default for MutisConfig {
             roles: MutisRoles::default(),
         }
     }
+}
+fn default_worker_rules() -> String {
+    "- Ghi mọi file bằng UTF-8 (không dùng PowerShell Set-Content/Out-File/>); dùng công cụ sửa file hoặc [System.IO.File]::WriteAllText với UTF8.\n- Không xoá tính năng có sẵn khi viết lại code.\n- Báo cáo rõ phần chưa làm.".into()
 }
 impl MutisConfig {
     pub fn effective(&self, flag: bool) -> bool {
@@ -445,6 +451,14 @@ pub fn masked_key(key: &str) -> String {
 #[cfg(test)]
 mod role_tests {
     use super::*;
+    #[test]
+    fn masked_key_never_contains_raw_secret() {
+        let raw = "sk-live-secret-value";
+        let masked = masked_key(raw);
+        assert_ne!(masked, raw);
+        assert!(!masked.contains("secret-value"));
+        assert!(masked.ends_with("alue"));
+    }
     #[test]
     fn legacy_planner_reviewer_and_routing_migrate_to_roles() {
         let mut config = Config::seeded();

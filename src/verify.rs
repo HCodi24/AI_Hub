@@ -455,7 +455,23 @@ fn next_review_action(
     rounds_used: u32,
     max_rounds: u32,
 ) -> ReviewAction {
-    if verdict == "SKIPPED" && !task.verify_ok {
+    next_action(
+        task.verify_ok,
+        verdict,
+        blocking_issue,
+        rounds_used,
+        max_rounds,
+    )
+}
+#[cfg(test)]
+fn next_action(
+    verify_ok: bool,
+    verdict: &str,
+    blocking_issue: bool,
+    rounds_used: u32,
+    max_rounds: u32,
+) -> ReviewAction {
+    if verdict == "SKIPPED" && !verify_ok {
         ReviewAction::Fail
     } else if verdict == "SKIPPED" {
         ReviewAction::Skip
@@ -527,6 +543,11 @@ mod tests {
     }
     #[test]
     fn review_transition_skips_without_consuming_a_round() {
+        assert_eq!(
+            next_action(false, "FAIL", true, 0, 2),
+            ReviewAction::CreateFix
+        );
+        assert_eq!(next_action(false, "FAIL", true, 2, 2), ReviewAction::Fail);
         assert_eq!(
             next_review_action(&ReviewTaskState { verify_ok: true }, "SKIPPED", true, 0, 2),
             ReviewAction::Skip

@@ -1028,7 +1028,7 @@ async function runPlanTask(task) {
   const plan = state.currentPlan, provider = state.config.providers.find(item => item.id === task.assignee);
   if (!provider) return;
   if (state.orchestration?.enabled) await api("/api/mutis/roles/resolve");
-  const prompt = `Kế hoạch: ${plan.title}
+  const prompt = `${state.orchestration?.enabled ? `${state.orchestration.worker_rules || ""}\n\n` : ""}Kế hoạch: ${plan.title}
 Công việc: ${task.title}
 Chi tiết: ${task.detail}
 Tóm tắt công việc phụ thuộc đã hoàn tất:
@@ -1090,7 +1090,17 @@ async function runTaskGates(task) {
   if (cfg.verify_gate) {
     const response = await api("/api/verify", { method: "POST", body: JSON.stringify({ folder: plan.folder }) });
     await readSse(response.body, (event, data) => { if (event === "verify") task.verify = data; if (event === "log") task.log.push(data.text || ""); });
-    if (!task.verify?.ok) { task.status = "lỗi"; await persistPlan(); return; }
+    if (!task.verify?.ok) {
+      const action = nextReviewAction(task, { verdict: "FAIL", issues: (task.verify?.summary_lines || []).map(problem => ({ severity: "high", problem })) }, task.fix_rounds_used ?? 0, cfg.fix_rounds_max);
+      if (cfg.auto_fix && action === "create_fix") {
+        task.status = "cần sửa"; task.fix_rounds_used = (task.fix_rounds_used || 0) + 1;
+        const fix = { ...structuredClone(task), id: Math.max(0, ...plan.tasks.map(t => t.id)) + 1, title: `Sửa lỗi kiểm tra: ${task.title}`, detail: (task.verify.summary_lines || []).join("\n"), depends_on: [task.id], status: "waiting", verify: null, review: null };
+        plan.tasks.push(fix); await persistPlan(); await runPlanTask(fix);
+        await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(fix.id), provider_id: fix.assignee, kind: "fix_task", ok: fix.status === "xong", detail: `Task sửa verify được tạo cho ${task.id}` }) });
+        task.status = fix.status === "xong" ? "xong" : "lỗi";
+      } else task.status = "lỗi";
+      await persistPlan(); return;
+    }
   }
   if (cfg.auto_review && ["code", "test", "docs", "small_edit"].includes(task.kind)) {
     const resolved = await api("/api/mutis/roles/resolve");
