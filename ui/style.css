@@ -189,6 +189,17 @@ button { cursor: pointer; }
 .cli-card strong { display: block; margin-bottom: 4px; font-size: 11px; }
 .cli-card span { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
 .cli-card .cli-path { display: block; margin-top: 5px; }
+.mutis-progress-heading, .mutis-diagnosis-result > header, .mutis-finding > header { display: flex; align-items: center; gap: 10px; }
+.mutis-diagnosis-result, .mutis-finding { margin: 10px 0; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.mutis-diagnosis-result > header { justify-content: space-between; }
+.mutis-finding.severity-high { border-left: 4px solid #e05252; }
+.mutis-finding.severity-medium { border-left: 4px solid #d99a2b; }
+.mutis-finding.severity-low { border-left: 4px solid #48a778; }
+.mutis-health { padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.mutis-health-good { color: #167447; background: #dff4e8; }
+.mutis-health-medium { color: #8c5b05; background: #fff0cf; }
+.mutis-health-bad { color: #a12222; background: #fde0e0; }
+.mutis-finding p { margin: 7px 0; }
 
 @media (max-width: 760px) {
   .sidebar { width: 205px; flex-basis: 205px; padding: 14px 9px 10px; }

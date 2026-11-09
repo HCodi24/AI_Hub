@@ -1,6 +1,6 @@
 # MutiS — tính năng điều phối Claude ↔ Codex ↔ DeepSeek (thiết kế & file bàn giao)
 
-Trạng thái: đang làm · Cập nhật: 2026-11-09 · Người giám sát: Claude · Người code: Codex (gpt-6-luna)
+Trạng thái: bản đầu hoàn tất (10a–10d3), đã chạy thử thật · Cập nhật: 2026-11-09 · Người giám sát: Claude · Người code: Codex (gpt-6-luna)
 
 ## Mục tiêu
 Đưa quy trình Claude ↔ Codex ↔ DeepSeek (đã thử ở repo Dolores FE và khi làm AI Hub) vào AI Hub thành một
@@ -35,8 +35,8 @@ tính năng **bật/tắt được**, gồm các cải tiến đã chốt:
 - [x] 10b2 — MutiS 3 vai trò (lead = lập kế hoạch & review, big = làm việc lớn, small = làm việc nhỏ), mỗi vai trò
   provider/model/effort; thanh chế độ hiện 3 model + 3 chấm; popover "✦ MutiS (3 AI)" + Đội MutiS; Gửi ở chế độ
   MutiS = lập kế hoạch. Nhiệm vụ: .tasks/step10b2.md (yêu cầu của người dùng sau khi thấy popover chỉ 1 model).
-- [ ] 10c — Cổng kiểm tra + Claude review tự động + vòng sửa trong luồng chạy kế hoạch.
-- [ ] 10d — Đang thực hiện: worker_rules, nhánh auto-fix sau verify FAIL, `/api/mutis/stats`, tài liệu và kiểm tra offline đã thêm. Trang MutiS, diagnose/SSE, lưu và áp dụng diagnosis, bộ lọc UI, đầy đủ stats grouping/top errors và test stats/diagnosis/whitelist còn thiếu.
+- [x] 10c — Cổng kiểm tra + Claude review tự động + vòng sửa trong luồng chạy kế hoạch.
+- [x] 10d — Hoàn tất phạm vi MutiS: worker_rules, verify auto-fix, stats, trang MutiS, tự chẩn đoán SSE, lưu/lịch sử findings, allowlist áp dụng setting có xác nhận, tài liệu và kiểm tra offline.
 
 ## Quyết định đã chốt
 - Bỏ nhánh "Codex tự giao DeepSeek"; AI Hub (planner/định tuyến) giao thẳng.
@@ -75,3 +75,15 @@ rồi review: build/test/clippy, quét chữ hỏng, chạy thật trên cổng 
 - 10d (2026-11-09, partial): Added default `worker_rules` setting and prepended it to MutiS plan-task prompts; verify failures now create same-assignee `Sửa lỗi kiểm tra:` tasks through the existing bounded fix action and rerun gates; added `/api/mutis/stats?days=` for retained JSONL event aggregates; added masked-key helper coverage; documented the feature and scope. Build release offline, clippy, 34 unit tests and `node --check ui/app.js` passed. Not complete: no MutiS stats page, diagnosis endpoint/SSE, diagnosis persistence/history/apply flow, normalized top errors, or stats/diagnosis/whitelist tests. No live AI calls made.
 
 - 10d follow-up (2026-11-09, incomplete): Added the MutiS sidebar statistics view, provider/task-kind tables, recent-event filters, optional task_kind on event records, normalized top-error aggregation, diagnosis history listing, a setting-change endpoint, and diagnosis JSON parsing coverage. The diagnosis endpoint is currently a local placeholder and does not call the reviewer or produce findings. Still missing reviewer-driven diagnosis/SSE logs, findings cards and apply confirmation, full whitelist behavior, stats fixture and whitelist tests, complete documentation parity, and successful full verification. No live AI calls made.
+- 10d3 (2026-11-09): Replaced the diagnosis placeholder with an SSE read-only lead review using the chat provider runner and role-resolution fallback order; sends key-free settings, 30-day stats, and up to 150 failure events with details capped at 300 characters. Added local insufficient-data results, diagnosis shape validation with unknown-key removal, timestamped persistence and `diagnosis` event logging. Added the single setting-change allowlist function and `/api/mutis/apply` returning old/new, including type/range/provider/role checks. The MutiS UI now streams logs, renders severity cards, confirms and applies eligible changes, and lists/open past diagnoses. Updated README/SPEC. Verification passed: release build offline, clippy with warnings denied, 37 offline unit tests, `node --check ui/app.js`, UTF-8/mojibake scan and `git diff --check`. No live AI calls made.
+
+- Review cuối (Claude, 2026-11-09, chạy thật với bản sao cấu hình người dùng):
+  - 10b3: vai trò tự chọn nguồn đang kết nối (lead → Codex vì Claude chưa đăng nhập, Anthropic chưa có key).
+  - 10c2: Claude sửa lộ API key ở /api/mutis/roles/resolve (đã che, thử bằng key giả trên localhost).
+  - 10d: worker_rules làm Codex ghi UTF-8 đúng ngay lần đầu; verify FAIL → 2 vòng sửa → verify ĐẠT → review FAIL bắt được
+    yêu cầu thử tự mâu thuẫn. Claude sửa: lệnh verify có ngoặc kép (cmd raw_arg), task sửa giữ ngữ cảnh gốc + "(vòng n)".
+  - 10d3: Tự chẩn đoán chạy thật (62s, Codex làm lead) → health "kém", phát hiện verify_fail_rate = 0 dù có lỗi →
+    Claude xác minh: sự kiện verify chưa bao giờ được ghi → đã sửa (UI ghi event verify). Danh sách trắng Áp dụng: 3 hợp lệ
+    nhận, 4 nguy hiểm/sai bị chặn.
+- Còn lại (chưa làm): Claude CLI cần người dùng `auth login`; DeepSeek làm việc chưa chạy với API thật (chưa có key trong
+  AI Hub, đã thử bằng API giả lập); popover giữ mở khi chọn MutiS chưa kiểm lại bằng click thật.

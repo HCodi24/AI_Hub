@@ -839,7 +839,61 @@ async function loadMutisPage() {
   const render = () => { const filtered = events.filter(x => (!$("#mutis-filter-kind").value || x.kind === $("#mutis-filter-kind").value) && (!$("#mutis-filter-provider").value || x.provider_id === $("#mutis-filter-provider").value) && (!$("#mutis-filter-status").value || ($("#mutis-filter-status").value === "ok") === x.ok));
     const table = el("table", { className: "plan-table" }); table.innerHTML = "<thead><tr><th>Thời điểm</th><th>Loại</th><th>Provider</th><th>Task kind</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead>"; const body = el("tbody"); filtered.forEach(x => body.append(el("tr", {}, [new Date(x.ts * 1000).toLocaleString(), x.kind, x.provider_id, x.task_kind || "—", x.ok ? "OK" : "Lỗi", x.detail || ""].map(value => el("td", { textContent: String(value) }))))); table.append(body); $("#mutis-events").replaceChildren(table); };
   ["#mutis-filter-kind", "#mutis-filter-provider", "#mutis-filter-status"].forEach(id => $(id).onchange = render); render();
-  const diagnoses = await api("/api/mutis/diagnoses"); $("#mutis-diagnoses").replaceChildren(...diagnoses.map(d => el("article", { className: "mutis-finding" }, [el("strong", { textContent: `${d.health} · ${new Date(d.ts * 1000).toLocaleString()}` }), el("p", { textContent: d.summary || "" }), ...(d.findings || []).map(f => el("p", { textContent: `${f.severity || ""}: ${f.problem || ""} — ${f.evidence || ""} ${f.suggestion || ""}` }))])));
+  const diagnoses = await api("/api/mutis/diagnoses");
+  const history = $("#mutis-diagnoses"); history.replaceChildren();
+  for (const d of diagnoses) history.append(el("button", { className: "plan-list-item", textContent: `${new Date(d.ts * 1000).toLocaleString()} · ${d.health}`, onclick: () => renderDiagnosis(d) }));
+  if (diagnoses.length && !$("#mutis-diagnosis-current").childElementCount) renderDiagnosis(diagnoses[0]);
+}
+
+function settingChangeAllowed(change) {
+  if (!change || typeof change.path !== "string" || !Object.hasOwn(change, "value")) return false;
+  const path = change.path, value = change.value;
+  const bools = ["retry_api", "codex_watchdog", "codex_auto_resume", "deepseek_agent", "verify_gate", "auto_review", "auto_fix", "event_log"];
+  const ranges = { retry_attempts: [1, 5], retry_base_ms: [0, 60000], watchdog_minutes: [1, 60], resume_max: [0, 3], deepseek_max_file_lines: [50, 5000], deepseek_max_steps: [5, 40], fix_rounds_max: [0, 5] };
+  if (path.startsWith("mutis.")) {
+    const field = path.slice(6);
+    if (bools.includes(field)) return typeof value === "boolean";
+    if (ranges[field]) return Number.isInteger(value) && value >= ranges[field][0] && value <= ranges[field][1];
+  }
+  const roleMatch = path.match(/^mutis\.roles\.(lead|big|small)\.(provider_id|model|effort)$/);
+  if (roleMatch) {
+    if (roleMatch[2] === "provider_id") return state.config.providers.some(p => p.id === value);
+    if (roleMatch[2] === "model") return typeof value === "string" && value.trim().length > 0 && value.length <= 200;
+    return ["default", "low", "medium", "high", "xhigh", "max"].includes(value);
+  }
+  const routeMatch = path.match(/^mutis\.routing\[(\d+)\]\.role$/);
+  return !!routeMatch && Number(routeMatch[1]) < (state.orchestration?.routing?.length || 0) && ["lead", "big", "small"].includes(value);
+}
+
+function renderDiagnosis(diagnosis) {
+  const root = $("#mutis-diagnosis-current");
+  const badge = el("span", { className: `mutis-health mutis-health-${diagnosis.health === "tốt" ? "good" : diagnosis.health === "kém" ? "bad" : "medium"}`, textContent: diagnosis.health || "" });
+  const card = el("article", { className: "mutis-diagnosis-result" }, [el("header", {}, [el("strong", { textContent: "Chẩn đoán MutiS" }), badge]), el("p", { textContent: diagnosis.summary || "" })]);
+  for (const finding of diagnosis.findings || []) {
+    const severity = el("span", { className: `mutis-health mutis-health-${finding.severity === "high" ? "bad" : finding.severity === "medium" ? "medium" : "good"}`, textContent: finding.severity || "" });
+    const findingCard = el("article", { className: `mutis-finding severity-${finding.severity || "low"}` }, [el("header", {}, [el("strong", { textContent: finding.problem || "Phát hiện" }), severity]), el("p", { textContent: `Bằng chứng: ${finding.evidence || "—"}` }), el("p", { textContent: `Nguyên nhân: ${finding.cause || "—"}` }), el("p", { textContent: `Đề xuất: ${finding.suggestion || "—"}` })]);
+    if (settingChangeAllowed(finding.setting_change)) {
+      const change = finding.setting_change;
+      const apply = el("button", { className: "subtle-button", textContent: "Áp dụng", onclick: async () => {
+        try {
+          const current = await api("/api/mutis"), old = getSettingValue(current, change.path);
+          if (!window.confirm(`Đổi ${change.path}: ${JSON.stringify(old)} → ${JSON.stringify(change.value)}?`)) return;
+          const result = await api("/api/mutis/apply", { method: "POST", body: JSON.stringify(change) });
+          state.orchestration = await api("/api/mutis");
+          showToast(`Đã đổi ${change.path}: ${JSON.stringify(result.old)} → ${JSON.stringify(result.new)}`);
+        } catch (error) { showToast(error.message); }
+      }});
+      findingCard.append(apply);
+    } else if (finding.setting_change) findingCard.append(el("p", { className: "muted", textContent: "Không áp dụng tự động được" }));
+    card.append(findingCard);
+  }
+  root.replaceChildren(card);
+}
+
+function getSettingValue(config, path) {
+  if (path.startsWith("mutis.routing[")) { const index = Number(path.match(/^mutis\.routing\[(\d+)\]/)?.[1]); return config.routing?.[index]?.role; }
+  const parts = path.replace(/^mutis\./, "").split(".");
+  return parts.reduce((value, key) => value?.[key], config);
 }
 
 function renderPlanList() {
@@ -1135,6 +1189,8 @@ async function runTaskGates(task) {
   if (cfg.verify_gate) {
     const response = await api("/api/verify", { method: "POST", body: JSON.stringify({ folder: plan.folder }) });
     await readSse(response.body, (event, data) => { if (event === "verify") task.verify = data; if (event === "log") task.log.push(data.text || ""); });
+    // Record the verify outcome so MutiS stats and self-diagnosis see it (found by the self-diagnosis: verify_fail_rate stayed 0).
+    await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(task.id), task_kind: task.kind, provider_id: task.assignee, kind: "verify", ok: !!task.verify?.ok, detail: (task.verify?.summary_lines || []).join(" | ").slice(0, 2000) }) }).catch(() => {});
     if (!task.verify?.ok) {
       const action = nextReviewAction(task, { verdict: "FAIL", issues: (task.verify?.summary_lines || []).map(problem => ({ severity: "high", problem })) }, task.fix_rounds_used ?? 0, cfg.fix_rounds_max);
       if (cfg.auto_fix && action === "create_fix") {
@@ -1489,7 +1545,21 @@ async function runExtensionAction(card,action){
 $("#extensions-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=false;try{await loadExtensions()}catch(e){showToast(e.message)}});
 $("#mutis-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=true;$("#mutis-view").hidden=false;try{await loadMutisPage()}catch(e){showToast(e.message)}});
 $("#mutis-back").addEventListener("click",()=>{$("#mutis-view").hidden=true;$(".main-panel").hidden=false});
-$("#mutis-diagnose").addEventListener("click", async () => { try { const response=await fetch("/api/mutis/diagnose",{method:"POST"}); await readSse(response.body,(event,data)=>{if(event==="diagnosis") showToast(data.summary||"Đã chẩn đoán");}); await loadMutisPage(); } catch(e) { showToast(e.message); } });
+$("#mutis-diagnose").addEventListener("click", async () => {
+  const button = $("#mutis-diagnose"), progress = $("#mutis-diagnosis-progress"), log = $("#mutis-diagnosis-log");
+  button.disabled = true; progress.hidden = false; log.textContent = "";
+  try {
+    const response = await fetch("/api/mutis/diagnose", { method: "POST" });
+    if (!response.ok) { const body = await response.json(); throw new Error(body.error || `HTTP ${response.status}`); }
+    await readSse(response.body, (event, data) => {
+      if (event === "log") { log.textContent += `${data.text || JSON.stringify(data)}\n`; log.scrollTop = log.scrollHeight; }
+      if (event === "error") { const message = data.message || data.text || "Chẩn đoán thất bại"; log.textContent += `${message}\n`; showToast(message); }
+      if (event === "diagnosis") { renderDiagnosis(data); showToast(data.summary || "Đã chẩn đoán"); }
+    });
+    await loadMutisPage();
+  } catch (error) { showToast(error.message); log.textContent += `${error.message}\n`; }
+  finally { button.disabled = false; progress.hidden = true; }
+});
 $("#extensions-back").addEventListener("click",()=>{$("#extensions-view").hidden=true;$(".main-panel").hidden=false});
 $("#plans-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=false;$("#plan-editor").hidden=true;try{await loadPlans()}catch(e){showToast(e.message)}});
 $("#plans-back").addEventListener("click",()=>{$("#plans-view").hidden=true;$(".main-panel").hidden=false});
