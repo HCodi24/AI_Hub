@@ -90,14 +90,15 @@ fn parse_claude_line(line: &str) -> Vec<ProviderEvent> {
                 for block in blocks {
                     match block["type"].as_str().unwrap_or("") {
                         "text" => {
-                            if let Some(text) = block["text"].as_str().filter(|text| !text.is_empty()) {
+                            if let Some(text) =
+                                block["text"].as_str().filter(|text| !text.is_empty())
+                            {
                                 events.push(ProviderEvent::text("delta", text.to_owned()));
                             }
                         }
-                        "tool_use" => events.push(ProviderEvent::text(
-                            "log",
-                            summarize_tool_use(block),
-                        )),
+                        "tool_use" => {
+                            events.push(ProviderEvent::text("log", summarize_tool_use(block)))
+                        }
                         _ => {}
                     }
                 }

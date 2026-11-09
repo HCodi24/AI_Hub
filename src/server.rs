@@ -146,7 +146,10 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/api/chats/{chat_id}", get(get_chat).delete(delete_chat))
         .route("/api/cli-status", get(cli_status))
         .route("/api/extensions", get(extension_list))
-        .route("/api/extensions/{id}/actions/{action}", post(extension_action))
+        .route(
+            "/api/extensions/{id}/actions/{action}",
+            post(extension_action),
+        )
         .route("/api/extensions/{id}/stop", post(extension_stop))
         .layer(middleware::from_fn_with_state(port, enforce_local_host))
         .with_state(state)
@@ -369,119 +372,450 @@ async fn provider_models(
 }
 
 #[derive(Serialize)]
-struct ConnectionTest { ok: bool, status: &'static str, message: String, detail: String }
+struct ConnectionTest {
+    ok: bool,
+    status: &'static str,
+    message: String,
+    detail: String,
+}
 
-async fn test_provider(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<ConnectionTest>> {
-    let provider = state.config.read().await.providers.iter().find(|p| p.id == id).cloned()
+async fn test_provider(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<ConnectionTest>> {
+    let provider = state
+        .config
+        .read()
+        .await
+        .providers
+        .iter()
+        .find(|p| p.id == id)
+        .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?;
     let result = match provider.kind.as_str() {
-        "openai_compat" if provider.api_key.trim().is_empty() => connection(false,"not_configured","Chưa nhập API key","Chưa nhập API key"),
+        "openai_compat" if provider.api_key.trim().is_empty() => connection(
+            false,
+            "not_configured",
+            "Chưa nhập API key",
+            "Chưa nhập API key",
+        ),
         "openai_compat" => {
             let url = format!("{}/models", provider.base_url.trim().trim_end_matches('/'));
-            match timeout(Duration::from_secs(15), reqwest::Client::new().get(url).bearer_auth(&provider.api_key).send()).await {
-                Err(_) => connection(false, "error", "Không kết nối được", "Hết thời gian chờ kết nối"),
+            match timeout(
+                Duration::from_secs(15),
+                reqwest::Client::new()
+                    .get(url)
+                    .bearer_auth(&provider.api_key)
+                    .send(),
+            )
+            .await
+            {
+                Err(_) => connection(
+                    false,
+                    "error",
+                    "Không kết nối được",
+                    "Hết thời gian chờ kết nối",
+                ),
                 Ok(Err(e)) => connection(false, "error", "Không kết nối được", &e.to_string()),
                 Ok(Ok(response)) if response.status().is_success() => {
-                    let detail = timeout(Duration::from_secs(15), response.json::<Value>()).await
-                        .ok().and_then(Result::ok).unwrap_or(Value::Null);
+                    let detail = timeout(Duration::from_secs(15), response.json::<Value>())
+                        .await
+                        .ok()
+                        .and_then(Result::ok)
+                        .unwrap_or(Value::Null);
                     let count = detail["data"].as_array().map_or(0, Vec::len);
-                    connection(true, "connected", &format!("Đã kết nối · {count} model"), &format!("Đã nhận {count} model từ {}", provider.base_url))
+                    connection(
+                        true,
+                        "connected",
+                        &format!("Đã kết nối · {count} model"),
+                        &format!("Đã nhận {count} model từ {}", provider.base_url),
+                    )
                 }
                 Ok(Ok(response)) => match response.status().as_u16() {
-                    401 | 403 => connection(false, "error", "Sai API key", &format!("HTTP {}", response.status())),
+                    401 | 403 => connection(
+                        false,
+                        "error",
+                        "Sai API key",
+                        &format!("HTTP {}", response.status()),
+                    ),
                     404 => connection(false, "error", "Sai Base URL", "HTTP 404"),
-                    _ => connection(false, "error", "Không kết nối được", &format!("HTTP {}", response.status())),
-                }
+                    _ => connection(
+                        false,
+                        "error",
+                        "Không kết nối được",
+                        &format!("HTTP {}", response.status()),
+                    ),
+                },
             }
         }
-        "anthropic" if provider.api_key.trim().is_empty() => connection(false,"not_configured","Chưa nhập API key","Chưa nhập API key"),
-        "anthropic" => match timeout(Duration::from_secs(15), reqwest::Client::new().get("https://api.anthropic.com/v1/models").header("x-api-key", &provider.api_key).header("anthropic-version", "2023-06-01").send()).await {
-            Err(_) => connection(false,"error","Không kết nối được","Hết thời gian chờ kết nối"),
-            Ok(Err(e)) => connection(false,"error","Không kết nối được",&e.to_string()),
-            Ok(Ok(r)) if r.status().is_success() => connection(true,"connected","Đã kết nối", "Anthropic API phản hồi thành công"),
-            Ok(Ok(r)) if r.status().as_u16()==401 || r.status().as_u16()==403 => connection(false,"error","Sai API key",&format!("HTTP {}",r.status())),
-            Ok(Ok(r)) => connection(false,"error","Không kết nối được",&format!("HTTP {}",r.status())),
+        "anthropic" if provider.api_key.trim().is_empty() => connection(
+            false,
+            "not_configured",
+            "Chưa nhập API key",
+            "Chưa nhập API key",
+        ),
+        "anthropic" => match timeout(
+            Duration::from_secs(15),
+            reqwest::Client::new()
+                .get("https://api.anthropic.com/v1/models")
+                .header("x-api-key", &provider.api_key)
+                .header("anthropic-version", "2023-06-01")
+                .send(),
+        )
+        .await
+        {
+            Err(_) => connection(
+                false,
+                "error",
+                "Không kết nối được",
+                "Hết thời gian chờ kết nối",
+            ),
+            Ok(Err(e)) => connection(false, "error", "Không kết nối được", &e.to_string()),
+            Ok(Ok(r)) if r.status().is_success() => connection(
+                true,
+                "connected",
+                "Đã kết nối",
+                "Anthropic API phản hồi thành công",
+            ),
+            Ok(Ok(r)) if r.status().as_u16() == 401 || r.status().as_u16() == 403 => connection(
+                false,
+                "error",
+                "Sai API key",
+                &format!("HTTP {}", r.status()),
+            ),
+            Ok(Ok(r)) => connection(
+                false,
+                "error",
+                "Không kết nối được",
+                &format!("HTTP {}", r.status()),
+            ),
         },
         "codex_cli" | "claude_cli" => {
-            let name = if provider.kind == "codex_cli" { "codex" } else { "claude" };
+            let name = if provider.kind == "codex_cli" {
+                "codex"
+            } else {
+                "claude"
+            };
             match cli_probe(name, &provider.executable, Duration::from_secs(10)).await {
-                Some((version,path)) => connection(true,"connected",&format!("Đã kết nối · {version} · {path}"),&path),
-                None if providers::cli_support::resolve_executable(name,Some(&provider.executable)).is_none() => connection(false,"not_configured",if name=="codex"{"Chưa cài Codex CLI"}else{"Chưa cài Claude Code CLI"},if name=="codex"{"npm i -g @openai/codex"}else{"npm i -g @anthropic-ai/claude-code"}),
-                None => connection(false,"error","Không kết nối được","Không chạy được --version trong 10 giây hoặc phản hồi không hợp lệ"),
+                Some((version, path)) => connection(
+                    true,
+                    "connected",
+                    &format!("Đã kết nối · {version} · {path}"),
+                    &path,
+                ),
+                None if providers::cli_support::resolve_executable(
+                    name,
+                    Some(&provider.executable),
+                )
+                .is_none() =>
+                {
+                    connection(
+                        false,
+                        "not_configured",
+                        if name == "codex" {
+                            "Chưa cài Codex CLI"
+                        } else {
+                            "Chưa cài Claude Code CLI"
+                        },
+                        if name == "codex" {
+                            "npm i -g @openai/codex"
+                        } else {
+                            "npm i -g @anthropic-ai/claude-code"
+                        },
+                    )
+                }
+                None => connection(
+                    false,
+                    "error",
+                    "Không kết nối được",
+                    "Không chạy được --version trong 10 giây hoặc phản hồi không hợp lệ",
+                ),
             }
         }
-        _ => connection(false,"error","Không kết nối được","Loại nhà cung cấp không được hỗ trợ"),
+        _ => connection(
+            false,
+            "error",
+            "Không kết nối được",
+            "Loại nhà cung cấp không được hỗ trợ",
+        ),
     };
     Ok(Json(result))
 }
-fn connection(ok: bool,status: &'static str,message: &str,detail: &str)->ConnectionTest { ConnectionTest{ok,status,message:message.into(),detail:detail.into()} }
-async fn cli_probe(name: &str, explicit: &str, limit: Duration) -> Option<(String,String)> {
-    let path=providers::cli_support::resolve_executable(name,Some(explicit))?;
-    if unsafe_cli_path(&path) { return None; }
-    let text=run_cli_version(&path,limit).await?;
-    let valid=if name=="codex" { text.to_lowercase().contains("codex") } else { text.contains("Claude Code") };
+fn connection(ok: bool, status: &'static str, message: &str, detail: &str) -> ConnectionTest {
+    ConnectionTest {
+        ok,
+        status,
+        message: message.into(),
+        detail: detail.into(),
+    }
+}
+async fn cli_probe(name: &str, explicit: &str, limit: Duration) -> Option<(String, String)> {
+    let path = providers::cli_support::resolve_executable(name, Some(explicit))?;
+    if unsafe_cli_path(&path) {
+        return None;
+    }
+    let text = run_cli_version(&path, limit).await?;
+    let valid = if name == "codex" {
+        text.to_lowercase().contains("codex")
+    } else {
+        text.contains("Claude Code")
+    };
     valid.then(|| (text, path.to_string_lossy().into_owned()))
 }
-fn unsafe_cli_path(path:&std::path::Path)->bool {
-    let text=path.to_string_lossy().to_lowercase();
-    if text.contains("\\program files\\windowsapps\\") { return true; }
-    if path.file_name().is_some_and(|f| f.to_string_lossy().eq_ignore_ascii_case("Claude.exe")) {
-        return path.parent().is_some_and(|p| p.join("resources").join("app.asar").exists());
+fn unsafe_cli_path(path: &std::path::Path) -> bool {
+    let text = path.to_string_lossy().to_lowercase();
+    if text.contains("\\program files\\windowsapps\\") {
+        return true;
+    }
+    if path
+        .file_name()
+        .is_some_and(|f| f.to_string_lossy().eq_ignore_ascii_case("Claude.exe"))
+    {
+        return path
+            .parent()
+            .is_some_and(|p| p.join("resources").join("app.asar").exists());
     }
     false
 }
-async fn run_cli_version(path:&std::path::Path, limit:Duration)->Option<String> {
-    let mut command=providers::cli_support::command_for(path,&[OsString::from("--version")]);
-    command.stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
-    let output=timeout(limit,command.output()).await.ok()?.ok()?;
-    if !output.status.success(){return None}
-    let stdout=String::from_utf8_lossy(&output.stdout); let stderr=String::from_utf8_lossy(&output.stderr);
-    let value=if stdout.trim().is_empty(){stderr.trim()}else{stdout.trim()};
+async fn run_cli_version(path: &std::path::Path, limit: Duration) -> Option<String> {
+    let mut command = providers::cli_support::command_for(path, &[OsString::from("--version")]);
+    command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let output = timeout(limit, command.output()).await.ok()?.ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let value = if stdout.trim().is_empty() {
+        stderr.trim()
+    } else {
+        stdout.trim()
+    };
     (!value.is_empty()).then(|| value.chars().take(240).collect())
 }
 
-#[derive(Serialize)] struct CliCandidate { path:String, version:String, source:String }
-async fn discover_cli(Path(name):Path<String>)->ApiResult<Json<Vec<CliCandidate>>> {
-    if !["codex","claude"].contains(&name.as_str()) { return Err(ApiError::new(StatusCode::BAD_REQUEST,"CLI không hợp lệ")); }
-    let deadline=Instant::now()+Duration::from_secs(20);
-    let search_name=name.clone();
-    let found=timeout(deadline.saturating_duration_since(Instant::now()),tokio::task::spawn_blocking(move || discovery_paths(&search_name))).await
-        .ok().and_then(Result::ok).unwrap_or_default();
-    let mut results=Vec::new();
-    for (path,source) in found.into_iter().take(200) {
-        if Instant::now() >= deadline { break; }
-        if unsafe_cli_path(&path){continue}
-        if let Some(version)=run_cli_version(&path,(deadline-Instant::now()).min(Duration::from_secs(10))).await {
-            let matches=if name=="codex" {version.to_lowercase().contains("codex")} else {version.contains("Claude Code")};
-            if matches && !results.iter().any(|c:&CliCandidate| c.version==version && canonical_install(PathBuf::from(&c.path))==canonical_install(path.clone())) {
-                let path_text=path.to_string_lossy().replace('/',"\\");
-                results.push(CliCandidate{path:path_text,version,source});
+#[derive(Serialize)]
+struct CliCandidate {
+    path: String,
+    version: String,
+    source: String,
+}
+async fn discover_cli(Path(name): Path<String>) -> ApiResult<Json<Vec<CliCandidate>>> {
+    if !["codex", "claude"].contains(&name.as_str()) {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "CLI không hợp lệ"));
+    }
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let search_name = name.clone();
+    let found = timeout(
+        deadline.saturating_duration_since(Instant::now()),
+        tokio::task::spawn_blocking(move || discovery_paths(&search_name)),
+    )
+    .await
+    .ok()
+    .and_then(Result::ok)
+    .unwrap_or_default();
+    let mut results = Vec::new();
+    for (path, source) in found.into_iter().take(200) {
+        if Instant::now() >= deadline {
+            break;
+        }
+        if unsafe_cli_path(&path) {
+            continue;
+        }
+        if let Some(version) = run_cli_version(
+            &path,
+            (deadline - Instant::now()).min(Duration::from_secs(10)),
+        )
+        .await
+        {
+            let matches = if name == "codex" {
+                version.to_lowercase().contains("codex")
+            } else {
+                version.contains("Claude Code")
+            };
+            if matches
+                && !results.iter().any(|c: &CliCandidate| {
+                    c.version == version
+                        && canonical_install(PathBuf::from(&c.path))
+                            == canonical_install(path.clone())
+                })
+            {
+                let path_text = path.to_string_lossy().replace('/', "\\");
+                results.push(CliCandidate {
+                    path: path_text,
+                    version,
+                    source,
+                });
             }
         }
     }
-    #[cfg(windows)] if name=="codex" { if let Some(cmd)=results.iter().find(|c|c.source=="npm"&&c.path.to_lowercase().ends_with("\\codex.cmd")).map(|c|c.version.clone()){results.retain(|c|!(c.source=="npm bundled"&&c.version==cmd));} }
-    Ok(Json(results))
+    Ok(Json(drop_bundled_cli_duplicates(results)))
 }
-fn canonical_install(path:PathBuf)->PathBuf { path.canonicalize().unwrap_or(path) }
-fn discovery_paths(name:&str)->Vec<(PathBuf,String)> {
-    let mut out=Vec::new();
-    let mut add=|p:PathBuf,s:&str| { if p.is_file() && !out.iter().any(|(x,_)| x==&p) {out.push((p,s.into()));} };
-    for dir in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) { for n in [format!("{name}.cmd"),format!("{name}.exe"),name.into()] {add(dir.join(n),"PATH");} }
-    if let Some(path)=providers::cli_support::resolve_executable(name,None) { add(path,"resolved executable"); }
-    #[cfg(windows)] {
-      let app=std::env::var_os("APPDATA").map(PathBuf::from); let local=std::env::var_os("LOCALAPPDATA").map(PathBuf::from); let user=std::env::var_os("USERPROFILE").map(PathBuf::from);
-      if let Some(a)=app.as_ref() {
-        add(a.join("npm").join(format!("{name}.cmd")),"npm");
-        if name=="codex" {
-          let vendor=a.join("npm").join("node_modules").join("@openai").join("codex").join("node_modules").join("@openai").join("codex-win32-x64").join("vendor");
-          if let Ok(entries)=std::fs::read_dir(vendor) { for e in entries.flatten().take(200) { add(e.path().join("bin/codex.exe"),"npm bundled"); } }
+fn drop_bundled_cli_duplicates(candidates: Vec<CliCandidate>) -> Vec<CliCandidate> {
+    let command_candidates = candidates
+        .iter()
+        .filter(|candidate| {
+            PathBuf::from(&candidate.path)
+                .extension()
+                .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("cmd"))
+        })
+        .map(|candidate| {
+            (
+                candidate.version.clone(),
+                PathBuf::from(&candidate.path)
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new(""))
+                    .join("node_modules"),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    candidates
+        .into_iter()
+        .filter(|candidate| {
+            let path = PathBuf::from(&candidate.path);
+            !command_candidates.iter().any(|(version, node_modules)| {
+                if candidate.version != *version {
+                    return false;
+                }
+                let path = path.to_string_lossy().replace('/', "\\").to_lowercase();
+                let node_modules = node_modules
+                    .to_string_lossy()
+                    .replace('/', "\\")
+                    .trim_end_matches('\\')
+                    .to_lowercase();
+                path.starts_with(&format!("{node_modules}\\"))
+            })
+        })
+        .collect()
+}
+fn canonical_install(path: PathBuf) -> PathBuf {
+    path.canonicalize().unwrap_or(path)
+}
+fn discovery_paths(name: &str) -> Vec<(PathBuf, String)> {
+    let mut out = Vec::new();
+    let mut add = |p: PathBuf, s: &str| {
+        if p.is_file() && !out.iter().any(|(x, _)| x == &p) {
+            out.push((p, s.into()));
         }
-      }
-      if let Some(u)=user { if name=="claude" {add(u.join(".local").join("bin").join("claude.exe"),"user local bin"); add(u.join(".claude").join("local").join("claude"),"Claude Code"); add(u.join(".claude").join("local").join("claude.exe"),"Claude Code"); add(u.join(".claude").join("local").join("claude.cmd"),"Claude Code");} }
-      if let Some(l)=local.as_ref() { if name=="codex" { let root=l.join("OpenAI/Codex/bin"); if let Ok(entries)=std::fs::read_dir(root) { for e in entries.flatten().take(200) { add(e.path().join("codex.exe"),"Codex app"); } } } }
-      if let Some(l)=local { let root=l.join("Packages"); if let Ok(packages)=std::fs::read_dir(root) { for package in packages.flatten().take(200) { add(package.path().join(format!("LocalCache/Roaming/npm/{name}.cmd")),"package npm"); } } }
+    };
+    for dir in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) {
+        for n in [format!("{name}.cmd"), format!("{name}.exe"), name.into()] {
+            add(dir.join(n), "PATH");
+        }
+    }
+    if let Some(path) = providers::cli_support::resolve_executable(name, None) {
+        add(path, "resolved executable");
+    }
+    #[cfg(windows)]
+    {
+        let app = std::env::var_os("APPDATA").map(PathBuf::from);
+        let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
+        let user = std::env::var_os("USERPROFILE").map(PathBuf::from);
+        if let Some(a) = app.as_ref() {
+            add(a.join("npm").join(format!("{name}.cmd")), "npm");
+            if name == "codex" {
+                let vendor = a
+                    .join("npm")
+                    .join("node_modules")
+                    .join("@openai")
+                    .join("codex")
+                    .join("node_modules")
+                    .join("@openai")
+                    .join("codex-win32-x64")
+                    .join("vendor");
+                if let Ok(entries) = std::fs::read_dir(vendor) {
+                    for e in entries.flatten().take(200) {
+                        add(e.path().join("bin/codex.exe"), "npm bundled");
+                    }
+                }
+            }
+        }
+        if let Some(u) = user {
+            if name == "claude" {
+                add(
+                    u.join(".local").join("bin").join("claude.exe"),
+                    "user local bin",
+                );
+                add(
+                    u.join(".claude").join("local").join("claude"),
+                    "Claude Code",
+                );
+                add(
+                    u.join(".claude").join("local").join("claude.exe"),
+                    "Claude Code",
+                );
+                add(
+                    u.join(".claude").join("local").join("claude.cmd"),
+                    "Claude Code",
+                );
+            }
+        }
+        if let Some(l) = local.as_ref() {
+            if name == "codex" {
+                let root = l.join("OpenAI/Codex/bin");
+                if let Ok(entries) = std::fs::read_dir(root) {
+                    for e in entries.flatten().take(200) {
+                        add(e.path().join("codex.exe"), "Codex app");
+                    }
+                }
+            }
+        }
+        if let Some(l) = local {
+            let root = l.join("Packages");
+            if let Ok(packages) = std::fs::read_dir(root) {
+                for package in packages.flatten().take(200) {
+                    add(
+                        package
+                            .path()
+                            .join(format!("LocalCache/Roaming/npm/{name}.cmd")),
+                        "package npm",
+                    );
+                }
+            }
+        }
     }
     out
+}
+
+#[cfg(test)]
+mod cli_discovery_tests {
+    use super::{drop_bundled_cli_duplicates, CliCandidate};
+
+    #[test]
+    fn drops_same_version_binary_inside_cmd_node_modules() {
+        let candidates = vec![
+            CliCandidate {
+                path: r"C:\Users\test\npm\codex.cmd".into(),
+                version: "codex-cli 0.167.0".into(),
+                source: "PATH".into(),
+            },
+            CliCandidate {
+                path: r"C:\Users\test\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe".into(),
+                version: "codex-cli 0.167.0".into(),
+                source: "npm bundled".into(),
+            },
+            CliCandidate {
+                path: r"C:\Other\codex.exe".into(),
+                version: "codex-cli 0.167.0".into(),
+                source: "other".into(),
+            },
+            CliCandidate {
+                path: r"C:\Users\test\npm\node_modules\codex-next\bin\codex.exe".into(),
+                version: "codex-cli 0.168.0".into(),
+                source: "npm bundled".into(),
+            },
+        ];
+
+        let retained = drop_bundled_cli_duplicates(candidates);
+        assert_eq!(retained.len(), 3);
+        assert!(retained
+            .iter()
+            .all(|candidate| !candidate.path.contains("codex-win32-x64")));
+    }
 }
 
 async fn chat_handler(
@@ -862,25 +1196,88 @@ async fn cli_info(name: &str, explicit_path: String) -> CliInfo {
     }
 }
 
-#[derive(Deserialize)] struct ExtensionQuery { folder: Option<String> }
-#[derive(Deserialize)] struct ExtensionActionInput { folder: Option<String> }
-async fn extension_list(axum::extract::Query(q): axum::extract::Query<ExtensionQuery>) -> Json<Vec<crate::extensions::Card>> {
-    Json(crate::extensions::status(q.folder.as_deref()))
+#[derive(Deserialize)]
+struct ExtensionQuery {
+    folder: Option<String>,
 }
-async fn extension_stop(State(state): State<AppState>, Path(id): Path<String>) -> Json<StopResponse> {
-    let token=state.extension_running.lock().await.get(&id).cloned();
-    if let Some(token)=token { token.cancel(); Json(StopResponse{stopped:true}) } else { Json(StopResponse{stopped:false}) }
+#[derive(Deserialize)]
+struct ExtensionActionInput {
+    folder: Option<String>,
 }
-async fn extension_action(State(state): State<AppState>, Path((id, action_id)): Path<(String,String)>, Json(input): Json<ExtensionActionInput>) -> ApiResult<Response> {
-    let Some((definition, action))=crate::extensions::action(&id,&action_id) else {return Err(ApiError::new(StatusCode::NOT_FOUND,"Extension/action không tồn tại"));};
-    let mut running=state.extension_running.lock().await;
-    if running.contains_key(&id) {return Err(ApiError::new(StatusCode::CONFLICT,"Extension đang có tác vụ"));}
-    let token=CancellationToken::new(); running.insert(id.clone(),token.clone()); drop(running);
-    let mut folder=None;
-    if action.needs_folder { let Some(raw)=input.folder.as_deref() else {state.extension_running.lock().await.remove(&id);return Err(ApiError::new(StatusCode::BAD_REQUEST,"Cần thư mục hiện tại"));};
-        let path=PathBuf::from(raw); if !path.is_dir() || raw.contains('%') {state.extension_running.lock().await.remove(&id);return Err(ApiError::new(StatusCode::BAD_REQUEST,"Thư mục không hợp lệ hoặc không tồn tại"));} folder=Some(path); }
-    let (tx,rx)=mpsc::channel::<Result<String,String>>(64); let state2=state.clone(); let id2=id.clone(); let exe=crate::extensions::resolve(action.command).or_else(||if action.command=="npm" {crate::extensions::resolve("npm.cmd")}else{None});
-    let args=action.args.iter().map(|s|OsString::from(*s)).collect::<Vec<_>>(); let backup=action.backup.map(str::to_owned);let modify=action.modifies.to_owned();
+async fn extension_list(
+    axum::extract::Query(q): axum::extract::Query<ExtensionQuery>,
+) -> Json<Vec<crate::extensions::Card>> {
+    Json(crate::extensions::status(q.folder.as_deref()).await)
+}
+async fn extension_stop(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Json<StopResponse> {
+    let token = state.extension_running.lock().await.get(&id).cloned();
+    if let Some(token) = token {
+        token.cancel();
+        Json(StopResponse { stopped: true })
+    } else {
+        Json(StopResponse { stopped: false })
+    }
+}
+async fn extension_action(
+    State(state): State<AppState>,
+    Path((id, action_id)): Path<(String, String)>,
+    Json(input): Json<ExtensionActionInput>,
+) -> ApiResult<Response> {
+    let Some((definition, action)) = crate::extensions::action(&id, &action_id) else {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "Extension/action không tồn tại",
+        ));
+    };
+    let mut running = state.extension_running.lock().await;
+    if running.contains_key(&id) {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "Extension đang có tác vụ",
+        ));
+    }
+    let token = CancellationToken::new();
+    running.insert(id.clone(), token.clone());
+    drop(running);
+    let mut folder = None;
+    if action.needs_folder {
+        let Some(raw) = input.folder.as_deref() else {
+            state.extension_running.lock().await.remove(&id);
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Cần thư mục hiện tại",
+            ));
+        };
+        let path = PathBuf::from(raw);
+        if !path.is_dir() || raw.contains('%') {
+            state.extension_running.lock().await.remove(&id);
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Thư mục không hợp lệ hoặc không tồn tại",
+            ));
+        }
+        folder = Some(path);
+    }
+    let (tx, rx) = mpsc::channel::<Result<String, String>>(64);
+    let state2 = state.clone();
+    let id2 = id.clone();
+    let exe = crate::extensions::resolve(action.command).or_else(|| {
+        if action.command == "npm" {
+            crate::extensions::resolve("npm.cmd")
+        } else {
+            None
+        }
+    });
+    let args = action
+        .args
+        .iter()
+        .map(|s| OsString::from(*s))
+        .collect::<Vec<_>>();
+    let backup = action.backup.map(str::to_owned);
+    let modify = action.modifies.to_owned();
     tokio::spawn(async move {
         let result=async {
             if let Some(file)=backup.as_deref(){if let Some(home)=dirs::home_dir(){let source=home.join(file);if source.exists(){let dir=dirs::config_dir().unwrap_or_else(||home.clone()).join("ai-hub").join("backups");tokio::fs::create_dir_all(&dir).await.map_err(|e|e.to_string())?;let stamp=backup_timestamp();let target=dir.join(format!("{}.{}.bak",source.file_name().unwrap_or_default().to_string_lossy(),stamp));tokio::fs::copy(&source,&target).await.map_err(|e|e.to_string())?;let _=tx.send(Ok(format!("Backup: {}",target.display()))).await;}}}
@@ -892,15 +1289,92 @@ async fn extension_action(State(state): State<AppState>, Path((id, action_id)): 
             let wait=async{let deadline=tokio::time::sleep(Duration::from_secs(600));tokio::pin!(deadline);loop{line.clear();tokio::select!{_ = token.cancelled()=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Đã dừng".to_string())},_ = &mut deadline=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Quá thời gian chờ 10 phút".to_string())},read=reader.read_line(&mut line)=>{let n=read.map_err(|e|e.to_string())?;if n==0{break}let _=tx.send(Ok(strip_ansi(&line))).await;}}}let status=child.wait().await.map_err(|e|e.to_string())?;if status.success(){Ok(())}else{Err(format!("Lệnh kết thúc với {status}"))}}.await;
             wait
         }.await;
-        let _=tx.send(Err(result.err().unwrap_or_default())).await;state2.extension_running.lock().await.remove(&id2);
+        let _ = tx.send(Err(result.err().unwrap_or_default())).await;
+        state2.extension_running.lock().await.remove(&id2);
     });
-    let stream=ReceiverStream::new(rx).flat_map(|item|{let events=match item{Ok(line)=>vec![axum::response::sse::Event::default().event("log").data(json!(line).to_string())],Err(error)=>{let mut out=Vec::new();if !error.is_empty(){out.push(axum::response::sse::Event::default().event("error").data(json!({"message":error}).to_string()));}out.push(axum::response::sse::Event::default().event("done").data(json!({"ok":error.is_empty()}).to_string()));out}};tokio_stream::iter(events.into_iter().map(Ok::<_,Infallible>))});
-    let _=definition;
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()).into_response())
+    let stream = ReceiverStream::new(rx).flat_map(|item| {
+        let events = match item {
+            Ok(line) => vec![axum::response::sse::Event::default()
+                .event("log")
+                .data(json!(line).to_string())],
+            Err(error) => {
+                let mut out = Vec::new();
+                if !error.is_empty() {
+                    out.push(
+                        axum::response::sse::Event::default()
+                            .event("error")
+                            .data(json!({"message":error}).to_string()),
+                    );
+                }
+                out.push(
+                    axum::response::sse::Event::default()
+                        .event("done")
+                        .data(json!({"ok":error.is_empty()}).to_string()),
+                );
+                out
+            }
+        };
+        tokio_stream::iter(events.into_iter().map(Ok::<_, Infallible>))
+    });
+    let _ = definition;
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
 }
-fn strip_ansi(input:&str)->String {let mut out=String::new();let mut chars=input.chars().peekable();while let Some(c)=chars.next(){if c=='\u{1b}'&&chars.peek()==Some(&'['){chars.next();for x in chars.by_ref(){if ('@'..='~').contains(&x){break;}}}else{out.push(c)}}out}
-fn backup_timestamp()->String {let seconds=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;let days=seconds.div_euclid(86400);let rem=seconds.rem_euclid(86400);let z=days+719468;let era=if z>=0{z}else{z-146096}/146097;let doe=z-era*146097;let yoe=(doe-doe/1460+doe/36524-doe/146096)/365;let mut year=yoe+era*400;let doy=doe-(365*yoe+yoe/4-yoe/100);let mp=(5*doy+2)/153;let day=doy-(153*mp+2)/5+1;let month=mp+if mp<10{3}else{-9};year+=i64::from(month<=2);format!("{year:04}{month:02}{day:02}-{:02}{:02}{:02}",rem/3600,(rem%3600)/60,rem%60)}
-#[cfg(test)] mod extension_tests { #[test] fn ansi_sequences_are_removed(){assert_eq!(super::strip_ansi("\u{1b}[31mred\u{1b}[0m"),"red");} #[test] fn backup_timestamp_has_required_shape(){let stamp=super::backup_timestamp();assert_eq!(stamp.len(),15);assert_eq!(stamp.as_bytes()[8],b'-');} }
+fn strip_ansi(input: &str) -> String {
+    let mut out = String::new();
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' && chars.peek() == Some(&'[') {
+            chars.next();
+            for x in chars.by_ref() {
+                if ('@'..='~').contains(&x) {
+                    break;
+                }
+            }
+        } else {
+            out.push(c)
+        }
+    }
+    out
+}
+fn backup_timestamp() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let days = seconds.div_euclid(86400);
+    let rem = seconds.rem_euclid(86400);
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let mut year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    year += i64::from(month <= 2);
+    format!(
+        "{year:04}{month:02}{day:02}-{:02}{:02}{:02}",
+        rem / 3600,
+        (rem % 3600) / 60,
+        rem % 60
+    )
+}
+#[cfg(test)]
+mod extension_tests {
+    #[test]
+    fn ansi_sequences_are_removed() {
+        assert_eq!(super::strip_ansi("\u{1b}[31mred\u{1b}[0m"), "red");
+    }
+    #[test]
+    fn backup_timestamp_has_required_shape() {
+        let stamp = super::backup_timestamp();
+        assert_eq!(stamp.len(), 15);
+        assert_eq!(stamp.as_bytes()[8], b'-');
+    }
+}
 
 fn validate_provider(id: &str, input: &ProviderInput) -> ApiResult<()> {
     if !valid_provider_id(id) {

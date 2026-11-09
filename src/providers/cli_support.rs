@@ -25,7 +25,11 @@ pub fn resolve_executable(name: &str, explicit_path: Option<&str>) -> Option<Pat
         }
     }
 
-    let names = [format!("{name}.exe"), format!("{name}.cmd"), name.to_owned()];
+    let names = [
+        format!("{name}.exe"),
+        format!("{name}.cmd"),
+        name.to_owned(),
+    ];
     let process_path = env::var_os("PATH").into_iter().flat_map(|value| {
         env::split_paths(&value)
             .filter(|path| valid_path_entry(path))
@@ -106,8 +110,13 @@ fn safe_cli_executable(path: &Path) -> bool {
     if lower.contains("\\program files\\windowsapps\\") {
         return false;
     }
-    if path.file_name().is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("Claude.exe")) {
-        return !path.parent().is_some_and(|parent| parent.join("resources").join("app.asar").exists());
+    if path
+        .file_name()
+        .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("Claude.exe"))
+    {
+        return !path
+            .parent()
+            .is_some_and(|parent| parent.join("resources").join("app.asar").exists());
     }
     true
 }
@@ -143,9 +152,7 @@ fn read_registry_path(key: &str) -> Option<String> {
         let mut fields = line.split_whitespace();
         let name = fields.next()?;
         let value_type = fields.next()?;
-        if !name.eq_ignore_ascii_case("Path")
-            || !matches!(value_type, "REG_SZ" | "REG_EXPAND_SZ")
-        {
+        if !name.eq_ignore_ascii_case("Path") || !matches!(value_type, "REG_SZ" | "REG_EXPAND_SZ") {
             return None;
         }
         let value_start = line.find(value_type)? + value_type.len();
@@ -256,8 +263,9 @@ pub fn command_for(path: &Path, args: &[OsString]) -> Command {
                 prepend.push(parent.to_path_buf());
             }
             if let Some(node) = resolve_executable("node", None).filter(|node| {
-                node.extension()
-                    .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("exe"))
+                node.extension().is_some_and(|extension| {
+                    extension.to_string_lossy().eq_ignore_ascii_case("exe")
+                })
             }) {
                 if let Some(parent) = node.parent() {
                     prepend.push(parent.to_path_buf());
@@ -456,9 +464,7 @@ pub fn token_usage_log(usage: &Value, total_cost_usd: Option<&Value>) -> Option<
     let reasoning_tokens = usage["reasoning_output_tokens"]
         .as_u64()
         .or_else(|| usage["thinking_tokens"].as_u64());
-    let mut line = format!(
-        "Token: vào {input_tokens} (cache {cached_tokens}), ra {output_tokens}"
-    );
+    let mut line = format!("Token: vào {input_tokens} (cache {cached_tokens}), ra {output_tokens}");
     if let Some(reasoning_tokens) = reasoning_tokens {
         line.push_str(&format!(" (suy luận {reasoning_tokens})"));
     }
@@ -519,7 +525,10 @@ pub fn safe_session_id(session_id: &str) -> bool {
 }
 
 pub fn one_line(value: &str, max_chars: usize) -> String {
-    truncate_chars(&value.split_whitespace().collect::<Vec<_>>().join(" "), max_chars)
+    truncate_chars(
+        &value.split_whitespace().collect::<Vec<_>>().join(" "),
+        max_chars,
+    )
 }
 
 fn truncate_chars(value: &str, max_chars: usize) -> String {
@@ -576,4 +585,3 @@ pub(crate) async fn terminate_child_tree(child: &mut Child) {
     }
     let _ = timeout(Duration::from_secs(3), child.wait()).await;
 }
-
