@@ -1,0 +1,8 @@
+ui/app.js:658:     const validateDeps = () => { task.depends_on = deps.value.split(",").map(val
+ui/app.js:663:     actions.append(el("button", { textContent: "?", disabled: index === 0, oncli
+ui/app.js:669:   const add = el("button", { textContent: "+ Th�m c�ng vi?c", onclick: () =>
+ui/app.js:696:     const response = await api("/api/chat", { method: "POST", body: JSON.stringi
+ui/app.js:697:     await readSse(response.body, (event, data) => { if (event === "error") { had
+ui/app.js:894:     const pick = async (candidate) => { $("#provider-executable").value = candid
+ui/app.js:898:       for (const candidate of candidates) { const item = document.createElement(
+ui/app.js:924:     badge(card.installed?`Đã cài · ${card.version||"đã cài"}`:"Chưa cài

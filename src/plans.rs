@@ -43,6 +43,27 @@ pub struct PlanTask {
     #[serde(default)]
     pub chat_id: Option<String>,
 }
+
+#[derive(Clone, Debug)]
+pub struct ProviderSummary {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub models: Vec<String>,
+}
+
+pub fn reassign(kind: &str, connected: &[ProviderSummary], planner_id: &str) -> String {
+    let preferred: &[&str] = match kind {
+        "code" | "test" => &["codex_cli", "claude_cli"],
+        "docs" => &["openai_compat", "codex_cli"],
+        _ => return planner_id.to_owned(),
+    };
+    preferred
+        .iter()
+        .find_map(|kind| connected.iter().find(|provider| provider.kind == *kind))
+        .map(|provider| provider.id.clone())
+        .unwrap_or_else(|| planner_id.to_owned())
+}
 fn default_effort() -> String {
     "default".into()
 }
@@ -163,13 +184,61 @@ mod tests {
     use super::*;
 
     fn task(id: u32, depends_on: Vec<u32>) -> PlanTask {
-        PlanTask { id, title: "task".into(), detail: "detail".into(), assignee: "worker".into(), model: None, effort: "default".into(), reassigned_from: None, depends_on, kind: "code".into(), status: waiting(), summary: String::new(), log: Vec::new(), tokens: 0, chat_id: None }
+        PlanTask {
+            id,
+            title: "task".into(),
+            detail: "detail".into(),
+            assignee: "worker".into(),
+            model: None,
+            effort: "default".into(),
+            reassigned_from: None,
+            depends_on,
+            kind: "code".into(),
+            status: waiting(),
+            summary: String::new(),
+            log: Vec::new(),
+            tokens: 0,
+            chat_id: None,
+        }
     }
 
     #[test]
     fn dependency_cycle_detection_handles_valid_and_cyclic_graphs() {
-        assert!(!has_dependency_cycle(&[task(1, vec![]), task(2, vec![1]), task(3, vec![2])]));
+        assert!(!has_dependency_cycle(&[
+            task(1, vec![]),
+            task(2, vec![1]),
+            task(3, vec![2])
+        ]));
         assert!(has_dependency_cycle(&[task(1, vec![2]), task(2, vec![1])]));
         assert!(has_dependency_cycle(&[task(1, vec![1])]));
+    }
+
+    #[test]
+    fn reassign_uses_kind_priority_and_planner_fallback() {
+        let connected = vec![
+            ProviderSummary {
+                id: "claude".into(),
+                name: "Claude".into(),
+                kind: "claude_cli".into(),
+                models: vec![],
+            },
+            ProviderSummary {
+                id: "openai".into(),
+                name: "OpenAI".into(),
+                kind: "openai_compat".into(),
+                models: vec![],
+            },
+            ProviderSummary {
+                id: "codex".into(),
+                name: "Codex".into(),
+                kind: "codex_cli".into(),
+                models: vec![],
+            },
+        ];
+        assert_eq!(reassign("code", &connected, "planner"), "codex");
+        assert_eq!(reassign("test", &connected[..1], "planner"), "claude");
+        assert_eq!(reassign("docs", &connected, "planner"), "openai");
+        assert_eq!(reassign("review", &connected, "planner"), "planner");
+        assert_eq!(reassign("docs", &[], "planner"), "planner");
     }
 }

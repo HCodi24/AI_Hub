@@ -12,7 +12,7 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
-use futures_util::StreamExt;
+use futures_util::{future::join_all, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -41,6 +41,7 @@ pub struct AppState {
     plans: PlanStore,
     running: Arc<Mutex<HashMap<String, RunningChat>>>,
     extension_running: Arc<Mutex<HashMap<String, CancellationToken>>>,
+    provider_status: Arc<Mutex<HashMap<String, (Instant, ConnectionTest)>>>,
 }
 
 #[derive(Clone)]
@@ -59,6 +60,7 @@ impl AppState {
             plans,
             running: Arc::new(Mutex::new(HashMap::new())),
             extension_running: Arc::new(Mutex::new(HashMap::new())),
+            provider_status: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -287,88 +289,95 @@ async fn save_plan(
 async fn generate_plan(
     State(state): State<AppState>,
     Json(input): Json<PlanRequest>,
-) -> ApiResult<Json<Plan>> {
+) -> ApiResult<Response> {
     let folder = PathBuf::from(input.folder.trim())
         .canonicalize()
-        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục làm việc không tồn tại"))?;
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Working folder does not exist"))?;
     let cfg = state.config.read().await.clone();
-    let provider_id = if input.provider_id.is_empty() {
-        if cfg.planner_provider_id.is_empty() {
-            cfg.providers
-                .iter()
-                .find(|p| p.kind == "claude_cli")
-                .or_else(|| cfg.providers.iter().find(|p| p.kind == "anthropic"))
-                .or_else(|| cfg.providers.iter().find(|p| p.kind == "codex_cli"))
-                .map(|p| p.id.clone())
-                .unwrap_or_default()
-        } else {
-            cfg.planner_provider_id.clone()
-        }
+    let statuses = join_all(
+        cfg.providers
+            .iter()
+            .map(|p| cached_provider_test(&state, &p.id)),
+    )
+    .await;
+    let connected =
+        cfg.providers
+            .iter()
+            .zip(statuses)
+            .filter_map(|(p, status)| {
+                status.ok().filter(|s| s.status == "connected").map(|_| {
+                    crate::plans::ProviderSummary {
+                        id: p.id.clone(),
+                        name: p.name.clone(),
+                        kind: p.kind.clone(),
+                        models: p.models.clone(),
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+    let requested = if !input.provider_id.is_empty() {
+        input.provider_id.clone()
+    } else if !cfg.planner_provider_id.is_empty() {
+        cfg.planner_provider_id.clone()
     } else {
-        input.provider_id
+        ["claude_cli", "anthropic", "codex_cli"]
+            .iter()
+            .find_map(|kind| {
+                connected
+                    .iter()
+                    .find(|p| p.kind == *kind)
+                    .map(|p| p.id.clone())
+            })
+            .unwrap_or_default()
     };
-    let provider_cfg = cfg
+    let planner = cfg
         .providers
         .iter()
-        .find(|p| p.id == provider_id)
+        .find(|p| p.id == requested)
         .cloned()
+        .filter(|p| connected.iter().any(|w| w.id == p.id))
         .ok_or_else(|| {
             ApiError::new(
                 StatusCode::BAD_REQUEST,
-                "Chọn Người lập kế hoạch trong Cài đặt",
+                "Choose a connected planner provider in Settings",
             )
         })?;
     let model = if input.model.trim().is_empty() {
         if cfg.planner_model.is_empty() {
-            provider_cfg.models.first().cloned().unwrap_or_default()
+            planner.models.first().cloned().unwrap_or_default()
         } else {
-            cfg.planner_model
+            cfg.planner_model.clone()
         }
     } else {
-        input.model
+        input.model.clone()
     };
     if model.trim().is_empty() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "Nhà lập kế hoạch cần model",
+            "Planner needs a model",
         ));
     }
-    let tree = file_tree(&folder);
-    let workers = cfg
-        .providers
+    let workers = connected
         .iter()
         .map(|p| {
             format!(
-                "{} ({}, {})",
+                "id: {}, name: {}, kind: {}, models: {}",
                 p.id,
+                p.name,
                 p.kind,
-                if (p.kind == "codex_cli" || p.kind == "claude_cli")
-                    && providers::cli_support::resolve_executable(
-                        if p.kind == "codex_cli" {
-                            "codex"
-                        } else {
-                            "claude"
-                        },
-                        Some(&p.executable)
-                    )
-                    .is_some()
-                {
-                    "connected"
-                } else if !p.api_key.trim().is_empty() || p.kind.ends_with("_cli") {
-                    "configured; connection not probed"
-                } else {
-                    "not configured"
-                }
+                p.models.join(", ")
             )
         })
         .collect::<Vec<_>>()
         .join("\n");
-    let prompt = format!("You are a task planner. Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[{{\"id\":1,\"title\":\"...\",\"detail\":\"files to touch + expected result\",\"assignee\":\"provider id\",\"depends_on\":[ids],\"kind\":\"plan|code|test|docs|review\"}}]}}. Make tasks small. No two parallel tasks may edit the same file. Claude/planner for design and review, Codex for multi-file code, DeepSeek Deploy for tests from a given list, docs, and mechanical edits.\nRequest:\n{}\nWorking folder: {}\nFiles (max 200):\n{}\nAvailable workers and connection status:\n{}", input.request, folder.display(), tree, workers);
-    let provider = providers::for_kind(&provider_cfg.kind)
+    let prompt = format!("Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[{{\"id\":1,\"title\":\"...\",\"detail\":\"files + expected result\",\"assignee\":\"provider id\",\"depends_on\":[ids],\"kind\":\"plan|code|test|docs|review\"}}]}}. Keep tasks small and avoid editing same file in parallel.\nRequest:\n{}\nWorking folder: {}\nFiles:\n{}\nConnected workers (id, name, kind, models):\n{}",input.request,folder.display(),file_tree(&folder),workers);
+    let provider = providers::for_kind(&planner.kind)
         .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let (tx, mut rx) = mpsc::channel(32);
-    let req = ProviderRequest {
-        provider: provider_cfg.clone(),
+    let cancel = CancellationToken::new();
+    let (out_tx, out_rx) = mpsc::channel(32);
+    let (event_tx, mut event_rx) = mpsc::channel(32);
+    let request = ProviderRequest {
+        provider: planner,
         model,
         folder: folder.to_string_lossy().into_owned(),
         permission: chat::Permission::Read,
@@ -382,88 +391,116 @@ async fn generate_plan(
         }],
         session_id: None,
     };
+    let task_cancel = cancel.clone();
+    let task_state = state.clone();
+    let planner_id = request.provider.id.clone();
+    let request_text = input.request.clone();
+    let folder_text = folder.to_string_lossy().into_owned();
     tokio::spawn(async move {
-        let cancel = CancellationToken::new();
-        if let Err(e) = provider.run(req, tx.clone(), cancel).await {
-            let _ = tx.send(ProviderEvent::text("error", e.to_string())).await;
+        let run_cancel = task_cancel.clone();
+        let tx = event_tx.clone();
+        tokio::spawn(async move {
+            if let Err(e) = provider.run(request, tx.clone(), run_cancel).await {
+                let _ = tx.send(ProviderEvent::text("error", e.to_string())).await;
+            }
+        });
+        let mut raw = String::new();
+        let mut error = None;
+        loop {
+            tokio::select! {
+                _ = task_cancel.cancelled() => return,
+                _ = out_tx.closed() => { task_cancel.cancel(); return; },
+                event = event_rx.recv() => {
+                    let Some(event) = event else { break };
+                    if event.name == "delta" {
+                        raw.push_str(event.data["text"].as_str().unwrap_or_default());
+                    } else if event.name == "error" {
+                        error = Some(event.data["text"].as_str().unwrap_or("planner failed").to_owned());
+                    } else if event.name == "log"
+                        && out_tx.send(chat::sse_event("log", &event.data)).await.is_err()
+                    {
+                        task_cancel.cancel();
+                        return;
+                    }
+                }
+            }
+        }
+        let result = (|| -> Result<Plan, String> {
+            if let Some(e) = error {
+                return Err(e);
+            };
+            let parsed = extract_json(&raw)
+                .and_then(|v| serde_json::from_str::<Value>(v).ok())
+                .ok_or_else(|| format!("Could not parse planner JSON: {raw}"))?;
+            let source = parsed["tasks"]
+                .as_array()
+                .ok_or_else(|| "Missing tasks array".to_owned())?;
+            let tasks = source
+                .iter()
+                .enumerate()
+                .map(|(i, t)| {
+                    let old = t["assignee"].as_str().unwrap_or(&planner_id).to_owned();
+                    let kind = t["kind"].as_str().unwrap_or("code").to_owned();
+                    let valid = connected.iter().any(|p| p.id == old);
+                    let assignee = if valid {
+                        old.clone()
+                    } else {
+                        crate::plans::reassign(&kind, &connected, &planner_id)
+                    };
+                    PlanTask {
+                        id: t["id"].as_u64().unwrap_or(i as u64 + 1) as u32,
+                        title: t["title"].as_str().unwrap_or("Task").into(),
+                        detail: t["detail"].as_str().unwrap_or("").into(),
+                        assignee,
+                        model: t["model"].as_str().map(str::to_owned),
+                        effort: t["effort"].as_str().unwrap_or("default").into(),
+                        reassigned_from: if valid { None } else { Some(old) },
+                        depends_on: t["depends_on"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(Value::as_u64)
+                            .map(|v| v as u32)
+                            .collect(),
+                        kind,
+                        status: "waiting".into(),
+                        summary: String::new(),
+                        log: Vec::new(),
+                        tokens: 0,
+                        chat_id: None,
+                    }
+                })
+                .collect();
+            Ok(Plan::new(
+                parsed["title"].as_str().unwrap_or("New plan").into(),
+                folder_text,
+                request_text,
+                tasks,
+            ))
+        })();
+        match result {
+            Ok(plan) => match task_state.plans.save(&plan) {
+                Ok(()) => {
+                    let _ = out_tx.send(chat::sse_event("plan", &json!(plan))).await;
+                }
+                Err(e) => {
+                    let _ = out_tx
+                        .send(chat::sse_event("error", &json!({"message":e.to_string()})))
+                        .await;
+                }
+            },
+            Err(e) => {
+                let _ = out_tx
+                    .send(chat::sse_event("error", &json!({"message":e})))
+                    .await;
+            }
         }
     });
-    let mut raw = String::new();
-    let mut error = None;
-    while let Some(event) = rx.recv().await {
-        if event.name == "delta" {
-            raw.push_str(event.data["text"].as_str().unwrap_or(""));
-        } else if event.name == "error" {
-            error = Some(
-                event.data["text"]
-                    .as_str()
-                    .unwrap_or("planner failed")
-                    .to_owned(),
-            );
-        }
-    }
-    if let Some(error) = error {
-        return Err(ApiError::new(
-            StatusCode::BAD_GATEWAY,
-            format!("{error}\n\nRaw answer:\n{raw}"),
-        ));
-    }
-    let parsed = extract_json(&raw)
-        .and_then(|v| serde_json::from_str::<Value>(v).ok())
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::BAD_GATEWAY,
-                format!("Không đọc được JSON từ kế hoạch. Thử lại.\n\n{raw}"),
-            )
-        })?;
-    let title = parsed["title"]
-        .as_str()
-        .unwrap_or("Kế hoạch mới")
-        .to_owned();
-    let tasks = parsed["tasks"]
-        .as_array()
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::BAD_GATEWAY,
-                format!("Thiếu danh sách tasks. Thử lại.\n\n{raw}"),
-            )
-        })?
-        .iter()
-        .enumerate()
-        .map(|(i, t)| PlanTask {
-            id: t["id"].as_u64().unwrap_or(i as u64 + 1) as u32,
-            title: t["title"].as_str().unwrap_or("Công việc").into(),
-            detail: t["detail"].as_str().unwrap_or("").into(),
-            assignee: t["assignee"].as_str().unwrap_or(&provider_id).into(),
-            model: t["model"].as_str().map(str::to_owned),
-            effort: t["effort"].as_str().unwrap_or("default").into(),
-            reassigned_from: None,
-            depends_on: t["depends_on"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_u64)
-                .map(|n| n as u32)
-                .collect(),
-            kind: t["kind"].as_str().unwrap_or("code").into(),
-            status: "chờ".into(),
-            summary: String::new(),
-            log: Vec::new(),
-            tokens: 0,
-            chat_id: None,
-        })
-        .collect();
-    let plan = Plan::new(
-        title,
-        folder.to_string_lossy().into_owned(),
-        input.request,
-        tasks,
-    );
-    state
-        .plans
-        .save(&plan)
-        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được kế hoạch"))?;
-    Ok(Json(plan))
+    let stream_cancel = cancel.clone();
+    let stream = async_stream::stream! {let _guard=CancelOnDrop(stream_cancel);let mut rx=ReceiverStream::new(out_rx);while let Some(event)=rx.next().await{yield Ok::<_,Infallible>(event)}};
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
 }
 fn extract_json(raw: &str) -> Option<&str> {
     let start = raw.find('{')?;
@@ -703,7 +740,7 @@ async fn provider_models(
     Ok(Json(ModelsResponse { models }))
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct ConnectionTest {
     ok: bool,
     status: &'static str,
@@ -711,7 +748,7 @@ struct ConnectionTest {
     detail: String,
 }
 
-async fn test_provider(
+async fn test_provider_uncached(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<ConnectionTest>> {
@@ -872,6 +909,30 @@ async fn test_provider(
         ),
     };
     Ok(Json(result))
+}
+
+async fn cached_provider_test(state: &AppState, id: &str) -> ApiResult<ConnectionTest> {
+    if let Some((checked, status)) = state.provider_status.lock().await.get(id).cloned() {
+        if checked.elapsed() < Duration::from_secs(60) {
+            return Ok(status);
+        }
+    }
+    let status = test_provider_uncached(State(state.clone()), Path(id.to_owned()))
+        .await?
+        .0;
+    state
+        .provider_status
+        .lock()
+        .await
+        .insert(id.to_owned(), (Instant::now(), status.clone()));
+    Ok(status)
+}
+
+async fn test_provider(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<ConnectionTest>> {
+    cached_provider_test(&state, &id).await.map(Json)
 }
 fn connection(ok: bool, status: &'static str, message: &str, detail: &str) -> ConnectionTest {
     ConnectionTest {

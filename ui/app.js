@@ -611,10 +611,19 @@ async function planFromRequest(text) {
     const response = await fetch("/api/plans", { method: "POST", signal: controller.signal,
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request, folder: folderInput.value.trim(), provider_id: $("#planner-provider").value || state.config.planner_provider_id, model: $("#planner-model").value || state.config.planner_model }) });
     if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
-    const plan = await response.json();
-    await loadPlans(); openPlan(plan);
+    if (!response.body) throw new Error("Browser does not support response streaming");
+    let receivedPlan = null;
+    await readSse(response.body, (event, data) => {
+      if (event === "log") logs.textContent += `${data.text || ""}\n`;
+      if (event === "error") throw new Error(data.message || data.text || "Planning failed");
+      if (event === "plan") receivedPlan = data;
+    });
+    if (receivedPlan) { await loadPlans(); openPlan(receivedPlan); }
   } catch (error) {
-    if (error.name === "AbortError") { logs.textContent += "�? hu? y�u c?u.\n"; }
+    if (error.name === "AbortError") {
+      logs.textContent += "\u0110\u00e3 hu\u1ef7\n";
+      label.textContent = "\u0110\u00e3 hu\u1ef7";
+    }
     else { logs.textContent += `${error.message}\n`; }
   } finally { clearInterval(timer); buttons.forEach(button => { if (button) button.disabled = false; }); }
 }
@@ -644,7 +653,18 @@ function renderPlanEditor() {
     editor.append(el("input", { value: task.title, placeholder: "T�n vi?c", oninput: event => task.title = event.target.value }), el("textarea", { value: task.detail, placeholder: "T?p c?n s?a v� k?t qu? mong �?i", oninput: event => task.detail = event.target.value })); cell(editor);
     const assignee = el("select");
     for (const provider of state.config.providers) assignee.append(el("option", { value: provider.id, textContent: provider.name }));
-    assignee.value = task.assignee; assignee.onchange = () => { task.assignee = assignee.value; task.model = state.config.providers.find(p => p.id === task.assignee)?.models[0] || ""; renderPlanEditor(); }; cell(assignee);
+    assignee.value = task.assignee;
+    assignee.onchange = () => {
+      task.assignee = assignee.value;
+      task.model = state.config.providers.find(p => p.id === task.assignee)?.models[0] || "";
+      renderPlanEditor();
+    };
+    const assigneeCell = el("div");
+    assigneeCell.append(assignee);
+    if (task.reassigned_from) assigneeCell.append(el("small", {
+      textContent: `⚠ đã đổi từ ${task.reassigned_from} (chưa kết nối)`,
+    }));
+    cell(assigneeCell);
     const provider = state.config.providers.find(item => item.id === task.assignee);
     const settings = el("div"), model = el("select");
     for (const item of provider?.models || []) model.append(el("option", { value: item, textContent: item }));
@@ -655,18 +675,50 @@ function renderPlanEditor() {
     settings.append(model, effort); cell(settings);
     const deps = el("input", { value: (task.depends_on || []).join(",") });
     const depError = el("small", { className: "dependency-error" });
-    const validateDeps = () => { task.depends_on = deps.value.split(",").map(value => value.trim()).filter(Boolean).map(Number); const invalid = task.depends_on.some(id => !plan.tasks.some(item => item.id === id)); depError.textContent = invalid ? "M? ph? thu?c kh�ng t?n t?i." : ""; approve.disabled = invalid || hasCycle(plan.tasks); };
+    const validateDeps = () => {
+      task.depends_on = deps.value.split(",").map(value => value.trim()).filter(Boolean).map(Number);
+      const invalid = task.depends_on.some(id => !plan.tasks.some(item => item.id === id));
+      depError.textContent = invalid ? "M? ph? thu?c kh?ng t?n t?i." : "";
+      approve.disabled = invalid || hasCycle(plan.tasks);
+    };
     deps.oninput = validateDeps; const depwrap = el("div"); depwrap.append(deps, depError); cell(depwrap);
     const kind = el("select"); for (const value of ["plan", "code", "test", "docs", "review"]) kind.append(el("option", { value, textContent: value })); kind.value = task.kind; kind.onchange = () => task.kind = kind.value; cell(kind);
     const status = el("span", { textContent: `${task.status}${task.tokens ? ` � ${task.tokens} tokens` : ""}${task.log?.length ? ` � ${task.log.at(-1)}` : ""}`, dataset: { taskStatus: String(task.id) } }); cell(status);
     const actions = el("div");
-    actions.append(el("button", { textContent: "?", disabled: index === 0, onclick: () => { [plan.tasks[index - 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index - 1]]; renderPlanEditor(); } }), el("button", { textContent: "?", disabled: index === plan.tasks.length - 1, onclick: () => { [plan.tasks[index + 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index + 1]]; renderPlanEditor(); } }), el("button", { textContent: "�", onclick: () => { plan.tasks.splice(index, 1); renderPlanEditor(); } }));
+    const moveUp = () => {
+      [plan.tasks[index - 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index - 1]];
+      renderPlanEditor();
+    };
+    const moveDown = () => {
+      [plan.tasks[index + 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index + 1]];
+      renderPlanEditor();
+    };
+    const removeTask = () => {
+      plan.tasks.splice(index, 1);
+      renderPlanEditor();
+    };
+    actions.append(
+      el("button", { textContent: "?", disabled: index === 0, onclick: moveUp }),
+      el("button", { textContent: "?", disabled: index === plan.tasks.length - 1, onclick: moveDown }),
+      el("button", { textContent: "?", onclick: removeTask }),
+    );
     if (plan.approved) actions.append(el("button", { textContent: "Ch?y", onclick: () => runPlanTask(task) }));
     cell(actions); body.append(row);
   }
   table.append(body); root.append(table);
   const approve = el("button", { textContent: plan.approved ? "�? duy?t" : "Duy?t k? ho?ch", disabled: plan.approved || hasCycle(plan.tasks), onclick: async () => { plan.approved = true; await persistPlan(); renderPlanEditor(); } });
-  const add = el("button", { textContent: "+ Th�m c�ng vi?c", onclick: () => { plan.tasks.push({ id: Math.max(0, ...plan.tasks.map(task => task.id)) + 1, title: "C�ng vi?c m?i", detail: "", assignee: state.config.providers[0]?.id || "", model: "", effort: "default", depends_on: [], kind: "code", status: "ch?", summary: "", log: [], tokens: 0 }); renderPlanEditor(); } });
+  const add = el("button", {
+    textContent: "+ Th?m c?ng vi?c",
+    onclick: () => {
+      plan.tasks.push({
+        id: Math.max(0, ...plan.tasks.map(task => task.id)) + 1,
+        title: "C?ng vi?c m?i", detail: "", assignee: state.config.providers[0]?.id || "",
+        model: "", effort: "default", depends_on: [], kind: "code", status: "ch?",
+        summary: "", log: [], tokens: 0,
+      });
+      renderPlanEditor();
+    },
+  });
   const regen = el("button", { textContent: "L?p l?i k? ho?ch", onclick: () => planFromRequest(plan.request) });
   root.append(el("p", { className: "token-usage", textContent: `T?ng token k? ho?ch: ${plan.tasks.reduce((sum, task) => sum + (task.tokens || 0), 0)}` }), add, regen, approve);
   for (const task of plan.tasks) if (task.log?.length) root.append(el("pre", { className: "task-log", textContent: task.log.join("\n") }));
@@ -693,8 +745,23 @@ async function runPlanTask(task) {
   await persistPlan(); renderPlanEditor();
   let hadError = false;
   try {
-    const response = await api("/api/chat", { method: "POST", body: JSON.stringify({ chat_id: chatId, provider_id: provider.id, model: task.model || provider.models[0] || "", effort: task.effort || "default", folder: plan.folder, permission: ["code", "test", "docs"].includes(task.kind) ? "write" : "read", messages: [{ role: "user", content: prompt }] }) });
-    await readSse(response.body, (event, data) => { if (event === "error") { hadError = true; task.log.push(data.text || "L?i"); } if (event === "delta") task.summary += data.text || ""; if (event === "log") task.log.push(data.text || ""); const node = $(`[data-task-status="${task.id}"]`); if (node) node.textContent = `${task.status} � ${task.log.at(-1) || ""}`; });
+    const response = await api("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        chat_id: chatId, provider_id: provider.id,
+        model: task.model || provider.models[0] || "", effort: task.effort || "default",
+        folder: plan.folder,
+        permission: ["code", "test", "docs"].includes(task.kind) ? "write" : "read",
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    await readSse(response.body, (event, data) => {
+      if (event === "error") { hadError = true; task.log.push(data.text || "L?i"); }
+      if (event === "delta") task.summary += data.text || "";
+      if (event === "log") task.log.push(data.text || "");
+      const node = $(`[data-task-status="${task.id}"]`);
+      if (node) node.textContent = `${task.status} ? ${task.log.at(-1) || ""}`;
+    });
     task.status = task._stopped ? "�? d?ng" : hadError ? "l?i" : "xong";
   } catch (error) { hadError = true; task.status = task._stopped ? "�? d?ng" : "l?i"; task.log.push(error.message); }
   await persistPlan(); renderPlanEditor();
@@ -891,11 +958,33 @@ async function discoverCli() {
   button.disabled = true; button.textContent = "Đang tìm…"; area.hidden = true; area.replaceChildren();
   try {
     const candidates = await api(`/api/cli-discover/${name}`);
-    const pick = async (candidate) => { $("#provider-executable").value = candidate.path; area.hidden = true; await saveProvider(new Event("submit", { cancelable: true }), false); if (state.settingsProviderId) { await testProvider(state.settingsProviderId, false); const status = state.providerStatuses.get(state.settingsProviderId); if (status?.status === "connected") showToast(`✓ Đã tìm thấy và kết nối ${name === "codex" ? "Codex CLI" : "Claude Code CLI"} (${candidate.version})`); else showToast(`✗ ${name === "codex" ? "Codex CLI" : "Claude Code CLI"}: ${status?.message || "Không kết nối được"}`); } };
+    const pick = async (candidate) => {
+      $("#provider-executable").value = candidate.path;
+      area.hidden = true;
+      await saveProvider(new Event("submit", { cancelable: true }), false);
+      if (state.settingsProviderId) {
+        await testProvider(state.settingsProviderId, false);
+        const status = state.providerStatuses.get(state.settingsProviderId);
+        const cliName = name === "codex" ? "Codex CLI" : "Claude Code CLI";
+        if (status?.status === "connected") {
+          showToast(`? ?? t?m th?y v? k?t n?i ${cliName} (${candidate.version})`);
+        } else {
+          showToast(`? ${cliName}: ${status?.message || "Kh?ng k?t n?i ???c"}`);
+        }
+      }
+    };
     if (candidates.length === 1) await pick(candidates[0]);
     else if (candidates.length > 1) {
       const title = document.createElement("strong"); title.textContent = "Chọn bản cài đặt:"; area.append(title);
-      for (const candidate of candidates) { const item = document.createElement("button"); item.type = "button"; item.className = "candidate-option"; item.textContent = `${candidate.path} · ${candidate.version} · ${candidate.source}`; item.title = item.textContent; item.addEventListener("click", () => pick(candidate)); area.append(item); }
+      for (const candidate of candidates) {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "candidate-option";
+        item.textContent = `${candidate.path} ? ${candidate.version} ? ${candidate.source}`;
+        item.title = item.textContent;
+        item.addEventListener("click", () => pick(candidate));
+        area.append(item);
+      }
       area.hidden = false;
     } else {
       const hint = name === "codex" ? "npm i -g @openai/codex" : "npm i -g @anthropic-ai/claude-code";
@@ -1018,4 +1107,4 @@ $("#cli-refresh").addEventListener("click", refreshCliStatus);
   } catch (error) {
     showToast(error.message);
   }
-})();
+})();
