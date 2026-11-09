@@ -46,3 +46,12 @@ Backend
    homepage, executable name, version args, actions, status checks).
 
 Also update README.md ("Tiện ích" section) and SPEC.md (new section). Reply with files changed and verification.
+
+## Also fix these review findings from step 6 (do first)
+- `/api/cli-discover/codex` returns mixed separators, e.g. `...\npm/node_modules/@openai/...\bin/codex.exe`.
+  Normalise all returned/stored paths to backslashes on Windows (build with PathBuf::join, never "/" strings).
+- Dedupe: the npm-bundled `codex.exe` under `%APPDATA%\npm\node_modules\@openai\codex\...` is the same install as
+  `%APPDATA%\npm\codex.cmd` (same version) — keep only the `.cmd`. Different versions stay separate.
+- Provider test for a CLI provider whose executable is not found should say `status: "not_configured"`,
+  message "Chưa cài <Codex CLI|Claude Code CLI>" and detail = the install hint, not
+  "Hãy nhập API key hoặc chọn file CLI". For HTTP providers with an empty key: "Chưa nhập API key".

@@ -52,3 +52,7 @@ API key được che trong phản hồi cài đặt và không được ghi vào
 ## Thanh chế độ
 
 Nút chế độ cạnh khung nhập tin cho biết nguồn AI, model và mức suy luận hiện tại. Mở nút để đổi nguồn, chọn hoặc nhập model, và chọn mức suy luận khi nguồn hỗ trợ. Lựa chọn mức suy luận được lưu theo từng chat; nguồn, model và mức dùng gần nhất được ghi nhớ cho chat mới trong trình duyệt.
+
+## Tiện ích
+
+Mở **Tiện ích** ở thanh bên để xem trạng thái và quản lý extension. CodeGraph là tiện ích đầu tiên; trang hiển thị trạng thái cài đặt, kết nối Codex/Claude và chỉ mục của thư mục chat đang hoạt động. Mỗi thao tác yêu cầu xác nhận trước khi chạy, ghi đầu ra vào Nhật ký và cho phép dừng tiến trình. Cài đặt CodeGraph cần Node.js và npm.

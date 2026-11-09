@@ -548,7 +548,7 @@ async fn collect_stderr(stderr: ChildStderr) -> Vec<String> {
     tail.into_iter().collect()
 }
 
-async fn terminate_child_tree(child: &mut Child) {
+pub(crate) async fn terminate_child_tree(child: &mut Child) {
     if matches!(child.try_wait(), Ok(Some(_))) {
         let _ = child.wait().await;
         return;

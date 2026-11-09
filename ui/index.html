@@ -17,6 +17,7 @@
       <div class="sidebar-bottom">
         <div class="local-note"><span class="status-dot"></span> Chỉ chạy trên máy này</div>
         <button id="settings-open" class="settings-open"><span aria-hidden="true">⚙</span> Cài đặt</button>
+        <button id="extensions-open" class="settings-open"><span aria-hidden="true">◇</span> Tiện ích</button>
       </div>
     </aside>
 
@@ -71,6 +72,11 @@
         </div>
       </form>
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+    <main id="extensions-view" class="extensions-view" hidden>
+      <header class="extensions-header"><div><p class="eyebrow">AI HUB</p><h1>Tiện ích</h1><p class="muted">Quản lý tiện ích cho các công cụ AI của bạn.</p></div><button id="extensions-back" class="subtle-button">Quay lại chat</button></header>
+      <section id="extension-cards" class="extension-cards"></section>
+      <section class="extension-log"><h2>Nhật ký</h2><pre id="extension-log" aria-live="polite">Chưa có hoạt động.</pre><button id="extension-stop" class="stop-button" hidden>Dừng</button></section>
     </main>
   </div>
 
