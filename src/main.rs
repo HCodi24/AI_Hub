@@ -5,6 +5,7 @@ mod mutis;
 mod plans;
 mod providers;
 mod server;
+mod verify;
 
 use anyhow::{Context, Result};
 use std::net::SocketAddr;

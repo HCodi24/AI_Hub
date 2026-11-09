@@ -930,7 +930,13 @@ function renderPlanEditor() {
     };
     deps.oninput = validateDeps; const depwrap = el("div"); depwrap.append(deps, depError); cell(depwrap);
     const kind = el("select"); for (const value of ["plan", "small_edit", "code", "test", "docs", "review"]) kind.append(el("option", { value, textContent: value })); kind.value = task.kind; kind.onchange = () => task.kind = kind.value; cell(kind);
-    const status = el("span", { textContent: `${task.status === "waiting" ? "chờ" : task.status}${task.tokens ? ` · ${task.tokens} tokens` : ""}${task.log?.length ? ` · ${task.log.at(-1)}` : ""}`, dataset: { taskStatus: String(task.id) } }); cell(status);
+    const status = el("div", { dataset: { taskStatus: String(task.id) } });
+    status.append(el("span", { textContent: `${task.status === "waiting" ? "chờ" : task.status}${task.tokens ? ` · ${task.tokens} tokens` : ""}${task.log?.length ? ` · ${task.log.at(-1)}` : ""}` }));
+    if (task.verify) status.append(el("span", { className: "gate-chip", textContent: `Kiểm tra: ${task.verify.ok ? "ĐẠT" : "LỖI"}` }));
+    if (task.review) status.append(el("span", { className: "gate-chip", textContent: `Review: ${task.review.verdict || "FAIL"} (${task.review.issues?.length || 0} vấn đề)` }));
+    if (task.verify) status.append(el("details", {}, [el("summary", { textContent: "Tóm tắt kiểm tra" }), el("pre", { textContent: (task.verify.summary_lines || []).join("\n") })]));
+    if (task.review) status.append(el("details", {}, [el("summary", { textContent: "Vấn đề review" }), el("pre", { textContent: JSON.stringify(task.review.issues || [], null, 2) })]));
+    cell(status);
     const actions = el("div");
     const moveUp = () => {
       [plan.tasks[index - 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index - 1]];
@@ -974,6 +980,7 @@ function renderPlanEditor() {
           onclick: async () => { task.status = "xong"; await persistPlan(); renderPlanEditor(); },
         }));
       }
+      actions.append(el("button", { textContent: "Review lại", disabled: isRunning, onclick: () => runTaskGates(task) }));
     }
     cell(actions); body.append(row);
   }
@@ -992,7 +999,10 @@ function renderPlanEditor() {
     },
   });
   const regen = el("button", { textContent: "Lập lại kế hoạch", onclick: () => planFromRequest(plan.request) });
-  root.append(el("p", { className: "token-usage", textContent: `Tổng token kế hoạch: ${plan.tasks.reduce((sum, task) => sum + (task.tokens || 0), 0)}` }), add, regen, approve);
+  const gates = el("div", { className: "plan-gates" });
+  gates.append(el("button", { textContent: "Chạy kiểm tra", disabled: !state.orchestration?.enabled || !state.orchestration?.verify_gate, onclick: () => verifyPlan(plan) }));
+  if (state.orchestration?.enabled) gates.append(el("label", {}, [el("input", { type: "checkbox", checked: !!plan.auto_continue, onchange: event => { plan.auto_continue = event.target.checked; persistPlan(); } }), " Tự chạy tiếp"]));
+  root.append(el("p", { className: "token-usage", textContent: `Tổng token kế hoạch: ${plan.tasks.reduce((sum, task) => sum + (task.tokens || 0), 0)}` }), gates, add, regen, approve);
   for (const task of plan.tasks) if (task.log?.length) root.append(el("pre", { className: "task-log", textContent: task.log.join("\n") }));
 }
 
@@ -1013,7 +1023,7 @@ async function persistPlan() {
 }
 
 async function runPlanTask(task) {
-  task._stopped = false; task.summary = "";
+  task._stopped = false; task.summary = ""; task.diff = "";
   const plan = state.currentPlan, provider = state.config.providers.find(item => item.id === task.assignee);
   if (!provider) return;
   const prompt = `Kế hoạch: ${plan.title}
@@ -1038,6 +1048,7 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
     await readSse(response.body, (event, data) => {
       if (event === "error") { hadError = true; task.log.push(data.text || "Lỗi"); }
       if (event === "delta") task.summary += data.text || "";
+      if (event === "diff") task.diff += data.text || data.diff || "";
       if (event === "log") {
         const text = data.text || "";
         task.log.push(text);
@@ -1049,7 +1060,61 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
     });
     task.status = task._stopped ? "đã dừng" : hadError ? "lỗi" : "xong";
   } catch (error) { hadError = true; task.status = task._stopped ? "đã dừng" : "lỗi"; task.log.push(error.message); }
-  await persistPlan(); renderPlanEditor();
+  await persistPlan();
+  if (!hadError && !task._stopped) await runTaskGates(task);
+  renderPlanEditor();
+  if (plan.auto_continue && task.status === "xong") {
+    const next = plan.tasks.find(item => item.status !== "xong" && item.status !== "lỗi" && item.depends_on.every(id => plan.tasks.find(dep => dep.id === id)?.status === "xong"));
+    if (next) await runPlanTask(next);
+  }
+}
+
+async function verifyPlan(plan) {
+  const response = await api("/api/verify", { method: "POST", body: JSON.stringify({ folder: plan.folder }) });
+  await readSse(response.body, (event, data) => { if (event === "log") showToast(data.text || ""); if (event === "verify") showToast((data.summary_lines || []).join(" · ")); });
+}
+
+function extractJson(text) {
+  let start = -1, depth = 0, quoted = false, escape = false;
+  for (let i = 0; i < text.length; i++) { const c = text[i]; if (start < 0) { if (c === "{") { start = i; depth = 1; } continue; }
+    if (quoted) { if (escape) escape = false; else if (c === "\\") escape = true; else if (c === '"') quoted = false; continue; }
+    if (c === '"') quoted = true; else if (c === "{") depth++; else if (c === "}" && --depth === 0) { try { return JSON.parse(text.slice(start, i + 1)); } catch (_) { start = -1; } }
+  } return null;
+}
+
+async function runTaskGates(task) {
+  const plan = state.currentPlan, cfg = state.orchestration;
+  if (!cfg?.enabled) return;
+  if (cfg.verify_gate) {
+    const response = await api("/api/verify", { method: "POST", body: JSON.stringify({ folder: plan.folder }) });
+    await readSse(response.body, (event, data) => { if (event === "verify") task.verify = data; if (event === "log") task.log.push(data.text || ""); });
+    if (!task.verify?.ok) { task.status = "lỗi"; await persistPlan(); return; }
+  }
+  if (cfg.auto_review && ["code", "test", "docs", "small_edit"].includes(task.kind)) {
+    const lead = cfg.roles?.lead;
+    let reviewer = state.config.providers.find(p => p.id === lead?.provider_id && state.providerStatuses.get(p.id)?.status === "connected");
+    if (!reviewer) reviewer = ["claude_cli", "anthropic", "codex_cli"].map(kind => state.config.providers.find(p => p.kind === kind && state.providerStatuses.get(p.id)?.status === "connected")).find(Boolean);
+    if (!reviewer) { task.status = "lỗi"; task.review = { verdict: "FAIL", issues: [{ severity: "high", file: "", line: 0, problem: "Không có reviewer MutiS kết nối", fix: "Kết nối nhà cung cấp lead hoặc phương án dự phòng" }], notes: "" }; await persistPlan(); return; }
+    const gitDiff = task.diff ? "" : (await api("/api/plan-diff", { method: "POST", body: JSON.stringify({ folder: plan.folder }) })).diff;
+    const prompt = `Review task và trả CHỈ JSON theo schema {"verdict":"PASS|FAIL","issues":[{"severity":"high|medium|low","file":"","line":0,"problem":"","fix":""}],"notes":""}. Task: ${task.title}\nChi tiết: ${task.detail}\nTóm tắt: ${task.summary}\nVerify: ${(task.verify?.summary_lines || []).join("\n")}\nDiff (nếu có):\n${(task.diff || gitDiff || "").slice(0, 30000)}`;
+    let answer = ""; const chatId = crypto.randomUUID();
+    await testProvider(reviewer.id, false);
+    const response = await api("/api/chat", { method: "POST", body: JSON.stringify({ chat_id: chatId, plan_id: plan.id, task_id: String(task.id), provider_id: reviewer.id, model: lead?.model || reviewer.models[0] || "", effort: lead?.effort || "default", folder: plan.folder, permission: "read", messages: [{ role: "user", content: prompt }] }) });
+    await readSse(response.body, (event, data) => { if (event === "delta") answer += data.text || ""; });
+    task.review = extractJson(answer) || { verdict: "FAIL", issues: [{ severity: "high", file: "", line: 0, problem: "Reviewer trả JSON không hợp lệ", fix: "Review lại" }], notes: answer.slice(-1000) };
+    await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(task.id), provider_id: reviewer.id, kind: "review", ok: task.review.verdict === "PASS", detail: JSON.stringify(task.review).slice(0, 4000) }) });
+    if (task.review.verdict === "FAIL") {
+      const blockers = (task.review.issues || []).some(issue => ["high", "medium"].includes(issue.severity));
+      if (cfg.auto_fix && blockers && task.fix_rounds_used < cfg.fix_rounds_max) {
+        task.status = "cần sửa"; task.fix_rounds_used++;
+        const fix = { ...structuredClone(task), id: Math.max(0, ...plan.tasks.map(t => t.id)) + 1, title: `Sửa lỗi review: ${task.title}`, detail: (task.review.issues || []).map(i => `${i.severity} ${i.file}:${i.line} ${i.problem} — ${i.fix}`).join("\n"), depends_on: [task.id], status: "waiting", verify: null, review: null, fix_rounds_used: task.fix_rounds_used };
+        plan.tasks.push(fix); await persistPlan(); await runPlanTask(fix);
+        await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(fix.id), provider_id: reviewer.id, kind: "fix_task", ok: fix.status === "xong", detail: `Task sửa được tạo cho ${task.id}` }) });
+        if (fix.status === "xong") task.status = "xong";
+      } else { task.status = "lỗi"; showToast("Review thất bại; đã hết vòng sửa tự động"); }
+    }
+  }
+  await persistPlan();
 }
 function clearProviderForm() {
   state.settingsProviderId = null;
@@ -1430,7 +1495,7 @@ document.addEventListener("keydown", (event) => {
     if (index >= 0) { event.preventDefault(); items[(index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus(); }
   }
 });
-document.addEventListener("click", (event) => { const pop = $("#mode-popover"); if (!pop.hidden && !event.target.closest(".mode-picker")) { pop.hidden = true; $("#mode-chip").setAttribute("aria-expanded", "false"); } });
+document.addEventListener("click", (event) => { const pop = $("#mode-popover"); if (!document.contains(event.target)) return; if (!pop.hidden && !event.target.closest(".mode-picker")) { pop.hidden = true; $("#mode-chip").setAttribute("aria-expanded", "false"); } });
 $("#composer").addEventListener("submit", (event) => { event.preventDefault(); sendMessage(); });
 $("#stop-button").addEventListener("click", stopChat);
 $("#message-input").addEventListener("input", resizeComposer);

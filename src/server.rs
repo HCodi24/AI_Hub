@@ -157,7 +157,10 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/style.css", get(style_css))
         .route("/api/config", get(get_config).put(put_config))
         .route("/api/mutis", get(get_orchestration).put(put_orchestration))
-        .route("/api/mutis/events", get(orchestration_events))
+        .route(
+            "/api/mutis/events",
+            get(orchestration_events).post(record_orchestration_event),
+        )
         .route(
             "/api/orchestration",
             get(get_orchestration).put(put_orchestration),
@@ -179,6 +182,8 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/api/chats/{chat_id}", get(get_chat).delete(delete_chat))
         .route("/api/plans", get(list_plans).post(generate_plan))
         .route("/api/plans/{id}", get(get_plan).put(save_plan))
+        .route("/api/verify", post(verify_handler))
+        .route("/api/plan-diff", post(plan_diff_handler))
         .route("/api/cli-status", get(cli_status))
         .route("/api/extensions", get(extension_list))
         .route(
@@ -188,6 +193,112 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/api/extensions/{id}/stop", post(extension_stop))
         .layer(middleware::from_fn_with_state(port, enforce_local_host))
         .with_state(state)
+}
+
+#[derive(Deserialize)]
+struct PlanEventInput {
+    plan_id: String,
+    task_id: String,
+    provider_id: String,
+    kind: String,
+    ok: bool,
+    detail: Option<String>,
+}
+async fn record_orchestration_event(
+    State(state): State<AppState>,
+    Json(input): Json<PlanEventInput>,
+) -> ApiResult<Json<Value>> {
+    let config = state.config.read().await;
+    if !config.mutis.effective(config.mutis.event_log) {
+        return Ok(Json(json!({"ok": true, "skipped": true})));
+    }
+    if !matches!(input.kind.as_str(), "review" | "fix_task") {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Loại sự kiện không hợp lệ",
+        ));
+    }
+    state
+        .event_log
+        .append(&Event {
+            ts: mutis::now(),
+            plan_id: Some(input.plan_id),
+            task_id: Some(input.task_id),
+            provider_id: input.provider_id,
+            kind: input.kind,
+            ok: input.ok,
+            duration_ms: None,
+            tokens: None,
+            detail: input.detail,
+        })
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Không thể ghi nhật ký MutiS",
+            )
+        })?;
+    Ok(Json(json!({"ok": true})))
+}
+
+#[derive(Deserialize)]
+struct VerifyRequest {
+    folder: String,
+}
+async fn verify_handler(
+    State(state): State<AppState>,
+    Json(input): Json<VerifyRequest>,
+) -> ApiResult<Response> {
+    let config = state.config.read().await.clone();
+    if !config.mutis.effective(config.mutis.verify_gate) {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Bật MutiS và Cổng kiểm tra trong Cài đặt",
+        ));
+    }
+    let folder = PathBuf::from(input.folder)
+        .canonicalize()
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục không tồn tại"))?;
+    if !folder.is_dir() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Đường dẫn không phải thư mục",
+        ));
+    }
+    let (tx, rx) = mpsc::channel::<String>(32);
+    tokio::spawn(async move {
+        let report = crate::verify::run(&folder, &config.mutis.verify_command, tx.clone()).await;
+        let _ = tx
+            .send(format!(
+                "__VERIFY__{}",
+                serde_json::to_string(&report).unwrap_or_default()
+            ))
+            .await;
+    });
+    let stream = async_stream::stream! { let mut rx=ReceiverStream::new(rx); while let Some(line)=rx.next().await { if let Some(json)=line.strip_prefix("__VERIFY__") { yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("verify").data(json)); } else { yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").json_data(json!({"text":line})).unwrap()); } } };
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct PlanDiffRequest {
+    folder: String,
+}
+async fn plan_diff_handler(Json(input): Json<PlanDiffRequest>) -> ApiResult<Json<Value>> {
+    let folder = PathBuf::from(input.folder)
+        .canonicalize()
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục không tồn tại"))?;
+    let output = tokio::process::Command::new("git")
+        .args(["diff", "--no-color", "HEAD"])
+        .current_dir(folder)
+        .output()
+        .await
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Không chạy được git diff"))?;
+    let diff = String::from_utf8_lossy(&output.stdout)
+        .chars()
+        .take(30_000)
+        .collect::<String>();
+    Ok(Json(json!({"diff":diff})))
 }
 
 async fn get_orchestration(State(state): State<AppState>) -> Json<config::MutisConfig> {
@@ -614,6 +725,9 @@ async fn generate_plan(
                                 log: Vec::new(),
                                 tokens: 0,
                                 chat_id: None,
+                                verify: None,
+                                review: None,
+                                fix_rounds_used: 0,
                             }
                         })
                         .collect();

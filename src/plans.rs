@@ -15,6 +15,8 @@ pub struct Plan {
     pub approved: bool,
     pub tasks: Vec<PlanTask>,
     pub updated_at: u64,
+    #[serde(default)]
+    pub auto_continue: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,6 +44,12 @@ pub struct PlanTask {
     pub tokens: u64,
     #[serde(default)]
     pub chat_id: Option<String>,
+    #[serde(default)]
+    pub verify: Option<serde_json::Value>,
+    #[serde(default)]
+    pub review: Option<serde_json::Value>,
+    #[serde(default)]
+    pub fix_rounds_used: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -193,6 +201,7 @@ impl Plan {
             approved: false,
             tasks,
             updated_at: now(),
+            auto_continue: false,
         }
     }
     pub fn touch(&mut self) {
@@ -225,6 +234,9 @@ mod tests {
             log: Vec::new(),
             tokens: 0,
             chat_id: None,
+            verify: None,
+            review: None,
+            fix_rounds_used: 0,
         }
     }
 

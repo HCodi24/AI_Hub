@@ -1,4 +1,10 @@
-Step 10c of AI Hub. FIRST read .tasks/RULES.md. Design: plans/mutis.md (feature name: MutiS) items 5–6. Steps 10a–10b are done.
+Step 10c of AI Hub. FIRST read .tasks/RULES.md. Design: plans/mutis.md (feature name: MutiS) items 5–6. Steps 10a, 10b, 10b2, 10b3 are done (MutiS roles lead/big/small: the reviewer is the LEAD role with its connection-aware fallback).
+
+FIX FIRST (from live test of 10b3): selecting "✦ MutiS (3 AI)" in the mode popover still CLOSES the popover. Likely the
+click handler re-renders the list so the outside-click check sees a detached target as "outside". Make the outside-click
+handler ignore targets that are no longer in the document (or check composedPath() captured at pointerdown), keep the
+popover open and scroll "Đội MutiS" into view.
+
 
 1. Verify gate (src/verify.rs), effective when orchestration.enabled && verify_gate:
    - `POST /api/verify` {folder} → SSE `log` lines + final `verify` event
@@ -13,8 +19,7 @@ Step 10c of AI Hub. FIRST read .tasks/RULES.md. Design: plans/mutis.md (feature 
    - Timeouts (15 min total), CREATE_NO_WINDOW, kill tree on cancel, strip ANSI, keep only the tail of long outputs;
      summary_lines are what the reviewer and UI show.
 2. Review gate (effective auto_review): after a plan task of kind code/test/docs/small_edit ends OK (and verify ran if
-   enabled), run the reviewer (orchestration.reviewer_provider_id/model; default first connected of claude_cli,
-   anthropic, codex_cli; CLIs with permission "read") with a prompt containing: task title/detail, the task's final
+   enabled), run the reviewer = MutiS lead role (with its runtime fallback; CLIs with permission "read") with a prompt containing: task title/detail, the task's final
    summary, `git diff` of the folder limited to 30 KB (or the deepseek `diff` event), and the verify summary. The reviewer
    must answer ONLY JSON `{"verdict":"PASS|FAIL","issues":[{"severity":"high|medium|low","file":"","line":0,
    "problem":"","fix":""}],"notes":""}` (reuse the robust extract_json). Store `review` on the task; event `review`.
