@@ -404,6 +404,8 @@ async fn generate_plan(
                 let _ = tx.send(ProviderEvent::text("error", e.to_string())).await;
             }
         });
+        // Drop our sender so `event_rx.recv()` returns None once the provider task finishes.
+        drop(event_tx);
         let mut raw = String::new();
         let mut error = None;
         loop {
@@ -463,7 +465,7 @@ async fn generate_plan(
                             .map(|v| v as u32)
                             .collect(),
                         kind,
-                        status: "waiting".into(),
+                        status: "chờ".into(),
                         summary: String::new(),
                         log: Vec::new(),
                         tokens: 0,

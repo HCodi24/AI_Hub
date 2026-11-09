@@ -539,7 +539,9 @@ async function loadConfig() {
 
 function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
-  Object.assign(node, props);
+  const { dataset, ...rest } = props;
+  Object.assign(node, rest);
+  if (dataset) Object.assign(node.dataset, dataset);
   node.append(...children);
   return node;
 }
@@ -577,17 +579,17 @@ async function loadPlans() {
 function renderPlanList() {
   const root = $("#plans-list");
   root.replaceChildren();
-  if (!state.plans.length) { root.textContent = "Ch�a c� k? ho?ch."; return; }
+  if (!state.plans.length) { root.textContent = "Chưa có kế hoạch."; return; }
   for (const plan of state.plans) {
     root.append(el("button", { className: "plan-list-item",
-      textContent: `${plan.title} � ${plan.tasks.length} c�ng vi?c${plan.approved ? " � �? duy?t" : " � b?n nh�p"}`,
+      textContent: `${plan.title} · ${plan.tasks.length} công việc${plan.approved ? " · đã duyệt" : " · bản nháp"}`,
       onclick: () => openPlan(plan) }));
   }
 }
 
 async function planFromRequest(text) {
   const request = text.trim() || [...state.messages].reverse().find(message => message.role === "user")?.content || "";
-  if (!request) { showToast("Nh?p y�u c?u ho?c m? chat c� y�u c?u tr�?c."); return; }
+  if (!request) { showToast("Nhập yêu cầu hoặc mở chat có yêu cầu trước."); return; }
   const buttons = [$("#plan-button"), $("#hint-plan")];
   buttons.forEach(button => { if (button) button.disabled = true; });
   $(".main-panel").hidden = true;
@@ -597,8 +599,8 @@ async function planFromRequest(text) {
   const root = $("#plans-list");
   root.replaceChildren();
   const card = el("section", { className: "plan-progress" });
-  const label = el("p", { textContent: `�ang l?p k? ho?ch b?ng ${provider?.name || "provider"} � 00:00` });
-  const spinner = el("span", { className: "spinner", ariaLabel: "�ang l?p k? ho?ch" });
+  const label = el("p", { textContent: `Đang lập kế hoạch bằng ${provider?.name || "provider"} · 00:00` });
+  const spinner = el("span", { className: "spinner", ariaLabel: "Đang lập kế hoạch" });
   const logs = el("pre", { className: "task-log" });
   const cancel = el("button", { className: "subtle-button", textContent: "Hu?" });
   const controller = new AbortController();
@@ -606,7 +608,7 @@ async function planFromRequest(text) {
   card.append(label, spinner, logs, cancel);
   root.append(card);
   const started = Date.now();
-  const timer = setInterval(() => { const seconds = Math.floor((Date.now() - started) / 1000); label.textContent = `�ang l?p k? ho?ch b?ng ${provider?.name || "provider"} � ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`; }, 1000);
+  const timer = setInterval(() => { const seconds = Math.floor((Date.now() - started) / 1000); label.textContent = `Đang lập kế hoạch bằng ${provider?.name || "provider"} · ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`; }, 1000);
   try {
     const response = await fetch("/api/plans", { method: "POST", signal: controller.signal,
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request, folder: folderInput.value.trim(), provider_id: $("#planner-provider").value || state.config.planner_provider_id, model: $("#planner-model").value || state.config.planner_model }) });
@@ -644,13 +646,13 @@ function renderPlanEditor() {
   const title = el("input", { className: "plan-title", value: plan.title, oninput: event => plan.title = event.target.value });
   root.append(title);
   const table = el("table", { className: "plan-table" });
-  table.innerHTML = "<thead><tr><th>#</th><th>C�ng vi?c</th><th>Giao cho</th><th>Model / effort</th><th>Ph? thu?c</th><th>Lo?i</th><th>Tr?ng th�i</th><th></th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>#</th><th>Công việc</th><th>Giao cho</th><th>Model / effort</th><th>Phụ thuộc</th><th>Loại</th><th>Trạng thái</th><th></th></tr></thead>";
   const body = el("tbody");
   for (const [index, task] of plan.tasks.entries()) {
     const row = el("tr"), cell = child => row.append(el("td", {}, [child]));
     cell(el("span", { textContent: task.id }));
     const editor = el("div");
-    editor.append(el("input", { value: task.title, placeholder: "T�n vi?c", oninput: event => task.title = event.target.value }), el("textarea", { value: task.detail, placeholder: "T?p c?n s?a v� k?t qu? mong �?i", oninput: event => task.detail = event.target.value })); cell(editor);
+    editor.append(el("input", { value: task.title, placeholder: "Tên việc", oninput: event => task.title = event.target.value }), el("textarea", { value: task.detail, placeholder: "Tệp cần sửa và kết quả mong đợi", oninput: event => task.detail = event.target.value })); cell(editor);
     const assignee = el("select");
     for (const provider of state.config.providers) assignee.append(el("option", { value: provider.id, textContent: provider.name }));
     assignee.value = task.assignee;
@@ -678,12 +680,12 @@ function renderPlanEditor() {
     const validateDeps = () => {
       task.depends_on = deps.value.split(",").map(value => value.trim()).filter(Boolean).map(Number);
       const invalid = task.depends_on.some(id => !plan.tasks.some(item => item.id === id));
-      depError.textContent = invalid ? "M? ph? thu?c kh?ng t?n t?i." : "";
+      depError.textContent = invalid ? "Mã phụ thuộc không tồn tại." : "";
       approve.disabled = invalid || hasCycle(plan.tasks);
     };
     deps.oninput = validateDeps; const depwrap = el("div"); depwrap.append(deps, depError); cell(depwrap);
     const kind = el("select"); for (const value of ["plan", "code", "test", "docs", "review"]) kind.append(el("option", { value, textContent: value })); kind.value = task.kind; kind.onchange = () => task.kind = kind.value; cell(kind);
-    const status = el("span", { textContent: `${task.status}${task.tokens ? ` � ${task.tokens} tokens` : ""}${task.log?.length ? ` � ${task.log.at(-1)}` : ""}`, dataset: { taskStatus: String(task.id) } }); cell(status);
+    const status = el("span", { textContent: `${task.status === "waiting" ? "chờ" : task.status}${task.tokens ? ` · ${task.tokens} tokens` : ""}${task.log?.length ? ` · ${task.log.at(-1)}` : ""}`, dataset: { taskStatus: String(task.id) } }); cell(status);
     const actions = el("div");
     const moveUp = () => {
       [plan.tasks[index - 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index - 1]];
@@ -698,29 +700,54 @@ function renderPlanEditor() {
       renderPlanEditor();
     };
     actions.append(
-      el("button", { textContent: "?", disabled: index === 0, onclick: moveUp }),
-      el("button", { textContent: "?", disabled: index === plan.tasks.length - 1, onclick: moveDown }),
-      el("button", { textContent: "?", onclick: removeTask }),
+      el("button", { textContent: "↑", title: "Lên", disabled: index === 0, onclick: moveUp }),
+      el("button", { textContent: "↓", title: "Xuống", disabled: index === plan.tasks.length - 1, onclick: moveDown }),
+      el("button", { textContent: "×", title: "Xoá", onclick: removeTask }),
     );
-    if (plan.approved) actions.append(el("button", { textContent: "Ch?y", onclick: () => runPlanTask(task) }));
+    if (plan.approved) {
+      const isRunning = task.status === "đang chạy";
+      const depsDone = task.depends_on.every(id => plan.tasks.find(item => item.id === id)?.status === "xong");
+      const finished = ["xong", "lỗi", "đã dừng"].includes(task.status);
+      actions.append(el("button", {
+        textContent: finished ? "Chạy lại" : "Chạy",
+        title: depsDone ? "" : "Chờ các công việc phụ thuộc xong",
+        disabled: isRunning || !depsDone,
+        onclick: () => runPlanTask(task),
+      }));
+      if (isRunning) {
+        actions.append(el("button", {
+          textContent: "Dừng",
+          onclick: async () => {
+            task._stopped = true;
+            if (task.chat_id) await api(`/api/chat/${encodeURIComponent(task.chat_id)}/stop`, { method: "POST" });
+          },
+        }));
+      }
+      if (task.status !== "xong" && !isRunning) {
+        actions.append(el("button", {
+          textContent: "Đánh dấu xong",
+          onclick: async () => { task.status = "xong"; await persistPlan(); renderPlanEditor(); },
+        }));
+      }
+    }
     cell(actions); body.append(row);
   }
   table.append(body); root.append(table);
-  const approve = el("button", { textContent: plan.approved ? "�? duy?t" : "Duy?t k? ho?ch", disabled: plan.approved || hasCycle(plan.tasks), onclick: async () => { plan.approved = true; await persistPlan(); renderPlanEditor(); } });
+  const approve = el("button", { textContent: plan.approved ? "Đã duyệt" : "Duyệt kế hoạch", disabled: plan.approved || hasCycle(plan.tasks), onclick: async () => { plan.approved = true; await persistPlan(); renderPlanEditor(); } });
   const add = el("button", {
-    textContent: "+ Th?m c?ng vi?c",
+    textContent: "+ Thêm công việc",
     onclick: () => {
       plan.tasks.push({
         id: Math.max(0, ...plan.tasks.map(task => task.id)) + 1,
-        title: "C?ng vi?c m?i", detail: "", assignee: state.config.providers[0]?.id || "",
+        title: "Công việc mới", detail: "", assignee: state.config.providers[0]?.id || "",
         model: "", effort: "default", depends_on: [], kind: "code", status: "ch?",
         summary: "", log: [], tokens: 0,
       });
       renderPlanEditor();
     },
   });
-  const regen = el("button", { textContent: "L?p l?i k? ho?ch", onclick: () => planFromRequest(plan.request) });
-  root.append(el("p", { className: "token-usage", textContent: `T?ng token k? ho?ch: ${plan.tasks.reduce((sum, task) => sum + (task.tokens || 0), 0)}` }), add, regen, approve);
+  const regen = el("button", { textContent: "Lập lại kế hoạch", onclick: () => planFromRequest(plan.request) });
+  root.append(el("p", { className: "token-usage", textContent: `Tổng token kế hoạch: ${plan.tasks.reduce((sum, task) => sum + (task.tokens || 0), 0)}` }), add, regen, approve);
   for (const task of plan.tasks) if (task.log?.length) root.append(el("pre", { className: "task-log", textContent: task.log.join("\n") }));
 }
 
@@ -732,7 +759,11 @@ function hasCycle(tasks) {
 }
 
 async function persistPlan() {
-  state.currentPlan = await api(`/api/plans/${state.currentPlan.id}`, { method: "PUT", body: JSON.stringify(state.currentPlan) });
+  // Keep the local plan object as the source of truth: running tasks hold references into it,
+  // so replacing it with the server copy would make their later status updates get lost.
+  const plan = state.currentPlan;
+  const body = JSON.stringify(plan, (key, value) => (key.startsWith("_") ? undefined : value));
+  await api(`/api/plans/${plan.id}`, { method: "PUT", body });
   await loadPlans();
 }
 
@@ -740,8 +771,12 @@ async function runPlanTask(task) {
   task._stopped = false; task.summary = "";
   const plan = state.currentPlan, provider = state.config.providers.find(item => item.id === task.assignee);
   if (!provider) return;
-  const prompt = `K? ho?ch: ${plan.title}\nC�ng vi?c: ${task.title}\nChi ti?t: ${task.detail}\nT�m t?t c�ng vi?c ph? thu?c �? ho�n t?t:\n${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || "").join("\n")}`;
-  const chatId = task.chat_id || crypto.randomUUID(); task.chat_id = chatId; task.status = "�ang ch?y"; task.log = [];
+  const prompt = `Kế hoạch: ${plan.title}
+Công việc: ${task.title}
+Chi tiết: ${task.detail}
+Tóm tắt công việc phụ thuộc đã hoàn tất:
+${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || "").join("\n")}`;
+  const chatId = task.chat_id || crypto.randomUUID(); task.chat_id = chatId; task.status = "đang chạy"; task.log = [];
   await persistPlan(); renderPlanEditor();
   let hadError = false;
   try {
@@ -756,14 +791,19 @@ async function runPlanTask(task) {
       }),
     });
     await readSse(response.body, (event, data) => {
-      if (event === "error") { hadError = true; task.log.push(data.text || "L?i"); }
+      if (event === "error") { hadError = true; task.log.push(data.text || "Lỗi"); }
       if (event === "delta") task.summary += data.text || "";
-      if (event === "log") task.log.push(data.text || "");
+      if (event === "log") {
+        const text = data.text || "";
+        task.log.push(text);
+        const usage = text.match(/^Token: vào (\d+).*?ra (\d+)/);
+        if (usage) task.tokens = (task.tokens || 0) + Number(usage[1]) + Number(usage[2]);
+      }
       const node = $(`[data-task-status="${task.id}"]`);
-      if (node) node.textContent = `${task.status} ? ${task.log.at(-1) || ""}`;
+      if (node) node.textContent = `${task.status} · ${task.log.at(-1) || ""}`;
     });
-    task.status = task._stopped ? "�? d?ng" : hadError ? "l?i" : "xong";
-  } catch (error) { hadError = true; task.status = task._stopped ? "�? d?ng" : "l?i"; task.log.push(error.message); }
+    task.status = task._stopped ? "đã dừng" : hadError ? "lỗi" : "xong";
+  } catch (error) { hadError = true; task.status = task._stopped ? "đã dừng" : "lỗi"; task.log.push(error.message); }
   await persistPlan(); renderPlanEditor();
 }
 function clearProviderForm() {
@@ -980,7 +1020,7 @@ async function discoverCli() {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "candidate-option";
-        item.textContent = `${candidate.path} ? ${candidate.version} ? ${candidate.source}`;
+        item.textContent = `${candidate.path} · ${candidate.version} · ${candidate.source}`;
         item.title = item.textContent;
         item.addEventListener("click", () => pick(candidate));
         area.append(item);
