@@ -12,6 +12,8 @@ const state = {
   settingsProviderId: null,
   toastTimer: null,
   effort: "default",
+  providerStatuses: new Map(),
+  providerChecking: new Set(),
 };
 
 const EFFORT_KINDS = new Set(["codex_cli", "openai_compat", "anthropic"]);
@@ -126,6 +128,9 @@ function renderModePicker() {
   const supported = EFFORT_KINDS.has(provider?.kind);
   $("#mode-chip-effort").textContent = supported ? ` ${EFFORT_LABELS[state.effort] || EFFORT_LABELS.default}` : "";
   chip.title = modelInput.value;
+  const status = state.providerStatuses.get(provider?.id);
+  chip.dataset.status = state.providerChecking.has(provider?.id) ? "checking" : (status?.status || "unknown");
+  chip.title = `${modelInput.value}${status ? ` · ${status.detail}` : " · Chưa kiểm tra"}`;
   $("#mode-effort-section").hidden = !supported;
   const providers = $("#mode-providers"); providers.replaceChildren();
   for (const item of state.config?.providers || []) {
@@ -542,6 +547,8 @@ function clearProviderForm() {
   $("#provider-models").value = "";
   $("#provider-delete").hidden = true;
   $("#provider-form-note").textContent = "";
+  $("#cli-candidates").hidden = true;
+  updateConnectionLine();
   renderProviderSettingsList();
   updateProviderFormKind();
 }
@@ -553,7 +560,12 @@ function renderProviderSettingsList() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `provider-chip${provider.id === state.settingsProviderId ? " selected" : ""}`;
-    button.textContent = provider.name;
+    const dot = document.createElement("span"); dot.className = "status-dot";
+    const status = state.providerStatuses.get(provider.id);
+    button.dataset.status = state.providerChecking.has(provider.id) ? "checking" : (status?.status || "unknown");
+    button.title = status?.detail || (status?.status === "not_configured" ? "Chưa cấu hình" : "Chưa kiểm tra");
+    const label = document.createElement("span"); label.textContent = provider.name;
+    button.append(dot, label);
     button.addEventListener("click", () => editProvider(provider.id));
     root.append(button);
   }
@@ -573,9 +585,45 @@ function editProvider(id) {
   $("#provider-models").value = (provider.models || []).join("\n");
   $("#provider-delete").hidden = false;
   $("#provider-form-note").textContent = "";
+  $("#cli-candidates").hidden = true;
   renderProviderSettingsList();
   updateProviderFormKind();
+  updateConnectionLine();
 }
+
+function updateConnectionLine() {
+  const id = state.settingsProviderId;
+  const status = state.providerStatuses.get(id);
+  const line = $("#provider-connection");
+  const busy = state.providerChecking.has(id);
+  line.className = `connection-detail ${busy ? "checking" : (status?.status || "unknown")}`;
+  line.textContent = busy ? "Đang kiểm tra…" : (status?.message || "Chưa kiểm tra");
+  line.title = status?.detail || "";
+  $("#provider-test").disabled = !id || busy;
+}
+
+async function testProvider(id, toastResult = true) {
+  if (!id) return;
+  state.providerChecking.add(id); renderProviderSettingsList(); updateConnectionLine(); renderModePicker();
+  try {
+    const result = await api(`/api/providers/${encodeURIComponent(id)}/test`, { method: "POST" });
+    const previous = state.providerStatuses.get(id);
+    state.providerStatuses.set(id, result);
+    if (toastResult && result.status === "connected" && previous?.status !== "connected") {
+      const name = state.config?.providers.find((p) => p.id === id)?.name || id; showToast(`✓ Đã kết nối ${name}`);
+    } else if (toastResult && result.status === "error" && previous?.status !== "error") {
+      const name = state.config?.providers.find((p) => p.id === id)?.name || id; showToast(`✗ ${name}: ${result.message}`);
+    }
+  } catch (error) {
+    const result = { status: "error", message: "Không kết nối được", detail: error.message };
+    state.providerStatuses.set(id, result);
+    if (toastResult) showToast(`✗ ${state.config?.providers.find((p) => p.id === id)?.name || id}: ${result.message}`);
+  } finally {
+    state.providerChecking.delete(id); renderProviderSettingsList(); updateConnectionLine(); renderModePicker();
+  }
+}
+
+async function testAllProviders() { await Promise.all((state.config?.providers || []).map((p) => testProvider(p.id, true))); }
 
 function updateProviderFormKind() {
   const kind = $("#provider-kind").value;
@@ -583,10 +631,11 @@ function updateProviderFormKind() {
   const showExecutable = kind === "codex_cli" || kind === "claude_cli";
   $("#base-url-field").hidden = !showUrl;
   $("#provider-executable-field").hidden = !showExecutable;
+  $("#cli-discover").hidden = !showExecutable;
   $("#models-load").hidden = !showUrl;
 }
 
-async function saveProvider(event) {
+async function saveProvider(event, testAfterSave = true) {
   event.preventDefault();
   const id = state.settingsProviderId;
   const models = $("#provider-models").value.split(/\r?\n/).map((model) => model.trim()).filter(Boolean);
@@ -612,6 +661,7 @@ async function saveProvider(event) {
     $("#provider-form-note").textContent = "Đã lưu nguồn.";
     renderProviderSettingsList();
     setupProviderControls(providerSelect.value || state.settingsProviderId);
+    if (testAfterSave) await testProvider(state.settingsProviderId, true);
   } catch (error) {
     $("#provider-form-note").textContent = error.message;
   }
@@ -671,6 +721,28 @@ async function refreshCliStatus() {
   } catch (error) { root.textContent = error.message; }
 }
 
+async function discoverCli() {
+  const kind = $("#provider-kind").value; const name = kind === "codex_cli" ? "codex" : "claude";
+  const button = $("#cli-discover"); const area = $("#cli-candidates");
+  button.disabled = true; button.textContent = "Đang tìm…"; area.hidden = true; area.replaceChildren();
+  try {
+    const candidates = await api(`/api/cli-discover/${name}`);
+    const pick = async (candidate) => { $("#provider-executable").value = candidate.path; area.hidden = true; await saveProvider(new Event("submit", { cancelable: true }), false); if (state.settingsProviderId) { await testProvider(state.settingsProviderId, false); const status = state.providerStatuses.get(state.settingsProviderId); if (status?.status === "connected") showToast(`✓ Đã tìm thấy và kết nối ${name === "codex" ? "Codex CLI" : "Claude Code CLI"} (${candidate.version})`); else showToast(`✗ ${name === "codex" ? "Codex CLI" : "Claude Code CLI"}: ${status?.message || "Không kết nối được"}`); } };
+    if (candidates.length === 1) await pick(candidates[0]);
+    else if (candidates.length > 1) {
+      const title = document.createElement("strong"); title.textContent = "Chọn bản cài đặt:"; area.append(title);
+      for (const candidate of candidates) { const item = document.createElement("button"); item.type = "button"; item.className = "candidate-option"; item.textContent = `${candidate.path} · ${candidate.version} · ${candidate.source}`; item.title = item.textContent; item.addEventListener("click", () => pick(candidate)); area.append(item); }
+      area.hidden = false;
+    } else {
+      const hint = name === "codex" ? "npm i -g @openai/codex" : "npm i -g @anthropic-ai/claude-code";
+      const text = document.createElement("span"); text.textContent = `Không tìm thấy · ${hint}`;
+      const copy = document.createElement("button"); copy.type = "button"; copy.className = "subtle-button"; copy.textContent = "Sao chép"; copy.addEventListener("click", () => navigator.clipboard.writeText(hint));
+      area.append(text, copy); area.hidden = false;
+    }
+  } catch (error) { area.textContent = error.message; area.hidden = false; }
+  finally { button.disabled = false; button.textContent = "Tự tìm trên máy"; }
+}
+
 async function saveDefaultFolder() {
   if (!state.config || !folderInput.value.trim()) return;
   state.config.default_folder = folderInput.value.trim();
@@ -683,6 +755,7 @@ $("#settings-open").addEventListener("click", async () => {
   $("#settings-dialog").showModal();
   if (state.settingsProviderId) editProvider(state.settingsProviderId);
   else clearProviderForm();
+  testAllProviders();
   await refreshCliStatus();
 });
 $("#provider-select").addEventListener("change", () => { updateModels(); updatePermissionControl(); rememberCurrentChat(); saveLastMode(); });
@@ -732,6 +805,8 @@ $("#provider-add").addEventListener("click", clearProviderForm);
 $("#provider-kind").addEventListener("change", updateProviderFormKind);
 $("#provider-form").addEventListener("submit", saveProvider);
 $("#provider-delete").addEventListener("click", deleteProvider);
+$("#provider-test").addEventListener("click", () => testProvider(state.settingsProviderId));
+$("#cli-discover").addEventListener("click", discoverCli);
 $("#models-load").addEventListener("click", loadModels);
 $("#cli-refresh").addEventListener("click", refreshCliStatus);
 

@@ -135,6 +135,8 @@ pub fn router(state: AppState, port: u16) -> Router {
             put(update_provider).delete(remove_provider),
         )
         .route("/api/providers/{id}/models", get(provider_models))
+        .route("/api/providers/{id}/test", post(test_provider))
+        .route("/api/cli-discover/{name}", get(discover_cli))
         .route("/api/chat", post(chat_handler))
         .route("/api/chat/{chat_id}/stop", post(stop_chat))
         .route("/api/chats", get(list_chats))
@@ -358,6 +360,122 @@ async fn provider_models(
         }
     }
     Ok(Json(ModelsResponse { models }))
+}
+
+#[derive(Serialize)]
+struct ConnectionTest { ok: bool, status: &'static str, message: String, detail: String }
+
+async fn test_provider(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<ConnectionTest>> {
+    let provider = state.config.read().await.providers.iter().find(|p| p.id == id).cloned()
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?;
+    let result = match provider.kind.as_str() {
+        "openai_compat" if provider.api_key.trim().is_empty() => not_configured(),
+        "openai_compat" => {
+            let url = format!("{}/models", provider.base_url.trim().trim_end_matches('/'));
+            match timeout(Duration::from_secs(15), reqwest::Client::new().get(url).bearer_auth(&provider.api_key).send()).await {
+                Err(_) => connection(false, "error", "Không kết nối được", "Hết thời gian chờ kết nối"),
+                Ok(Err(e)) => connection(false, "error", "Không kết nối được", &e.to_string()),
+                Ok(Ok(response)) if response.status().is_success() => {
+                    let detail = timeout(Duration::from_secs(15), response.json::<Value>()).await
+                        .ok().and_then(Result::ok).unwrap_or(Value::Null);
+                    let count = detail["data"].as_array().map_or(0, Vec::len);
+                    connection(true, "connected", &format!("Đã kết nối · {count} model"), &format!("Đã nhận {count} model từ {}", provider.base_url))
+                }
+                Ok(Ok(response)) => match response.status().as_u16() {
+                    401 | 403 => connection(false, "error", "Sai API key", &format!("HTTP {}", response.status())),
+                    404 => connection(false, "error", "Sai Base URL", "HTTP 404"),
+                    _ => connection(false, "error", "Không kết nối được", &format!("HTTP {}", response.status())),
+                }
+            }
+        }
+        "anthropic" if provider.api_key.trim().is_empty() => not_configured(),
+        "anthropic" => match timeout(Duration::from_secs(15), reqwest::Client::new().get("https://api.anthropic.com/v1/models").header("x-api-key", &provider.api_key).header("anthropic-version", "2023-06-01").send()).await {
+            Err(_) => connection(false,"error","Không kết nối được","Hết thời gian chờ kết nối"),
+            Ok(Err(e)) => connection(false,"error","Không kết nối được",&e.to_string()),
+            Ok(Ok(r)) if r.status().is_success() => connection(true,"connected","Đã kết nối", "Anthropic API phản hồi thành công"),
+            Ok(Ok(r)) if r.status().as_u16()==401 || r.status().as_u16()==403 => connection(false,"error","Sai API key",&format!("HTTP {}",r.status())),
+            Ok(Ok(r)) => connection(false,"error","Không kết nối được",&format!("HTTP {}",r.status())),
+        },
+        "codex_cli" | "claude_cli" => {
+            let name = if provider.kind == "codex_cli" { "codex" } else { "claude" };
+            match cli_probe(name, &provider.executable, Duration::from_secs(10)).await {
+                Some((version,path)) => connection(true,"connected",&format!("Đã kết nối · {version} · {path}"),&path),
+                None if provider.executable.trim().is_empty() && providers::cli_support::resolve_executable(name,None).is_none() => not_configured(),
+                None => connection(false,"error","Không kết nối được","Không chạy được --version trong 10 giây hoặc phản hồi không hợp lệ"),
+            }
+        }
+        _ => connection(false,"error","Không kết nối được","Loại nhà cung cấp không được hỗ trợ"),
+    };
+    Ok(Json(result))
+}
+fn connection(ok: bool,status: &'static str,message: &str,detail: &str)->ConnectionTest { ConnectionTest{ok,status,message:message.into(),detail:detail.into()} }
+fn not_configured()->ConnectionTest { connection(false,"not_configured","Chưa cấu hình","Hãy nhập API key hoặc chọn file CLI") }
+
+async fn cli_probe(name: &str, explicit: &str, limit: Duration) -> Option<(String,String)> {
+    let path=providers::cli_support::resolve_executable(name,Some(explicit))?;
+    if unsafe_cli_path(&path) { return None; }
+    let text=run_cli_version(&path,limit).await?;
+    let valid=if name=="codex" { text.to_lowercase().contains("codex") } else { text.contains("Claude Code") };
+    valid.then(|| (text, path.to_string_lossy().into_owned()))
+}
+fn unsafe_cli_path(path:&std::path::Path)->bool {
+    let text=path.to_string_lossy().to_lowercase();
+    if text.contains("\\program files\\windowsapps\\") { return true; }
+    if path.file_name().is_some_and(|f| f.to_string_lossy().eq_ignore_ascii_case("Claude.exe")) {
+        return path.parent().is_some_and(|p| p.join("resources").join("app.asar").exists());
+    }
+    false
+}
+async fn run_cli_version(path:&std::path::Path, limit:Duration)->Option<String> {
+    let mut command=providers::cli_support::command_for(path,&[OsString::from("--version")]);
+    command.stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+    let output=timeout(limit,command.output()).await.ok()?.ok()?;
+    if !output.status.success(){return None}
+    let stdout=String::from_utf8_lossy(&output.stdout); let stderr=String::from_utf8_lossy(&output.stderr);
+    let value=if stdout.trim().is_empty(){stderr.trim()}else{stdout.trim()};
+    (!value.is_empty()).then(|| value.chars().take(240).collect())
+}
+
+#[derive(Serialize)] struct CliCandidate { path:String, version:String, source:String }
+async fn discover_cli(Path(name):Path<String>)->ApiResult<Json<Vec<CliCandidate>>> {
+    if !["codex","claude"].contains(&name.as_str()) { return Err(ApiError::new(StatusCode::BAD_REQUEST,"CLI không hợp lệ")); }
+    let deadline=Instant::now()+Duration::from_secs(20);
+    let search_name=name.clone();
+    let found=timeout(deadline.saturating_duration_since(Instant::now()),tokio::task::spawn_blocking(move || discovery_paths(&search_name))).await
+        .ok().and_then(Result::ok).unwrap_or_default();
+    let mut results=Vec::new();
+    for (path,source) in found.into_iter().take(200) {
+        if Instant::now() >= deadline { break; }
+        if unsafe_cli_path(&path){continue}
+        if let Some(version)=run_cli_version(&path,(deadline-Instant::now()).min(Duration::from_secs(10))).await {
+            let matches=if name=="codex" {version.to_lowercase().contains("codex")} else {version.contains("Claude Code")};
+            if matches && !results.iter().any(|c:&CliCandidate| c.version==version && canonical_install(PathBuf::from(&c.path))==canonical_install(path.clone())) {
+                results.push(CliCandidate{path:path.to_string_lossy().into_owned(),version,source});
+            }
+        }
+    }
+    Ok(Json(results))
+}
+fn canonical_install(path:PathBuf)->PathBuf { path.canonicalize().unwrap_or(path) }
+fn discovery_paths(name:&str)->Vec<(PathBuf,String)> {
+    let mut out=Vec::new();
+    let mut add=|p:PathBuf,s:&str| { if p.is_file() && !out.iter().any(|(x,_)| x==&p) {out.push((p,s.into()));} };
+    for dir in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) { for n in [format!("{name}.cmd"),format!("{name}.exe"),name.into()] {add(dir.join(n),"PATH");} }
+    if let Some(path)=providers::cli_support::resolve_executable(name,None) { add(path,"resolved executable"); }
+    #[cfg(windows)] {
+      let app=std::env::var_os("APPDATA").map(PathBuf::from); let local=std::env::var_os("LOCALAPPDATA").map(PathBuf::from); let user=std::env::var_os("USERPROFILE").map(PathBuf::from);
+      if let Some(a)=app.as_ref() {
+        add(a.join("npm").join(format!("{name}.cmd")),"npm");
+        if name=="codex" {
+          let vendor=a.join("npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor");
+          if let Ok(entries)=std::fs::read_dir(vendor) { for e in entries.flatten().take(200) { add(e.path().join("bin/codex.exe"),"npm bundled"); } }
+        }
+      }
+      if let Some(u)=user { if name=="claude" {add(u.join(".local/bin/claude.exe"),"user local bin"); add(u.join(".claude/local/claude"),"Claude Code"); add(u.join(".claude/local/claude.exe"),"Claude Code"); add(u.join(".claude/local/claude.cmd"),"Claude Code");} }
+      if let Some(l)=local.as_ref() { if name=="codex" { let root=l.join("OpenAI/Codex/bin"); if let Ok(entries)=std::fs::read_dir(root) { for e in entries.flatten().take(200) { add(e.path().join("codex.exe"),"Codex app"); } } } }
+      if let Some(l)=local { let root=l.join("Packages"); if let Ok(packages)=std::fs::read_dir(root) { for package in packages.flatten().take(200) { add(package.path().join(format!("LocalCache/Roaming/npm/{name}.cmd")),"package npm"); } } }
+    }
+    out
 }
 
 async fn chat_handler(

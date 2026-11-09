@@ -135,6 +135,24 @@ button { cursor: pointer; }
 .provider-settings-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 15px; }
 .provider-chip { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; background: transparent; color: var(--muted); font-size: 10px; }
 .provider-chip.selected { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.provider-chip { display: inline-flex; align-items: center; gap: 6px; }
+.status-dot { display: inline-block; width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: #858b98; }
+[data-status="connected"] .status-dot { background: #45c878; }
+[data-status="error"] .status-dot { background: #ed6268; }
+[data-status="checking"] .status-dot { background: #d9a441; animation: pulse 1s ease-in-out infinite; }
+#mode-chip[data-status="connected"] > .status-dot { background: #45c878; }
+#mode-chip[data-status="error"] > .status-dot { background: #ed6268; }
+#mode-chip[data-status="checking"] > .status-dot { background: #d9a441; animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+.connection-row { display: flex; align-items: center; gap: 10px; }
+.connection-detail { flex: 1; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.connection-detail.connected { color: #45c878; }
+.connection-detail.error { color: #ed777b; }
+.connection-detail.checking { color: #d9a441; }
+.executable-row { display: flex; align-items: end; gap: 8px; }
+.executable-row label { flex: 1; }
+.cli-candidates { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 10px; }
+.candidate-option { padding: 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); text-align: left; overflow-wrap: anywhere; font-size: 10px; }
 .provider-form { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
 .provider-form label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 600; }
 .provider-form input, .provider-form select, .provider-form textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; outline: none; padding: 8px 9px; background: var(--panel); color: var(--text); font-size: 11px; font-weight: 400; }

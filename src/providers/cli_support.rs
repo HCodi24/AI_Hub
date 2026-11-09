@@ -20,7 +20,7 @@ use tokio_util::sync::CancellationToken;
 pub fn resolve_executable(name: &str, explicit_path: Option<&str>) -> Option<PathBuf> {
     if let Some(path) = explicit_path.map(str::trim).filter(|path| !path.is_empty()) {
         let path = PathBuf::from(path);
-        if path.is_file() {
+        if path.is_file() && safe_cli_executable(&path) {
             return Some(path);
         }
     }
@@ -93,12 +93,23 @@ fn find_in_directories(
     for name in names {
         for directory in &directories {
             let candidate = directory.join(name);
-            if candidate.is_file() {
+            if candidate.is_file() && safe_cli_executable(&candidate) {
                 return Some(candidate);
             }
         }
     }
     None
+}
+
+fn safe_cli_executable(path: &Path) -> bool {
+    let lower = path.to_string_lossy().to_lowercase();
+    if lower.contains("\\program files\\windowsapps\\") {
+        return false;
+    }
+    if path.file_name().is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("Claude.exe")) {
+        return !path.parent().is_some_and(|parent| parent.join("resources").join("app.asar").exists());
+    }
+    true
 }
 
 #[cfg(windows)]
@@ -194,7 +205,7 @@ fn newest_codex_install() -> Option<PathBuf> {
                 return None;
             }
             let executable = entry.path().join("codex.exe");
-            if !executable.is_file() {
+            if !executable.is_file() || !safe_cli_executable(&executable) {
                 return None;
             }
             let modified = executable

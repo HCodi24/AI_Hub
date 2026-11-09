@@ -56,7 +56,7 @@
         <textarea id="message-input" rows="1" placeholder="Nhắn tin với AI…" aria-label="Tin nhắn"></textarea>
         <div class="composer-footer">
           <div class="mode-picker">
-            <button id="mode-chip" type="button" aria-expanded="false" aria-controls="mode-popover"><span id="mode-chip-provider"></span><span id="mode-chip-model"></span><span id="mode-chip-effort" class="muted-inline"></span><span aria-hidden="true" class="mode-chevron">⌃</span></button>
+            <button id="mode-chip" type="button" aria-expanded="false" aria-controls="mode-popover"><span class="status-dot"></span><span id="mode-chip-provider"></span><span id="mode-chip-model"></span><span id="mode-chip-effort" class="muted-inline"></span><span aria-hidden="true" class="mode-chevron">⌃</span></button>
             <div id="mode-popover" class="mode-popover" hidden>
               <section><h3>Nguồn</h3><div id="mode-providers" role="radiogroup" aria-label="Nguồn"></div></section>
               <section><h3>Model</h3><div id="mode-models" role="radiogroup" aria-label="Model"></div><button id="mode-other" type="button" class="mode-row">Model khác…</button></section>
@@ -91,7 +91,9 @@
           </div>
           <label id="base-url-field">URL cơ sở<input id="provider-url" type="url" placeholder="https://api.example.com/v1"></label>
           <label>API key<input id="provider-key" type="password" autocomplete="new-password" placeholder="Để trống để giữ key đã lưu"></label>
-          <label id="provider-executable-field" hidden>Đường dẫn file chạy (để trống = tự tìm)<input id="provider-executable" type="text" autocomplete="off" placeholder="C:\Users\...\AppData\Roaming\npm\codex.cmd"></label>
+          <div id="provider-executable-field" class="executable-row" hidden><label>Đường dẫn file chạy (để trống = tự tìm)<input id="provider-executable" type="text" autocomplete="off" placeholder="C:\Users\...\AppData\Roaming\npm\codex.cmd"></label><button id="cli-discover" class="subtle-button" type="button">Tự tìm trên máy</button></div>
+          <div class="connection-row"><span id="provider-connection" class="connection-detail">Chưa kiểm tra</span><button id="provider-test" class="subtle-button" type="button">Kiểm tra kết nối</button></div>
+          <div id="cli-candidates" class="cli-candidates" hidden></div>
           <label>Danh sách model <span class="muted-inline">(mỗi dòng một model)</span><textarea id="provider-models" rows="3" placeholder="model-name"></textarea></label>
           <div class="form-actions">
             <button id="models-load" class="subtle-button" type="button">Tải danh sách model</button>
