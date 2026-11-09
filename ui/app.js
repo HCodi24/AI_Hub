@@ -14,6 +14,7 @@ const state = {
   effort: "default",
   providerStatuses: new Map(),
   providerChecking: new Set(),
+  plans: [], currentPlan: null, planRunning: false,
 };
 
 const EFFORT_KINDS = new Set(["codex_cli", "openai_compat", "anthropic"]);
@@ -533,7 +534,24 @@ async function loadConfig() {
   state.config = await api("/api/config");
   setupProviderControls(state.config.providers[0]?.id);
   folderInput.value = state.config.default_folder || "";
+  renderPlannerSettings();
 }
+
+function renderPlannerSettings() {
+  const select=$("#planner-provider"); if(!select)return; select.replaceChildren();
+  for(const p of state.config?.providers||[]){const o=document.createElement("option");o.value=p.id;o.textContent=p.name;select.append(o)}
+  const preferred=state.config?.planner_provider_id||["claude_cli","anthropic","codex_cli"].map(k=>state.config?.providers.find(p=>p.kind===k)).find(Boolean)?.id||state.config?.providers[0]?.id;
+  select.value=preferred||""; $("#planner-model").value=state.config?.planner_model||state.config?.providers.find(p=>p.id===select.value)?.models[0]||"";
+  const datalist=$("#planner-model-options");datalist.replaceChildren();for(const m of state.config?.providers.find(p=>p.id===select.value)?.models||[]){const o=document.createElement("option");o.value=m;datalist.append(o)}
+}
+async function savePlannerConfig(){state.config.planner_provider_id=$("#planner-provider").value;state.config.planner_model=$("#planner-model").value.trim();await api("/api/config",{method:"PUT",body:JSON.stringify({default_folder:state.config.default_folder,planner_provider_id:state.config.planner_provider_id,planner_model:state.config.planner_model})})}
+async function loadPlans(){state.plans=await api("/api/plans");renderPlanList()}
+function renderPlanList(){const root=$("#plans-list");root.replaceChildren();if(!state.plans.length){root.textContent="Chưa có kế hoạch.";return}for(const p of state.plans){const b=document.createElement("button");b.className="plan-list-item";b.textContent=`${p.title} · ${p.tasks.length} công việc${p.approved?" · đã duyệt":" · bản nháp"}`;b.addEventListener("click",()=>openPlan(p));root.append(b)}}
+async function planFromRequest(text){const request=text.trim()||[...state.messages].reverse().find(m=>m.role==="user")?.content||"";if(!request){showToast("Nhập yêu cầu hoặc mở chat có yêu cầu trước.");return}try{const p=await api("/api/plans",{method:"POST",body:JSON.stringify({request,folder:folderInput.value.trim(),provider_id:$("#planner-provider").value||state.config.planner_provider_id,model:$("#planner-model").value||state.config.planner_model})});await loadPlans();openPlan(p)}catch(e){$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=false;const root=$("#plans-list");root.replaceChildren();const raw=document.createElement("pre");raw.className="task-log";raw.textContent=e.message;const retry=document.createElement("button");retry.className="primary-button";retry.textContent="Th\u1eed l\u1ea1i";retry.onclick=()=>planFromRequest(text);root.append(raw,retry)}}
+function openPlan(p){state.currentPlan=structuredClone(p);$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=false;renderPlanEditor()}
+function renderPlanEditor(){const root=$("#plan-editor"),p=state.currentPlan;if(!p)return;root.hidden=false;root.replaceChildren();const title=document.createElement("input");title.value=p.title;title.className="plan-title";title.oninput=()=>p.title=title.value;root.append(title);const table=document.createElement("table");table.className="plan-table";table.innerHTML="<thead><tr><th>#</th><th>Công việc</th><th>Giao cho</th><th>Phụ thuộc</th><th>Loại</th><th>Trạng thái</th><th></th></tr></thead>";const body=document.createElement("tbody");for(const [i,t] of p.tasks.entries()){const tr=document.createElement("tr");const cell=(x)=>{const td=document.createElement("td");td.append(x);tr.append(td)};const id=document.createElement("span");id.textContent=t.id;cell(id);const editor=document.createElement("div");const name=document.createElement("input");name.value=t.title;name.placeholder="Tên việc";name.oninput=()=>t.title=name.value;const detail=document.createElement("textarea");detail.value=t.detail;detail.placeholder="Tệp cần sửa và kết quả mong đợi";detail.oninput=()=>t.detail=detail.value;editor.append(name,detail);cell(editor);const ass=document.createElement("select");for(const prov of state.config.providers){const o=document.createElement("option");o.value=prov.id;o.textContent=prov.name;ass.append(o)}ass.value=t.assignee;ass.onchange=()=>t.assignee=ass.value;cell(ass);const deps=document.createElement("input");deps.value=(t.depends_on||[]).join(",");deps.onchange=()=>t.depends_on=deps.value.split(",").map(v=>+v.trim()).filter(Number.isFinite);cell(deps);const kind=document.createElement("select");for(const k of ["plan","code","test","docs","review"]){const o=document.createElement("option");o.value=k;o.textContent=k;kind.append(o)}kind.value=t.kind;kind.onchange=()=>t.kind=kind.value;cell(kind);const status=document.createElement("span");status.textContent=`${t.status}${t.tokens?` \u00b7 ${t.tokens} tokens`:""}${t.log?.length?` \u00b7 ${t.log.at(-1)}`:""}`;cell(status);const actions=document.createElement("div");const up=document.createElement("button");up.textContent="\u2191";up.disabled=i===0;up.onclick=()=>{[p.tasks[i-1],p.tasks[i]]=[p.tasks[i],p.tasks[i-1]];renderPlanEditor()};const down=document.createElement("button");down.textContent="\u2193";down.disabled=i===p.tasks.length-1;down.onclick=()=>{[p.tasks[i+1],p.tasks[i]]=[p.tasks[i],p.tasks[i+1]];renderPlanEditor()};actions.append(up,down);const del=document.createElement("button");del.textContent="×";del.onclick=()=>{p.tasks.splice(i,1);renderPlanEditor()};actions.append(del);if(p.approved){const run=document.createElement("button");run.textContent=["xong","l\u1ed7i","\u0111\u00e3 d\u1eebng"].includes(t.status)?"Ch\u1ea1y l\u1ea1i":"Ch\u1ea1y";run.disabled=t.depends_on.some(d=>p.tasks.find(x=>x.id===d)?.status!=="xong");run.onclick=()=>runPlanTask(t);actions.append(run);if(t.status==="\u0111ang ch\u1ea1y"){const stop=document.createElement("button");stop.textContent="D\u1eebng";stop.onclick=async()=>{await api(`/api/chat/${encodeURIComponent(t.chat_id)}/stop`,{method:"POST"});t._stopped=true;t.status="\u0111\u00e3 d\u1eebng";await persistPlan();renderPlanEditor()};actions.append(stop)}const done=document.createElement("button");done.textContent="Đánh dấu xong";done.onclick=()=>{t.status="xong";persistPlan();renderPlanEditor()};actions.append(done)}cell(actions);body.append(tr)}table.append(body);root.append(table);const add=document.createElement("button");add.textContent="+ Thêm công việc";add.onclick=()=>{p.tasks.push({id:Math.max(0,...p.tasks.map(t=>t.id))+1,title:"Công việc mới",detail:"",assignee:state.config.providers[0]?.id||"",depends_on:[],kind:"code",status:"chờ",summary:"",log:[],tokens:0});renderPlanEditor()};const regen=document.createElement("button");regen.textContent="Lập lại kế hoạch";regen.onclick=()=>planFromRequest(p.request);const approve=document.createElement("button");approve.textContent=p.approved?"Đã duyệt":"Duyệt kế hoạch";approve.disabled=p.approved;approve.onclick=async()=>{p.approved=true;await persistPlan();renderPlanEditor()};const total=document.createElement("p");total.className="token-usage";total.textContent=`T\u1ed5ng token k\u1ebf ho\u1ea1ch: ${p.tasks.reduce((n,t)=>n+(t.tokens||0),0)}`;root.append(total,add,regen,approve);for(const t of p.tasks){if(t.log?.length){const logs=document.createElement("pre");logs.className="task-log";logs.textContent=t.log.join("\n");root.append(logs)}}}
+async function persistPlan(){state.currentPlan=await api(`/api/plans/${state.currentPlan.id}`,{method:"PUT",body:JSON.stringify(state.currentPlan)});await loadPlans()}
+async function runPlanTask(t){t._stopped=false;const p=state.currentPlan, provider=state.config.providers.find(x=>x.id===t.assignee);if(!provider)return;const prompt=`Kế hoạch: ${p.title}\nCông việc: ${t.title}\nChi tiết: ${t.detail}\nTóm tắt công việc phụ thuộc đã hoàn tất:\n${t.depends_on.map(id=>p.tasks.find(x=>x.id===id)?.summary||"").join("\n")}`;const cid=t.chat_id||crypto.randomUUID();t.chat_id=cid;t.status="đang chạy";t.log=[];await persistPlan();renderPlanEditor();try{const r=await api("/api/chat",{method:"POST",body:JSON.stringify({chat_id:cid,provider_id:provider.id,model:provider.models[0]||"",folder:p.folder,permission:["code","test","docs"].includes(t.kind)?"write":"read",messages:[{role:"user",content:prompt}]})});await readSse(r.body,(event,d)=>{if(event==="error"){t.status="l\u1ed7i";t.log.push(d.text||"L\u1ed7i")};if(event==="delta")t.summary=(t.summary||"")+(d.text||"");if(event==="log"){t.log.push(d.text||"");if((d.text||"").startsWith("Token:")){const m=d.text.match(/Token:.*?(\d+) \(cache \d+\), ra (\d+)/);t.tokens=m?Number(m[1])+Number(m[2]):t.tokens}}renderPlanEditor()});t.status=t._stopped?"\u0111\u00e3 d\u1eebng":"xong"}catch(e){t.status="lỗi";t.log.push(e.message)}await persistPlan();renderPlanEditor()}
 
 function clearProviderForm() {
   state.settingsProviderId = null;
@@ -746,7 +764,7 @@ async function discoverCli() {
 async function saveDefaultFolder() {
   if (!state.config || !folderInput.value.trim()) return;
   state.config.default_folder = folderInput.value.trim();
-  try { state.config = await api("/api/config", { method: "PUT", body: JSON.stringify({ default_folder: state.config.default_folder }) }); }
+  try { state.config = await api("/api/config", { method: "PUT", body: JSON.stringify({ default_folder: state.config.default_folder, planner_provider_id: state.config.planner_provider_id || "", planner_model: state.config.planner_model || "" }) }); }
   catch (error) { showToast(error.message); }
 }
 
@@ -774,11 +792,20 @@ async function runExtensionAction(card,action){
 }
 $("#extensions-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=false;try{await loadExtensions()}catch(e){showToast(e.message)}});
 $("#extensions-back").addEventListener("click",()=>{$("#extensions-view").hidden=true;$(".main-panel").hidden=false});
+$("#plans-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=false;$("#plan-editor").hidden=true;try{await loadPlans()}catch(e){showToast(e.message)}});
+$("#plans-back").addEventListener("click",()=>{$("#plans-view").hidden=true;$(".main-panel").hidden=false});
+$("#plan-button").addEventListener("click",()=>planFromRequest(messageInput.value));
+$("#hint-plan").addEventListener("click",()=>planFromRequest(messageInput.value));
+$("#hint-dismiss").addEventListener("click",()=>{$("#plan-hint").hidden=true});
+messageInput.addEventListener("input",()=>{const v=messageInput.value.toLowerCase();const suggest=v.length>300||["làm app","xây dựng","thêm tính năng","refactor"].some(x=>v.includes(x));$("#plan-hint").hidden=!suggest});
+$("#planner-provider").addEventListener("change",()=>{const p=state.config.providers.find(x=>x.id===$("#planner-provider").value);$("#planner-model").value=p?.models[0]||"";renderPlannerSettings();savePlannerConfig().catch(e=>showToast(e.message))});
+$("#planner-model").addEventListener("change",()=>savePlannerConfig().catch(e=>showToast(e.message)));
 $("#extension-stop").addEventListener("click",()=>fetch("/api/extensions/codegraph/stop",{method:"POST"}));
 
 $("#new-chat").addEventListener("click", newChat);
 $("#settings-open").addEventListener("click", async () => {
   $("#settings-dialog").showModal();
+  renderPlannerSettings();
   if (state.settingsProviderId) editProvider(state.settingsProviderId);
   else clearProviderForm();
   testAllProviders();

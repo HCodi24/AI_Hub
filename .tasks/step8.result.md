@@ -1,0 +1,5 @@
+Implemented phase 1 of “Chia việc.” The composer now has an explicit planning button and a dismissible hint for large requests. The sidebar opens saved plans, where tasks can be edited, added, deleted, and reordered before approval. After approval, tasks run manually in task chats with dependency gating, stop and retry controls, task logs, token totals, and a plan total. Plans persist under `<config_dir>/ai-hub/plans/`.
+
+The planner prompt includes the request, working folder, up to 200 folder paths with the specified directories skipped, and available provider details. Planner provider and model settings were added. Planner responses are parsed from the first JSON object; failures show the raw answer and a retry button. Updated [README.md](C:/TOOL/ai-hub/README.md) and [SPEC.md](C:/TOOL/ai-hub/SPEC.md).
+
+**Verification:** `CARGO_TARGET_DIR=target-codex cargo build --release --offline` completed successfully. `CARGO_TARGET_DIR=target-codex cargo clippy --release --offline -- -D warnings` completed successfully. No real AI calls were made.

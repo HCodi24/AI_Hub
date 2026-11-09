@@ -56,3 +56,7 @@ Nút chế độ cạnh khung nhập tin cho biết nguồn AI, model và mức 
 ## Tiện ích
 
 Mở **Tiện ích** ở thanh bên để xem trạng thái và quản lý extension. CodeGraph là tiện ích đầu tiên; trang hiển thị trạng thái cài đặt, kết nối Codex/Claude và chỉ mục của thư mục chat đang hoạt động. Mỗi thao tác yêu cầu xác nhận trước khi chạy, ghi đầu ra vào Nhật ký và cho phép dừng tiến trình. Cài đặt CodeGraph cần Node.js và npm.
+
+## Chia việc (phase 1)
+
+AI Hub có thể đề xuất kế hoạch công việc từ nội dung đang soạn hoặc tin nhắn người dùng gần nhất. Mở **Chia việc** ở thanh bên để chỉnh sửa, sắp xếp, thêm hoặc xóa việc và duyệt kế hoạch trước khi thực thi. Kế hoạch được lưu tại `<config_dir>/ai-hub/plans/`. Người lập kế hoạch chọn trong phần Cài đặt; mỗi công việc chỉ chạy khi người dùng bấm **Chạy**, và chỉ bật khi các phụ thuộc đã hoàn tất. Công việc dùng chat riêng theo nhà cung cấp được giao và quyền đọc/ghi theo loại công việc. Không có tự động chạy nối tiếp.

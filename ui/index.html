@@ -14,6 +14,7 @@
       <button id="new-chat" class="new-chat"><span aria-hidden="true">＋</span> Chat mới</button>
       <div class="section-label">LỊCH SỬ</div>
       <nav id="chat-list" class="chat-list" aria-label="Danh sách chat"></nav>
+      <button id="plans-open" class="new-chat" type="button">✦ Chia việc</button>
       <div class="sidebar-bottom">
         <div class="local-note"><span class="status-dot"></span> Chỉ chạy trên máy này</div>
         <button id="settings-open" class="settings-open"><span aria-hidden="true">⚙</span> Cài đặt</button>
@@ -54,6 +55,7 @@
       </section>
 
       <form id="composer" class="composer">
+        <div id="plan-hint" class="plan-hint" hidden>Yêu cầu này khá lớn — <button type="button" id="hint-plan">✦ Gợi ý chia việc?</button><button type="button" id="hint-dismiss" aria-label="Đóng">×</button></div>
         <textarea id="message-input" rows="1" placeholder="Nhắn tin với AI…" aria-label="Tin nhắn"></textarea>
         <div class="composer-footer">
           <div class="mode-picker">
@@ -67,12 +69,14 @@
           <div class="composer-actions">
             <span class="composer-hint">Enter để gửi · Shift+Enter xuống dòng</span>
             <button id="stop-button" class="stop-button" type="button" hidden>Dừng</button>
+            <button id="plan-button" class="subtle-button" type="button" title="Lập kế hoạch chia nhỏ yêu cầu">✦ Gợi ý chia việc</button>
             <button id="send-button" class="send-button" type="submit" aria-label="Gửi tin nhắn">↑</button>
           </div>
         </div>
       </form>
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
     </main>
+    <main id="plans-view" class="extensions-view" hidden><header class="extensions-header"><div><p class="eyebrow">AI HUB</p><h1>Chia việc</h1><p class="muted">Lập kế hoạch, chỉnh sửa và duyệt trước khi chạy từng công việc.</p></div><button id="plans-back" class="subtle-button">Quay lại chat</button></header><section id="plans-list"></section><section id="plan-editor" hidden></section></main>
     <main id="extensions-view" class="extensions-view" hidden>
       <header class="extensions-header"><div><p class="eyebrow">AI HUB</p><h1>Tiện ích</h1><p class="muted">Quản lý tiện ích cho các công cụ AI của bạn.</p></div><button id="extensions-back" class="subtle-button">Quay lại chat</button></header>
       <section id="extension-cards" class="extension-cards"></section>
@@ -86,6 +90,7 @@
       <button class="icon-button" value="cancel" aria-label="Đóng">×</button>
     </form>
     <div class="settings-content">
+      <section class="planner-settings"><div class="section-heading"><h3>Người lập kế hoạch</h3></div><label>Nhà cung cấp<select id="planner-provider"></select></label><label>Model<input id="planner-model" list="planner-model-options"><datalist id="planner-model-options"></datalist></label></section>
       <section class="provider-settings">
         <div class="section-heading"><h3>Nguồn AI</h3><button id="provider-add" class="subtle-button" type="button">＋ Thêm nguồn</button></div>
         <div id="provider-settings-list" class="provider-settings-list"></div>

@@ -26,6 +26,10 @@ pub struct Config {
     pub providers: Vec<ProviderConfig>,
     #[serde(default = "default_folder")]
     pub default_folder: String,
+    #[serde(default)]
+    pub planner_provider_id: String,
+    #[serde(default)]
+    pub planner_model: String,
 }
 
 fn default_folder() -> String {
@@ -83,6 +87,8 @@ impl Config {
                 },
             ],
             default_folder: default_folder(),
+            planner_provider_id: String::new(),
+            planner_model: String::new(),
         }
     }
 }

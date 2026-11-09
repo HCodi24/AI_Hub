@@ -1,6 +1,7 @@
 use crate::{
     chat::{self, ChatMessage, ChatRecord, ChatRequest, ChatStore},
     config::{self, Config, ProviderConfig},
+    plans::{Plan, PlanStore, PlanTask},
     providers::{self, ProviderEvent, ProviderRequest},
 };
 use axum::{
@@ -37,6 +38,7 @@ pub struct AppState {
     config: Arc<RwLock<Config>>,
     config_path: PathBuf,
     chats: ChatStore,
+    plans: PlanStore,
     running: Arc<Mutex<HashMap<String, RunningChat>>>,
     extension_running: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
@@ -49,10 +51,12 @@ struct RunningChat {
 
 impl AppState {
     pub fn new(config: Config, config_path: PathBuf, chat_dir: PathBuf) -> Self {
+        let plans = PlanStore::new(&config_path).expect("config path has a parent");
         Self {
             config: Arc::new(RwLock::new(config)),
             config_path,
             chats: ChatStore::new(chat_dir),
+            plans,
             running: Arc::new(Mutex::new(HashMap::new())),
             extension_running: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -101,6 +105,20 @@ struct ProviderInput {
 #[derive(Debug, Deserialize)]
 struct ConfigInput {
     default_folder: String,
+    #[serde(default)]
+    planner_provider_id: String,
+    #[serde(default)]
+    planner_model: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlanRequest {
+    request: String,
+    folder: String,
+    #[serde(default)]
+    provider_id: String,
+    #[serde(default)]
+    model: String,
 }
 
 #[derive(Serialize)]
@@ -144,6 +162,8 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/api/chat/{chat_id}/stop", post(stop_chat))
         .route("/api/chats", get(list_chats))
         .route("/api/chats/{chat_id}", get(get_chat).delete(delete_chat))
+        .route("/api/plans", get(list_plans).post(generate_plan))
+        .route("/api/plans/{id}", get(get_plan).put(save_plan))
         .route("/api/cli-status", get(cli_status))
         .route("/api/extensions", get(extension_list))
         .route(
@@ -212,12 +232,300 @@ async fn get_config(State(state): State<AppState>) -> Json<Config> {
     Json(config)
 }
 
+async fn list_plans(State(state): State<AppState>) -> ApiResult<Json<Vec<Plan>>> {
+    state
+        .plans
+        .list()
+        .map(Json)
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không đọc được kế hoạch"))
+}
+async fn get_plan(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Plan>> {
+    state
+        .plans
+        .get(&id)
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không đọc được kế hoạch"))?
+        .map(Json)
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy kế hoạch"))
+}
+async fn save_plan(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(mut plan): Json<Plan>,
+) -> ApiResult<Json<Plan>> {
+    if plan.id != id || !chat::valid_id(&id) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Mã kế hoạch không hợp lệ",
+        ));
+    }
+    if plan.tasks.iter().any(|t| {
+        t.title.trim().is_empty()
+            || t.detail.trim().is_empty()
+            || !matches!(
+                t.kind.as_str(),
+                "plan" | "code" | "test" | "docs" | "review"
+            )
+    }) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Công việc chưa hợp lệ",
+        ));
+    }
+    plan.touch();
+    state
+        .plans
+        .save(&plan)
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được kế hoạch"))?;
+    Ok(Json(plan))
+}
+async fn generate_plan(
+    State(state): State<AppState>,
+    Json(input): Json<PlanRequest>,
+) -> ApiResult<Json<Plan>> {
+    let folder = PathBuf::from(input.folder.trim())
+        .canonicalize()
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục làm việc không tồn tại"))?;
+    let cfg = state.config.read().await.clone();
+    let provider_id = if input.provider_id.is_empty() {
+        if cfg.planner_provider_id.is_empty() {
+            cfg.providers
+                .iter()
+                .find(|p| p.kind == "claude_cli")
+                .or_else(|| cfg.providers.iter().find(|p| p.kind == "anthropic"))
+                .or_else(|| cfg.providers.iter().find(|p| p.kind == "codex_cli"))
+                .map(|p| p.id.clone())
+                .unwrap_or_default()
+        } else {
+            cfg.planner_provider_id.clone()
+        }
+    } else {
+        input.provider_id
+    };
+    let provider_cfg = cfg
+        .providers
+        .iter()
+        .find(|p| p.id == provider_id)
+        .cloned()
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Chọn Người lập kế hoạch trong Cài đặt",
+            )
+        })?;
+    let model = if input.model.trim().is_empty() {
+        if cfg.planner_model.is_empty() {
+            provider_cfg.models.first().cloned().unwrap_or_default()
+        } else {
+            cfg.planner_model
+        }
+    } else {
+        input.model
+    };
+    if model.trim().is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Nhà lập kế hoạch cần model",
+        ));
+    }
+    let tree = file_tree(&folder);
+    let workers = cfg
+        .providers
+        .iter()
+        .map(|p| {
+            format!(
+                "{} ({}, {})",
+                p.id,
+                p.kind,
+                if (p.kind == "codex_cli" || p.kind == "claude_cli")
+                    && providers::cli_support::resolve_executable(
+                        if p.kind == "codex_cli" {
+                            "codex"
+                        } else {
+                            "claude"
+                        },
+                        Some(&p.executable)
+                    )
+                    .is_some()
+                {
+                    "connected"
+                } else if !p.api_key.trim().is_empty() || p.kind.ends_with("_cli") {
+                    "configured; connection not probed"
+                } else {
+                    "not configured"
+                }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt = format!("You are a task planner. Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[{{\"id\":1,\"title\":\"...\",\"detail\":\"files to touch + expected result\",\"assignee\":\"provider id\",\"depends_on\":[ids],\"kind\":\"plan|code|test|docs|review\"}}]}}. Make tasks small. No two parallel tasks may edit the same file. Claude/planner for design and review, Codex for multi-file code, DeepSeek Deploy for tests from a given list, docs, and mechanical edits.\nRequest:\n{}\nWorking folder: {}\nFiles (max 200):\n{}\nAvailable workers and connection status:\n{}", input.request, folder.display(), tree, workers);
+    let provider = providers::for_kind(&provider_cfg.kind)
+        .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
+    let (tx, mut rx) = mpsc::channel(32);
+    let req = ProviderRequest {
+        provider: provider_cfg.clone(),
+        model,
+        folder: folder.to_string_lossy().into_owned(),
+        permission: chat::Permission::Read,
+        effort: chat::Effort::Default,
+        messages: vec![ChatMessage {
+            role: "user".into(),
+            content: prompt,
+            reasoning: String::new(),
+            logs: Vec::new(),
+            error: None,
+        }],
+        session_id: None,
+    };
+    tokio::spawn(async move {
+        let cancel = CancellationToken::new();
+        if let Err(e) = provider.run(req, tx.clone(), cancel).await {
+            let _ = tx.send(ProviderEvent::text("error", e.to_string())).await;
+        }
+    });
+    let mut raw = String::new();
+    let mut error = None;
+    while let Some(event) = rx.recv().await {
+        if event.name == "delta" {
+            raw.push_str(event.data["text"].as_str().unwrap_or(""));
+        } else if event.name == "error" {
+            error = Some(
+                event.data["text"]
+                    .as_str()
+                    .unwrap_or("planner failed")
+                    .to_owned(),
+            );
+        }
+    }
+    if let Some(error) = error {
+        return Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            format!("{error}\n\nRaw answer:\n{raw}"),
+        ));
+    }
+    let parsed = extract_json(&raw)
+        .and_then(|v| serde_json::from_str::<Value>(v).ok())
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::BAD_GATEWAY,
+                format!("Không đọc được JSON từ kế hoạch. Thử lại.\n\n{raw}"),
+            )
+        })?;
+    let title = parsed["title"]
+        .as_str()
+        .unwrap_or("Kế hoạch mới")
+        .to_owned();
+    let tasks = parsed["tasks"]
+        .as_array()
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::BAD_GATEWAY,
+                format!("Thiếu danh sách tasks. Thử lại.\n\n{raw}"),
+            )
+        })?
+        .iter()
+        .enumerate()
+        .map(|(i, t)| PlanTask {
+            id: t["id"].as_u64().unwrap_or(i as u64 + 1) as u32,
+            title: t["title"].as_str().unwrap_or("Công việc").into(),
+            detail: t["detail"].as_str().unwrap_or("").into(),
+            assignee: t["assignee"].as_str().unwrap_or(&provider_id).into(),
+            depends_on: t["depends_on"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_u64)
+                .map(|n| n as u32)
+                .collect(),
+            kind: t["kind"].as_str().unwrap_or("code").into(),
+            status: "chờ".into(),
+            summary: String::new(),
+            log: Vec::new(),
+            tokens: 0,
+            chat_id: None,
+        })
+        .collect();
+    let plan = Plan::new(
+        title,
+        folder.to_string_lossy().into_owned(),
+        input.request,
+        tasks,
+    );
+    state
+        .plans
+        .save(&plan)
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được kế hoạch"))?;
+    Ok(Json(plan))
+}
+fn extract_json(raw: &str) -> Option<&str> {
+    let start = raw.find('{')?;
+    let mut depth = 0;
+    let mut quoted = false;
+    let mut escape = false;
+    for (offset, c) in raw[start..].char_indices() {
+        if quoted {
+            if escape {
+                escape = false
+            } else if c == '\\' {
+                escape = true
+            } else if c == '"' {
+                quoted = false
+            }
+        } else if c == '"' {
+            quoted = true
+        } else if c == '{' {
+            depth += 1
+        } else if c == '}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(&raw[start..start + offset + c.len_utf8()]);
+            }
+        }
+    }
+    None
+}
+fn file_tree(root: &std::path::Path) -> String {
+    fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {
+        if out.len() >= 200 {
+            return;
+        }
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if out.len() >= 200 {
+                    break;
+                }
+                let path = entry.path();
+                let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy();
+                if path.is_dir()
+                    && [".git", "target", "node_modules", ".codegraph"]
+                        .iter()
+                        .any(|name| path.file_name().is_some_and(|n| n == *name))
+                {
+                    continue;
+                }
+                out.push(if path.is_dir() {
+                    format!("{rel}/")
+                } else {
+                    rel.to_string()
+                });
+                if path.is_dir() {
+                    walk(&path, root, out);
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, root, &mut out);
+    out.join("\n")
+}
+
 async fn put_config(
     State(state): State<AppState>,
     Json(input): Json<ConfigInput>,
 ) -> ApiResult<Json<Config>> {
     let mut config = state.config.write().await;
     config.default_folder = input.default_folder.trim().to_owned();
+    config.planner_provider_id = input.planner_provider_id;
+    config.planner_model = input.planner_model;
     config::save(&state.config_path, &config)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
     let mut response = config.clone();

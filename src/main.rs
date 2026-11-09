@@ -1,6 +1,7 @@
 mod chat;
 mod config;
 mod extensions;
+mod plans;
 mod providers;
 mod server;
 

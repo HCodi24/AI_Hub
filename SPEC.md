@@ -73,3 +73,9 @@ Auth, multi-user, remote access, Tauri window, key rotation.
 Trang **Tiện ích** toàn chiều rộng liệt kê catalog extension dạng thẻ, gồm tên, mô tả, liên kết homepage mở tab mới với `rel=noopener`, trạng thái cài đặt/kết nối/ thư mục hiện tại và các thao tác phù hợp. Nhật ký ở cuối trang nhận đầu ra streaming. Mọi thao tác yêu cầu xác nhận lệnh chính xác và phạm vi file có thể sửa; hoàn tất hiển thị ✓/✗ và làm mới trạng thái.
 
 Backend cung cấp `GET /api/extensions?folder=...`, cùng `POST /api/extensions/{id}/actions/{action}` trả SSE `log`, `error`, `done {ok}` và endpoint dừng tiến trình. Catalog Rust giữ executable, đối số phiên bản, thao tác và trạng thái; client chỉ truyền ID và folder. Mỗi extension chỉ chạy một thao tác tại một thời điểm; tác vụ hết hạn sau 10 phút. Trước khi sửa cấu hình, tạo bản sao trong `<config_dir>/ai-hub/backups/`. CodeGraph được catalog với cài đặt npm global, kết nối Codex/Claude, lập chỉ mục folder, nâng cấp và gỡ cài đặt.
+
+## Step 8 — Chia việc (phase 1)
+- Planner provider/model are configurable. Planning receives the request, canonical working folder, up to 200 paths (excluding `.git`, `target`, `node_modules`, `.codegraph`), and configured worker IDs/kinds/status hints. The planner is asked for JSON only; the first balanced JSON object is parsed.
+- Plans persist as `<config_dir>/ai-hub/plans/<uuid>.json`. Users can edit task title/detail, assignee, dependencies and kind, add/remove tasks, then approve.
+- Approved tasks are manually started in task chats. Code/test/docs use write permission; plan/review use read. Dependencies gate the Run button. No automatic chaining.
+- The composer offers explicit planning and a dismissible hint for long/large requests; neither runs automatically.
