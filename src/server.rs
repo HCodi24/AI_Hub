@@ -159,6 +159,7 @@ pub fn router(state: AppState, port: u16) -> Router {
         )
         .route("/api/providers/{id}/models", get(provider_models))
         .route("/api/providers/{id}/test", post(test_provider))
+        .route("/api/providers/{id}/login", post(login_provider))
         .route("/api/cli-discover/{name}", get(discover_cli))
         .route("/api/chat", post(chat_handler))
         .route("/api/chat/{chat_id}/stop", post(stop_chat))
@@ -868,6 +869,21 @@ async fn test_provider_uncached(
                 "claude"
             };
             match cli_probe(name, &provider.executable, Duration::from_secs(10)).await {
+                Some((version, path)) if name == "claude" => {
+                    match run_cli_auth_status(std::path::Path::new(&path), Duration::from_secs(10))
+                        .await
+                    {
+                        Some(true) => {
+                            connection(true, "connected", &format!("Đã kết nối · {version}"), &path)
+                        }
+                        Some(false) => {
+                            connection(false, "error", "Claude Code chưa đăng nhập", &path)
+                        }
+                        None => {
+                            connection(true, "connected", &format!("Đã kết nối · {version}"), &path)
+                        }
+                    }
+                }
                 Some((version, path)) => connection(
                     true,
                     "connected",
@@ -934,7 +950,62 @@ async fn test_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<ConnectionTest>> {
+    state.provider_status.lock().await.remove(&id);
     cached_provider_test(&state, &id).await.map(Json)
+}
+
+async fn login_provider(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    let provider = state
+        .config
+        .read()
+        .await
+        .providers
+        .iter()
+        .find(|p| p.id == id)
+        .cloned()
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Provider not found"))?;
+    if provider.kind != "claude_cli" {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Login is only available for Claude Code CLI",
+        ));
+    }
+    let path = providers::cli_support::resolve_executable("claude", Some(&provider.executable))
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Claude Code CLI not found"))?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/D", "/S", "/C"]);
+        let raw = String::from("start \"Claude login\" \"%AI_HUB_CLI_EXECUTABLE%\" auth login");
+        command.env("AI_HUB_CLI_EXECUTABLE", &path);
+        for (name, _) in std::env::vars() {
+            let upper = name.to_ascii_uppercase();
+            if upper.starts_with("CLAUDE") || upper.starts_with("ANTHROPIC_") {
+                command.env_remove(name);
+            }
+        }
+        command.raw_arg(format!("\"{raw}\""));
+        command
+            .spawn()
+            .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+    }
+    #[cfg(not(windows))]
+    {
+        let mut command = providers::cli_support::command_for(
+            &path,
+            &[OsString::from("auth"), OsString::from("login")],
+        );
+        providers::cli_support::clean_claude_environment(&mut command);
+        command
+            .spawn()
+            .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+    }
+    state.provider_status.lock().await.remove(&id);
+    Ok(StatusCode::ACCEPTED)
 }
 fn connection(ok: bool, status: &'static str, message: &str, detail: &str) -> ConnectionTest {
     ConnectionTest {
@@ -974,6 +1045,13 @@ fn unsafe_cli_path(path: &std::path::Path) -> bool {
 }
 async fn run_cli_version(path: &std::path::Path, limit: Duration) -> Option<String> {
     let mut command = providers::cli_support::command_for(path, &[OsString::from("--version")]);
+    if path
+        .file_name()
+        .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("claude.exe"))
+        || path.to_string_lossy().to_lowercase().contains("claude")
+    {
+        providers::cli_support::clean_claude_environment(&mut command);
+    }
     command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -990,6 +1068,22 @@ async fn run_cli_version(path: &std::path::Path, limit: Duration) -> Option<Stri
         stdout.trim()
     };
     (!value.is_empty()).then(|| value.chars().take(240).collect())
+}
+
+async fn run_cli_auth_status(path: &std::path::Path, limit: Duration) -> Option<bool> {
+    let mut command = providers::cli_support::command_for(
+        path,
+        &[OsString::from("auth"), OsString::from("status")],
+    );
+    providers::cli_support::clean_claude_environment(&mut command);
+    command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    let output = timeout(limit, command.output()).await.ok()?.ok()?;
+    // `claude auth status` exits with code 1 when logged out but still prints the JSON,
+    // so parse stdout regardless of the exit status.
+    providers::cli_support::parse_auth_logged_in(&output.stdout)
 }
 
 #[derive(Serialize)]
@@ -1150,6 +1244,36 @@ fn discovery_paths(name: &str) -> Vec<(PathBuf, String)> {
             }
         }
         if let Some(l) = local.as_ref() {
+            if name == "claude" {
+                let root = l.join("Claude-Data");
+                let mut app_candidates = Vec::new();
+                if let Ok(installs) = std::fs::read_dir(root) {
+                    for install in installs.flatten().take(200) {
+                        let versions = install.path().join("claude-code");
+                        if let Ok(entries) = std::fs::read_dir(versions) {
+                            for version in entries.flatten().take(200) {
+                                let Some(parsed) = providers::cli_support::version_dir_key(
+                                    &version.file_name().to_string_lossy(),
+                                ) else {
+                                    continue;
+                                };
+                                if let Ok(hashes) = std::fs::read_dir(version.path()) {
+                                    for hash in hashes.flatten().take(200) {
+                                        let executable = hash.path().join("claude.exe");
+                                        if executable.is_file() {
+                                            app_candidates.push((parsed.clone(), executable));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                app_candidates.sort_by(|(left, _), (right, _)| right.cmp(left));
+                for (_, path) in app_candidates {
+                    add(path, "Claude app");
+                }
+            }
             if name == "codex" {
                 let root = l.join("OpenAI/Codex/bin");
                 if let Ok(entries) = std::fs::read_dir(root) {
@@ -1556,6 +1680,9 @@ async fn cli_info(name: &str, explicit_path: String) -> CliInfo {
     };
     let path_text = path.to_string_lossy().into_owned();
     let mut command = providers::cli_support::command_for(&path, &[OsString::from("--version")]);
+    if name == "claude" {
+        providers::cli_support::clean_claude_environment(&mut command);
+    }
     command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -55,9 +55,88 @@ pub fn resolve_executable(name: &str, explicit_path: Option<&str>) -> Option<Pat
                 return Some(path);
             }
         }
+        if name.eq_ignore_ascii_case("claude") {
+            if let Some(path) = newest_claude_app_install() {
+                return Some(path);
+            }
+        }
     }
 
     None
+}
+
+#[cfg(windows)]
+fn newest_claude_app_install() -> Option<PathBuf> {
+    let root = PathBuf::from(env::var_os("LOCALAPPDATA")?).join("Claude-Data");
+    let mut candidates = std::fs::read_dir(root)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter_map(|install| {
+            if !install.file_type().ok()?.is_dir() {
+                return None;
+            }
+            let versions = install.path().join("claude-code");
+            Some(
+                std::fs::read_dir(versions)
+                    .ok()?
+                    .filter_map(Result::ok)
+                    .filter_map(|version| {
+                        if !version.file_type().ok()?.is_dir() {
+                            return None;
+                        }
+                        let version_name = version.file_name().to_string_lossy().into_owned();
+                        let parsed = version_dir_key(&version_name)?;
+                        let hashes = std::fs::read_dir(version.path()).ok()?;
+                        hashes.filter_map(Result::ok).find_map(|hash| {
+                            let executable = hash.path().join("claude.exe");
+                            (hash.file_type().ok()?.is_dir()
+                                && executable.is_file()
+                                && safe_cli_executable(&executable))
+                            .then_some((parsed.clone(), executable))
+                        })
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+    candidates.sort_by(|(left, _), (right, _)| right.cmp(left));
+    candidates.into_iter().next().map(|(_, path)| path)
+}
+
+pub fn environment_names_to_remove(names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .filter(|name| {
+            let upper = name.to_ascii_uppercase();
+            upper.starts_with("CLAUDE") || upper.starts_with("ANTHROPIC_")
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn version_dir_key(version: &str) -> Option<(Vec<u64>, bool, String)> {
+    let (release, prerelease) = version.split_once('-').unwrap_or((version, ""));
+    let mut numbers = Vec::new();
+    for part in release.split('.') {
+        numbers.push(part.parse::<u64>().ok()?);
+    }
+    if numbers.len() != 3 || version.contains('+') || prerelease.contains('+') {
+        return None;
+    }
+    Some((numbers, prerelease.is_empty(), prerelease.to_owned()))
+}
+
+pub fn parse_auth_logged_in(output: &[u8]) -> Option<bool> {
+    let value: Value = serde_json::from_slice(output).ok()?;
+    value["loggedIn"].as_bool()
+}
+
+pub fn clean_claude_environment(command: &mut Command) {
+    let names = env::vars().map(|(name, _)| name).collect::<Vec<_>>();
+    for name in environment_names_to_remove(&names) {
+        command.env_remove(name);
+    }
 }
 
 pub fn searched_locations(name: &str, explicit_path_was_set: bool) -> String {
@@ -336,6 +415,9 @@ pub async fn run_jsonl(
             )
         })?;
     let mut command = command_for(&path, &command_spec.args);
+    if command_spec.executable_name.eq_ignore_ascii_case("claude") {
+        clean_claude_environment(&mut command);
+    }
     command
         .current_dir(folder)
         .stdin(Stdio::piped())
@@ -584,4 +666,42 @@ pub(crate) async fn terminate_child_tree(child: &mut Child) {
         let _ = child.kill().await;
     }
     let _ = timeout(Duration::from_secs(3), child.wait()).await;
+}
+
+#[cfg(test)]
+mod claude_support_tests {
+    use super::{environment_names_to_remove, parse_auth_logged_in, version_dir_key};
+
+    #[test]
+    fn removes_claude_and_anthropic_environment_names() {
+        let names = [
+            "CLAUDECODE",
+            "CLAUDE_CODE_HOME",
+            "ANTHROPIC_BASE_URL",
+            "PATH",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+        assert_eq!(environment_names_to_remove(&names), names[..3]);
+    }
+
+    #[test]
+    fn sorts_claude_version_directories_numerically() {
+        let older = version_dir_key("2.1.309").unwrap();
+        let newer = version_dir_key("2.1.317").unwrap();
+        assert!(newer > older);
+        assert!(version_dir_key("not-a-version").is_none());
+    }
+
+    #[test]
+    fn parses_auth_status_logged_in_boolean() {
+        assert_eq!(
+            parse_auth_logged_in(br#"{"loggedIn":true,"authMethod":"oauth"}"#),
+            Some(true)
+        );
+        assert_eq!(parse_auth_logged_in(br#"{"loggedIn":false}"#), Some(false));
+        assert_eq!(parse_auth_logged_in(b"{}"), None);
+        assert_eq!(parse_auth_logged_in(b"not json"), None);
+    }
 }

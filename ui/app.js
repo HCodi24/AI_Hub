@@ -602,7 +602,7 @@ async function planFromRequest(text) {
   const label = el("p", { textContent: `Đang lập kế hoạch bằng ${provider?.name || "provider"} · 00:00` });
   const spinner = el("span", { className: "spinner", ariaLabel: "Đang lập kế hoạch" });
   const logs = el("pre", { className: "task-log" });
-  const cancel = el("button", { className: "subtle-button", textContent: "Hu?" });
+  const cancel = el("button", { className: "subtle-button", textContent: "Hủy" });
   const controller = new AbortController();
   cancel.onclick = () => controller.abort();
   card.append(label, spinner, logs, cancel);
@@ -740,7 +740,7 @@ function renderPlanEditor() {
       plan.tasks.push({
         id: Math.max(0, ...plan.tasks.map(task => task.id)) + 1,
         title: "Công việc mới", detail: "", assignee: state.config.providers[0]?.id || "",
-        model: "", effort: "default", depends_on: [], kind: "code", status: "ch?",
+        model: "", effort: "default", depends_on: [], kind: "code", status: "chờ",
         summary: "", log: [], tokens: 0,
       });
       renderPlanEditor();
@@ -871,6 +871,8 @@ function updateConnectionLine() {
   line.textContent = busy ? "Đang kiểm tra…" : (status?.message || "Chưa kiểm tra");
   line.title = status?.detail || "";
   $("#provider-test").disabled = !id || busy;
+  const provider = state.config?.providers.find((item) => item.id === id);
+  $("#provider-login").hidden = provider?.kind !== "claude_cli" || status?.message !== "Claude Code chưa đăng nhập";
 }
 
 async function testProvider(id, toastResult = true) {
@@ -895,6 +897,30 @@ async function testProvider(id, toastResult = true) {
 }
 
 async function testAllProviders() { await Promise.all((state.config?.providers || []).map((p) => testProvider(p.id, true))); }
+
+async function loginClaude() {
+  const id = state.settingsProviderId;
+  if (!id) return;
+  const button = $("#provider-login");
+  button.disabled = true;
+  $("#provider-form-note").textContent = "Hoàn tất đăng nhập trong trình duyệt rồi bấm Kiểm tra kết nối";
+  try {
+    await api(`/api/providers/${encodeURIComponent(id)}/login`, { method: "POST" });
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 3 * 60 * 1000) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      await testProvider(id, false);
+      if (state.providerStatuses.get(id)?.status === "connected") {
+        showToast("✓ Đã kết nối Claude Code CLI");
+        break;
+      }
+    }
+  } catch (error) {
+    $("#provider-form-note").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
 
 function updateProviderFormKind() {
   const kind = $("#provider-kind").value;
@@ -1007,9 +1033,9 @@ async function discoverCli() {
         const status = state.providerStatuses.get(state.settingsProviderId);
         const cliName = name === "codex" ? "Codex CLI" : "Claude Code CLI";
         if (status?.status === "connected") {
-          showToast(`? ?? t?m th?y v? k?t n?i ${cliName} (${candidate.version})`);
+          showToast(`✓ Đã tìm thấy và kết nối ${cliName} (${candidate.version})`);
         } else {
-          showToast(`? ${cliName}: ${status?.message || "Kh?ng k?t n?i ???c"}`);
+          showToast(`✗ ${cliName}: ${status?.message || "Không kết nối được"}`);
         }
       }
     };
@@ -1134,6 +1160,7 @@ $("#provider-kind").addEventListener("change", updateProviderFormKind);
 $("#provider-form").addEventListener("submit", saveProvider);
 $("#provider-delete").addEventListener("click", deleteProvider);
 $("#provider-test").addEventListener("click", () => testProvider(state.settingsProviderId));
+$("#provider-login").addEventListener("click", loginClaude);
 $("#cli-discover").addEventListener("click", discoverCli);
 $("#models-load").addEventListener("click", loadModels);
 $("#cli-refresh").addEventListener("click", refreshCliStatus);

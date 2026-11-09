@@ -110,6 +110,11 @@ fn parse_claude_line(line: &str) -> Vec<ProviderEvent> {
                     .as_str()
                     .or_else(|| value["error"].as_str())
                     .unwrap_or("Claude Code CLI trả về lỗi");
+                let message = if message.contains("Not logged in") {
+                    "Claude Code chưa đăng nhập — mở Cài đặt › Claude Code CLI › Đăng nhập"
+                } else {
+                    message
+                };
                 events.push(ProviderEvent::text("error", message.to_owned()));
             }
             if let Some(usage) =
