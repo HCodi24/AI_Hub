@@ -232,21 +232,19 @@ function renderMutisRoleRows(containerId) {
 
     const status = state.providerStatuses.get(role.provider_id);
     const dot = el("span", {
-      className: `status-dot ${status?.ok ? "connected" : status?.status || "unknown"}`,
-      title: status?.detail || "Chưa kiểm tra",
+      className: `status-dot ${state.providerChecking.has(role.provider_id) ? "checking" : status?.ok ? "connected" : status?.status || "unknown"}`,
+      title: state.providerChecking.has(role.provider_id) ? "Đang kiểm tra…" : status?.detail || "Chưa kiểm tra",
     });
     row.append(dot);
     if (!status?.ok) {
-      const fallbackKinds = key === "big"
-        ? ["codex_cli", "claude_cli"]
-        : ["claude_cli", "anthropic", "codex_cli"];
-      const fallbacks = state.config.providers.filter(item =>
-        item.id !== role.provider_id && fallbackKinds.includes(item.kind));
-      const fallback = fallbacks.find(item => state.providerStatuses.get(item.id)?.ok) || fallbacks[0];
-      const fallbackName = key === "small"
-        ? state.config.providers.find(item => item.id === state.orchestration.roles?.lead?.provider_id)?.name
-        : fallback?.name;
-      row.append(el("small", { textContent: `⚠ chưa kết nối — sẽ dùng ${fallbackName || "planner"}` }));
+      if (!status) {
+        row.append(el("small", { className: "muted-inline", textContent: "Đang kiểm tra kết nối…" }));
+      } else if (status && status.status !== "connected") {
+        const fallbackKinds = { lead: ["claude_cli", "anthropic", "codex_cli"], big: ["codex_cli", "claude_cli"], small: ["deepseek_agent", "codex_cli"] }[key];
+        const fallback = fallbackKinds.flatMap(kind => state.config.providers.filter(item => item.kind === kind))
+          .find(item => item.id !== role.provider_id && state.providerStatuses.get(item.id)?.status === "connected");
+        row.append(el("small", { textContent: fallback ? `⚠ chưa kết nối — sẽ dùng ${fallback.name}` : "⚠ Không có nguồn nào đang kết nối cho vai trò này" }));
+      }
     }
     root.append(row);
   }
@@ -589,10 +587,19 @@ async function sendMessage() {
   if (!text || state.streaming) return;
   if (!state.chatId) newChat();
   if (state.selectedSource === "mutis") {
-    const lead = state.orchestration?.roles?.lead;
+    await testAllProviders();
+    const lead = resolveConnectedRole("lead");
     if (!state.orchestration?.enabled) {
       showToast("Hãy bật MutiS trong Cài đặt.");
       return;
+    }
+    if (!lead) {
+      showToast("⚠ Không có nguồn nào đang kết nối cho vai trò lập kế hoạch & review. Hãy kết nối ít nhất một nguồn trong Cài đặt.");
+      return;
+    }
+    if (lead.provider_id !== state.orchestration.roles.lead.provider_id) {
+      state.orchestration.roles.lead = lead;
+      state.orchestration = await api("/api/mutis", { method: "PUT", body: JSON.stringify(state.orchestration) });
     }
     if (lead) {
       providerSelect.value = lead.provider_id;
@@ -717,6 +724,16 @@ async function loadConfig() {
   setupProviderControls(state.config.providers[0]?.id);
   folderInput.value = state.config.default_folder || "";
   renderPlannerSettings();
+  if (state.selectedSource === "mutis") testAllProviders();
+}
+
+function resolveConnectedRole(key) {
+  const current = state.orchestration?.roles?.[key];
+  if (current && state.providerStatuses.get(current.provider_id)?.status === "connected") return current;
+  const order = { lead: ["claude_cli", "anthropic", "codex_cli"], big: ["codex_cli", "claude_cli"], small: ["deepseek_agent", "codex_cli"] }[key];
+  const provider = order.flatMap(kind => state.config.providers.filter(item => item.kind === kind))
+    .find(item => state.providerStatuses.get(item.id)?.status === "connected");
+  return provider ? { ...current, provider_id: provider.id, model: current?.provider_id === provider.id && current.model ? current.model : (provider.models || [])[0] || "", effort: current?.effort || "default" } : null;
 }
 
 const ROUTE_KINDS = ["small_edit", "code", "test", "docs", "plan", "review"];
@@ -1124,7 +1141,18 @@ async function testProvider(id, toastResult = true) {
   }
 }
 
-async function testAllProviders() { await Promise.all((state.config?.providers || []).map((p) => testProvider(p.id, true))); }
+async function testAllProviders() {
+  await Promise.all((state.config?.providers || []).map((p) => testProvider(p.id, false)));
+  if (state.selectedSource === "mutis") {
+    const resolvedLead = resolveConnectedRole("lead");
+    if (resolvedLead && resolvedLead.provider_id !== state.orchestration?.roles?.lead?.provider_id) {
+      state.orchestration.roles.lead = resolvedLead;
+      try { state.orchestration = await api("/api/mutis", { method: "PUT", body: JSON.stringify(state.orchestration) }); }
+      catch (error) { showToast(error.message); }
+      renderModePicker();
+    }
+  }
+}
 
 async function loginClaude() {
   const id = state.settingsProviderId;
@@ -1356,11 +1384,14 @@ $("#model-input").addEventListener("input", () => { renderModePicker(); remember
 $("#mode-chip").addEventListener("click", () => {
   const pop = $("#mode-popover"); pop.hidden = !pop.hidden;
   $("#mode-chip").setAttribute("aria-expanded", String(!pop.hidden));
-  if (!pop.hidden) pop.querySelector("button:not([disabled])")?.focus();
+  if (!pop.hidden) {
+    pop.querySelector("button:not([disabled])")?.focus();
+    testAllProviders();
+  }
 });
 $("#mode-popover").addEventListener("click", (event) => {
   const source=event.target.closest("[data-source]")?.dataset.source;
-  if(source==="mutis"&&state.orchestration?.enabled){state.selectedSource="mutis";messageInput.placeholder="Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…";renderModePicker();saveLastMode();return;}
+  if(source==="mutis"&&state.orchestration?.enabled){state.selectedSource="mutis";messageInput.placeholder="Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…";renderModePicker();saveLastMode();const section=$("#mode-mutis-section");section.hidden=false;section.scrollIntoView({block:"nearest",behavior:"smooth"});testAllProviders();return;}
   const providerId = event.target.closest("[data-provider]")?.dataset.provider;
   const model = event.target.closest("[data-model]")?.dataset.model;
   const effort = event.target.closest("[data-effort]")?.dataset.effort;

@@ -428,11 +428,12 @@ async fn generate_plan(
     let planner = match planner {
         Ok(planner) => planner,
         Err(error) if cfg.mutis.enabled => {
-            let fallback_kinds = ["claude_cli", "anthropic", "codex_cli"];
-            connected
+            let connected_ids = connected
                 .iter()
-                .find(|provider| fallback_kinds.iter().any(|kind| provider.kind == *kind))
-                .and_then(|provider| cfg.providers.iter().find(|item| item.id == provider.id))
+                .map(|provider| provider.id.clone())
+                .collect();
+            crate::config::first_connected_fallback(&cfg.providers, "lead", &connected_ids)
+                .and_then(|id| cfg.providers.iter().find(|item| item.id == id))
                 .cloned()
                 .ok_or(error)?
         }

@@ -269,7 +269,6 @@ pub fn load_or_seed(path: &Path) -> Result<Config> {
             .with_context(|| format!("Could not read config file at {}", path.display()))?;
         let mut config: Config = serde_json::from_str(&content)
             .with_context(|| format!("Could not parse config file at {}", path.display()))?;
-        migrate_mutis(&mut config);
         if !config
             .providers
             .iter()
@@ -284,6 +283,7 @@ pub fn load_or_seed(path: &Path) -> Result<Config> {
                 config.providers.push(provider);
             }
         }
+        migrate_mutis(&mut config);
         save(path, &config)?;
         Ok(config)
     } else {
@@ -350,7 +350,12 @@ fn migrate_mutis(config: &mut Config) {
         roles.big.effort = "high".into();
     }
     if roles.small.provider_id.is_empty() {
-        roles.small.provider_id = find(&["deepseek_agent"]);
+        roles.small.provider_id = config
+            .providers
+            .iter()
+            .find(|p| p.id == "deepseek-agent-deploy")
+            .map(|p| p.id.clone())
+            .unwrap_or_else(|| find(&["deepseek_agent"]));
     }
     if roles.small.model.is_empty() {
         roles.small.model = config
@@ -363,6 +368,23 @@ fn migrate_mutis(config: &mut Config) {
     }
     if roles.small.effort.is_empty() {
         roles.small.effort = "default".into();
+    }
+    let fallback_provider = config.providers.first();
+    for role in [&mut roles.lead, &mut roles.big, &mut roles.small] {
+        if role.provider_id.is_empty() {
+            if let Some(provider) = fallback_provider {
+                role.provider_id = provider.id.clone();
+            }
+        }
+        if role.model.is_empty() {
+            role.model = config
+                .providers
+                .iter()
+                .find(|provider| provider.id == role.provider_id)
+                .and_then(|provider| provider.models.first())
+                .cloned()
+                .unwrap_or_default();
+        }
     }
     for rule in &mut config.mutis.routing {
         if rule.role.is_empty() {
@@ -437,6 +459,75 @@ mod role_tests {
         assert_eq!(config.mutis.routing[2].role, "big");
         assert_eq!(config.mutis.routing[4].role, "lead");
     }
+
+    #[test]
+    fn migration_fills_small_with_deepseek_agent_and_first_model() {
+        let mut config = Config::seeded();
+        config.mutis.roles.small.provider_id.clear();
+        config.mutis.roles.small.model.clear();
+        migrate_mutis(&mut config);
+        assert_eq!(
+            config.mutis.roles.small.provider_id,
+            "deepseek-agent-deploy"
+        );
+        assert_eq!(
+            config.mutis.roles.small.model,
+            "deepseek-ai/deepseek-v4.1-flash-1017"
+        );
+    }
+
+    #[test]
+    fn migration_never_leaves_roles_without_provider_when_any_provider_exists() {
+        let mut config = Config::seeded();
+        config.providers.retain(|provider| provider.id == "openai");
+        config.mutis.roles = MutisRoles::default();
+        migrate_mutis(&mut config);
+        assert_eq!(config.mutis.roles.lead.provider_id, "openai");
+        assert_eq!(config.mutis.roles.big.provider_id, "openai");
+        assert_eq!(config.mutis.roles.small.provider_id, "openai");
+    }
+
+    #[test]
+    fn fallback_uses_only_confirmed_connected_providers_in_role_order() {
+        let config = Config::seeded();
+        let connected = ["codex-cli".to_owned()].into_iter().collect();
+        assert_eq!(
+            first_connected_fallback(&config.providers, "lead", &connected).as_deref(),
+            Some("codex-cli")
+        );
+        assert_eq!(
+            first_connected_fallback(&config.providers, "big", &connected).as_deref(),
+            Some("codex-cli")
+        );
+        assert_eq!(
+            first_connected_fallback(&config.providers, "small", &connected).as_deref(),
+            Some("codex-cli")
+        );
+        let unknown = std::collections::HashSet::new();
+        assert_eq!(
+            first_connected_fallback(&config.providers, "lead", &unknown),
+            None
+        );
+    }
+}
+
+pub fn first_connected_fallback(
+    providers: &[ProviderConfig],
+    role: &str,
+    connected: &std::collections::HashSet<String>,
+) -> Option<String> {
+    let kinds: &[&str] = match role {
+        "lead" => &["claude_cli", "anthropic", "codex_cli"],
+        "big" => &["codex_cli", "claude_cli"],
+        "small" => &["deepseek_agent", "codex_cli"],
+        _ => return None,
+    };
+    kinds.iter().find_map(|kind| {
+        providers
+            .iter()
+            .find(|provider| provider.kind == *kind && connected.contains(&provider.id))
+            .map(|provider| provider.id.clone())
+    })
 }
 
 #[allow(clippy::items_after_test_module)]
