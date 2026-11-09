@@ -151,9 +151,7 @@ async fn enforce_local_host(State(port): State<u16>, request: Request, next: Nex
         .headers()
         .get("host")
         .and_then(|value| value.to_str().ok());
-    if !host.is_some_and(|host| {
-        host == ipv4 || host.eq_ignore_ascii_case(&localhost)
-    }) {
+    if !host.is_some_and(|host| host == ipv4 || host.eq_ignore_ascii_case(&localhost)) {
         return (StatusCode::FORBIDDEN, "Forbidden").into_response();
     }
     if request.method() != axum::http::Method::GET {
@@ -381,12 +379,20 @@ async fn chat_handler(
     }
     let folder = PathBuf::from(folder)
         .canonicalize()
-        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Không thể giải quyết thư mục làm việc"))?
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Không thể giải quyết thư mục làm việc",
+            )
+        })?
         .to_string_lossy()
         .into_owned();
     if request.model.trim().is_empty() {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Hãy chọn model"));
     }
+    let effort = request.effort.as_deref().unwrap_or("default");
+    let effort = chat::parse_effort(effort)
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Mức suy luận không hợp lệ"))?;
     if request.messages.is_empty()
         || request
             .messages
@@ -425,6 +431,7 @@ async fn chat_handler(
     record.model = request.model.clone();
     record.folder = folder.clone();
     record.permission = request.permission;
+    record.effort = effort;
     record.messages = request.messages.clone();
     record.messages.push(ChatMessage {
         role: "assistant".to_owned(),
@@ -463,6 +470,7 @@ async fn chat_handler(
         model: request.model,
         folder,
         permission: request.permission,
+        effort,
         messages: request.messages,
         session_id: record.session_id.clone(),
     };

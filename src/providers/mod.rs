@@ -1,10 +1,13 @@
-pub mod claude_cli;
-pub mod codex_cli;
 pub mod anthropic;
+pub mod claude_cli;
 pub(crate) mod cli_support;
+pub mod codex_cli;
 pub mod openai_compat;
 
-use crate::{chat::{ChatMessage, Permission}, config::ProviderConfig};
+use crate::{
+    chat::{ChatMessage, Effort, Permission},
+    config::ProviderConfig,
+};
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
@@ -17,6 +20,7 @@ pub struct ProviderRequest {
     pub model: String,
     pub folder: String,
     pub permission: Permission,
+    pub effort: Effort,
     pub messages: Vec<ChatMessage>,
     pub session_id: Option<String>,
 }

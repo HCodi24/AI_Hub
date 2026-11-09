@@ -16,6 +16,18 @@ pub enum Permission {
     Write,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Effort {
+    #[default]
+    Default,
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChatMessage {
     pub role: String,
@@ -37,6 +49,8 @@ pub struct ChatRecord {
     pub folder: String,
     #[serde(default)]
     pub permission: Permission,
+    #[serde(default)]
+    pub effort: Effort,
     pub messages: Vec<ChatMessage>,
     #[serde(default)]
     pub session_id: Option<String>,
@@ -58,6 +72,8 @@ pub struct ChatRequest {
     pub folder: String,
     #[serde(default)]
     pub permission: Permission,
+    #[serde(default)]
+    pub effort: Option<String>,
     pub messages: Vec<ChatMessage>,
 }
 
@@ -163,9 +179,26 @@ pub fn new_record(request: &ChatRequest) -> ChatRecord {
         model: request.model.clone(),
         folder: request.folder.clone(),
         permission: request.permission,
+        effort: request
+            .effort
+            .as_deref()
+            .and_then(parse_effort)
+            .unwrap_or_default(),
         messages: request.messages.clone(),
         session_id: None,
         updated_at: unix_time(),
+    }
+}
+
+pub fn parse_effort(value: &str) -> Option<Effort> {
+    match value {
+        "default" => Some(Effort::Default),
+        "low" => Some(Effort::Low),
+        "medium" => Some(Effort::Medium),
+        "high" => Some(Effort::High),
+        "xhigh" => Some(Effort::Xhigh),
+        "max" => Some(Effort::Max),
+        _ => None,
     }
 }
 

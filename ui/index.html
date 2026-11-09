@@ -55,8 +55,16 @@
       <form id="composer" class="composer">
         <textarea id="message-input" rows="1" placeholder="Nhắn tin với AI…" aria-label="Tin nhắn"></textarea>
         <div class="composer-footer">
-          <span class="composer-hint">Enter để gửi · Shift+Enter xuống dòng</span>
+          <div class="mode-picker">
+            <button id="mode-chip" type="button" aria-expanded="false" aria-controls="mode-popover"><span id="mode-chip-provider"></span><span id="mode-chip-model"></span><span id="mode-chip-effort" class="muted-inline"></span><span aria-hidden="true" class="mode-chevron">⌃</span></button>
+            <div id="mode-popover" class="mode-popover" hidden>
+              <section><h3>Nguồn</h3><div id="mode-providers" role="radiogroup" aria-label="Nguồn"></div></section>
+              <section><h3>Model</h3><div id="mode-models" role="radiogroup" aria-label="Model"></div><button id="mode-other" type="button" class="mode-row">Model khác…</button></section>
+              <section id="mode-effort-section"><h3>Mức suy luận</h3><div id="mode-efforts" class="effort-options"></div></section>
+            </div>
+          </div>
           <div class="composer-actions">
+            <span class="composer-hint">Enter để gửi · Shift+Enter xuống dòng</span>
             <button id="stop-button" class="stop-button" type="button" hidden>Dừng</button>
             <button id="send-button" class="send-button" type="submit" aria-label="Gửi tin nhắn">↑</button>
           </div>

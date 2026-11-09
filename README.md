@@ -47,3 +47,8 @@ Thiết lập quyền được lưu cùng chat. Các nhà cung cấp HTTP không
 Cấu hình nằm tại `<config_dir>/ai-hub/config.json`; trên Windows, đường dẫn thường là `%APPDATA%\ai-hub\config.json`. Các cuộc trò chuyện được lưu thành tệp JSON trong `<config_dir>/ai-hub/chats/`; trên Windows là `%APPDATA%\ai-hub\chats\`.
 
 API key được che trong phản hồi cài đặt và không được ghi vào log.
+
+
+## Thanh chế độ
+
+Nút chế độ cạnh khung nhập tin cho biết nguồn AI, model và mức suy luận hiện tại. Mở nút để đổi nguồn, chọn hoặc nhập model, và chọn mức suy luận khi nguồn hỗ trợ. Lựa chọn mức suy luận được lưu theo từng chat; nguồn, model và mức dùng gần nhất được ghi nhớ cho chat mới trong trình duyệt.

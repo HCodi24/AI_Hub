@@ -11,7 +11,12 @@ const state = {
   streaming: false,
   settingsProviderId: null,
   toastTimer: null,
+  effort: "default",
 };
+
+const EFFORT_KINDS = new Set(["codex_cli", "openai_compat", "anthropic"]);
+const EFFORT_LABELS = { default: "Mặc định", low: "Thấp", medium: "Vừa", high: "Cao", xhigh: "Rất cao", max: "Max" };
+const EFFORTS = ["default", "low", "medium", "high", "xhigh", "max"];
 
 const providerSelect = $("#provider-select");
 const modelInput = $("#model-input");
@@ -85,6 +90,61 @@ function updateModels(preferredModel = "") {
     modelOptions.append(option);
   }
   modelInput.value = preferredModel || provider?.models?.[0] || "";
+  renderModePicker();
+}
+
+function prettyModel(id) {
+  const raw = String(id || "").split("/").pop().replace(/-\d{4}(?:\d{4})?$/, "");
+  const tokens = raw.split(/[-_]+/).filter(Boolean);
+  const words = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (/^\d$/.test(token) && words.length && /^\d(?:\.\d+)?$/.test(words[words.length - 1])) words[words.length - 1] += `.${token}`;
+    else if (/^\d$/.test(token) && words.length && /[a-z]$/i.test(words[words.length - 1])) {
+      let version = token;
+      while (/^\d$/.test(tokens[i + 1] || "")) version += "." + tokens[++i];
+      words.push(version);
+    }
+    else if (/^[a-z]\d+(?:\.\d+)*$/i.test(token)) words.push(token[0].toUpperCase() + token.slice(1));
+    else words.push(token.toLowerCase());
+  }
+  let result = words.map((word, index) => {
+    if (["gpt", "ai", "api"].includes(word.toLowerCase())) return word.toUpperCase();
+    return word[0] ? word[0].toUpperCase() + word.slice(1) : word;
+  });
+  for (let i = 0; i < result.length - 1; i++) if (result[i] === "GPT" && /^\d+$/.test(result[i + 1])) result[i + 1] = `-${result[i + 1]}`;
+  return result.join(" ").replace(/\s(-\d+)/g, "$1");
+}
+
+function renderModePicker() {
+  const provider = currentProvider();
+  const chip = $("#mode-chip");
+  if (!chip) return;
+  const shortName = provider?.name?.split(/\s*\(/)[0] || "";
+  $("#mode-chip-provider").textContent = shortName && provider.name !== shortName ? `${shortName} · ` : "";
+  $("#mode-chip-model").textContent = prettyModel(modelInput.value);
+  const supported = EFFORT_KINDS.has(provider?.kind);
+  $("#mode-chip-effort").textContent = supported ? ` ${EFFORT_LABELS[state.effort] || EFFORT_LABELS.default}` : "";
+  chip.title = modelInput.value;
+  $("#mode-effort-section").hidden = !supported;
+  const providers = $("#mode-providers"); providers.replaceChildren();
+  for (const item of state.config?.providers || []) {
+    const row = document.createElement("button"); row.type = "button"; row.className = "mode-row"; row.setAttribute("role", "radio"); row.setAttribute("aria-checked", String(item.id === provider?.id)); row.dataset.provider = item.id; row.textContent = item.name;
+    providers.append(row);
+  }
+  const models = $("#mode-models"); models.replaceChildren();
+  for (const model of provider?.models || []) {
+    const row = document.createElement("button"); row.type = "button"; row.className = "mode-row"; row.setAttribute("role", "radio"); row.setAttribute("aria-checked", String(model === modelInput.value)); row.dataset.model = model; row.textContent = prettyModel(model); row.title = model;
+    models.append(row);
+  }
+  const efforts = $("#mode-efforts"); efforts.replaceChildren();
+  for (const effort of EFFORTS) {
+    const row = document.createElement("button"); row.type = "button"; row.className = "effort-button"; row.dataset.effort = effort; row.setAttribute("aria-pressed", String(effort === state.effort)); row.textContent = EFFORT_LABELS[effort]; efforts.append(row);
+  }
+}
+
+function saveLastMode() {
+  try { localStorage.setItem("ai-hub-last-mode", JSON.stringify({ provider_id: providerSelect.value, model: modelInput.value, effort: state.effort })); } catch (_) { /* Storage may be disabled. */ }
 }
 
 function newChat() {
@@ -92,7 +152,12 @@ function newChat() {
   state.chatId = crypto.randomUUID();
   state.messages = [];
   state.memoryChats.set(state.chatId, { id: state.chatId, title: "Chat mới", updated_at: Date.now() / 1000 });
-  setupProviderControls(providerSelect.value || state.config?.providers[0]?.id);
+  let lastMode = null;
+  try { lastMode = JSON.parse(localStorage.getItem("ai-hub-last-mode") || "null"); } catch (_) { /* Ignore invalid or unavailable storage. */ }
+  if (!state.config?.providers.some((provider) => provider.id === lastMode?.provider_id)) lastMode = null;
+  setupProviderControls(lastMode?.provider_id || providerSelect.value || state.config?.providers[0]?.id, lastMode?.model || "");
+  state.effort = EFFORTS.includes(lastMode?.effort) ? lastMode.effort : "default";
+  renderModePicker();
   permissionSelect.value = "write";
   folderInput.value = state.config?.default_folder || "";
   rememberCurrentChat();
@@ -110,6 +175,8 @@ async function loadChat(id) {
     state.messages = cached.messages.map((message) => ({ ...message, logs: [...(message.logs || [])] }));
     setupProviderControls(cached.provider_id, cached.model);
     permissionSelect.value = cached.permission || "write";
+    state.effort = cached.effort || "default";
+    renderModePicker();
     folderInput.value = cached.folder || state.config?.default_folder || "";
     renderMessages();
     renderChatList();
@@ -122,6 +189,8 @@ async function loadChat(id) {
     state.memoryChats.set(chat.id, { id: chat.id, title: chat.title, updated_at: chat.updated_at });
     setupProviderControls(chat.provider_id, chat.model);
     permissionSelect.value = chat.permission || "write";
+    state.effort = chat.effort || "default";
+    renderModePicker();
     folderInput.value = chat.folder || state.config?.default_folder || "";
     renderMessages();
     renderChatList();
@@ -219,6 +288,7 @@ function rememberCurrentChat() {
     model: modelInput.value,
     folder: folderInput.value,
     permission: permissionSelect.value || "write",
+    effort: state.effort,
     messages: state.messages.map((message) => ({ ...message, logs: [...(message.logs || [])] })),
   });
 }
@@ -342,6 +412,7 @@ function setStreaming(value) {
   modelInput.disabled = value;
   folderInput.disabled = value;
   permissionSelect.disabled = value;
+  $("#mode-chip").disabled = value;
   $("#new-chat").disabled = value;
   renderChatList();
 }
@@ -381,6 +452,7 @@ async function sendMessage() {
         model: modelInput.value.trim(),
         folder: folderInput.value.trim(),
         permission: permissionSelect.value || "write",
+        effort: state.effort,
         messages: state.messages.filter((message) => message !== assistant).map(({ role, content }) => ({ role, content })),
       }),
     });
@@ -613,8 +685,37 @@ $("#settings-open").addEventListener("click", async () => {
   else clearProviderForm();
   await refreshCliStatus();
 });
-$("#provider-select").addEventListener("change", () => { updateModels(); updatePermissionControl(); rememberCurrentChat(); });
-$("#model-input").addEventListener("input", rememberCurrentChat);
+$("#provider-select").addEventListener("change", () => { updateModels(); updatePermissionControl(); rememberCurrentChat(); saveLastMode(); });
+$("#model-input").addEventListener("input", () => { renderModePicker(); rememberCurrentChat(); saveLastMode(); });
+$("#mode-chip").addEventListener("click", () => {
+  const pop = $("#mode-popover"); pop.hidden = !pop.hidden;
+  $("#mode-chip").setAttribute("aria-expanded", String(!pop.hidden));
+  if (!pop.hidden) pop.querySelector("button:not([disabled])")?.focus();
+});
+$("#mode-popover").addEventListener("click", (event) => {
+  const providerId = event.target.closest("[data-provider]")?.dataset.provider;
+  const model = event.target.closest("[data-model]")?.dataset.model;
+  const effort = event.target.closest("[data-effort]")?.dataset.effort;
+  if (providerId) { providerSelect.value = providerId; updateModels(); updatePermissionControl(); }
+  if (model) modelInput.value = model;
+  if (effort) state.effort = effort;
+  if (providerId || model || effort) { renderModePicker(); rememberCurrentChat(); saveLastMode(); }
+  if (providerId || model) { $("#mode-popover").hidden = true; $("#mode-chip").setAttribute("aria-expanded", "false"); $("#mode-chip").focus(); }
+});
+$("#mode-other").addEventListener("click", () => {
+  const model = window.prompt("Nhập mã model", modelInput.value);
+  if (model?.trim()) { modelInput.value = model.trim(); renderModePicker(); rememberCurrentChat(); saveLastMode(); }
+});
+document.addEventListener("keydown", (event) => {
+  const pop = $("#mode-popover");
+  if (pop.hidden) return;
+  if (event.key === "Escape") { pop.hidden = true; $("#mode-chip").setAttribute("aria-expanded", "false"); $("#mode-chip").focus(); }
+  else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    const items = [...pop.querySelectorAll("button:not([disabled])")]; const index = items.indexOf(document.activeElement);
+    if (index >= 0) { event.preventDefault(); items[(index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus(); }
+  }
+});
+document.addEventListener("click", (event) => { const pop = $("#mode-popover"); if (!pop.hidden && !event.target.closest(".mode-picker")) { pop.hidden = true; $("#mode-chip").setAttribute("aria-expanded", "false"); } });
 $("#composer").addEventListener("submit", (event) => { event.preventDefault(); sendMessage(); });
 $("#stop-button").addEventListener("click", stopChat);
 $("#message-input").addEventListener("input", resizeComposer);
@@ -637,6 +738,7 @@ $("#cli-refresh").addEventListener("click", refreshCliStatus);
 (async function init() {
   try {
     await loadConfig();
+    renderModePicker();
     await refreshChats();
     newChat();
   } catch (error) {

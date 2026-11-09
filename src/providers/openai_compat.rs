@@ -1,4 +1,7 @@
-use super::{emit_text, error_value_text, safe_error_body, Provider, ProviderEvent, ProviderRequest};
+use super::{
+    emit_text, error_value_text, safe_error_body, Provider, ProviderEvent, ProviderRequest,
+};
+use crate::chat::Effort;
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -28,14 +31,22 @@ impl Provider for OpenAiCompatibleProvider {
             .iter()
             .map(|message| json!({"role": message.role, "content": message.content}))
             .collect();
-        let body = json!({
+        let mut body = json!({
             "model": request.model,
             "messages": messages,
             "stream": true
         });
+        if request.effort != Effort::Default {
+            body["reasoning_effort"] = json!(match request.effort {
+                Effort::Low => "low",
+                Effort::Medium => "medium",
+                Effort::High | Effort::Xhigh | Effort::Max => "high",
+                Effort::Default => unreachable!(),
+            });
+        }
         let client = reqwest::Client::new();
         let secret = request.provider.api_key.clone();
-        let response = tokio::select! {
+        let mut response = tokio::select! {
             _ = cancel.cancelled() => return Ok(()),
             response = client
                 .post(format!("{base_url}/chat/completions"))
@@ -43,6 +54,34 @@ impl Provider for OpenAiCompatibleProvider {
                 .json(&body)
                 .send() => response.context("Không thể kết nối tới API tương thích OpenAI")?,
         };
+        if response.status() == reqwest::StatusCode::BAD_REQUEST
+            && body.get("reasoning_effort").is_some()
+        {
+            let response_body = response.text().await.unwrap_or_default();
+            if response_body
+                .to_ascii_lowercase()
+                .contains("reasoning_effort")
+            {
+                emit_text(
+                    &events,
+                    "log",
+                    "Model không hỗ trợ mức suy luận, đã dùng mặc định".to_owned(),
+                )
+                .await?;
+                body.as_object_mut()
+                    .expect("object body")
+                    .remove("reasoning_effort");
+                response = tokio::select! {
+                    _ = cancel.cancelled() => return Ok(()),
+                    response = client.post(format!("{base_url}/chat/completions")).bearer_auth(&request.provider.api_key).json(&body).send() => response.context("Failed to retry reasoning request")?,
+                };
+            } else {
+                bail!(
+                    "OpenAI-compatible API returned HTTP 400: {}",
+                    safe_error_body(&response_body, &secret)
+                );
+            }
+        }
         if !response.status().is_success() {
             let status = response.status();
             let response_body = response.text().await.unwrap_or_default();

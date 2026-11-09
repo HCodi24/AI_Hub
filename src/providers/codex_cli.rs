@@ -1,7 +1,5 @@
-use super::{
-    cli_support, Provider, ProviderEvent, ProviderRequest,
-};
-use crate::chat::Permission;
+use super::{cli_support, Provider, ProviderEvent, ProviderRequest};
+use crate::chat::{Effort, Permission};
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use serde_json::Value;
@@ -45,6 +43,22 @@ impl Provider for CodexCliProvider {
         ]);
         if !request.model.is_empty() {
             args.extend([OsString::from("-m"), OsString::from(&request.model)]);
+        }
+        if request.effort != Effort::Default {
+            args.extend([
+                OsString::from("-c"),
+                OsString::from(format!(
+                    "model_reasoning_effort=\"{}\"",
+                    match request.effort {
+                        Effort::Low => "low",
+                        Effort::Medium => "medium",
+                        Effort::High => "high",
+                        Effort::Xhigh => "xhigh",
+                        Effort::Max => "max",
+                        Effort::Default => unreachable!(),
+                    }
+                )),
+            ]);
         }
         if let Some(session_id) = request.session_id.as_deref() {
             args.push(OsString::from(session_id));
@@ -121,9 +135,7 @@ fn parse_codex_line(line: &str) -> Vec<ProviderEvent> {
                     let text = if is_delta {
                         delta_text
                     } else if event_type == "item.completed" {
-                        item["text"]
-                            .as_str()
-                            .or_else(|| item["content"].as_str())
+                        item["text"].as_str().or_else(|| item["content"].as_str())
                     } else {
                         None
                     };
@@ -204,7 +216,10 @@ fn parse_codex_line(line: &str) -> Vec<ProviderEvent> {
                     } else if event_type == "item.completed" {
                         events.push(ProviderEvent::text(
                             "log",
-                            format!("Codex item: {}", cli_support::one_line(&item.to_string(), 220)),
+                            format!(
+                                "Codex item: {}",
+                                cli_support::one_line(&item.to_string(), 220)
+                            ),
                         ));
                     }
                 }
@@ -212,7 +227,10 @@ fn parse_codex_line(line: &str) -> Vec<ProviderEvent> {
                     if event_type == "item.started" || event_type == "item.completed" {
                         events.push(ProviderEvent::text(
                             "log",
-                            format!("Codex item {other}: {}", cli_support::one_line(&item.to_string(), 220)),
+                            format!(
+                                "Codex item {other}: {}",
+                                cli_support::one_line(&item.to_string(), 220)
+                            ),
                         ));
                     }
                 }
@@ -244,8 +262,14 @@ fn file_change_summary(item: &Value) -> String {
         }
     }
     if paths.is_empty() {
-        format!("File change: {}", cli_support::one_line(&item.to_string(), 220))
+        format!(
+            "File change: {}",
+            cli_support::one_line(&item.to_string(), 220)
+        )
     } else {
-        format!("File change: {}", cli_support::one_line(&paths.join(", "), 220))
+        format!(
+            "File change: {}",
+            cli_support::one_line(&paths.join(", "), 220)
+        )
     }
 }

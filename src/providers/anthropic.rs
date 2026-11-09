@@ -1,4 +1,7 @@
-use super::{emit_text, error_value_text, safe_error_body, Provider, ProviderEvent, ProviderRequest};
+use super::{
+    emit_text, error_value_text, safe_error_body, Provider, ProviderEvent, ProviderRequest,
+};
+use crate::chat::Effort;
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -40,6 +43,17 @@ impl Provider for AnthropicProvider {
             "max_tokens": 8192,
             "stream": true
         });
+        if request.effort != Effort::Default {
+            let budget = match request.effort {
+                Effort::Low => 2048,
+                Effort::Medium => 8192,
+                Effort::High => 16000,
+                Effort::Xhigh | Effort::Max => 32000,
+                Effort::Default => 0,
+            };
+            body["thinking"] = json!({"type":"enabled", "budget_tokens": budget});
+            body["max_tokens"] = json!(budget + 8192);
+        }
         if !system.is_empty() {
             body["system"] = json!(system.join("\n\n"));
         }
@@ -107,6 +121,11 @@ async fn process_line(
     if value["type"] == "content_block_delta" && value["delta"]["type"] == "text_delta" {
         if let Some(text) = value["delta"]["text"].as_str() {
             emit_text(events, "delta", text.to_owned()).await?;
+        }
+    }
+    if value["type"] == "content_block_delta" && value["delta"]["type"] == "thinking_delta" {
+        if let Some(text) = value["delta"]["thinking"].as_str() {
+            emit_text(events, "reasoning", text.to_owned()).await?;
         }
     }
     Ok(())
