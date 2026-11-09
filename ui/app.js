@@ -532,9 +532,50 @@ function resizeComposer() {
 
 async function loadConfig() {
   state.config = await api("/api/config");
+  state.orchestration = await api("/api/orchestration");
+  renderOrchestrationSettings();
   setupProviderControls(state.config.providers[0]?.id);
   folderInput.value = state.config.default_folder || "";
   renderPlannerSettings();
+}
+
+const ROUTE_KINDS = ["small_edit", "code", "test", "docs", "plan", "review"];
+const ASSIGNEE_KINDS = ["deepseek_agent", "codex_cli", "claude_cli", "openai_compat", "anthropic"];
+function renderOrchestrationSettings() {
+  const config = state.orchestration || {};
+  for (const input of document.querySelectorAll("[data-orch]")) {
+    const key = input.dataset.orch;
+    if (input.type === "checkbox") input.checked = Boolean(config[key]); else input.value = config[key] ?? "";
+  }
+  const reviewer = $('[data-orch="reviewer_provider_id"]');
+  reviewer.replaceChildren(...(state.config.providers || []).map(p => el("option", {value:p.id,textContent:p.name})));
+  reviewer.value = config.reviewer_provider_id || "";
+  const reviewerProvider = state.config.providers.find(p => p.id === reviewer.value);
+  const reviewerModel = $('[data-orch="reviewer_model"]');
+  reviewerModel.replaceChildren(...(reviewerProvider?.models || []).map(model => el("option", {value:model,textContent:model})));
+  reviewerModel.value = config.reviewer_model || reviewerProvider?.models?.[0] || "";
+  const routes = $("#orchestration-routing"); routes.replaceChildren();
+  for (const kind of ROUTE_KINDS) {
+    const rule = (config.routing || []).find(r => r.kind === kind) || {kind,assignee_kind:"codex_cli",note:""};
+    const select = el("select", {dataset:{route:kind}}, ASSIGNEE_KINDS.map(value => el("option", {value,textContent:value})));
+    select.value = rule.assignee_kind;
+    routes.append(el("label", {className:"route-row"}, [el("span", {textContent:kind}), select]));
+  }
+  updateOrchestrationDisabled();
+}
+function updateOrchestrationDisabled() {
+  const enabled = $('[data-orch="enabled"]').checked;
+  $("#orchestration-controls").classList.toggle("orchestration-disabled", !enabled);
+  for (const input of $("#orchestration-controls").querySelectorAll("input,select")) input.disabled = !enabled;
+  $("#orchestration-badge").textContent = `Điều phối: ${enabled ? "BẬT" : "TẮT"}`;
+}
+let orchestrationSaveTimer;
+async function saveOrchestration() {
+  const next = {...state.orchestration};
+  for (const input of document.querySelectorAll("[data-orch]")) next[input.dataset.orch] = input.type === "checkbox" ? input.checked : (input.type === "number" ? Number(input.value) : input.value);
+  next.routing = ROUTE_KINDS.map(kind => ({kind,assignee_kind:$(`[data-route="${kind}"]`).value,note:""}));
+  try { state.orchestration = await api("/api/orchestration", {method:"PUT",body:JSON.stringify(next)}); updateOrchestrationDisabled(); }
+  catch(error) { showToast(error.message); renderOrchestrationSettings(); }
 }
 
 function el(tag, props = {}, children = []) {
@@ -783,7 +824,7 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
     const response = await api("/api/chat", {
       method: "POST",
       body: JSON.stringify({
-        chat_id: chatId, provider_id: provider.id,
+        chat_id: chatId, plan_id: plan.id, task_id: String(task.id), provider_id: provider.id,
         model: task.model || provider.models[0] || "", effort: task.effort || "default",
         folder: plan.folder,
         permission: ["code", "test", "docs"].includes(task.kind) ? "write" : "read",
@@ -1164,6 +1205,16 @@ $("#provider-login").addEventListener("click", loginClaude);
 $("#cli-discover").addEventListener("click", discoverCli);
 $("#models-load").addEventListener("click", loadModels);
 $("#cli-refresh").addEventListener("click", refreshCliStatus);
+document.querySelectorAll("[data-orch]").forEach(input => input.addEventListener("change", () => {
+  updateOrchestrationDisabled(); clearTimeout(orchestrationSaveTimer); orchestrationSaveTimer = setTimeout(saveOrchestration, 180);
+}));
+$("#orchestration-routing").addEventListener("change", () => { clearTimeout(orchestrationSaveTimer); orchestrationSaveTimer = setTimeout(saveOrchestration, 180); });
+$('[data-orch="reviewer_provider_id"]').addEventListener("change", () => {
+  const provider = state.config.providers.find(p => p.id === $('[data-orch="reviewer_provider_id"]').value);
+  const model = $('[data-orch="reviewer_model"]');
+  model.replaceChildren(...(provider?.models || []).map(value => el("option", {value,textContent:value})));
+  saveOrchestration();
+});
 
 (async function init() {
   try {

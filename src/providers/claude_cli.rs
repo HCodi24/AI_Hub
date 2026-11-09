@@ -53,6 +53,7 @@ impl Provider for ClaudeCliProvider {
                 folder: &request.folder,
                 args,
                 prompt,
+                watchdog_minutes: None,
             },
             events,
             cancel,

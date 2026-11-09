@@ -30,6 +30,127 @@ pub struct Config {
     pub planner_provider_id: String,
     #[serde(default)]
     pub planner_model: String,
+    #[serde(default)]
+    pub orchestration: OrchestrationConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OrchestrationConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub retry_api: bool,
+    #[serde(default = "default_retry_attempts")]
+    pub retry_attempts: u32,
+    #[serde(default = "default_retry_base_ms")]
+    pub retry_base_ms: u64,
+    #[serde(default)]
+    pub codex_watchdog: bool,
+    #[serde(default = "default_watchdog_minutes")]
+    pub watchdog_minutes: u32,
+    #[serde(default)]
+    pub codex_auto_resume: bool,
+    #[serde(default = "default_resume_max")]
+    pub resume_max: u32,
+    #[serde(default)]
+    pub deepseek_agent: bool,
+    #[serde(default = "default_max_file_lines")]
+    pub deepseek_max_file_lines: u32,
+    #[serde(default)]
+    pub verify_gate: bool,
+    #[serde(default)]
+    pub verify_command: String,
+    #[serde(default)]
+    pub auto_review: bool,
+    #[serde(default)]
+    pub reviewer_provider_id: String,
+    #[serde(default)]
+    pub reviewer_model: String,
+    #[serde(default)]
+    pub auto_fix: bool,
+    #[serde(default = "default_fix_rounds")]
+    pub fix_rounds_max: u32,
+    #[serde(default = "default_event_log")]
+    pub event_log: bool,
+    #[serde(default = "default_routing")]
+    pub routing: Vec<RoutingRule>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RoutingRule {
+    pub kind: String,
+    pub assignee_kind: String,
+    #[serde(default)]
+    pub note: String,
+}
+
+impl Default for OrchestrationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            retry_api: false,
+            retry_attempts: 3,
+            retry_base_ms: 2000,
+            codex_watchdog: false,
+            watchdog_minutes: 5,
+            codex_auto_resume: false,
+            resume_max: 2,
+            deepseek_agent: false,
+            deepseek_max_file_lines: 400,
+            verify_gate: false,
+            verify_command: String::new(),
+            auto_review: false,
+            reviewer_provider_id: String::new(),
+            reviewer_model: String::new(),
+            auto_fix: false,
+            fix_rounds_max: 2,
+            event_log: true,
+            routing: default_routing(),
+        }
+    }
+}
+impl OrchestrationConfig {
+    pub fn effective(&self, flag: bool) -> bool {
+        self.enabled && flag
+    }
+}
+fn default_retry_attempts() -> u32 {
+    3
+}
+fn default_retry_base_ms() -> u64 {
+    2000
+}
+fn default_watchdog_minutes() -> u32 {
+    5
+}
+fn default_resume_max() -> u32 {
+    2
+}
+fn default_max_file_lines() -> u32 {
+    400
+}
+fn default_fix_rounds() -> u32 {
+    2
+}
+fn default_event_log() -> bool {
+    true
+}
+fn default_routing() -> Vec<RoutingRule> {
+    [
+        ("small_edit", "deepseek_agent"),
+        ("docs", "deepseek_agent"),
+        ("code", "codex_cli"),
+        ("test", "codex_cli"),
+        ("plan", "claude_cli"),
+        ("review", "claude_cli"),
+    ]
+    .into_iter()
+    .map(|(kind, assignee_kind)| RoutingRule {
+        kind: kind.into(),
+        assignee_kind: assignee_kind.into(),
+        note: String::new(),
+    })
+    .collect()
 }
 
 fn default_folder() -> String {
@@ -89,6 +210,7 @@ impl Config {
             default_folder: default_folder(),
             planner_provider_id: String::new(),
             planner_model: String::new(),
+            orchestration: OrchestrationConfig::default(),
         }
     }
 }

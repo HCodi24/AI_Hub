@@ -1,4 +1,4 @@
-# Điều phối thông minh (Orchestration) — thiết kế & file bàn giao
+# MutiS — tính năng điều phối Claude ↔ Codex ↔ DeepSeek (thiết kế & file bàn giao)
 
 Trạng thái: đang làm · Cập nhật: 2026-11-09 · Người giám sát: Claude · Người code: Codex (gpt-6-luna)
 
@@ -46,3 +46,4 @@ tính năng **bật/tắt được**, gồm các cải tiến đã chốt:
 
 ## Nhật ký tiến độ
 (Claude ghi sau mỗi bước)
+- 10a (2026-11-09): Đã thêm cấu hình/API điều phối, giao diện cài đặt và định tuyến, nhật ký JSONL task plan, retry HTTP, Codex watchdog và tự tiếp tục theo cụm từ dừng sớm.\n

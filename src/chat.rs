@@ -75,6 +75,10 @@ pub struct ChatRequest {
     #[serde(default)]
     pub effort: Option<String>,
     pub messages: Vec<ChatMessage>,
+    #[serde(default)]
+    pub plan_id: Option<String>,
+    #[serde(default)]
+    pub task_id: Option<String>,
 }
 
 #[derive(Clone)]

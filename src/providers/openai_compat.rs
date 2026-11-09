@@ -46,13 +46,23 @@ impl Provider for OpenAiCompatibleProvider {
         }
         let client = reqwest::Client::new();
         let secret = request.provider.api_key.clone();
-        let mut response = tokio::select! {
-            _ = cancel.cancelled() => return Ok(()),
-            response = client
-                .post(format!("{base_url}/chat/completions"))
-                .bearer_auth(&request.provider.api_key)
-                .json(&body)
-                .send() => response.context("Không thể kết nối tới API tương thích OpenAI")?,
+        let mut response = match super::send_with_retry(
+            &client,
+            &format!("{base_url}/chat/completions"),
+            vec![(
+                "Authorization".into(),
+                format!("Bearer {}", request.provider.api_key),
+            )],
+            &body,
+            &request.orchestration,
+            &events,
+            &cancel,
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(_error) if cancel.is_cancelled() => return Ok(()),
+            Err(error) => return Err(error.context("Không thể kết nối tới API tương thích OpenAI")),
         };
         if response.status() == reqwest::StatusCode::BAD_REQUEST
             && body.get("reasoning_effort").is_some()
@@ -71,10 +81,19 @@ impl Provider for OpenAiCompatibleProvider {
                 body.as_object_mut()
                     .expect("object body")
                     .remove("reasoning_effort");
-                response = tokio::select! {
-                    _ = cancel.cancelled() => return Ok(()),
-                    response = client.post(format!("{base_url}/chat/completions")).bearer_auth(&request.provider.api_key).json(&body).send() => response.context("Failed to retry reasoning request")?,
-                };
+                response = super::send_with_retry(
+                    &client,
+                    &format!("{base_url}/chat/completions"),
+                    vec![(
+                        "Authorization".into(),
+                        format!("Bearer {}", request.provider.api_key),
+                    )],
+                    &body,
+                    &request.orchestration,
+                    &events,
+                    &cancel,
+                )
+                .await?;
             } else {
                 bail!(
                     "OpenAI-compatible API returned HTTP 400: {}",

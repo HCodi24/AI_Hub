@@ -1,6 +1,7 @@
 use crate::{
     chat::{self, ChatMessage, ChatRecord, ChatRequest, ChatStore},
     config::{self, Config, ProviderConfig},
+    orchestration::{self, Event, EventLog},
     plans::{Plan, PlanStore, PlanTask},
     providers::{self, ProviderEvent, ProviderRequest},
 };
@@ -42,6 +43,7 @@ pub struct AppState {
     running: Arc<Mutex<HashMap<String, RunningChat>>>,
     extension_running: Arc<Mutex<HashMap<String, CancellationToken>>>,
     provider_status: Arc<Mutex<HashMap<String, (Instant, ConnectionTest)>>>,
+    event_log: EventLog,
 }
 
 #[derive(Clone)]
@@ -53,6 +55,7 @@ struct RunningChat {
 impl AppState {
     pub fn new(config: Config, config_path: PathBuf, chat_dir: PathBuf) -> Self {
         let plans = PlanStore::new(&config_path).expect("config path has a parent");
+        let event_log = EventLog::new(&config_path).expect("config path has a parent");
         Self {
             config: Arc::new(RwLock::new(config)),
             config_path,
@@ -61,6 +64,7 @@ impl AppState {
             running: Arc::new(Mutex::new(HashMap::new())),
             extension_running: Arc::new(Mutex::new(HashMap::new())),
             provider_status: Arc::new(Mutex::new(HashMap::new())),
+            event_log,
         }
     }
 }
@@ -152,6 +156,11 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/app.js", get(app_js))
         .route("/style.css", get(style_css))
         .route("/api/config", get(get_config).put(put_config))
+        .route(
+            "/api/orchestration",
+            get(get_orchestration).put(put_orchestration),
+        )
+        .route("/api/orchestration/events", get(orchestration_events))
         .route("/api/providers", post(create_provider))
         .route(
             "/api/providers/{id}",
@@ -176,6 +185,62 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/api/extensions/{id}/stop", post(extension_stop))
         .layer(middleware::from_fn_with_state(port, enforce_local_host))
         .with_state(state)
+}
+
+async fn get_orchestration(State(state): State<AppState>) -> Json<config::OrchestrationConfig> {
+    Json(state.config.read().await.orchestration.clone())
+}
+async fn put_orchestration(
+    State(state): State<AppState>,
+    Json(value): Json<config::OrchestrationConfig>,
+) -> ApiResult<Json<config::OrchestrationConfig>> {
+    if !(1..=5).contains(&value.retry_attempts)
+        || !(1..=60).contains(&value.watchdog_minutes)
+        || value.resume_max > 3
+        || value.fix_rounds_max > 5
+        || !(50..=5000).contains(&value.deepseek_max_file_lines)
+        || value.retry_base_ms > 60000
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Tham số điều phối nằm ngoài phạm vi cho phép",
+        ));
+    }
+    for rule in &value.routing {
+        if !matches!(
+            rule.kind.as_str(),
+            "small_edit" | "code" | "test" | "docs" | "plan" | "review"
+        ) || !matches!(
+            rule.assignee_kind.as_str(),
+            "deepseek_agent" | "codex_cli" | "claude_cli" | "openai_compat" | "anthropic"
+        ) {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Quy tắc định tuyến không hợp lệ",
+            ));
+        }
+    }
+    let mut config = state.config.write().await;
+    config.orchestration = value.clone();
+    config::save(&state.config_path, &config)
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
+    Ok(Json(value))
+}
+async fn orchestration_events(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<HashMap<String, String>>,
+) -> ApiResult<Json<Vec<Event>>> {
+    let limit = query
+        .get("limit")
+        .and_then(|x| x.parse().ok())
+        .unwrap_or(200)
+        .min(2000);
+    state.event_log.recent(limit).map(Json).map_err(|_| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Không đọc được nhật ký điều phối",
+        )
+    })
 }
 
 async fn enforce_local_host(State(port): State<u16>, request: Request, next: Next) -> Response {
@@ -391,6 +456,7 @@ async fn generate_plan(
             error: None,
         }],
         session_id: None,
+        orchestration: cfg.orchestration.clone(),
     };
     let task_cancel = cancel.clone();
     let task_state = state.clone();
@@ -1391,6 +1457,7 @@ async fn chat_handler(
         .find(|provider| provider.id == request.provider_id)
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?;
+    let orchestration_config = state.config.read().await.orchestration.clone();
     let provider = providers::for_kind(&provider_config.kind)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?;
 
@@ -1450,7 +1517,9 @@ async fn chat_handler(
         effort,
         messages: request.messages,
         session_id: record.session_id.clone(),
+        orchestration: orchestration_config.clone(),
     };
+    let event_provider_id = provider_request.provider.id.clone();
     let provider_events = provider_sender.clone();
     tokio::spawn(async move {
         if let Err(error) = provider
@@ -1465,6 +1534,24 @@ async fn chat_handler(
 
     let task_state = state.clone();
     let chat_id = request.chat_id;
+    let plan_id = request.plan_id;
+    let task_id = request.task_id;
+    let event_logging_enabled = orchestration_config.effective(orchestration_config.event_log);
+    let log_enabled = event_logging_enabled && plan_id.is_some() && task_id.is_some();
+    let started = Instant::now();
+    if log_enabled {
+        let _ = state.event_log.append(&Event {
+            ts: orchestration::now(),
+            plan_id: plan_id.clone(),
+            task_id: task_id.clone(),
+            provider_id: event_provider_id.clone(),
+            kind: "task_start".into(),
+            ok: true,
+            duration_ms: None,
+            tokens: None,
+            detail: None,
+        });
+    }
     let task_cancel = cancel.clone();
     tokio::spawn(async move {
         let mut record = record;
@@ -1478,6 +1565,15 @@ async fn chat_handler(
                 }
                 event = provider_receiver.recv() => {
                     let Some(event) = event else { break };
+                    if event_logging_enabled && event.name == "watchdog_kill" {
+                        let _=task_state.event_log.append(&Event{ts:orchestration::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"watchdog_kill".into(),ok:false,duration_ms:None,tokens:None,detail:Some("Codex watchdog".into())});
+                    }
+                    if event_logging_enabled && event.name == "retry" {
+                        let _=task_state.event_log.append(&Event{ts:orchestration::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"retry".into(),ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
+                    }
+                    if event_logging_enabled && event.data["text"].as_str().is_some_and(|text|text.starts_with("Tự tiếp tục lần ")) {
+                        let _=task_state.event_log.append(&Event{ts:orchestration::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"resume".into(),ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
+                    }
                     persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
                     if sse_sender.send(chat::sse_event(event.name, &event.data)).await.is_err() {
                         task_cancel.cancel();
@@ -1487,6 +1583,31 @@ async fn chat_handler(
             }
         }
         let _ = chat::save_record(&task_state.chats, &mut record);
+        if log_enabled {
+            let token_line = record
+                .messages
+                .last()
+                .and_then(|m| m.logs.iter().rev().find(|line| line.starts_with("Token:")));
+            let tokens = token_line.and_then(|line| {
+                line.split(|c: char| !c.is_ascii_digit())
+                    .filter(|part| !part.is_empty())
+                    .filter_map(|part| part.parse::<u64>().ok())
+                    .take(2)
+                    .reduce(u64::saturating_add)
+            });
+            let ok = record.messages.last().is_some_and(|m| m.error.is_none());
+            let _ = task_state.event_log.append(&Event {
+                ts: orchestration::now(),
+                plan_id,
+                task_id,
+                provider_id: event_provider_id,
+                kind: "task_end".into(),
+                ok,
+                duration_ms: Some(started.elapsed().as_millis().min(u64::MAX as u128) as u64),
+                tokens,
+                detail: None,
+            });
+        }
         let done = ProviderEvent {
             name: "done",
             data: json!({ "ok": true }),

@@ -9,6 +9,22 @@ use tokio_util::sync::CancellationToken;
 
 pub struct CodexCliProvider;
 
+pub const EARLY_STOP_PHRASES: &[&str] = &[
+    "incomplete",
+    "not finished",
+    "chưa xong",
+    "chưa hoàn thành",
+    "remaining work",
+    "i stopped",
+];
+
+pub fn indicates_early_stop(message: &str) -> bool {
+    let lowered = message.to_lowercase();
+    EARLY_STOP_PHRASES
+        .iter()
+        .any(|phrase| lowered.contains(phrase))
+}
+
 #[async_trait]
 impl Provider for CodexCliProvider {
     async fn run(
@@ -64,22 +80,104 @@ impl Provider for CodexCliProvider {
             args.push(OsString::from(session_id));
         }
         args.push(OsString::from("-"));
-        let prompt = cli_support::compose_prompt(&request.messages, request.session_id.is_some());
-        cli_support::run_jsonl(
-            cli_support::JsonlCommand {
-                cli_name: "Codex CLI",
-                executable_name: "codex",
-                missing_message: "Chưa cài Codex CLI: npm i -g @openai/codex",
-                configured_executable: request.provider.executable.clone(),
-                folder: &request.folder,
-                args,
-                prompt,
-            },
-            events,
-            cancel,
-            parse_codex_line,
-        )
-        .await
+        let mut prompt =
+            cli_support::compose_prompt(&request.messages, request.session_id.is_some());
+        let mut thread_id = request.session_id.clone();
+        let mut final_message = String::new();
+        let mut turn_completed = false;
+        let mut resume_count = 0;
+        loop {
+            let parse_message = &mut final_message;
+            let parse_thread = &mut thread_id;
+            let parse_completed = &mut turn_completed;
+            let result = cli_support::run_jsonl(
+                cli_support::JsonlCommand {
+                    cli_name: "Codex CLI",
+                    executable_name: "codex",
+                    missing_message: "Chưa cài Codex CLI: npm i -g @openai/codex",
+                    configured_executable: request.provider.executable.clone(),
+                    folder: &request.folder,
+                    args: args.clone(),
+                    prompt,
+                    watchdog_minutes: request
+                        .orchestration
+                        .effective(request.orchestration.codex_watchdog)
+                        .then_some(request.orchestration.watchdog_minutes),
+                },
+                events.clone(),
+                cancel.clone(),
+                move |line| {
+                    if let Ok(value) = serde_json::from_str::<Value>(line) {
+                        if value["type"] == "thread.started" {
+                            *parse_thread = value["thread_id"].as_str().map(str::to_owned);
+                        }
+                        if value["type"] == "turn.completed" {
+                            *parse_completed = true;
+                        }
+                        let item = &value["item"];
+                        if value["type"] == "item.completed"
+                            && matches!(
+                                item["type"].as_str(),
+                                Some("agent_message" | "assistant_message")
+                            )
+                        {
+                            *parse_message = item["text"]
+                                .as_str()
+                                .or_else(|| item["content"].as_str())
+                                .unwrap_or_default()
+                                .to_owned();
+                        }
+                    }
+                    parse_codex_line(line)
+                },
+            )
+            .await;
+            result?;
+            let max = request.orchestration.resume_max.min(3);
+            if !request
+                .orchestration
+                .effective(request.orchestration.codex_auto_resume)
+                || !turn_completed
+                || resume_count >= max
+                || !thread_id
+                    .as_deref()
+                    .is_some_and(cli_support::safe_session_id)
+                || !indicates_early_stop(&final_message)
+                || cancel.is_cancelled()
+            {
+                break;
+            }
+            resume_count += 1;
+            let _ = events
+                .send(ProviderEvent::text(
+                    "log",
+                    format!("Tự tiếp tục lần {resume_count}/{max}"),
+                ))
+                .await;
+            final_message.clear();
+            turn_completed = false;
+            let id = thread_id.clone().unwrap_or_default();
+            let mut resume_args = vec![OsString::from("exec"), OsString::from("resume")];
+            resume_args.extend(
+                args.iter()
+                    .skip(1)
+                    .filter(|arg| {
+                        arg.to_string_lossy() != "-"
+                            && request
+                                .session_id
+                                .as_ref()
+                                .is_none_or(|session| arg.to_string_lossy() != session.as_str())
+                    })
+                    .cloned(),
+            );
+            resume_args.push(OsString::from(id));
+            resume_args.push(OsString::from("-"));
+            args = resume_args;
+            prompt =
+                "Tiếp tục và hoàn thành phần còn lại của nhiệm vụ. Báo cáo rõ những gì chưa xong."
+                    .to_owned();
+        }
+        Ok(())
     }
 }
 
@@ -271,5 +369,17 @@ fn file_change_summary(item: &Value) -> String {
             "File change: {}",
             cli_support::one_line(&paths.join(", "), 220)
         )
+    }
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::{indicates_early_stop, EARLY_STOP_PHRASES};
+    #[test]
+    fn matches_each_early_stop_phrase_without_case_sensitivity() {
+        for phrase in EARLY_STOP_PHRASES {
+            assert!(indicates_early_stop(&phrase.to_uppercase()));
+        }
+        assert!(!indicates_early_stop("Task completed successfully."));
     }
 }

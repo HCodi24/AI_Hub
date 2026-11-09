@@ -17,6 +17,7 @@
       <button id="plans-open" class="new-chat" type="button">✦ Chia việc</button>
       <div class="sidebar-bottom">
         <div class="local-note"><span class="status-dot"></span> Chỉ chạy trên máy này</div>
+        <div id="orchestration-badge" class="local-note">Điều phối: TẮT</div>
         <button id="settings-open" class="settings-open"><span aria-hidden="true">⚙</span> Cài đặt</button>
         <button id="extensions-open" class="settings-open"><span aria-hidden="true">◇</span> Tiện ích</button>
       </div>
@@ -90,6 +91,17 @@
       <button class="icon-button" value="cancel" aria-label="Đóng">×</button>
     </form>
     <div class="settings-content">
+      <section class="planner-settings orchestration-settings"><div class="section-heading"><h3>Điều phối</h3></div><label><span><input type="checkbox" data-orch="enabled"> Điều phối thông minh</span><small>Cho phép các tính năng điều phối đã chọn trong AI Hub.</small></label><div id="orchestration-controls" class="orchestration-controls">
+        <label><span><input type="checkbox" data-orch="retry_api"> Thử lại API</span><small>Thử lại khi kết nối lỗi hoặc máy chủ trả lỗi tạm thời.</small><div class="field-row"><input type="number" min="1" max="5" data-orch="retry_attempts" aria-label="Số lần thử lại"><input type="number" min="100" max="60000" data-orch="retry_base_ms" aria-label="Thời gian chờ cơ sở (ms)"></div></label>
+        <label><span><input type="checkbox" data-orch="codex_watchdog"> Codex watchdog</span><small>Dừng Codex nếu không có dòng đầu ra quá thời gian quy định.</small><input type="number" min="1" max="60" data-orch="watchdog_minutes" aria-label="Watchdog (phút)"></label>
+        <label><span><input type="checkbox" data-orch="codex_auto_resume"> Tự tiếp tục Codex</span><small>Tiếp tục lượt Codex có dấu hiệu dừng khi chưa hoàn tất.</small><input type="number" min="0" max="3" data-orch="resume_max" aria-label="Số lần tiếp tục tối đa"></label>
+        <label><span><input type="checkbox" data-orch="deepseek_agent"> DeepSeek làm việc trên file</span><small>Cho phép chế độ agent DeepSeek ở bước điều phối.</small><input type="number" min="50" max="5000" data-orch="deepseek_max_file_lines" aria-label="Ngưỡng số dòng"></label>
+        <label><span><input type="checkbox" data-orch="verify_gate"> Cổng kiểm tra</span><small>Chạy kiểm tra sau mỗi công việc.</small><input type="text" data-orch="verify_command" placeholder="Để trống để tự nhận diện"></label>
+        <label><span><input type="checkbox" data-orch="auto_review"> Claude review tự động</span><small>Chọn nhà cung cấp và model dùng để review.</small><select data-orch="reviewer_provider_id"></select><select data-orch="reviewer_model" aria-label="Model reviewer"></select></label>
+        <label><span><input type="checkbox" data-orch="auto_fix"> Tạo task sửa khi review thất bại</span><small>Giới hạn số vòng sửa tự động.</small><input type="number" min="0" max="5" data-orch="fix_rounds_max"></label>
+        <label><span><input type="checkbox" data-orch="event_log"> Ghi nhật ký sự kiện</span><small>Lưu thời gian, token và trạng thái của task plan.</small></label>
+        <div><strong>Định tuyến mặc định</strong><div id="orchestration-routing"></div></div>
+      </div></section>
       <section class="planner-settings"><div class="section-heading"><h3>Người lập kế hoạch</h3></div><label>Nhà cung cấp<select id="planner-provider"></select></label><label>Model<input id="planner-model" list="planner-model-options"><datalist id="planner-model-options"></datalist></label></section>
       <section class="provider-settings">
         <div class="section-heading"><h3>Nguồn AI</h3><button id="provider-add" class="subtle-button" type="button">＋ Thêm nguồn</button></div>

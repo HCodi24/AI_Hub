@@ -380,6 +380,7 @@ pub struct JsonlCommand<'a> {
     pub folder: &'a str,
     pub args: Vec<OsString>,
     pub prompt: String,
+    pub watchdog_minutes: Option<u32>,
 }
 
 pub async fn run_jsonl(
@@ -459,21 +460,34 @@ pub async fn run_jsonl(
 
     let mut stdout = BufReader::new(stdout).lines();
     let mut was_cancelled = false;
+    let watchdog = command_spec
+        .watchdog_minutes
+        .map(|minutes| Duration::from_secs(u64::from(minutes) * 60));
     'read: loop {
-        let line = tokio::select! {
+        let read_line = stdout.next_line();
+        let line_result = tokio::select! {
             _ = cancel.cancelled() => {
                 was_cancelled = true;
                 break 'read;
             }
-            result = stdout.next_line() => match result {
-                Ok(line) => line,
+            result = async { if let Some(duration)=watchdog { timeout(duration, read_line).await.map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "watchdog"))? } else { read_line.await } } => match result {
+                Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
+                    terminate_child_tree(&mut child).await;
+                    let message=format!("Codex không phản hồi sau {} phút — đã dừng", command_spec.watchdog_minutes.unwrap_or_default());
+                    let _=events.send(ProviderEvent::text("error",message)).await;
+                    let _=events.send(ProviderEvent::text("watchdog_kill","watchdog_kill")).await;
+                    let _=stderr_task.await;
+                    return Ok(());
+                }
                 Err(error) => {
                     terminate_child_tree(&mut child).await;
                     let _ = stderr_task.await;
                     return Err(error).context("Không thể đọc stdout của CLI");
                 }
+                Ok(line) => line,
             },
         };
+        let line = line_result;
         let Some(line) = line else { break };
         for event in parse_line(&line) {
             tokio::select! {

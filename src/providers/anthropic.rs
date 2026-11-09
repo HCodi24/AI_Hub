@@ -59,14 +59,23 @@ impl Provider for AnthropicProvider {
         }
         let client = reqwest::Client::new();
         let secret = request.provider.api_key.clone();
-        let response = tokio::select! {
-            _ = cancel.cancelled() => return Ok(()),
-            response = client
-                .post("https://api.anthropic.com/v1/messages")
-                .header("x-api-key", &request.provider.api_key)
-                .header("anthropic-version", "2023-06-01")
-                .json(&body)
-                .send() => response.context("Không thể kết nối tới Anthropic API")?,
+        let response = match super::send_with_retry(
+            &client,
+            "https://api.anthropic.com/v1/messages",
+            vec![
+                ("x-api-key".into(), request.provider.api_key.clone()),
+                ("anthropic-version".into(), "2023-06-01".into()),
+            ],
+            &body,
+            &request.orchestration,
+            &events,
+            &cancel,
+        )
+        .await
+        {
+            Ok(response) => response,
+            Err(_) if cancel.is_cancelled() => return Ok(()),
+            Err(error) => return Err(error.context("Không thể kết nối tới Anthropic API")),
         };
         if !response.status().is_success() {
             let status = response.status();

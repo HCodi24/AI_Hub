@@ -6,9 +6,9 @@ pub mod openai_compat;
 
 use crate::{
     chat::{ChatMessage, Effort, Permission},
-    config::ProviderConfig,
+    config::{OrchestrationConfig, ProviderConfig},
 };
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
@@ -23,6 +23,7 @@ pub struct ProviderRequest {
     pub effort: Effort,
     pub messages: Vec<ChatMessage>,
     pub session_id: Option<String>,
+    pub orchestration: OrchestrationConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -57,6 +58,62 @@ pub fn for_kind(kind: &str) -> Result<Box<dyn Provider>> {
         "codex_cli" => Ok(Box::new(codex_cli::CodexCliProvider)),
         "claude_cli" => Ok(Box::new(claude_cli::ClaudeCliProvider)),
         _ => bail!("Loại nhà cung cấp không được hỗ trợ: {kind}"),
+    }
+}
+
+pub fn retryable_status(status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504)
+}
+
+pub fn retry_delay(base_ms: u64, retry_index: u32, jitter_ms: u64) -> std::time::Duration {
+    std::time::Duration::from_millis(
+        base_ms
+            .saturating_mul(1u64.checked_shl(retry_index).unwrap_or(u64::MAX))
+            .saturating_add(jitter_ms.min(250)),
+    )
+}
+
+pub async fn send_with_retry(
+    client: &reqwest::Client,
+    url: &str,
+    headers: Vec<(String, String)>,
+    body: &Value,
+    config: &OrchestrationConfig,
+    events: &mpsc::Sender<ProviderEvent>,
+    cancel: &CancellationToken,
+) -> Result<reqwest::Response> {
+    let max_retries = if config.effective(config.retry_api) {
+        config.retry_attempts
+    } else {
+        0
+    };
+    let mut retry = 0;
+    loop {
+        let mut builder = client.post(url).json(body);
+        for (name, value) in &headers {
+            builder = builder.header(name, value);
+        }
+        let result = tokio::select! { _ = cancel.cancelled() => bail!("cancelled"), result = builder.send() => result };
+        let retryable = match &result {
+            Err(error) => error.is_connect() || error.is_timeout(),
+            Ok(response) => retryable_status(response.status()),
+        };
+        if !retryable || retry >= max_retries {
+            return result.context("Không thể gửi yêu cầu API");
+        }
+        let reason = match &result {
+            Err(error) => error.to_string(),
+            Ok(response) => format!("HTTP {}", response.status()),
+        };
+        retry += 1;
+        let detail = format!("Thử lại lần {retry}/{max_retries} sau lỗi {reason}");
+        emit_text(events, "log", detail.clone()).await?;
+        emit_text(events, "retry", detail).await?;
+        let jitter = crate::orchestration::now()
+            .wrapping_mul(31)
+            .wrapping_add(retry as u64 * 73)
+            % 251;
+        tokio::select! { _ = cancel.cancelled() => bail!("cancelled"), _ = tokio::time::sleep(retry_delay(config.retry_base_ms, retry - 1, jitter)) => {} }
     }
 }
 
@@ -122,5 +179,29 @@ fn redact_sensitive_fields(value: &mut Value) {
             }
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::{retry_delay, retryable_status};
+    #[test]
+    fn retries_only_transient_statuses() {
+        for status in [429, 500, 502, 503, 504] {
+            assert!(retryable_status(
+                reqwest::StatusCode::from_u16(status).unwrap()
+            ));
+        }
+        for status in [400, 401, 404, 501] {
+            assert!(!retryable_status(
+                reqwest::StatusCode::from_u16(status).unwrap()
+            ));
+        }
+    }
+    #[test]
+    fn backoff_doubles_and_caps_jitter() {
+        assert_eq!(retry_delay(2000, 0, 0).as_millis(), 2000);
+        assert_eq!(retry_delay(2000, 1, 250).as_millis(), 4250);
+        assert_eq!(retry_delay(2000, 2, 999).as_millis(), 8250);
     }
 }
