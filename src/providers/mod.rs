@@ -2,11 +2,12 @@ pub mod anthropic;
 pub mod claude_cli;
 pub(crate) mod cli_support;
 pub mod codex_cli;
+pub mod deepseek_agent;
 pub mod openai_compat;
 
 use crate::{
     chat::{ChatMessage, Effort, Permission},
-    config::{OrchestrationConfig, ProviderConfig},
+    config::{MutisConfig, ProviderConfig},
 };
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
@@ -23,7 +24,7 @@ pub struct ProviderRequest {
     pub effort: Effort,
     pub messages: Vec<ChatMessage>,
     pub session_id: Option<String>,
-    pub orchestration: OrchestrationConfig,
+    pub mutis: MutisConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +55,7 @@ pub trait Provider: Send + Sync {
 pub fn for_kind(kind: &str) -> Result<Box<dyn Provider>> {
     match kind {
         "openai_compat" => Ok(Box::new(openai_compat::OpenAiCompatibleProvider)),
+        "deepseek_agent" => Ok(Box::new(deepseek_agent::DeepSeekAgentProvider)),
         "anthropic" => Ok(Box::new(anthropic::AnthropicProvider)),
         "codex_cli" => Ok(Box::new(codex_cli::CodexCliProvider)),
         "claude_cli" => Ok(Box::new(claude_cli::ClaudeCliProvider)),
@@ -78,7 +80,7 @@ pub async fn send_with_retry(
     url: &str,
     headers: Vec<(String, String)>,
     body: &Value,
-    config: &OrchestrationConfig,
+    config: &MutisConfig,
     events: &mpsc::Sender<ProviderEvent>,
     cancel: &CancellationToken,
 ) -> Result<reqwest::Response> {
@@ -109,7 +111,7 @@ pub async fn send_with_retry(
         let detail = format!("Thử lại lần {retry}/{max_retries} sau lỗi {reason}");
         emit_text(events, "log", detail.clone()).await?;
         emit_text(events, "retry", detail).await?;
-        let jitter = crate::orchestration::now()
+        let jitter = crate::mutis::now()
             .wrapping_mul(31)
             .wrapping_add(retry as u64 * 73)
             % 251;

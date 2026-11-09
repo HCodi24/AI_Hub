@@ -54,7 +54,7 @@ impl Provider for OpenAiCompatibleProvider {
                 format!("Bearer {}", request.provider.api_key),
             )],
             &body,
-            &request.orchestration,
+            &request.mutis,
             &events,
             &cancel,
         )
@@ -89,7 +89,7 @@ impl Provider for OpenAiCompatibleProvider {
                         format!("Bearer {}", request.provider.api_key),
                     )],
                     &body,
-                    &request.orchestration,
+                    &request.mutis,
                     &events,
                     &cancel,
                 )

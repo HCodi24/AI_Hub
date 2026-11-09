@@ -1,7 +1,15 @@
-Step 10b of AI Hub. FIRST read .tasks/RULES.md. Design: plans/orchestration.md items 3–4. Step 10a (orchestration
+Step 10b of AI Hub. FIRST read .tasks/RULES.md. Design: plans/mutis.md (feature name: MutiS) items 3–4. Step 10a (orchestration
 config, event log, retry, watchdog) is done — reuse it.
 
-0. RENAME FIRST — the feature is the user's own feature named **MutiS** (exact spelling, capital M and S).
+FIX FIRST (bug found in live test of 10a): Codex auto-resume works for round 1 but round 2 fails with
+`Codex CLI kết thúc với mã thoát 2: error: unexpected argument '<thread-id>' found` — the args for the second
+`codex exec resume` are built wrong (likely the session id / "resume" pushed twice or the args vector reused across rounds).
+Build a fresh args vector per round from one function `codex_args(session_id: Option<&str>, model, effort, permission)`
+and unit-test that rounds 1 and 2 produce identical, valid `exec resume [OPTIONS] <id> -` argv. Also: only check the
+LAST paragraph of the final agent message for the stop-early phrases (a reply that merely quotes the word "incomplete"
+earlier should not trigger).
+
+0. RENAME — the feature is the user's own feature named **MutiS** (exact spelling, capital M and S).
    - Module `src/orchestration.rs` → `src/mutis.rs`; Config field `orchestration` → `mutis` with
      `#[serde(alias = "orchestration")]` so existing config.json keeps working; types `Orchestration*` → `Mutis*`.
    - Endpoints `/api/mutis`, `/api/mutis/events` (keep `/api/orchestration*` as aliases for one release).

@@ -14,7 +14,7 @@ from one place. Windows 11 is the primary target (must also compile on Linux/mac
 ## Sources ("providers")
 Every chat request names a provider + model + working folder. Responses stream to the UI with
 Server-Sent Events (SSE): events `delta` (text chunk), `log` (tool/command activity from CLIs),
-`error`, `done`. A Stop button cancels the running request (abort HTTP / kill child process tree).
+`error`, `done`, `diff`. A Stop button cancels the running request (abort HTTP / kill child process tree).
 
 1. **openai_compat** (HTTP) — any OpenAI-compatible endpoint. `POST {base_url}/chat/completions`
    with `stream: true`, `Authorization: Bearer <key>`, parse `data:` SSE lines, forward
@@ -31,6 +31,9 @@ Server-Sent Events (SSE): events `delta` (text chunk), `log` (tool/command activ
 4. **claude_cli** — spawn `claude -p --output-format stream-json --verbose [--model <m>]` with
    cwd=<folder>, prompt on stdin. Assistant text -> `delta`, tool_use -> `log`. Keep `session_id`
    from the result and pass `--resume <id>` for follow-up messages.
+5. **deepseek_agent** — when MutiS and its worker toggle are enabled, use a tool-calling
+   chat completion loop with confined `list_dir`, `read_file`, `edit_file`, and `write_file` tools.
+   The worker cannot execute commands and streams a final collapsed diff.
 
 CLI notes (Windows): npm-installed CLIs are `codex.cmd` / `claude.cmd`; resolve the executable by
 searching PATH for `<name>.exe`, `<name>.cmd`, `<name>` (in that order) and run `.cmd` via
@@ -54,6 +57,8 @@ built-in CLI providers (kind `codex_cli`, models `gpt-6-luna`; kind `claude_cli`
   or masked `api_key` value means "keep the existing key".
 - `GET /api/providers/:id/models` (openai_compat only): fetch `{base_url}/models` to fill the model list.
 - Never log API keys or put them in URLs.
+- MutiS settings are saved as config field `mutis` (`orchestration` is accepted as a migration alias).
+  Its event history is stored in `<config_dir>/ai-hub/mutis/events.jsonl`.
 
 ## UI (Vietnamese labels)
 - Left sidebar: list of chats (in memory + saved to `<config_dir>/ai-hub/chats/*.json`), "+ Chat mới".

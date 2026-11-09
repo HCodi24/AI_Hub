@@ -19,7 +19,13 @@ pub const EARLY_STOP_PHRASES: &[&str] = &[
 ];
 
 pub fn indicates_early_stop(message: &str) -> bool {
-    let lowered = message.to_lowercase();
+    let normalized = message.replace("\r\n", "\n").replace('\r', "\n");
+    let lowered = normalized
+        .trim()
+        .split("\n\n")
+        .last()
+        .unwrap_or_default()
+        .to_lowercase();
     EARLY_STOP_PHRASES
         .iter()
         .any(|phrase| lowered.contains(phrase))
@@ -41,45 +47,12 @@ impl Provider for CodexCliProvider {
                 bail!("Codex session id không hợp lệ");
             }
         }
-        let mut args = vec![OsString::from("exec")];
-        if request.session_id.is_some() {
-            args.push(OsString::from("resume"));
-        }
-        // Both exec and exec resume accept configuration overrides. Keep options
-        // before the optional session and prompt positional arguments.
-        let sandbox_mode = match request.permission {
-            Permission::Read => "read-only",
-            Permission::Write => "workspace-write",
-        };
-        args.extend([
-            OsString::from("--json"),
-            OsString::from("--skip-git-repo-check"),
-            OsString::from("-c"),
-            OsString::from(format!("sandbox_mode=\"{sandbox_mode}\"")),
-        ]);
-        if !request.model.is_empty() {
-            args.extend([OsString::from("-m"), OsString::from(&request.model)]);
-        }
-        if request.effort != Effort::Default {
-            args.extend([
-                OsString::from("-c"),
-                OsString::from(format!(
-                    "model_reasoning_effort=\"{}\"",
-                    match request.effort {
-                        Effort::Low => "low",
-                        Effort::Medium => "medium",
-                        Effort::High => "high",
-                        Effort::Xhigh => "xhigh",
-                        Effort::Max => "max",
-                        Effort::Default => unreachable!(),
-                    }
-                )),
-            ]);
-        }
-        if let Some(session_id) = request.session_id.as_deref() {
-            args.push(OsString::from(session_id));
-        }
-        args.push(OsString::from("-"));
+        let mut args = codex_args(
+            request.session_id.as_deref(),
+            &request.model,
+            request.effort,
+            request.permission,
+        );
         let mut prompt =
             cli_support::compose_prompt(&request.messages, request.session_id.is_some());
         let mut thread_id = request.session_id.clone();
@@ -100,9 +73,9 @@ impl Provider for CodexCliProvider {
                     args: args.clone(),
                     prompt,
                     watchdog_minutes: request
-                        .orchestration
-                        .effective(request.orchestration.codex_watchdog)
-                        .then_some(request.orchestration.watchdog_minutes),
+                        .mutis
+                        .effective(request.mutis.codex_watchdog)
+                        .then_some(request.mutis.watchdog_minutes),
                 },
                 events.clone(),
                 cancel.clone(),
@@ -133,10 +106,8 @@ impl Provider for CodexCliProvider {
             )
             .await;
             result?;
-            let max = request.orchestration.resume_max.min(3);
-            if !request
-                .orchestration
-                .effective(request.orchestration.codex_auto_resume)
+            let max = request.mutis.resume_max.min(3);
+            if !request.mutis.effective(request.mutis.codex_auto_resume)
                 || !turn_completed
                 || resume_count >= max
                 || !thread_id
@@ -157,28 +128,62 @@ impl Provider for CodexCliProvider {
             final_message.clear();
             turn_completed = false;
             let id = thread_id.clone().unwrap_or_default();
-            let mut resume_args = vec![OsString::from("exec"), OsString::from("resume")];
-            resume_args.extend(
-                args.iter()
-                    .skip(1)
-                    .filter(|arg| {
-                        arg.to_string_lossy() != "-"
-                            && request
-                                .session_id
-                                .as_ref()
-                                .is_none_or(|session| arg.to_string_lossy() != session.as_str())
-                    })
-                    .cloned(),
+            args = codex_args(
+                Some(&id),
+                &request.model,
+                request.effort,
+                request.permission,
             );
-            resume_args.push(OsString::from(id));
-            resume_args.push(OsString::from("-"));
-            args = resume_args;
             prompt =
                 "Tiếp tục và hoàn thành phần còn lại của nhiệm vụ. Báo cáo rõ những gì chưa xong."
                     .to_owned();
         }
         Ok(())
     }
+}
+
+pub fn codex_args(
+    session_id: Option<&str>,
+    model: &str,
+    effort: Effort,
+    permission: Permission,
+) -> Vec<OsString> {
+    let mut args = vec![OsString::from("exec")];
+    if session_id.is_some() {
+        args.push(OsString::from("resume"));
+    }
+    let sandbox_mode = match permission {
+        Permission::Read => "read-only",
+        Permission::Write => "workspace-write",
+    };
+    args.extend([
+        OsString::from("--json"),
+        OsString::from("--skip-git-repo-check"),
+        OsString::from("-c"),
+        OsString::from(format!("sandbox_mode=\"{sandbox_mode}\"")),
+    ]);
+    if !model.is_empty() {
+        args.extend([OsString::from("-m"), OsString::from(model)]);
+    }
+    if effort != Effort::Default {
+        let value = match effort {
+            Effort::Low => "low",
+            Effort::Medium => "medium",
+            Effort::High => "high",
+            Effort::Xhigh => "xhigh",
+            Effort::Max => "max",
+            Effort::Default => unreachable!(),
+        };
+        args.extend([
+            OsString::from("-c"),
+            OsString::from(format!("model_reasoning_effort=\"{value}\"")),
+        ]);
+    }
+    if let Some(id) = session_id {
+        args.push(OsString::from(id));
+    }
+    args.push(OsString::from("-"));
+    args
 }
 
 fn parse_codex_line(line: &str) -> Vec<ProviderEvent> {
@@ -374,7 +379,48 @@ fn file_change_summary(item: &Value) -> String {
 
 #[cfg(test)]
 mod resume_tests {
-    use super::{indicates_early_stop, EARLY_STOP_PHRASES};
+    use super::{codex_args, indicates_early_stop, EARLY_STOP_PHRASES};
+    use crate::chat::{Effort, Permission};
+    #[test]
+    fn round_one_and_two_resume_args_are_fresh_and_valid() {
+        let first = codex_args(
+            Some("thread-123"),
+            "gpt-6-luna",
+            Effort::High,
+            Permission::Write,
+        );
+        let second = codex_args(
+            Some("thread-123"),
+            "gpt-6-luna",
+            Effort::High,
+            Permission::Write,
+        );
+        assert_eq!(first, second);
+        let args = first
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(&args[..2], ["exec", "resume"]);
+        assert_eq!(
+            args.iter()
+                .filter(|arg| arg.as_str() == "thread-123")
+                .count(),
+            1
+        );
+        assert_eq!(args.last().map(String::as_str), Some("-"));
+    }
+    #[test]
+    fn checks_only_last_paragraph_for_early_stop() {
+        assert!(!indicates_early_stop(
+            "The quoted word incomplete is not applicable.\n\nEverything is complete."
+        ));
+        assert!(!indicates_early_stop(
+            "The quoted word incomplete is not applicable.\r\n\r\nEverything is complete."
+        ));
+        assert!(indicates_early_stop(
+            "Earlier was fine.\n\nStill incomplete."
+        ));
+    }
     #[test]
     fn matches_each_early_stop_phrase_without_case_sensitivity() {
         for phrase in EARLY_STOP_PHRASES {

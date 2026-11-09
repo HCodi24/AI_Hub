@@ -266,6 +266,7 @@ function renderMessages() {
       : null;
     if (message.role === "assistant") {
       if (message.reasoning) appendFoldout(body, "Đang suy nghĩ", message.reasoning);
+      if (message.diff) appendFoldout(body, "Thay đổi", message.diff);
       if (message.logs?.length) appendActivityFoldout(body, message.logs, tokenLog);
       if (message.error) {
         const error = document.createElement("div");
@@ -437,7 +438,7 @@ async function sendMessage() {
   }
   const chatId = state.chatId;
   state.messages.push({ role: "user", content: text });
-  const assistant = { role: "assistant", content: "", reasoning: "", logs: [] };
+  const assistant = { role: "assistant", content: "", reasoning: "", logs: [], diff: "" };
   state.messages.push(assistant);
   const existing = [...state.messages].reverse().find((message) => message.role === "user");
   const memory = state.memoryChats.get(chatId) || { id: chatId };
@@ -467,8 +468,9 @@ async function sendMessage() {
       if (eventName === "delta") assistant.content += data.text || "";
       else if (eventName === "reasoning") assistant.reasoning += data.text || "";
       else if (eventName === "log") assistant.logs.push(data.text || "");
+      else if (eventName === "diff") assistant.diff = data.text || "";
       else if (eventName === "error") assistant.error = data.text || "Đã xảy ra lỗi";
-      if (["delta", "reasoning", "log", "error"].includes(eventName)) renderMessages();
+      if (["delta", "reasoning", "log", "diff", "error"].includes(eventName)) renderMessages();
     });
   } catch (error) {
     assistant.error = error.message;
@@ -532,7 +534,7 @@ function resizeComposer() {
 
 async function loadConfig() {
   state.config = await api("/api/config");
-  state.orchestration = await api("/api/orchestration");
+  state.orchestration = await api("/api/mutis");
   renderOrchestrationSettings();
   setupProviderControls(state.config.providers[0]?.id);
   folderInput.value = state.config.default_folder || "";
@@ -567,14 +569,14 @@ function updateOrchestrationDisabled() {
   const enabled = $('[data-orch="enabled"]').checked;
   $("#orchestration-controls").classList.toggle("orchestration-disabled", !enabled);
   for (const input of $("#orchestration-controls").querySelectorAll("input,select")) input.disabled = !enabled;
-  $("#orchestration-badge").textContent = `Điều phối: ${enabled ? "BẬT" : "TẮT"}`;
+  $("#orchestration-badge").textContent = `MutiS: ${enabled ? "BẬT" : "TẮT"}`;
 }
 let orchestrationSaveTimer;
 async function saveOrchestration() {
   const next = {...state.orchestration};
   for (const input of document.querySelectorAll("[data-orch]")) next[input.dataset.orch] = input.type === "checkbox" ? input.checked : (input.type === "number" ? Number(input.value) : input.value);
   next.routing = ROUTE_KINDS.map(kind => ({kind,assignee_kind:$(`[data-route="${kind}"]`).value,note:""}));
-  try { state.orchestration = await api("/api/orchestration", {method:"PUT",body:JSON.stringify(next)}); updateOrchestrationDisabled(); }
+  try { state.orchestration = await api("/api/mutis", {method:"PUT",body:JSON.stringify(next)}); updateOrchestrationDisabled(); }
   catch(error) { showToast(error.message); renderOrchestrationSettings(); }
 }
 
@@ -725,7 +727,7 @@ function renderPlanEditor() {
       approve.disabled = invalid || hasCycle(plan.tasks);
     };
     deps.oninput = validateDeps; const depwrap = el("div"); depwrap.append(deps, depError); cell(depwrap);
-    const kind = el("select"); for (const value of ["plan", "code", "test", "docs", "review"]) kind.append(el("option", { value, textContent: value })); kind.value = task.kind; kind.onchange = () => task.kind = kind.value; cell(kind);
+    const kind = el("select"); for (const value of ["plan", "small_edit", "code", "test", "docs", "review"]) kind.append(el("option", { value, textContent: value })); kind.value = task.kind; kind.onchange = () => task.kind = kind.value; cell(kind);
     const status = el("span", { textContent: `${task.status === "waiting" ? "chờ" : task.status}${task.tokens ? ` · ${task.tokens} tokens` : ""}${task.log?.length ? ` · ${task.log.at(-1)}` : ""}`, dataset: { taskStatus: String(task.id) } }); cell(status);
     const actions = el("div");
     const moveUp = () => {
@@ -965,12 +967,23 @@ async function loginClaude() {
 
 function updateProviderFormKind() {
   const kind = $("#provider-kind").value;
-  const showUrl = kind === "openai_compat";
+  const showUrl = kind === "openai_compat" || kind === "deepseek_agent";
   const showExecutable = kind === "codex_cli" || kind === "claude_cli";
   $("#base-url-field").hidden = !showUrl;
   $("#provider-executable-field").hidden = !showExecutable;
   $("#cli-discover").hidden = !showExecutable;
   $("#models-load").hidden = !showUrl;
+  $("#use-deploy-key").hidden = kind !== "deepseek_agent" || !state.settingsProviderId;
+}
+
+async function useDeployKey() {
+  if (!state.settingsProviderId) return;
+  try {
+    state.config = await api(`/api/providers/${encodeURIComponent(state.settingsProviderId)}/use-deploy-key`, {method:"POST"});
+    $("#provider-form-note").textContent = "Đã sao chép key phía máy chủ từ Deploy (DeepSeek).";
+    editProvider(state.settingsProviderId);
+    $("#provider-form-note").textContent = "Đã sao chép key phía máy chủ từ Deploy (DeepSeek).";
+  } catch (error) { $("#provider-form-note").textContent = error.message; }
 }
 
 async function saveProvider(event, testAfterSave = true) {
@@ -1202,6 +1215,7 @@ $("#provider-form").addEventListener("submit", saveProvider);
 $("#provider-delete").addEventListener("click", deleteProvider);
 $("#provider-test").addEventListener("click", () => testProvider(state.settingsProviderId));
 $("#provider-login").addEventListener("click", loginClaude);
+$("#use-deploy-key").addEventListener("click", useDeployKey);
 $("#cli-discover").addEventListener("click", discoverCli);
 $("#models-load").addEventListener("click", loadModels);
 $("#cli-refresh").addEventListener("click", refreshCliStatus);

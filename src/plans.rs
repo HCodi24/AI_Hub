@@ -64,6 +64,25 @@ pub fn reassign(kind: &str, connected: &[ProviderSummary], planner_id: &str) -> 
         .map(|provider| provider.id.clone())
         .unwrap_or_else(|| planner_id.to_owned())
 }
+pub fn reassign_with_routing(
+    kind: &str,
+    connected: &[ProviderSummary],
+    planner_id: &str,
+    routing: &[crate::config::RoutingRule],
+    enabled: bool,
+) -> String {
+    if enabled {
+        if let Some(rule) = routing.iter().find(|rule| rule.kind == kind) {
+            if let Some(provider) = connected
+                .iter()
+                .find(|provider| provider.kind == rule.assignee_kind)
+            {
+                return provider.id.clone();
+            }
+        }
+    }
+    reassign(kind, connected, planner_id)
+}
 fn default_effort() -> String {
     "default".into()
 }
@@ -240,5 +259,35 @@ mod tests {
         assert_eq!(reassign("docs", &connected, "planner"), "openai");
         assert_eq!(reassign("review", &connected, "planner"), "planner");
         assert_eq!(reassign("docs", &[], "planner"), "planner");
+    }
+    #[test]
+    fn reassign_uses_mutis_routing_when_enabled() {
+        let connected = vec![
+            ProviderSummary {
+                id: "ds".into(),
+                name: "DS".into(),
+                kind: "deepseek_agent".into(),
+                models: vec![],
+            },
+            ProviderSummary {
+                id: "codex".into(),
+                name: "Codex".into(),
+                kind: "codex_cli".into(),
+                models: vec![],
+            },
+        ];
+        let routes = vec![crate::config::RoutingRule {
+            kind: "code".into(),
+            assignee_kind: "deepseek_agent".into(),
+            note: String::new(),
+        }];
+        assert_eq!(
+            reassign_with_routing("code", &connected, "p", &routes, true),
+            "ds"
+        );
+        assert_eq!(
+            reassign_with_routing("code", &connected, "p", &routes, false),
+            "codex"
+        );
     }
 }

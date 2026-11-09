@@ -1,7 +1,7 @@
 use crate::{
     chat::{self, ChatMessage, ChatRecord, ChatRequest, ChatStore},
     config::{self, Config, ProviderConfig},
-    orchestration::{self, Event, EventLog},
+    mutis::{self, Event, EventLog},
     plans::{Plan, PlanStore, PlanTask},
     providers::{self, ProviderEvent, ProviderRequest},
 };
@@ -156,6 +156,8 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/app.js", get(app_js))
         .route("/style.css", get(style_css))
         .route("/api/config", get(get_config).put(put_config))
+        .route("/api/mutis", get(get_orchestration).put(put_orchestration))
+        .route("/api/mutis/events", get(orchestration_events))
         .route(
             "/api/orchestration",
             get(get_orchestration).put(put_orchestration),
@@ -168,6 +170,7 @@ pub fn router(state: AppState, port: u16) -> Router {
         )
         .route("/api/providers/{id}/models", get(provider_models))
         .route("/api/providers/{id}/test", post(test_provider))
+        .route("/api/providers/{id}/use-deploy-key", post(use_deploy_key))
         .route("/api/providers/{id}/login", post(login_provider))
         .route("/api/cli-discover/{name}", get(discover_cli))
         .route("/api/chat", post(chat_handler))
@@ -187,18 +190,19 @@ pub fn router(state: AppState, port: u16) -> Router {
         .with_state(state)
 }
 
-async fn get_orchestration(State(state): State<AppState>) -> Json<config::OrchestrationConfig> {
-    Json(state.config.read().await.orchestration.clone())
+async fn get_orchestration(State(state): State<AppState>) -> Json<config::MutisConfig> {
+    Json(state.config.read().await.mutis.clone())
 }
 async fn put_orchestration(
     State(state): State<AppState>,
-    Json(value): Json<config::OrchestrationConfig>,
-) -> ApiResult<Json<config::OrchestrationConfig>> {
+    Json(value): Json<config::MutisConfig>,
+) -> ApiResult<Json<config::MutisConfig>> {
     if !(1..=5).contains(&value.retry_attempts)
         || !(1..=60).contains(&value.watchdog_minutes)
         || value.resume_max > 3
         || value.fix_rounds_max > 5
         || !(50..=5000).contains(&value.deepseek_max_file_lines)
+        || !(5..=40).contains(&value.deepseek_max_steps)
         || value.retry_base_ms > 60000
     {
         return Err(ApiError::new(
@@ -221,7 +225,7 @@ async fn put_orchestration(
         }
     }
     let mut config = state.config.write().await;
-    config.orchestration = value.clone();
+    config.mutis = value.clone();
     config::save(&state.config_path, &config)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
     Ok(Json(value))
@@ -331,7 +335,7 @@ async fn save_plan(
             || t.detail.trim().is_empty()
             || !matches!(
                 t.kind.as_str(),
-                "plan" | "code" | "test" | "docs" | "review"
+                "plan" | "small_edit" | "code" | "test" | "docs" | "review"
             )
     }) {
         return Err(ApiError::new(
@@ -436,7 +440,12 @@ async fn generate_plan(
         })
         .collect::<Vec<_>>()
         .join("\n");
-    let prompt = format!("Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[{{\"id\":1,\"title\":\"...\",\"detail\":\"files + expected result\",\"assignee\":\"provider id\",\"depends_on\":[ids],\"kind\":\"plan|code|test|docs|review\"}}]}}. Keep tasks small and avoid editing same file in parallel.\nRequest:\n{}\nWorking folder: {}\nFiles:\n{}\nConnected workers (id, name, kind, models):\n{}",input.request,folder.display(),file_tree(&folder),workers);
+    let routes = if cfg.mutis.enabled {
+        format!("\nMutiS routing table (kind -> provider kind):\n{}\nUse deepseek_agent only for: việc nhỏ 1–3 file, đã biết chính xác vị trí, theo mẫu có sẵn; không chạy lệnh.", cfg.mutis.routing.iter().map(|r|format!("{} -> {}",r.kind,r.assignee_kind)).collect::<Vec<_>>().join("\n"))
+    } else {
+        String::new()
+    };
+    let prompt = format!("Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[{{\"id\":1,\"title\":\"...\",\"detail\":\"files + expected result\",\"assignee\":\"provider id\",\"depends_on\":[ids],\"kind\":\"plan|small_edit|code|test|docs|review\"}}]}}. Keep tasks small and avoid editing same file in parallel.\nRequest:\n{}\nWorking folder: {}\nFiles:\n{}\nConnected workers (id, name, kind, models):\n{}{}",input.request,folder.display(),file_tree(&folder),workers,routes);
     let provider = providers::for_kind(&planner.kind)
         .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
     let cancel = CancellationToken::new();
@@ -453,10 +462,11 @@ async fn generate_plan(
             content: prompt,
             reasoning: String::new(),
             logs: Vec::new(),
+            diff: String::new(),
             error: None,
         }],
         session_id: None,
-        orchestration: cfg.orchestration.clone(),
+        mutis: cfg.mutis.clone(),
     };
     let task_cancel = cancel.clone();
     let task_state = state.clone();
@@ -514,7 +524,13 @@ async fn generate_plan(
                     let assignee = if valid {
                         old.clone()
                     } else {
-                        crate::plans::reassign(&kind, &connected, &planner_id)
+                        crate::plans::reassign_with_routing(
+                            &kind,
+                            &connected,
+                            &planner_id,
+                            &cfg.mutis.routing,
+                            cfg.mutis.enabled,
+                        )
                     };
                     PlanTask {
                         id: t["id"].as_u64().unwrap_or(i as u64 + 1) as u32,
@@ -749,6 +765,38 @@ async fn remove_provider(
     Ok(Json(masked_config(&config)))
 }
 
+async fn use_deploy_key(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Config>> {
+    let mut config = state.config.write().await;
+    let key = config
+        .providers
+        .iter()
+        .find(|p| p.id == "deploy-deepseek" && p.kind == "openai_compat")
+        .map(|p| p.api_key.clone())
+        .filter(|key| !key.trim().is_empty())
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Chưa có key trong nguồn Deploy (DeepSeek)",
+            )
+        })?;
+    let target = config
+        .providers
+        .iter_mut()
+        .find(|p| p.id == id && p.kind == "deepseek_agent")
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::NOT_FOUND,
+                "Không tìm thấy nguồn DeepSeek làm việc",
+            )
+        })?;
+    target.api_key = key;
+    persist_config(&state, &config)?;
+    Ok(Json(masked_config(&config)))
+}
+
 async fn provider_models(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -762,7 +810,7 @@ async fn provider_models(
         .find(|provider| provider.id == id)
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?;
-    if provider.kind != "openai_compat" {
+    if !matches!(provider.kind.as_str(), "openai_compat" | "deepseek_agent") {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "Chỉ hỗ trợ tải model cho OpenAI-compatible",
@@ -831,13 +879,13 @@ async fn test_provider_uncached(
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?;
     let result = match provider.kind.as_str() {
-        "openai_compat" if provider.api_key.trim().is_empty() => connection(
+        "openai_compat" | "deepseek_agent" if provider.api_key.trim().is_empty() => connection(
             false,
             "not_configured",
             "Chưa nhập API key",
             "Chưa nhập API key",
         ),
-        "openai_compat" => {
+        "openai_compat" | "deepseek_agent" => {
             let url = format!("{}/models", provider.base_url.trim().trim_end_matches('/'));
             match timeout(
                 Duration::from_secs(15),
@@ -1457,7 +1505,15 @@ async fn chat_handler(
         .find(|provider| provider.id == request.provider_id)
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?;
-    let orchestration_config = state.config.read().await.orchestration.clone();
+    let mutis_config = state.config.read().await.mutis.clone();
+    if provider_config.kind == "deepseek_agent"
+        && !mutis_config.effective(mutis_config.deepseek_agent)
+    {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Bật MutiS › DeepSeek làm việc trên file để dùng nguồn này",
+        ));
+    }
     let provider = providers::for_kind(&provider_config.kind)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?;
 
@@ -1482,6 +1538,7 @@ async fn chat_handler(
         content: String::new(),
         reasoning: String::new(),
         logs: Vec::new(),
+        diff: String::new(),
         error: None,
     });
     chat::save_record(&state.chats, &mut record).map_err(|_| {
@@ -1517,7 +1574,7 @@ async fn chat_handler(
         effort,
         messages: request.messages,
         session_id: record.session_id.clone(),
-        orchestration: orchestration_config.clone(),
+        mutis: mutis_config.clone(),
     };
     let event_provider_id = provider_request.provider.id.clone();
     let provider_events = provider_sender.clone();
@@ -1536,12 +1593,12 @@ async fn chat_handler(
     let chat_id = request.chat_id;
     let plan_id = request.plan_id;
     let task_id = request.task_id;
-    let event_logging_enabled = orchestration_config.effective(orchestration_config.event_log);
+    let event_logging_enabled = mutis_config.effective(mutis_config.event_log);
     let log_enabled = event_logging_enabled && plan_id.is_some() && task_id.is_some();
     let started = Instant::now();
     if log_enabled {
         let _ = state.event_log.append(&Event {
-            ts: orchestration::now(),
+            ts: mutis::now(),
             plan_id: plan_id.clone(),
             task_id: task_id.clone(),
             provider_id: event_provider_id.clone(),
@@ -1566,13 +1623,13 @@ async fn chat_handler(
                 event = provider_receiver.recv() => {
                     let Some(event) = event else { break };
                     if event_logging_enabled && event.name == "watchdog_kill" {
-                        let _=task_state.event_log.append(&Event{ts:orchestration::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"watchdog_kill".into(),ok:false,duration_ms:None,tokens:None,detail:Some("Codex watchdog".into())});
+                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"watchdog_kill".into(),ok:false,duration_ms:None,tokens:None,detail:Some("Codex watchdog".into())});
                     }
                     if event_logging_enabled && event.name == "retry" {
-                        let _=task_state.event_log.append(&Event{ts:orchestration::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"retry".into(),ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
+                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"retry".into(),ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
                     }
                     if event_logging_enabled && event.data["text"].as_str().is_some_and(|text|text.starts_with("Tự tiếp tục lần ")) {
-                        let _=task_state.event_log.append(&Event{ts:orchestration::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"resume".into(),ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
+                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"resume".into(),ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
                     }
                     persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
                     if sse_sender.send(chat::sse_event(event.name, &event.data)).await.is_err() {
@@ -1597,7 +1654,7 @@ async fn chat_handler(
             });
             let ok = record.messages.last().is_some_and(|m| m.error.is_none());
             let _ = task_state.event_log.append(&Event {
-                ts: orchestration::now(),
+                ts: mutis::now(),
                 plan_id,
                 task_id,
                 provider_id: event_provider_id,
@@ -1673,6 +1730,10 @@ fn persist_event(
         }
         "log" => {
             message.logs.push(text.to_owned());
+            true
+        }
+        "diff" => {
+            message.diff = text.to_owned();
             true
         }
         "error" => {
@@ -2034,14 +2095,16 @@ fn validate_provider(id: &str, input: &ProviderInput) -> ApiResult<()> {
     }
     if !matches!(
         input.kind.as_str(),
-        "openai_compat" | "anthropic" | "codex_cli" | "claude_cli"
+        "openai_compat" | "deepseek_agent" | "anthropic" | "codex_cli" | "claude_cli"
     ) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "Loại nhà cung cấp không hợp lệ",
         ));
     }
-    if input.kind == "openai_compat" && input.base_url.trim().is_empty() {
+    if matches!(input.kind.as_str(), "openai_compat" | "deepseek_agent")
+        && input.base_url.trim().is_empty()
+    {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "OpenAI-compatible cần URL cơ sở",

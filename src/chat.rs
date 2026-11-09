@@ -36,6 +36,8 @@ pub struct ChatMessage {
     pub reasoning: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub logs: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub diff: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }

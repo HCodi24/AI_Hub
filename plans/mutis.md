@@ -18,16 +18,23 @@ tính năng **bật/tắt được**, gồm các cải tiến đã chốt:
 8. **Claude tự chẩn đoán tính năng**: đọc nhật ký sự kiện của chính tính năng điều phối (treo, rỗng, verify lỗi,
    review từ chối, retry) → báo cáo lỗi của tính năng + đề xuất chỉnh cài đặt/định tuyến (người dùng bấm áp dụng).
 
-## Bật / tắt (Cài đặt › Điều phối)
-- Công tắc chính "Điều phối thông minh" (tắt = AI Hub chạy như cũ, Chia việc chạy tay như bước 8).
+## Bật / tắt (Cài đặt › MutiS)
+- Công tắc chính "Bật MutiS" (tắt = AI Hub chạy như cũ, Chia việc chạy tay như bước 8).
 - Công tắc con: Retry API · Codex watchdog + tự resume · DeepSeek làm việc trên file · Cổng kiểm tra ·
   Claude review tự động · Tự tạo task sửa khi review FAIL · Ghi nhật ký & thống kê.
 - Tham số: người review (provider+model, mặc định claude_cli → anthropic → codex_cli chỉ đọc), số vòng sửa tối đa (2),
   watchdog phút (5), số lần resume (2), retry (3 lần, backoff 2s/4s/8s), ngưỡng file dài cho DeepSeek (400 dòng).
 
 ## Các bước (mỗi bước = 1 lượt Codex, Claude review + chạy thử thật)
-- [ ] 10a — config `orchestration` + UI Cài đặt › Điều phối; nhật ký sự kiện jsonl; retry HTTP; Codex watchdog + resume.
-- [ ] 10b — DeepSeek agent worker (provider kind `deepseek_agent` dùng base_url/key của một openai_compat); diff; bảng định tuyến.
+- [x] 10a — config + UI bật/tắt; nhật ký sự kiện jsonl; retry HTTP; Codex watchdog + resume. Commit c3c0149.
+  Review (Claude, chạy thật): API config + validate OK; event task_start/task_end OK (7,8s · 17.649 token);
+  resume lần 1 OK. LỖI: resume lần 2 dựng sai argv ("unexpected argument <thread-id>"); cụm "incomplete" bị bắt cả khi
+  chỉ được trích dẫn → giao sửa ở đầu 10b. (Lưu ý test: `task_id` gửi dạng chuỗi.)
+- [x] 10b — đổi tên → MutiS (`mutis.rs`, `/api/mutis`, alias `orchestration`); sửa lỗi resume;
+  DeepSeek agent worker (kind `deepseek_agent`); diff; định tuyến.
+- [ ] 10b2 — MutiS 3 vai trò (lead = lập kế hoạch & review, big = làm việc lớn, small = làm việc nhỏ), mỗi vai trò
+  provider/model/effort; thanh chế độ hiện 3 model + 3 chấm; popover "✦ MutiS (3 AI)" + Đội MutiS; Gửi ở chế độ
+  MutiS = lập kế hoạch. Nhiệm vụ: .tasks/step10b2.md (yêu cầu của người dùng sau khi thấy popover chỉ 1 model).
 - [ ] 10c — Cổng kiểm tra + Claude review tự động + vòng sửa trong luồng chạy kế hoạch.
 - [ ] 10d — Tự chẩn đoán + trang thống kê; README/SPEC.
 
@@ -36,6 +43,15 @@ tính năng **bật/tắt được**, gồm các cải tiến đã chốt:
 - DeepSeek trong AI Hub không được chạy lệnh (bài học treo trên Windows).
 - Mọi file ghi UTF-8; quét mojibake là một phần của verify.
 - Commit với tác giả HCodi24 <ntson68199@gmail.com>.
+- Tên tính năng: **MutiS** (đúng chính tả) — tính năng của người dùng; mọi chữ "Điều phối" trên UI đổi thành MutiS.
+- MutiS dùng 3 vai trò (lead/big/small) thay vì chọn theo loại provider.
+- Thứ tự làm: 10a → 10b → 10b2 → 10c → 10d; mỗi bước Codex (gpt-6-luna, effort high) code, Claude review + chạy thử thật
+  bằng bản build riêng `CARGO_TARGET_DIR=target-test` cổng 7897 (không đụng app người dùng đang chạy).
+
+## Cách tiếp tục ở phiên mới
+Đọc file này + .tasks/RULES.md + .tasks/step<bước kế>.md, chạy:
+`codex exec -m gpt-6-luna -c model_reasoning_effort='"high"' -s workspace-write --skip-git-repo-check -C 'C:\TOOL\ai-hub' -o .tasks/<bước>.result.md - < .tasks/<bước>.md`
+rồi review: build/test/clippy, quét chữ hỏng, chạy thật trên cổng 7897, commit, cập nhật nhật ký dưới đây.
 
 ## Bài học (từ phiên Dolores FE + AI Hub)
 - `codex exec` phải đóng stdin (AI Hub đã gửi prompt qua stdin rồi đóng — giữ nguyên).
@@ -43,6 +59,10 @@ tính năng **bật/tắt được**, gồm các cải tiến đã chốt:
 - DeepSeek ~8192 token output/lượt: file dài → trả rỗng. Cần chế độ chỉ sửa (bơm sẵn đoạn code).
 - API Deploy lỗi 500 / ngắt kết nối, có lần sau khi đã sửa file → luôn chụp diff.
 - Claude CLI đi kèm app desktop cần `claude auth login` riêng (máy này chưa đăng nhập) → người review mặc định có fallback.
+
+## Nhật ký tiến độ 10b
+- 2026-11-09: Đổi module/cấu hình MutiS, giữ alias config và endpoint cũ, chuyển event log sang thư mục `mutis`; sửa argv Codex dựng mới theo session và chỉ xét đoạn cuối; thêm provider DeepSeek agent, công cụ file giới hạn, diff SSE, key Deploy server-side, định tuyến theo bảng và loại task `small_edit`.
+- Xác minh: build release offline, clippy `-D warnings`, 22 unit test và `node --check ui/app.js` thành công. Chưa chạy AI/HTTP thật theo yêu cầu trong RULES.md.
 
 ## Nhật ký tiến độ
 (Claude ghi sau mỗi bước)

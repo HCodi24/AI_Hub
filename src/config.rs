@@ -31,11 +31,12 @@ pub struct Config {
     #[serde(default)]
     pub planner_model: String,
     #[serde(default)]
-    pub orchestration: OrchestrationConfig,
+    #[serde(alias = "orchestration")]
+    pub mutis: MutisConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct OrchestrationConfig {
+pub struct MutisConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
@@ -56,6 +57,8 @@ pub struct OrchestrationConfig {
     pub deepseek_agent: bool,
     #[serde(default = "default_max_file_lines")]
     pub deepseek_max_file_lines: u32,
+    #[serde(default = "default_deepseek_max_steps")]
+    pub deepseek_max_steps: u32,
     #[serde(default)]
     pub verify_gate: bool,
     #[serde(default)]
@@ -84,7 +87,7 @@ pub struct RoutingRule {
     pub note: String,
 }
 
-impl Default for OrchestrationConfig {
+impl Default for MutisConfig {
     fn default() -> Self {
         Self {
             enabled: false,
@@ -97,6 +100,7 @@ impl Default for OrchestrationConfig {
             resume_max: 2,
             deepseek_agent: false,
             deepseek_max_file_lines: 400,
+            deepseek_max_steps: 15,
             verify_gate: false,
             verify_command: String::new(),
             auto_review: false,
@@ -109,10 +113,13 @@ impl Default for OrchestrationConfig {
         }
     }
 }
-impl OrchestrationConfig {
+impl MutisConfig {
     pub fn effective(&self, flag: bool) -> bool {
         self.enabled && flag
     }
+}
+fn default_deepseek_max_steps() -> u32 {
+    15
 }
 fn default_retry_attempts() -> u32 {
     3
@@ -171,6 +178,15 @@ impl Config {
                     models: vec!["deepseek-ai/deepseek-v4.1-flash-1017".to_owned()],
                 },
                 ProviderConfig {
+                    id: "deepseek-agent-deploy".to_owned(),
+                    name: "DeepSeek làm việc (Deploy)".to_owned(),
+                    kind: "deepseek_agent".to_owned(),
+                    base_url: "https://api.deploy.com/api/v1".to_owned(),
+                    api_key: String::new(),
+                    executable: String::new(),
+                    models: vec!["deepseek-ai/deepseek-v4.1-flash-1017".to_owned()],
+                },
+                ProviderConfig {
                     id: "openai".to_owned(),
                     name: "OpenAI".to_owned(),
                     kind: "openai_compat".to_owned(),
@@ -210,7 +226,7 @@ impl Config {
             default_folder: default_folder(),
             planner_provider_id: String::new(),
             planner_model: String::new(),
-            orchestration: OrchestrationConfig::default(),
+            mutis: MutisConfig::default(),
         }
     }
 }
@@ -228,8 +244,24 @@ pub fn load_or_seed(path: &Path) -> Result<Config> {
     if path.exists() {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Could not read config file at {}", path.display()))?;
-        serde_json::from_str(&content)
-            .with_context(|| format!("Could not parse config file at {}", path.display()))
+        let mut config: Config = serde_json::from_str(&content)
+            .with_context(|| format!("Could not parse config file at {}", path.display()))?;
+        if !config
+            .providers
+            .iter()
+            .any(|provider| provider.id == "deepseek-agent-deploy")
+        {
+            let seeded = Config::seeded();
+            if let Some(provider) = seeded
+                .providers
+                .into_iter()
+                .find(|provider| provider.id == "deepseek-agent-deploy")
+            {
+                config.providers.push(provider);
+            }
+            save(path, &config)?;
+        }
+        Ok(config)
     } else {
         let config = Config::seeded();
         save(path, &config)?;

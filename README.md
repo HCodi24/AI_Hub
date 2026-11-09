@@ -8,6 +8,7 @@ AI Hub là ứng dụng Rust chạy cục bộ, cung cấp giao diện tiếng V
 - **Anthropic:** kết nối trực tiếp với Anthropic API bằng API key.
 - **Codex CLI:** gửi yêu cầu tới Codex CLI trong thư mục làm việc đã chọn và tiếp tục cuộc trò chuyện qua session.
 - **Claude Code CLI:** gửi yêu cầu tới Claude Code CLI trong thư mục làm việc đã chọn và tiếp tục cuộc trò chuyện qua session.
+- **DeepSeek agent:** khi bật MutiS, chỉnh sửa file bằng công cụ giới hạn trong thư mục chat; agent không chạy lệnh và luôn gửi diff.
 
 Hai nhà cung cấp HTTP cần API key. Hai nhà cung cấp CLI dùng chương trình CLI đã cài và đăng nhập trên máy này.
 
@@ -60,3 +61,7 @@ Mở **Tiện ích** ở thanh bên để xem trạng thái và quản lý exten
 ## Chia việc (phase 1)
 
 AI Hub có thể đề xuất kế hoạch công việc từ nội dung đang soạn hoặc tin nhắn người dùng gần nhất. Mở **Chia việc** ở thanh bên để chỉnh sửa, sắp xếp, thêm hoặc xóa việc và duyệt kế hoạch trước khi thực thi. Kế hoạch được lưu tại `<config_dir>/ai-hub/plans/`. Người lập kế hoạch chọn trong phần Cài đặt; mỗi công việc chỉ chạy khi người dùng bấm **Chạy**, và chỉ bật khi các phụ thuộc đã hoàn tất. Công việc dùng chat riêng theo nhà cung cấp được giao và quyền đọc/ghi theo loại công việc. Không có tự động chạy nối tiếp.
+
+## MutiS
+
+Mở **Cài đặt → MutiS** để bật định tuyến và DeepSeek làm việc trên file. Nguồn **DeepSeek làm việc (Deploy)** dùng URL/model Deploy và có thể sao chép key từ nguồn Deploy (DeepSeek) ngay trên máy chủ.

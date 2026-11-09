@@ -32,8 +32,17 @@ impl EventLog {
         let directory = config_path
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Config path has no parent"))?
-            .join("orchestration");
+            .join("mutis");
         fs::create_dir_all(&directory)?;
+        let old = config_path
+            .parent()
+            .unwrap()
+            .join("orchestration")
+            .join("events.jsonl");
+        let new = directory.join("events.jsonl");
+        if old.exists() && !new.exists() {
+            fs::rename(old, new)?;
+        }
         Ok(Self { directory })
     }
     pub fn append(&self, event: &Event) -> anyhow::Result<()> {
