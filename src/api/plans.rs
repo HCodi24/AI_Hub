@@ -503,12 +503,12 @@ mod strip_verbatim_tests {
     #[test]
     fn strips_windows_verbatim_prefixes() {
         assert_eq!(
-            strip_verbatim(PathBuf::from(r"\?\C:\TOOL\ai-hub")),
+            strip_verbatim(PathBuf::from(r"\\?\C:\TOOL\ai-hub")),
             PathBuf::from(r"C:\TOOL\ai-hub")
         );
         assert_eq!(
-            strip_verbatim(PathBuf::from(r"\?\UNC\srv\share")),
-            PathBuf::from(r"\srv\share")
+            strip_verbatim(PathBuf::from(r"\\?\UNC\srv\share")),
+            PathBuf::from(r"\\srv\share")
         );
         assert_eq!(
             strip_verbatim(PathBuf::from(r"C:\x")),

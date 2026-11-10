@@ -48,10 +48,10 @@ pub fn extract_json(raw: &str) -> Option<&str> {
 
 pub fn strip_verbatim(path: PathBuf) -> PathBuf {
     let text = path.to_string_lossy();
-    if let Some(rest) = text.strip_prefix(r"\?\UNC\") {
-        return PathBuf::from(format!(r"\{rest}"));
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
     }
-    if let Some(rest) = text.strip_prefix(r"\?\") {
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
         return PathBuf::from(rest);
     }
     path
