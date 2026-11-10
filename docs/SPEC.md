@@ -47,6 +47,8 @@ Composer hỗ trợ dán, kéo thả và chọn ảnh PNG/JPEG/WebP/GIF, tối �
 - `POST /api/verify`, `/api/plan-diff`
 
 ### Tranh luận (`/api/debates`)
+- `POST /api/debates` nhận thêm `chat_id` tùy chọn (UUID; sai trả 400). Khi có, tạo chat nếu thiếu và lưu một tin user cùng một tin assistant có `debate_id`, nội dung ban đầu rỗng. Khi kết thúc, cập nhật nội dung bằng tóm tắt phán quyết và các bước (tối đa 1.500 ký tự), hoặc lỗi/dừng; các lượt chat sau dùng nội dung tóm tắt này, bỏ qua assistant rỗng.
+- Chat và lịch sử dùng chung `ui/js/debate-card.js`: một thẻ, phán quyết trên biên bản, tab vòng, hai cột (chuyển bên trên màn hình nhỏ), thời gian và hoạt động trực tiếp. Bản ghi và từng lượt có `elapsed_s` mặc định 0 để đọc dữ liệu cũ. Tin nhắn có `debate_id` tải lại thẻ từ `GET /api/debates/{id}`; thẻ đang chạy được dùng lại trong bộ nhớ. Chia việc dùng thư mục của bản tranh luận.
 - `POST /api/debates` `{request, folder}` → SSE: `debate`, `round`, `delta{side,round,text}`, `log`, `turn{side,round,turn}`,
   `judging`, `verdict`, `error`, `done`. Codex (vai trò big nếu là codex_cli) và Claude (vai trò lead nếu là claude_cli) đều phải
   đang kết nối, chỉ đọc file. Vòng 1: hai bên đề xuất song song; vòng 2+: mỗi bên phản biện (tiếp tục phiên CLI của mình) và kết

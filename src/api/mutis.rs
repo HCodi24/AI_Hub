@@ -451,6 +451,7 @@ pub(crate) async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<R
         permission: chat::Permission::Read,
         effort,
         messages: vec![ChatMessage {
+            debate_id: None,
             role: "user".into(),
             content: prompt,
             attachments: Vec::new(),

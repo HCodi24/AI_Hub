@@ -275,6 +275,7 @@ pub(super) async fn generate_plan(
         permission: chat::Permission::Read,
         effort: chat::Effort::Default,
         messages: vec![ChatMessage {
+            debate_id: None,
             role: "user".into(),
             content: prompt,
             attachments: Vec::new(),

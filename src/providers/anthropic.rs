@@ -169,6 +169,7 @@ mod image_builder_tests {
         let path = std::env::temp_dir().join(format!("{}.png", Uuid::new_v4()));
         fs::write(&path, b"pixels").unwrap();
         let message = ChatMessage {
+            debate_id: None,
             role: "user".into(),
             content: "Look".into(),
             attachments: vec![ChatAttachment {

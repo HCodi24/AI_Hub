@@ -6,6 +6,7 @@ import { EFFORTS, currentProvider, renderModePicker, saveLastMode, setupProvider
 import { api, readSse } from "./api.js";
 import { resolveConnectedRole, testAllProviders } from "./settings.js";
 import { planFromRequest } from "./plans.js";
+import { setDebateMarkdown } from "./debate-card.js";
 
 export const providerSelect = $("#provider-select");
 export const modelInput = $("#model-input");
@@ -354,13 +355,31 @@ export function appendParagraphs(parent, text) {
   const blocks = text.replace(/^\n+|\n+$/g, "").split(/\n\s*\n/);
   for (const block of blocks) {
     if (!block) continue;
-    const paragraph = document.createElement("p");
-    const lines = block.split("\n");
-    lines.forEach((line, index) => {
-      if (index) paragraph.append(document.createElement("br"));
-      appendInline(paragraph, line);
-    });
-    parent.append(paragraph);
+    // Headings (#..######) and bullet / numbered lists; any other lines form a paragraph with line breaks.
+    let paragraph = null;
+    let list = null;
+    for (const line of block.split("\n")) {
+      const heading = line.match(/^(#{1,6})\s+(.*)$/);
+      const item = line.match(/^\s*(?:([-*+])|(\d+)[.)])\s+(.*)$/);
+      if (heading) {
+        paragraph = null; list = null;
+        const node = document.createElement(`h${Math.min(heading[1].length + 2, 6)}`);
+        appendInline(node, heading[2]);
+        parent.append(node);
+      } else if (item) {
+        paragraph = null;
+        const tag = item[1] ? "ul" : "ol";
+        if (!list || list.tagName.toLowerCase() !== tag) { list = document.createElement(tag); parent.append(list); }
+        const li = document.createElement("li");
+        appendInline(li, item[3]);
+        list.append(li);
+      } else {
+        list = null;
+        if (paragraph) paragraph.append(document.createElement("br"));
+        else { paragraph = document.createElement("p"); parent.append(paragraph); }
+        appendInline(paragraph, line);
+      }
+    }
   }
 }
 export function appendInline(parent, text) {
@@ -576,3 +595,5 @@ export async function stopChat() {
   finally { $("#stop-button").disabled = false; }
 }
       if (eventName === "memory") memoryEvent(data, folderInput.value);
+
+setDebateMarkdown(renderMarkdown);

@@ -42,6 +42,8 @@ impl Side {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Turn {
+    #[serde(default)]
+    pub elapsed_s: u64,
     /// The answer shown to the user (the stance JSON block is removed).
     #[serde(default)]
     pub text: String,
@@ -106,6 +108,8 @@ pub struct Verdict {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Debate {
+    #[serde(default)]
+    pub elapsed_s: u64,
     pub id: String,
     pub title: String,
     pub request: String,
@@ -134,6 +138,63 @@ pub struct Debate {
 }
 
 impl Debate {
+    pub fn chat_summary(&self) -> String {
+        let text = if let Some(verdict) = &self.verdict {
+            let mut text = format!("⚖ Phán quyết\n\n{}", verdict.decision);
+            for (index, step) in verdict.plan_steps.iter().enumerate() {
+                text.push_str(&format!("\n{}. {}", index + 1, step));
+            }
+            text
+        } else {
+            self.error
+                .clone()
+                .unwrap_or_else(|| "Tranh luận đã dừng".into())
+        };
+        text.chars().take(1500).collect()
+    }
+
+    /// Load the latest chat each time so unrelated messages are preserved.
+    pub fn save_chat(&self, store: &crate::chat::ChatStore, id: &str, start: bool) -> Result<()> {
+        use crate::chat::{self, ChatMessage, ChatRequest};
+        anyhow::ensure!(chat::valid_id(id), "chat_id không hợp lệ");
+        let mut record = match store.get(id)? {
+            Some(record) => record,
+            None => chat::new_record(&ChatRequest {
+                chat_id: id.into(),
+                provider_id: String::new(),
+                model: self.codex_model.clone(),
+                folder: self.folder.clone(),
+                dev_chat: false,
+                permission: chat::Permission::Read,
+                file_tools: Default::default(),
+                effort: None,
+                messages: Vec::new(),
+                plan_id: None,
+                task_id: None,
+                task_kind: None,
+            }),
+        };
+        if start {
+            if record.messages.is_empty() {
+                record.title = self.title.clone();
+            }
+            let user: ChatMessage = serde_json::from_value(serde_json::json!({
+                "role": "user", "content": self.request
+            }))?;
+            let assistant: ChatMessage = serde_json::from_value(serde_json::json!({
+                "role": "assistant", "content": "", "debate_id": self.id
+            }))?;
+            record.messages.extend([user, assistant]);
+        } else if let Some(message) = record
+            .messages
+            .iter_mut()
+            .find(|message| message.debate_id.as_deref() == Some(&self.id))
+        {
+            message.content = self.chat_summary();
+        }
+        chat::save_record(store, &mut record)
+    }
+
     pub fn total_tokens(&self) -> u64 {
         self.rounds
             .iter()
@@ -401,6 +462,79 @@ impl DebateStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn debate_chat_append_roundtrip_and_update_preserve_other_messages() {
+        let directory = std::env::temp_dir().join(format!("debate-chat-{}", uuid::Uuid::new_v4()));
+        let store = crate::chat::ChatStore::new(directory.clone());
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut debate = Debate {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: "Kiểm tra tranh luận".into(),
+            request: "Chọn hướng nào?".into(),
+            folder: "project".into(),
+            ..Default::default()
+        };
+        debate.save_chat(&store, &id, true).unwrap();
+        let record = store.get(&id).unwrap().unwrap();
+        assert_eq!(record.title, debate.title);
+        assert_eq!(record.folder, debate.folder);
+        assert_eq!(record.messages.len(), 2);
+        assert_eq!(record.messages[0].content, debate.request);
+        assert_eq!(
+            record.messages[1].debate_id.as_deref(),
+            Some(debate.id.as_str())
+        );
+        assert!(record.messages[1].content.is_empty());
+        let second = Debate {
+            id: uuid::Uuid::new_v4().to_string(),
+            ..debate.clone()
+        };
+        second.save_chat(&store, &id, true).unwrap();
+        debate.verdict = Some(Verdict {
+            decision: "Gộp hai hướng".into(),
+            plan_steps: vec!["Kiểm tra cache".into(), "Chạy kiểm thử".into()],
+            ..Default::default()
+        });
+        debate.save_chat(&store, &id, false).unwrap();
+        let record = store.get(&id).unwrap().unwrap();
+        assert_eq!(record.messages.len(), 4);
+        assert!(record.messages[1].content.contains("Gộp hai hướng"));
+        assert!(record.messages[1].content.contains("1. Kiểm tra cache"));
+        assert!(record.messages[3].content.is_empty());
+        debate.verdict = None;
+        debate.error = Some("Lỗi trọng tài".into());
+        debate.save_chat(&store, &id, false).unwrap();
+        assert_eq!(
+            store.get(&id).unwrap().unwrap().messages[1].content,
+            "Lỗi trọng tài"
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn debate_summary_is_bounded_unicode_and_invalid_chat_id_is_rejected() {
+        let directory =
+            std::env::temp_dir().join(format!("debate-invalid-{}", uuid::Uuid::new_v4()));
+        let store = crate::chat::ChatStore::new(directory.clone());
+        let debate = Debate {
+            verdict: Some(Verdict {
+                decision: "Việt".repeat(1000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        assert_eq!(debate.chat_summary().chars().count(), 1500);
+        assert!(debate.save_chat(&store, "../invalid", true).is_err());
+        assert!(!directory.exists());
+        let old: crate::chat::ChatMessage =
+            serde_json::from_str(r#"{"role":"assistant","content":"cũ"}"#).unwrap();
+        assert!(old.debate_id.is_none());
+        assert!(serde_json::to_value(old)
+            .unwrap()
+            .get("debate_id")
+            .is_none());
+    }
 
     #[test]
     fn stance_is_read_from_the_last_json_block_and_hidden_from_the_text() {

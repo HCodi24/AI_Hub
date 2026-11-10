@@ -65,7 +65,7 @@ export async function planFromRequest(text) {
       if (event === "error") throw new Error(data.message || data.text || "Planning failed");
       if (event === "plan") receivedPlan = data;
     });
-    if (receivedPlan) { await loadPlans(); openPlan(receivedPlan); }
+    if (receivedPlan) { await loadPlans(); openPlan(receivedPlan); return receivedPlan; }
   } catch (error) {
     if (error.name === "AbortError") {
       logs.textContent += "\u0110\u00e3 hu\u1ef7\n";

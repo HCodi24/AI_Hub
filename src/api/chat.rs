@@ -156,6 +156,7 @@ pub(crate) async fn chat_handler(
         }
     }
     record.messages.push(ChatMessage {
+        debate_id: None,
         role: "assistant".to_owned(),
         content: String::new(),
         reasoning: String::new(),

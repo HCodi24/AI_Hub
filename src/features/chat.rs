@@ -50,6 +50,8 @@ pub struct ChatAttachment {
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debate_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<ChatAttachment>,
     #[serde(default, skip_serializing_if = "String::is_empty")]

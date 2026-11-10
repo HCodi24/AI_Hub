@@ -29,6 +29,8 @@ use tokio_util::sync::CancellationToken;
 pub(crate) struct DebateInput {
     request: String,
     folder: String,
+    #[serde(default)]
+    chat_id: Option<String>,
 }
 
 #[derive(Clone)]
@@ -108,6 +110,7 @@ async fn run_turn(
     out: &mpsc::Sender<SseEvent>,
     cancel: &CancellationToken,
 ) -> (Turn, Option<String>) {
+    let started = std::time::Instant::now();
     let mut turn = Turn::default();
     let provider = match providers::for_kind(&debater.provider.kind) {
         Ok(provider) => provider,
@@ -124,6 +127,7 @@ async fn run_turn(
         permission: chat::Permission::Read,
         effort: debater.effort,
         messages: vec![ChatMessage {
+            debate_id: None,
             role: "user".into(),
             content: prompt,
             attachments: Vec::new(),
@@ -174,6 +178,7 @@ async fn run_turn(
             _ => {}
         }
     }
+    turn.elapsed_s = started.elapsed().as_secs();
     turn.text = text;
     (turn, session)
 }
@@ -182,6 +187,16 @@ pub(crate) async fn start_debate(
     State(state): State<AppState>,
     Json(input): Json<DebateInput>,
 ) -> ApiResult<Response> {
+    if input
+        .chat_id
+        .as_deref()
+        .is_some_and(|id| !chat::valid_id(id))
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "chat_id không hợp lệ",
+        ));
+    }
     let request = input.request.trim().to_owned();
     if request.is_empty() {
         return Err(ApiError::new(
@@ -239,6 +254,14 @@ pub(crate) async fn start_debate(
         max_rounds,
         ..Default::default()
     };
+    if let Some(id) = &input.chat_id {
+        record.save_chat(&state.chats, id, true).map_err(|_| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Không lưu được chat tranh luận",
+            )
+        })?;
+    }
     let _ = state.debates.save(&record);
 
     let (out, receiver) = mpsc::channel::<SseEvent>(128);
@@ -246,6 +269,7 @@ pub(crate) async fn start_debate(
     let task_cancel = cancel.clone();
     let task_state = state.clone();
     tokio::spawn(async move {
+        let started = std::time::Instant::now();
         let _job = JobGuard::new(task_state.active_jobs.clone());
         let mutis = cfg.mutis.clone();
         let mut debaters = [codex, claude];
@@ -322,6 +346,10 @@ pub(crate) async fn start_debate(
             let _ = task_state.debates.save(&record);
             if task_cancel.is_cancelled() {
                 record.status = "stopped".into();
+                record.elapsed_s = started.elapsed().as_secs();
+                if let Some(id) = &input.chat_id {
+                    let _ = record.save_chat(&task_state.chats, id, false);
+                }
                 let _ = task_state.debates.save(&record);
                 let _ = out.send(sse("done", json!(record))).await;
                 return;
@@ -329,6 +357,10 @@ pub(crate) async fn start_debate(
             if failed {
                 record.status = "error".into();
                 record.error = Some("Một bên không trả lời được — tranh luận dừng lại".into());
+                record.elapsed_s = started.elapsed().as_secs();
+                if let Some(id) = &input.chat_id {
+                    let _ = record.save_chat(&task_state.chats, id, false);
+                }
                 let _ = task_state.debates.save(&record);
                 let _ = out.send(sse("error", json!({"text": record.error}))).await;
                 let _ = out.send(sse("done", json!(record))).await;
@@ -372,6 +404,14 @@ pub(crate) async fn start_debate(
                         .unwrap_or_else(|| "Trọng tài trả lời không đúng định dạng JSON".into()),
                 );
             }
+        }
+        if task_cancel.is_cancelled() {
+            record.status = "stopped".into();
+            record.error = Some("Tranh luận đã dừng".into());
+        }
+        record.elapsed_s = started.elapsed().as_secs();
+        if let Some(id) = &input.chat_id {
+            let _ = record.save_chat(&task_state.chats, id, false);
         }
         let _ = task_state.debates.save(&record);
         let _ = task_state.event_log.append(&Event {

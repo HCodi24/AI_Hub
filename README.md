@@ -116,7 +116,13 @@ Nút "✦ Gợi ý chia việc" nằm cạnh nút Gửi (và tự gợi ý khi y
 
 **Tự động chia việc** (Cài đặt › MutiS hoặc công tắc trong popover MutiS): khi bật, mỗi tin gửi ở nguồn MutiS được chia việc ngay như bấm ✦ Gợi ý chia việc, không trả lời kiểu chat thường. Mặc định tắt.
 
-**⚖ Tranh luận**: nút cạnh "✦ Gợi ý chia việc". Codex và Claude cùng đọc thư mục, đề xuất hướng giải quyết song song, rồi phản biện nhau (mặc định 2 vòng, dừng sớm khi đã thống nhất). Một phiên Claude thứ hai, không biết gì về cuộc tranh luận ngoài biên bản, làm trọng tài và ra phán quyết. Bấm "Dùng kết quả này để chia việc" để lập kế hoạch từ phán quyết. Không AI nào sửa file trong lúc tranh luận. Cài đặt › MutiS cho chỉnh số vòng (1–3) và model trọng tài.
+**⚖ Tranh luận**: bật công tắc cạnh "✦ Gợi ý chia việc" để gửi yêu cầu thành một thẻ tranh luận trong chat.
+Claude đề xuất, Codex đọc và phản biện; các vòng sau tiếp tục đối đáp (mặc định 2 vòng, dừng sớm khi thống nhất).
+Một phiên Claude mới làm trọng tài. Phán quyết nằm trên cùng, kèm các chip mở rộng ý đồng ý, tranh cãi, rủi ro và các bước.
+Biên bản chia theo tab vòng, hai cột Codex/Claude; màn hình nhỏ có nút chuyển bên. Nội dung dài thu gọn, khi chạy hiện đuôi nội dung,
+hoạt động, token, thời gian và nút Dừng. Thẻ được lưu cùng chat, mở lại hoặc tải lại trang vẫn xem được; lịch sử dùng cùng thẻ.
+Bấm "✦ Chia việc từ phán quyết" để lập kế hoạch trong đúng thư mục tranh luận. Kết luận ngắn được lưu để chat tiếp và bộ nhớ có ngữ cảnh.
+Không AI nào sửa file trong lúc tranh luận. Cài đặt › MutiS cho chỉnh số vòng (1–3) và model trọng tài.
 
 Trong lúc lập kế hoạch, giao diện hiện log trực tiếp, thời gian đã trôi qua và nút "Huỷ". Chỉ những nguồn đã kết nối mới được giao việc; nếu phải thay nguồn, dòng cảnh báo "⚠ đã đổi từ …" xuất hiện.
 
