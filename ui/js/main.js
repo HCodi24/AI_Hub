@@ -179,7 +179,7 @@ $("#mode-popover").addEventListener("click", (event) => {
   const source=event.target.closest("[data-source]")?.dataset.source;
   if (source === "mutis" && state.mutis?.enabled) {
     state.selectedSource = "mutis";
-    messageInput.placeholder = "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…";
+    messageInput.placeholder = "Nhắn tin với MutiS — bấm ✦ Gợi ý chia việc để chia việc cho 3 AI…";
     renderModePicker();
     saveLastMode();
     const section = $("#mode-mutis-section");

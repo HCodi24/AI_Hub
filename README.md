@@ -105,7 +105,7 @@ Dưới mỗi câu trả lời có các khối có thể gấp mở:
 
 Chip chế độ nằm ngay cạnh khung nhập và hiển thị nguồn · model · effort hiện tại. Nhấp vào chip để mở popover, tại đó có thể đổi nguồn, đổi model (mục "Model khác…" để nhập tay) và chọn effort: Mặc định / Thấp / Vừa / Cao / Rất cao / Max.
 
-Effort áp dụng cho Codex CLI, OpenAI-compatible và Anthropic (extended thinking); Claude CLI không dùng effort. Khi MutiS đang bật, popover có thêm nguồn "✦ MutiS (3 AI)" hiển thị ba model theo vai trò kèm ba chấm trạng thái, cùng một mục "Đội MutiS".
+Effort áp dụng cho Codex CLI, OpenAI-compatible và Anthropic (extended thinking); Claude CLI không dùng effort. Khi MutiS đang bật, popover có thêm nguồn "✦ MutiS (3 AI)" hiển thị ba model theo vai trò kèm ba chấm trạng thái, cùng một mục "Đội MutiS". Nhắn tin ở nguồn MutiS là chat bình thường do vai trò Lập kế hoạch & review trả lời; chỉ khi bấm **✦ Gợi ý chia việc** thì MutiS mới lập kế hoạch và chia việc cho 3 AI.
 
 ## Chia việc
 

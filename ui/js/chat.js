@@ -4,7 +4,6 @@ import { hideDevPage, refreshDevRepo } from "./dev.js";
 import { EFFORTS, currentProvider, renderModePicker, saveLastMode, setupProviderControls, updateModels, updatePermissionControl } from "./mode-chip.js";
 import { api, readSse } from "./api.js";
 import { resolveConnectedRole, testAllProviders } from "./settings.js";
-import { planFromRequest } from "./plans.js";
 
 export const providerSelect = $("#provider-select");
 export const modelInput = $("#model-input");
@@ -25,7 +24,7 @@ export function newChat() {
   if (!state.config?.providers.some((provider) => provider.id === lastMode?.provider_id)) lastMode = null;
   setupProviderControls(lastMode?.provider_id || providerSelect.value || state.config?.providers[0]?.id, lastMode?.model || "");
   state.selectedSource = lastMode?.source === "mutis" ? "mutis" : "provider";
-  messageInput.placeholder = state.selectedSource === "mutis" ? "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…" : "Nhắn tin với AI…";
+  messageInput.placeholder = state.selectedSource === "mutis" ? "Nhắn tin với MutiS — bấm ✦ Gợi ý chia việc để chia việc cho 3 AI…" : "Nhắn tin với AI…";
   state.effort = EFFORTS.includes(lastMode?.effort) ? lastMode.effort : "default";
   renderModePicker();
   permissionSelect.value = "write";
@@ -47,7 +46,7 @@ export async function loadChat(id) {
     let mode = null;
     try { mode = JSON.parse(localStorage.getItem(`ai-hub-last-mode-${id}`) || "null"); } catch (_) { /* Ignore invalid mode cache. */ }
     state.selectedSource = mode?.source === "mutis" ? "mutis" : "provider";
-    messageInput.placeholder = state.selectedSource === "mutis" ? "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…" : "Nhắn tin với AI…";
+    messageInput.placeholder = state.selectedSource === "mutis" ? "Nhắn tin với MutiS — bấm ✦ Gợi ý chia việc để chia việc cho 3 AI…" : "Nhắn tin với AI…";
     setupProviderControls(cached.provider_id, cached.model);
     permissionSelect.value = cached.permission || "write";
     state.effort = cached.effort || "default";
@@ -66,7 +65,7 @@ export async function loadChat(id) {
     let mode = null;
     try { mode = JSON.parse(localStorage.getItem(`ai-hub-last-mode-${id}`) || "null"); } catch (_) { /* Ignore invalid mode cache. */ }
     state.selectedSource = mode?.source === "mutis" ? "mutis" : "provider";
-    messageInput.placeholder = state.selectedSource === "mutis" ? "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…" : "Nhắn tin với AI…";
+    messageInput.placeholder = state.selectedSource === "mutis" ? "Nhắn tin với MutiS — bấm ✦ Gợi ý chia việc để chia việc cho 3 AI…" : "Nhắn tin với AI…";
     state.memoryChats.set(chat.id, { id: chat.id, title: chat.title, updated_at: chat.updated_at, dev_chat: chat.dev_chat });
     setupProviderControls(chat.provider_id, chat.model);
     permissionSelect.value = chat.permission || "write";
@@ -129,7 +128,7 @@ export function renderDevChatControls() {
   const strip = $("#dev-chat-strip");
   strip.hidden = !state.devChat;
   folderInput.readOnly = state.devChat;
-  messageInput.placeholder = state.devChat ? "Mô tả thay đổi cho AI Hub…" : state.selectedSource === "mutis" ? "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…" : "Nhắn tin với AI…";
+  messageInput.placeholder = state.devChat ? "Mô tả thay đổi cho AI Hub…" : state.selectedSource === "mutis" ? "Nhắn tin với MutiS — bấm ✦ Gợi ý chia việc để chia việc cho 3 AI…" : "Nhắn tin với AI…";
   if (state.devChat) strip.textContent = `⚒ Chat tự phát triển · thư mục: ${folderInput.value}${state.devChat && !state.dev ? " (chế độ dev đang tắt)" : ""}`;
 }
 export function devChatPreamble(repo) {
@@ -339,16 +338,16 @@ export async function sendMessage() {
       state.mutis.roles.lead = lead;
       state.mutis = await api("/api/mutis", { method: "PUT", body: JSON.stringify(state.mutis) });
     }
-    if (lead) {
-      providerSelect.value = lead.provider_id;
-      state.config.planner_provider_id = lead.provider_id;
-      state.config.planner_model = lead.model;
-      $("#planner-provider").value = lead.provider_id;
-      $("#planner-model").value = lead.model;
-    }
-    await planFromRequest(text);
+    // MutiS: a normal message is a NORMAL chat answered by the lead role. Planning / task splitting only happens
+    // when the user explicitly clicks "✦ Gợi ý chia việc" (or the big-request hint).
+    providerSelect.value = lead.provider_id;
+    modelInput.value = lead.model || modelInput.value;
+    if (lead.effort) state.effort = lead.effort;
+    state.config.planner_provider_id = lead.provider_id;
+    state.config.planner_model = lead.model;
+    $("#planner-provider").value = lead.provider_id;
+    $("#planner-model").value = lead.model;
     saveLastMode();
-    return;
   }
   if (!currentProvider()) {
     showToast("Hãy thêm hoặc chọn một nguồn AI trong Cài đặt.");
