@@ -28,10 +28,11 @@ docs/{SPEC.md,CODEX_RULES.md,design/*,history/tasks/*}
 ## Các bước
 - [x] R1a (Claude) — chuyển file: docs/, scripts/, lịch sử .tasks → docs/history/tasks, RULES → docs/CODEX_RULES.md;
   sửa đường dẫn trong dev.ps1 (repo = thư mục cha của scripts/), README, docs.
-- [ ] R1b (Codex) — `scripts/verify.ps1`, `scripts/smoke.ps1`, verify_ignore mặc định mới, MutiS tự nhận verify.ps1.
+- [x] R1b (Codex) — verify/smoke scripts, verify_ignore default, MutiS auto-detect, README updated.
 - [ ] R2 — tách backend.
 - [ ] R3 — tách frontend + nhúng nhiều file UI.
 - [ ] R4 — dọn tàn dư, thông báo lỗi tiếng Việt thống nhất, README/SPEC.
 
 ## Nhật ký
 - 2026-11-10: xoá target-codex/target-test (1,5 GB, không ảnh hưởng). R1a xong.
+- 2026-11-10: R1b complete. Watcher continues to monitor ui/, src/, Cargo.toml and Cargo.lock only; docs/ and scripts/ are ignored.

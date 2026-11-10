@@ -182,7 +182,7 @@ fn default_event_log() -> bool {
     true
 }
 fn default_verify_ignore() -> Vec<String> {
-    vec![".tasks/**".into(), "plans/**".into(), "**/*.md".into()]
+    vec!["docs/**".into(), "**/*.md".into()]
 }
 fn default_routing() -> Vec<RoutingRule> {
     [

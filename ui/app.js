@@ -826,7 +826,7 @@ function renderOrchestrationSettings() {
   renderMutisRoleRows("settings-mutis-roles");
   for (const input of document.querySelectorAll("[data-orch]")) {
     const key = input.dataset.orch;
-    if (input.type === "checkbox") input.checked = Boolean(config[key]); else input.value = key === "verify_ignore" ? (config[key] || [".tasks/**", "plans/**", "**/*.md"]).join("\n") : (config[key] ?? "");
+    if (input.type === "checkbox") input.checked = Boolean(config[key]); else input.value = key === "verify_ignore" ? (config[key] || ["docs/**", "**/*.md"]).join("\n") : (config[key] ?? "");
   }
   const reviewer = $('[data-orch="reviewer_provider_id"]');
   reviewer.replaceChildren(...(state.config.providers || []).map(p => el("option", {value:p.id,textContent:p.name})));

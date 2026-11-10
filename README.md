@@ -207,9 +207,9 @@ Về bảo mật, ứng dụng chỉ bind trên 127.0.0.1; từ chối các head
 | `docs/SPEC.md` | Đặc tả kỹ thuật |
 | `docs/CODEX_RULES.md` | Quy tắc khi giao việc cho Codex |
 | `docs/history/tasks/` | Lịch sử các nhiệm vụ đã giao |
-| `scripts/` | dev.ps1, dev.cmd |
+| `scripts/` | dev.ps1, dev.cmd, verify.ps1 (kiểm tra build/UTF-8), smoke.ps1 (kiểm tra API cục bộ) |
 
-Chạy bộ kiểm thử bằng:
+Chạy kiểm tra đầy đủ bằng `.\scripts\verify.ps1`; chạy smoke test API bằng `.\scripts\smoke.ps1`. Có thể chạy bộ kiểm thử Rust riêng bằng:
 
 ```powershell
 cargo test
@@ -217,7 +217,7 @@ cargo test
 
 ## Chế độ dev (tự phát triển)
 
-Chạy `.\scripts\dev.ps1` từ thư mục gốc repo (hoặc `scripts\dev.cmd`). App chạy từ bản sao `target\dev-run\ai-hub.exe`, dùng dữ liệu AI Hub thật của bạn. UI được đọc từ `ui\` mỗi request và tự tải lại khi thay đổi. Khi Rust hoặc Cargo manifest đổi, banner cho phép build và khởi động lại; có thể bật tự build trong Cài đặt › Tự phát triển. Build thành công khởi động lại app qua launcher.
+Chạy `.\scripts\dev.ps1` từ thư mục gốc repo (hoặc `scripts\dev.cmd`). App chạy từ bản sao `target\dev-run\ai-hub.exe`, dùng dữ liệu AI Hub thật của bạn. UI được đọc từ `ui\` mỗi request và tự tải lại khi thay đổi. Khi Rust hoặc Cargo manifest đổi, banner cho phép build và khởi động lại; có thể bật tự build trong Cài đặt › Tự phát triển. Build thành công khởi động lại app qua launcher. Dùng `.\scripts\verify.ps1` để chạy kiểm tra tổng hợp và `.\scripts\smoke.ps1` để kiểm tra API với cấu hình tạm.
 
 Trong chế độ dev, nút **Tự phát triển** ở thanh bên hiển thị nhánh, file thay đổi và commit gần nhất; thông tin repo tự làm mới mỗi 10 giây. Có thể mở chat với quyền sửa file hoặc lập kế hoạch trên repo này, tạo checkpoint, xem diff, bỏ thay đổi có xác nhận, commit, chạy test và build exe release theo yêu cầu. Test dùng `target\dev-check` để tách sản phẩm biên dịch khỏi app đang chạy. MutiS verify chạy tiếp sau `cargo test` khi cổng kiểm tra được bật. Không thao tác nào tự push; build release chỉ chạy khi bấm nút. Nếu build báo `Access is denied`, hãy đóng exe release đang chạy để nhả khóa tệp.
 

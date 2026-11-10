@@ -124,8 +124,17 @@ pub async fn run(
 
 fn detect(folder: &Path) -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
+    let powershell_script = folder.join("scripts/verify.ps1");
     let script = folder.join("scripts/verify/verify.sh");
-    if script.is_file() && command_available("bash") {
+    if powershell_script.is_file() && command_available("powershell") {
+        out.push((
+            "verify_script",
+            format!(
+                "powershell -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
+                powershell_script.display()
+            ),
+        ));
+    } else if script.is_file() && command_available("bash") {
         out.push(("verify_script", format!("bash \"{}\"", script.display())));
     } else if folder.join("Cargo.toml").is_file() {
         out.push(("cargo build", "cargo build --offline".into()));
@@ -529,6 +538,11 @@ mod tests {
         std::fs::create_dir_all(root.join("scripts/verify")).unwrap();
         std::fs::write(root.join("Cargo.toml"), "[package]").unwrap();
         std::fs::write(root.join("scripts/verify/verify.sh"), "true").unwrap();
+        std::fs::write(root.join("scripts/verify.ps1"), "exit 0").unwrap();
+        if command_available("powershell") {
+            assert!(detect(&root)[0].1.contains("scripts/verify.ps1"));
+        }
+        let _ = std::fs::remove_file(root.join("scripts/verify.ps1"));
         assert_eq!(detect(&root)[0].0, "verify_script");
         std::fs::remove_dir_all(&root).unwrap();
     }
