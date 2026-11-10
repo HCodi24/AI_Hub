@@ -15,33 +15,6 @@
 }
 button { cursor: pointer; }
 .app-shell { display: flex; height: 100dvh; }
-.sidebar { width: 258px; flex: 0 0 258px; display: flex; flex-direction: column; padding: 20px 13px 13px; background: var(--panel); border-right: 1px solid var(--line); }
-.brand { display: flex; align-items: center; gap: 10px; padding: 2px 10px 22px; font-size: 17px; font-weight: 700; letter-spacing: -.03em; }
-.brand-mark { font-size: 21px; }
-.new-chat { font-size: 13px; font-weight: 600; }
-.new-chat span { margin-right: 7px; color: var(--accent); font-size: 17px; vertical-align: -1px; }
-.section-label { margin: 26px 10px 8px; color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .12em; }
-.chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
-.chat-item { display: flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: 8px; }
-.chat-item.active { background: var(--panel-2); }
-.chat-select {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  padding: 8px 7px;
-  overflow: hidden;
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.chat-delete { border: 0; border-radius: 6px; padding: 4px 7px; opacity: 0; background: transparent; color: var(--muted); }
-.chat-item:hover .chat-delete, .chat-item:focus-within .chat-delete { opacity: 1; }
-.chat-delete:hover { color: var(--danger); background: var(--panel-3); }
-.sidebar-bottom { display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
-.local-note { color: var(--muted); font-size: 11px; padding: 0 7px; }
 .status-dot { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #6bc69b; }
 .main-panel { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: center; }
 .toolbar {
@@ -69,7 +42,7 @@ button { cursor: pointer; }
 }
 .control-group select:focus, .control-group input:focus { border-color: var(--accent); }
 .model-control { width: 185px; }
-.folder-control { min-width: 180px; flex: 1; max-width: 440px; }
+.folder-control { min-width: 180px; flex: 1; }
 .permission-control { width: 150px; min-width: 125px; }
 .foldout { margin: 8px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: 11px; }
 .foldout summary { padding: 8px 10px; color: var(--muted); cursor: pointer; }
@@ -118,7 +91,8 @@ button { cursor: pointer; }
 #mode-chip[data-status="checking"] .status-dot.checking { background: #d9a441; animation: pulse 1s ease-in-out infinite; }
 #mode-chip .status-dot.error { background:#ed6268; }
 #mode-chip .status-dot.checking { background:#d9a441; animation:pulse 1s ease-in-out infinite; }
-#mode-status-dots { display:inline-flex; gap:2px; }
+.status-dot.connected { background: #45c878; }
+#mode-status-dots { display:inline-flex; gap:2px; align-items:center; }
 .connection-row { display: flex; align-items: center; gap: 10px; }
 .connection-detail { flex: 1; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .connection-detail.connected { color: #45c878; }
@@ -133,14 +107,6 @@ button { cursor: pointer; }
 .spacer { flex: 1; }
 .form-note { min-height: 14px; margin: -2px 0 0; color: var(--muted); font-size: 10px; }
 @media (max-width: 760px) {
-  .sidebar { width: 205px; flex-basis: 205px; padding: 14px 9px 10px; }
-  .brand { padding: 3px 7px 18px; }
-  .brand > span:last-child { display: inline; }
-  .new-chat { height: auto; padding: 9px; text-align: left; font-size: 12px; }
-  .new-chat span { margin-right: 6px; font-size: 17px; }
-  .sidebar-bottom { margin-top: auto; }
-  .settings-open { padding: 9px 0; text-align: center; font-size: 0; }
-  .settings-open span { margin: 0; font-size: 16px; }
   .toolbar { flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; }
   .dev-chat-strip { padding: 8px 12px; overflow-wrap: anywhere; }
   .control-group { min-width: 0; flex: 1 1 38%; }

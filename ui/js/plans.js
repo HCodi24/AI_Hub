@@ -22,7 +22,6 @@ export async function planFromRequest(text) {
   buttons.forEach(button => { if (button) button.disabled = true; });
   $(".main-panel").hidden = true;
   $("#self-dev-view").hidden = true;
-  $("#extensions-view").hidden = true;
   $("#plans-view").hidden = false;
   const provider = state.config.providers.find(item => item.id === $("#planner-provider").value);
   const root = $("#plans-list");
@@ -78,7 +77,6 @@ export function openPlan(plan) {
   state.currentPlan = structuredClone(plan);
   $(".main-panel").hidden = true;
   $("#self-dev-view").hidden = true;
-  $("#extensions-view").hidden = true;
   $("#plans-view").hidden = false;
   renderPlanEditor();
 }
@@ -301,9 +299,9 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
         file_tools: provider.agent_capable ? (taskCanWrite(task) ? "write" : "read") : "none",
         messages: [{ role: "user", content: prompt }],
       }),
-      if (event === "memory") memoryEvent(data, plan.folder);
     });
     await readSse(response.body, (event, data) => {
+      if (event === "memory") memoryEvent(data, plan.folder);
       if (event === "error") { hadError = true; task.log.push(data.text || "Lỗi"); }
       if (event === "delta") task.summary += data.text || "";
       if (event === "diff") task.diff += data.text || data.diff || "";
@@ -316,9 +314,9 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
       const node = $(`[data-task-status="${task.id}"]`);
       if (node) node.textContent = `${task.status} · ${task.log.at(-1) || ""}`;
     });
-  task.summary = hideMemory(task.summary);
     task.status = task._stopped ? "đã dừng" : hadError ? "lỗi" : "xong";
   } catch (error) { hadError = true; task.status = task._stopped ? "đã dừng" : "lỗi"; task.log.push(error.message); }
+  task.summary = hideMemory(task.summary);
   await persistPlan();
   if (!hadError && !task._stopped) await runTaskGates(task);
   renderPlanEditor();

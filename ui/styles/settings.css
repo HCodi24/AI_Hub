@@ -2,19 +2,6 @@
 .mutis-disabled { opacity:.48; }
 .route-row { display:flex!important; align-items:center; justify-content:space-between; padding:3px 0; }
 .route-row select { min-width:150px; }
-.new-chat, .settings-open {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 10px 11px;
-  text-align: left;
-  background: transparent;
-  color: var(--text);
-  transition: background .15s ease, border-color .15s ease;
-}
-.new-chat:hover, .settings-open:hover { background: var(--panel-2); border-color: #535967; }
-.settings-open { border: 0; color: var(--muted); font-size: 12px; }
-.settings-open span { margin-right: 8px; }
 .settings-dialog {
   width: min(760px, calc(100vw - 28px));
   max-height: min(90vh, 850px);

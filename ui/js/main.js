@@ -8,10 +8,11 @@ import {
   messageInput,
   modelInput,
   newChat,
+  loadChat,
   openDevChat,
   permissionSelect,
-  providerSelect,
   fileToolsSelect,
+  providerSelect,
   refreshChats,
   rememberCurrentChat,
   renderDevChatControls,
@@ -43,10 +44,10 @@ import {
 } from "./settings.js";
 import { loadMutisPage, renderDiagnosis } from "./mutis-page.js";
 import { loadPlans, planFromRequest, renderPlanList } from "./plans.js";
-import { loadExtensions } from "./extensions.js";
 import { debateFromRequest, renderDebateList } from "./debate.js";
+import { loadExtensions } from "./extensions.js";
+import { applyDevVisibility, initSidebar } from "/components/sidebar/sidebar.js";
 
-$("#self-dev-open").addEventListener("click",showDevPage);
 $("#self-dev-back").addEventListener("click",hideDevPage);
 $("#dev-open-chat").addEventListener("click",openDevChat);
 $("#dev-open-plan").addEventListener("click",async()=>{await openDevChat();messageInput.value="Sửa AI Hub: ";planFromRequest(messageInput.value);});
@@ -88,18 +89,6 @@ $("#dev-commit").addEventListener("click", async () => {
 });
 $("#dev-test").addEventListener("click",()=>streamDevRun("/api/dev/test",$("#dev-test-log")));
 $("#dev-release").addEventListener("click",()=>streamDevRun("/api/dev/release",$("#dev-release-log")));
-$("#extensions-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=false;try{await loadExtensions()}catch(e){showToast(e.message)}});
-$("#mutis-open").addEventListener("click", async () => {
-  $(".main-panel").hidden = true;
-  $("#extensions-view").hidden = true;
-  $("#plans-view").hidden = true;
-  $("#mutis-view").hidden = false;
-  try {
-    await loadMutisPage();
-  } catch (e) {
-    showToast(e.message);
-  }
-});
 $("#mutis-back").addEventListener("click",()=>{$("#mutis-view").hidden=true;$(".main-panel").hidden=false});
 $("#mutis-diagnose").addEventListener("click", async () => {
   const button = $("#mutis-diagnose"), progress = $("#mutis-diagnosis-progress"), log = $("#mutis-diagnosis-log");
@@ -116,22 +105,22 @@ $("#mutis-diagnose").addEventListener("click", async () => {
   } catch (error) { showToast(error.message); log.textContent += `${error.message}\n`; }
   finally { button.disabled = false; progress.hidden = true; }
 });
-$("#extensions-back").addEventListener("click",()=>{$("#extensions-view").hidden=true;$(".main-panel").hidden=false});
-$("#plans-open").addEventListener("click", async () => {
-  $(".main-panel").hidden = true;
-  $("#extensions-view").hidden = true;
-  $("#plans-view").hidden = false;
-    renderDebateList();
-  $("#plan-editor").hidden = true;
-  try {
-    await loadPlans();
-  } catch (e) {
-    showToast(e.message);
-  }
-$("#debate-button").addEventListener("click",()=>debateFromRequest(messageInput.value));
-});
 $("#plans-back").addEventListener("click",()=>{$("#plans-view").hidden=true;$(".main-panel").hidden=false});
 $("#plan-button").addEventListener("click",()=>planFromRequest(messageInput.value));
+{
+  const debateButton = $("#debate-button");
+  const syncDebate = () => {
+    const on = localStorage.getItem("debateMode") === "1";
+    debateButton.classList.toggle("active", on);
+    debateButton.setAttribute("aria-pressed", String(on));
+  };
+  debateButton.title = "Công tắc: khi bật, mỗi câu hỏi gửi đi sẽ được Codex và Claude tranh luận ngay (Claude khác làm trọng tài)";
+  debateButton.addEventListener("click", () => {
+    localStorage.setItem("debateMode", localStorage.getItem("debateMode") === "1" ? "0" : "1");
+    syncDebate();
+  });
+  syncDebate();
+}
 $("#hint-plan").addEventListener("click",()=>planFromRequest(messageInput.value));
 $("#hint-dismiss").addEventListener("click",()=>{$("#plan-hint").hidden=true});
 messageInput.addEventListener("input", () => {
@@ -154,16 +143,7 @@ $("#chat-idle-timeout").addEventListener("change", () => {
 });
 $("#extension-stop").addEventListener("click",()=>fetch("/api/extensions/codegraph/stop",{method:"POST"}));
 
-$("#new-chat").addEventListener("click", newChat);
-$("#dev-chat-new").addEventListener("click", openDevChat);
-$("#settings-open").addEventListener("click", async () => {
-  $("#settings-dialog").showModal();
-  renderPlannerSettings();
-  if (state.settingsProviderId) editProvider(state.settingsProviderId);
-  else clearProviderForm();
-  testAllProviders();
-  await refreshCliStatus();
-});
+initSidebar();
 $("#dev-auto-rebuild").addEventListener("change", async () => {
   try { const result=await api("/api/dev/settings",{method:"PUT",body:JSON.stringify({auto_rebuild:$("#dev-auto-rebuild").checked})}); state.devAutoRebuild=result.auto_rebuild; }
   catch(error) { showToast(error.message); }
@@ -266,8 +246,8 @@ $("#message-input").addEventListener("keydown", (event) => {
 });
 $("#folder-input").addEventListener("input", () => { renderDevChatControls(); rememberCurrentChat(); });
 permissionSelect.addEventListener("change", rememberCurrentChat);
-$("#folder-input").addEventListener("change", saveDefaultFolder);
 fileToolsSelect.addEventListener("change", rememberCurrentChat);
+$("#folder-input").addEventListener("change", saveDefaultFolder);
 $("#provider-add").addEventListener("click", clearProviderForm);
 $("#provider-kind").addEventListener("change", updateProviderFormKind);
 $("#provider-form").addEventListener("submit", saveProvider);
@@ -301,10 +281,8 @@ $('[data-orch="reviewer_provider_id"]').addEventListener("change", () => {
     try {
       const dev = await api("/api/dev/status");
       state.dev = dev.dev;
-      $("#dev-badge").hidden = !state.dev;
-      $("#self-dev-open").hidden = !state.dev;
+      applyDevVisibility();
       $("#self-dev-settings").hidden = !state.dev;
-      $("#dev-chat-new").hidden = !state.dev;
       if (state.dev) {
         const settings = await api("/api/dev/settings");
         state.devAutoRebuild = settings.auto_rebuild;
@@ -316,7 +294,10 @@ $('[data-orch="reviewer_provider_id"]').addEventListener("change", () => {
     await loadConfig();
     renderModePicker();
     await refreshChats();
-    newChat();
+    let resumeId = null;
+    try { resumeId = sessionStorage.getItem("ai-hub-resume-chat"); sessionStorage.removeItem("ai-hub-resume-chat"); } catch (_) { /* storage unavailable */ }
+    if (resumeId && state.chats.some((chat) => chat.id === resumeId)) await loadChat(resumeId);
+    else newChat();
   } catch (error) {
     showToast(error.message);
   }

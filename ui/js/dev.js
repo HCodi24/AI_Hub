@@ -9,17 +9,22 @@ export function showDevBanner(message, action) {
   if (action) { const button = el("button", { className: "subtle-button", textContent: "Build & khởi động lại" }); button.onclick = startDevBuild; root.append(button); }
 }
 let reloadTimer = null;
+// Remember the open chat so the page comes back to it after a dev reload instead of starting a new chat.
+function reloadPage() {
+  try { if (state.chatId) sessionStorage.setItem("ai-hub-resume-chat", state.chatId); } catch (_) { /* storage unavailable */ }
+  location.reload();
+}
 // Reloading the page drops the running chat request, and the server then cancels the AI run. When the AI edits
 // ui/ files itself that would kill its own session, so wait until no chat is streaming before reloading.
 function reloadWhenIdle() {
-  if (!state.streaming) { location.reload(); return; }
+  if (!state.streaming) { reloadPage(); return; }
   showDevBanner("Giao diện đã đổi · sẽ tự tải lại khi AI chạy xong", false);
   if (reloadTimer) return;
   reloadTimer = setInterval(() => {
     if (state.streaming) return;
     clearInterval(reloadTimer);
     reloadTimer = null;
-    setTimeout(() => location.reload(), 800);
+    setTimeout(reloadPage, 800);
   }, 1000);
 }
 export function connectDevEvents() {
@@ -76,7 +81,6 @@ export async function refreshDevRepo() {
 }
 export function showDevPage() {
   $(".main-panel").hidden = true;
-  $("#extensions-view").hidden = true;
   $("#mutis-view").hidden = true;
   $("#plans-view").hidden = true;
   $("#self-dev-view").hidden = false;

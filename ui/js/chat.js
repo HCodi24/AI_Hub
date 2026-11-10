@@ -1,3 +1,4 @@
+import { createDebateCard, storedDebateCard, debateCards, setDebateMarkdown } from "./debate-card.js";
 import { hideMemory, memoryEvent } from "./memory.js";
 import { $, showToast } from "./util.js";
 import { state } from "./state.js";
@@ -6,7 +7,7 @@ import { EFFORTS, currentProvider, renderModePicker, saveLastMode, setupProvider
 import { api, readSse } from "./api.js";
 import { resolveConnectedRole, testAllProviders } from "./settings.js";
 import { planFromRequest } from "./plans.js";
-import { setDebateMarkdown } from "./debate-card.js";
+import { renderChatList } from "/components/sidebar/sidebar.js";
 
 export const providerSelect = $("#provider-select");
 export const modelInput = $("#model-input");
@@ -148,49 +149,14 @@ export async function refreshChats() {
     showToast(error.message);
   }
 }
-export function renderChatList() {
-  const root = $("#chat-list");
-  root.replaceChildren();
-  const entries = new Map();
-  for (const chat of state.chats) entries.set(chat.id, chat);
-  for (const chat of state.memoryChats.values()) entries.set(chat.id, chat);
-  const sorted = [...entries.values()].sort((a, b) => b.updated_at - a.updated_at);
-  for (const chat of sorted) {
-    const item = document.createElement("div");
-    item.className = `chat-item${chat.id === state.chatId ? " active" : ""}`;
-    const select = document.createElement("button");
-    select.className = "chat-select";
-    select.type = "button";
-    select.disabled = state.streaming;
-    select.textContent = `${chat.dev_chat ? "⚒ " : ""}${chat.title || "Chat mới"}`;
-    select.title = select.textContent;
-    select.addEventListener("click", () => loadChat(chat.id));
-    const remove = document.createElement("button");
-    remove.className = "chat-delete";
-    remove.type = "button";
-    remove.disabled = state.streaming;
-    remove.textContent = "×";
-    remove.title = "Xóa chat";
-    remove.setAttribute("aria-label", "Xóa chat");
-    remove.addEventListener("click", async () => {
-      try {
-        await api(`/api/chats/${encodeURIComponent(chat.id)}`, { method: "DELETE" });
-        state.memoryChats.delete(chat.id);
-        state.memoryData.delete(chat.id);
-        if (state.chatId === chat.id) newChat();
-        await refreshChats();
-      } catch (error) { showToast(error.message); }
-    });
-    item.append(select, remove);
-    root.append(item);
-  }
-}
 export function renderDevChatControls() {
   const strip = $("#dev-chat-strip");
-  strip.hidden = !state.devChat;
+  strip.hidden = true;
+  const folderLabel = $("#folder-label");
+  folderLabel.textContent = state.devChat ? `⚒ Chat tự phát triển · Thư mục${!state.dev ? " (dev tắt)" : ""}` : "Thư mục";
+  folderLabel.classList.toggle("dev-folder-label", state.devChat);
   folderInput.readOnly = state.devChat;
   messageInput.placeholder = state.devChat ? "Mô tả thay đổi cho AI Hub…" : state.selectedSource === "mutis" ? "Nhắn tin với MutiS — bấm ✦ Gợi ý chia việc để chia việc cho 3 AI…" : "Nhắn tin với AI…";
-  if (state.devChat) strip.textContent = `⚒ Chat tự phát triển · thư mục: ${folderInput.value}${state.devChat && !state.dev ? " (chế độ dev đang tắt)" : ""}`;
 }
 export function devChatPreamble(repo) {
   return [
@@ -211,9 +177,9 @@ export async function openDevChat() {
   if (mutis) state.selectedSource = "mutis";
   else if (provider) { providerSelect.value = provider.id; state.selectedSource = "provider"; updateModels(); updatePermissionControl(); state.effort = "high"; }
   permissionSelect.value = "write";
+  fileToolsSelect.value = "none";
   messageInput.placeholder = "Mô tả thay đổi cho AI Hub…";
   messageInput.value = "";
-  fileToolsSelect.value = "none";
   messageInput.focus(); rememberCurrentChat(); renderModePicker(); renderDevChatControls(); renderChatList();
   state.memoryChats.get(state.chatId).dev_chat = true;
 }
@@ -226,6 +192,13 @@ export function renderMessages() {
     row.className = `message ${message.role === "user" ? "user" : "assistant"}`;
     const body = document.createElement("div");
     body.className = "message-body";
+    if (message.debate_id || message._debateCard) {
+      const card = message._debateCard || storedDebateCard(message.debate_id);
+      body.append(card.el);
+      row.classList.add("debate-message");
+      row.append(body); messagesRoot.append(row);
+      continue;
+    }
     const tokenLog = message.role === "assistant"
       ? [...(message.logs || [])].reverse().find((entry) => entry.startsWith("Token:"))
       : null;
@@ -277,9 +250,9 @@ export function rememberCurrentChat() {
     model: modelInput.value,
     folder: folderInput.value,
     permission: permissionSelect.value || "write",
+    file_tools: fileToolsSelect.value || "none",
     effort: state.effort,
     dev_chat: state.devChat,
-    file_tools: fileToolsSelect.value || "none",
     messages: state.messages.map((message) => ({ ...message, logs: [...(message.logs || [])] })),
   });
 }
@@ -405,13 +378,13 @@ export function appendInline(parent, text) {
   }
   if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
 }
-// Short "who is answering" text for the live status strip.
-export function runningLabel(status = null) {
 // File tools only apply to sources that allow agent mode; every other source always sends "none".
 function activeFileTools() {
   return currentProvider()?.agent_capable ? fileToolsSelect.value || "none" : "none";
 }
 
+// Short "who is answering" text for the live status strip.
+export function runningLabel(status = null) {
   if (status?.provider_name) {
     const effort = status.effort ? ` · ${status.effort}` : "";
     return `${status.provider_name} · ${status.model || "model"}${effort}`;
@@ -465,14 +438,60 @@ export function setStreaming(value) {
   modelInput.disabled = value;
   folderInput.disabled = value;
   permissionSelect.disabled = value;
+  fileToolsSelect.disabled = value;
   $("#mode-chip").disabled = value;
   $("#new-chat").disabled = value;
-  fileToolsSelect.disabled = value;
   renderChatList();
   if (value) {
     clearInterval(statusTimer);
     statusTimer = setInterval(() => { if (liveStatus) { liveStatus.elapsed_s += 1; liveStatus.idle_s += 1; renderRunningStatus(); } }, 1000);
   }
+}
+let debateAbort = null;
+/** One persistent assistant card per debate; SSE updates its DOM in place. */
+async function debateInChat(text) {
+  const folder = folderInput.value.trim();
+  if (!folder) { showToast("Hãy nhập thư mục làm việc."); return; }
+  const chatId = state.chatId;
+  const card = createDebateCard({ live: true });
+  const assistant = { role: "assistant", content: "", _debateCard: card };
+  state.messages.push({ role: "user", content: text, attachments: [] }, assistant);
+  const memory = state.memoryChats.get(chatId) || { id: chatId };
+  if (!memory.title || memory.title === "Chat mới") memory.title = text.slice(0, 72);
+  memory.updated_at = Date.now() / 1000;
+  state.memoryChats.set(chatId, memory);
+  messageInput.value = ""; resizeComposer();
+  debateAbort = new AbortController();
+  card.el.addEventListener("debate-stop", () => debateAbort?.abort());
+  renderMessages(); renderChatList(); setStreaming(true);
+  let receivedDone = false;
+  try {
+    const response = await fetch("/api/debates", { method: "POST", signal: debateAbort.signal,
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request: text, folder, chat_id: chatId }) });
+    if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
+    await readSse(response.body, (event, data) => {
+      card.handle(event, data);
+      if (event === "debate") { assistant.debate_id = data.id; debateCards.set(data.id, card); }
+      if (event === "done") {
+        receivedDone = true;
+        assistant.content = debateSummary(data);
+      }
+    });
+    if (!receivedDone) throw new Error("Mất kết nối khi tranh luận");
+  } catch (error) {
+    assistant.content = error.name === "AbortError" ? "Tranh luận đã dừng" : error.message;
+    card.handle("error", { text: assistant.content });
+    card.handle("done", { status: error.name === "AbortError" ? "stopped" : "error" });
+  } finally {
+    debateAbort = null;
+    setStreaming(false); rememberCurrentChat();
+    await refreshChats(); messageInput.focus();
+  }
+}
+function debateSummary(record) {
+  if (!record.verdict) return record.error || "Tranh luận đã dừng";
+  return Array.from(`⚖ Phán quyết\n\n${record.verdict.decision}\n${(record.verdict.plan_steps || [])
+    .map((step, index) => `${index + 1}. ${step}`).join("\n")}`).slice(0, 1500).join("");
 }
 export async function sendMessage() {
   const text = messageInput.value.trim();
@@ -503,6 +522,11 @@ export async function sendMessage() {
     $("#planner-provider").value = lead.provider_id;
     $("#planner-model").value = lead.model;
     saveLastMode();
+    // "⚖ Tranh luận" is a switch: while on, every message starts a debate immediately.
+    if (localStorage.getItem("debateMode") === "1" && text) {
+      await debateInChat(text);
+      return;
+    }
     // "Tự động chia việc": the message becomes a plan request right away (no normal chat answer).
     if (state.mutis.auto_plan && text && !state.devChat) {
       messageInput.value = "";
@@ -545,14 +569,16 @@ export async function sendMessage() {
         model: modelInput.value.trim(),
         folder: folderInput.value.trim(),
         permission: permissionSelect.value || "write",
-        effort: state.effort,
-        messages: state.messages.filter((message) => message !== assistant).map(({ role, content, attachments }) => ({ role, content, attachments: attachments || [] })),
         file_tools: activeFileTools(),
+        effort: state.effort,
+        messages: state.messages.filter((message) => message !== assistant)
+          .map(({ role, content, attachments, debate_id }) => ({ role, content, debate_id, attachments: attachments || [] })),
       }),
     });
     if (!response.body) throw new Error("Trình duyệt không hỗ trợ đọc luồng phản hồi");
     let receivedDone = false;
     await readSse(response.body, (eventName, data) => {
+      if (eventName === "memory") memoryEvent(data, folderInput.value);
       if (eventName === "status") {
         liveStatus = { ...liveStatus, ...data };
         assistant.running = [data.role, data.provider_name].filter(Boolean).join(" · ") || "AI";
@@ -586,6 +612,7 @@ export function resizeComposer() {
 }
 
 export async function stopChat() {
+  if (debateAbort) { debateAbort.abort(); return; }
   if (!state.chatId || !state.streaming) return;
   $("#stop-button").disabled = true;
   try {
@@ -594,6 +621,5 @@ export async function stopChat() {
   } catch (error) { showToast(error.message); }
   finally { $("#stop-button").disabled = false; }
 }
-      if (eventName === "memory") memoryEvent(data, folderInput.value);
 
 setDebateMarkdown(renderMarkdown);

@@ -2,6 +2,7 @@
 @import url("/styles/layout.css");
 @import url("/styles/chat.css");
 @import url("/styles/settings.css");
+@import url("/components/sidebar/sidebar.css");
 @import url("/styles/plans.css");
 @import url("/styles/mutis.css");
 @import url("/styles/extensions.css");

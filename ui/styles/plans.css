@@ -41,3 +41,5 @@
 .debate-verdict h4 { margin:10px 0 4px; font-size:12px; color:var(--muted); }
 .debate-verdict .wide { width:auto; padding:8px 14px; margin-top:12px; border-radius:7px; }
 .debate-error { color:#d0453f; }
+#debate-button { white-space: nowrap; }
+#debate-button.active { border-color: var(--accent); background: var(--accent); color: #fff; box-shadow: 0 0 10px var(--accent); }

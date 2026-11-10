@@ -22,7 +22,6 @@
         <div class="local-note"><span class="status-dot"></span> Chỉ chạy trên máy này</div>
         <div id="mutis-badge" class="local-note">MutiS: TẮT</div>
         <button id="settings-open" class="settings-open"><span aria-hidden="true">⚙</span> Cài đặt</button>
-        <button id="extensions-open" class="settings-open"><span aria-hidden="true">◇</span> Tiện ích</button>
         <button id="mutis-open" class="settings-open" type="button">✦ MutiS</button>
       </div>
     </aside>
@@ -40,7 +39,7 @@
           <datalist id="model-options"></datalist>
         </label>
         <label class="control-group folder-control">
-          <span>Thư mục</span>
+          <span id="folder-label">Thư mục</span>
           <input id="folder-input" type="text" spellcheck="false" placeholder="Đường dẫn thư mục">
         </label>
         <label id="permission-control" class="control-group permission-control" hidden>
@@ -97,8 +96,8 @@
           <div class="composer-actions">
             <span class="composer-hint">Enter để gửi · Shift+Enter xuống dòng</span>
             <button id="stop-button" class="stop-button" type="button" hidden>Dừng</button>
-            <button id="debate-button" class="subtle-button" type="button" title="Codex và Claude tranh luận, một phiên Claude khác làm trọng tài">⚖ Tranh luận</button>
             <button id="plan-button" class="subtle-button" type="button" title="Lập kế hoạch chia nhỏ yêu cầu">✦ Gợi ý chia việc</button>
+            <button id="debate-button" class="subtle-button" type="button" title="Codex và Claude tranh luận, một phiên Claude khác làm trọng tài">⚖ Tranh luận</button>
             <button id="attachment-button" class="subtle-button" type="button" aria-label="Đính kèm ảnh" title="Đính kèm ảnh">📎</button>
             <button id="send-button" class="send-button" type="submit" aria-label="Gửi tin nhắn">↑</button>
           </div>
@@ -162,9 +161,9 @@
           <p class="muted">Lập kế hoạch, chỉnh sửa và duyệt trước khi chạy từng công việc.</p>
         </div>
         <button id="plans-back" class="subtle-button">Quay lại chat</button>
+      </header>
       <h3 class="debate-list-title">⚖ Tranh luận</h3>
       <section id="debates-list"></section>
-      </header>
       <section id="plans-list"></section>
       <section id="plan-editor" hidden></section>
     </main>
@@ -201,18 +200,6 @@
       </section>
       <section><h2>Kiểm tra</h2><button id="dev-test" class="subtle-button">Chạy test</button><pre id="dev-test-log" class="task-log" hidden></pre></section>
       <section><h2>Build exe release</h2><button id="dev-release" class="subtle-button">Build exe release</button><pre id="dev-release-log" class="task-log" hidden></pre></section>
-    </main>
-    <main id="extensions-view" class="extensions-view" hidden>
-      <header class="extensions-header">
-        <div>
-          <p class="eyebrow">AI HUB</p>
-          <h1>Tiện ích</h1>
-          <p class="muted">Quản lý tiện ích cho các công cụ AI của bạn.</p>
-        </div>
-        <button id="extensions-back" class="subtle-button">Quay lại chat</button>
-      </header>
-      <section id="extension-cards" class="extension-cards"></section>
-      <section class="extension-log"><h2>Nhật ký</h2><pre id="extension-log" aria-live="polite">Chưa có hoạt động.</pre><button id="extension-stop" class="stop-button" hidden>Dừng</button></section>
     </main>
   </div>
 
@@ -267,12 +254,6 @@
             <span><input type="checkbox" data-orch="verify_gate"> Cổng kiểm tra</span>
             <small>Chạy kiểm tra sau mỗi công việc.</small>
             <input type="text" data-orch="verify_command" placeholder="Để trống để tự nhận diện">
-        <label>
-          <span>⚖ Tranh luận Codex ↔ Claude</span>
-          <small>Số vòng (1–3) và model trọng tài — một phiên Claude mới; để trống = dùng model của Claude.</small>
-          <input type="number" min="1" max="3" data-orch="debate_rounds" aria-label="Số vòng tranh luận">
-          <input type="text" data-orch="debate_judge_model" placeholder="Model trọng tài (tuỳ chọn)">
-        </label>
             <textarea data-orch="verify_ignore" rows="3" aria-label="Bỏ qua quét mojibake (mỗi glob một dòng)" placeholder="Glob bỏ qua mojibake, mỗi dòng một mẫu"></textarea>
           </label>
           <label class="legacy-role-settings">
@@ -286,6 +267,12 @@
             <small>Giới hạn số vòng sửa tự động.</small>
             <input type="number" min="0" max="5" data-orch="fix_rounds_max">
           </label>
+        <label>
+          <span>⚖ Tranh luận Codex ↔ Claude</span>
+          <small>Số vòng (1–3) và model trọng tài — một phiên Claude mới; để trống = dùng model của Claude.</small>
+          <input type="number" min="1" max="3" data-orch="debate_rounds" aria-label="Số vòng tranh luận">
+          <input type="text" data-orch="debate_judge_model" placeholder="Model trọng tài (tuỳ chọn)">
+        </label>
         <label>
           <span><input type="checkbox" data-orch="auto_plan"> Tự động chia việc</span>
           <small>Ở nguồn MutiS, mỗi tin gửi đi được chia việc ngay (như bấm ✦ Gợi ý chia việc) thay vì chat thường.</small>
@@ -306,6 +293,13 @@
           <small>Áp dụng cho mọi nguồn AI. Đặt 0 để tắt.</small>
           <input id="chat-idle-timeout" type="number" min="0" max="120" step="1" aria-label="Thời gian chờ chat (phút)">
         </label>
+      </section>
+      <section class="planner-settings">
+        <div class="section-heading"><h3>Tiện ích</h3></div>
+        <small class="muted">Quản lý tiện ích cho các công cụ AI của bạn.</small>
+        <div id="extension-cards" class="extension-cards"></div>
+        <details class="extension-log"><summary>Nhật ký</summary><pre id="extension-log" aria-live="polite">Chưa có hoạt động.</pre></details>
+        <button id="extension-stop" class="stop-button" type="button" hidden>Dừng</button>
       </section>
       <section class="provider-settings">
         <div class="section-heading"><h3>Nguồn AI</h3><button id="provider-add" class="subtle-button" type="button">＋ Thêm nguồn</button></div>
