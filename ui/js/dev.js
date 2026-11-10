@@ -12,19 +12,87 @@ export function connectDevEvents() {
   const source = new EventSource("/api/dev/events");
   source.addEventListener("ui_changed", () => location.reload());
   source.addEventListener("rust_changed", event => { const files=JSON.parse(event.data||"{}").files||[]; showDevBanner("Code Rust đã thay đổi ("+files.length+" tệp) · ", true); });
-  source.addEventListener("rebuild", event => { const result=JSON.parse(event.data||"{}"); showDevBanner(result.ok?"Đang khởi động lại…":"Build lỗi:\n"+(result.errors_tail||"Không có chi tiết lỗi"), false); });
-  source.addEventListener("build_log", event => { const data=JSON.parse(event.data||"{}"); const root=$("#dev-banner"); root.hidden=false; let log=root.querySelector("pre"); if(!log){log=el("pre",{className:"dev-build-log"});root.append(log);} log.textContent=(log.textContent+data.text).slice(-12000); });
-  source.onerror = async () => { source.close(); showDevBanner("Đang khởi động lại…",false); while(true){await new Promise(resolve=>setTimeout(resolve,1000));try{const status=await api("/api/dev/status");if(status.dev){location.reload();return;}}catch(_){}} };
+  source.addEventListener("rebuild", event => {
+    const result = JSON.parse(event.data || "{}");
+    showDevBanner(
+      result.ok ? "Đang khởi động lại…" : "Build lỗi:\n" + (result.errors_tail || "Không có chi tiết lỗi"),
+      false,
+    );
+  });
+  source.addEventListener("build_log", event => {
+    const data = JSON.parse(event.data || "{}");
+    const root = $("#dev-banner");
+    root.hidden = false;
+    let log = root.querySelector("pre");
+    if (!log) {
+      log = el("pre", { className: "dev-build-log" });
+      root.append(log);
+    }
+    log.textContent = (log.textContent + data.text).slice(-12000);
+  });
+  source.onerror = async () => {
+    source.close();
+    showDevBanner("Đang khởi động lại…", false);
+    while (true) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        const status = await api("/api/dev/status");
+        if (status.dev) {
+          location.reload();
+          return;
+        }
+      } catch (_) {}
+    }
+  };
 }
 export async function refreshDevRepo() {
   try { state.devRepo=await api("/api/dev/repo"); const r=state.devRepo, root=$("#dev-repo-info"); root.replaceChildren();
-    for (const [label,value] of [["Đường dẫn",r.path],["Nhánh",r.branch||"(detached)"],["File thay đổi",r.changed_files],["Commit cuối",`${r.last_commit.hash} · ${r.last_commit.subject} · ${r.last_commit.author}`]]) root.append(el("p",{},[el("strong",{textContent:`${label}: `}),document.createTextNode(String(value))]));
+    for (const [label, value] of [
+      ["Đường dẫn", r.path],
+      ["Nhánh", r.branch || "(detached)"],
+      ["File thay đổi", r.changed_files],
+      ["Commit cuối", `${r.last_commit.hash} · ${r.last_commit.subject} · ${r.last_commit.author}`],
+    ]) {
+      root.append(el("p", {}, [
+        el("strong", { textContent: `${label}: ` }),
+        document.createTextNode(String(value)),
+      ]));
+    }
   } catch(error) { $("#dev-repo-info").textContent=error.message; }
 }
-export function showDevPage() { $(".main-panel").hidden=true; $("#extensions-view").hidden=true; $("#mutis-view").hidden=true; $("#plans-view").hidden=true; $("#self-dev-view").hidden=false; refreshDevRepo(); clearInterval(state.devRepoTimer); state.devRepoTimer=setInterval(refreshDevRepo,10000); }
+export function showDevPage() {
+  $(".main-panel").hidden = true;
+  $("#extensions-view").hidden = true;
+  $("#mutis-view").hidden = true;
+  $("#plans-view").hidden = true;
+  $("#self-dev-view").hidden = false;
+  refreshDevRepo();
+  clearInterval(state.devRepoTimer);
+  state.devRepoTimer = setInterval(refreshDevRepo, 10000);
+}
 export function hideDevPage() { $("#self-dev-view").hidden=true; $(".main-panel").hidden=false; clearInterval(state.devRepoTimer); }
 export async function devAction(path, body) { return api(path,{method:body?"POST":"GET",...(body?{body:JSON.stringify(body)}:{})}); }
-export function renderDevDiff(data) { const root=$("#dev-git-result"); root.replaceChildren(el("p",{textContent:data.stat||"Không có diff được theo dõi."})); if(data.untracked?.length) root.append(el("p",{textContent:`File chưa theo dõi:\n${data.untracked.join("\n")}`})); const pre=el("pre",{className:"dev-diff"}); for(const line of data.diff.split("\n")){const span=el("span",{className:line.startsWith("+")&&!line.startsWith("+++")?"diff-add":line.startsWith("-")&&!line.startsWith("---")?"diff-remove":"",textContent:line+"\n"});pre.append(span);} root.append(pre);if(data.truncated)root.append(el("p",{textContent:"Diff đã giới hạn ở 200 KB."})); }
+export function renderDevDiff(data) {
+  const root = $("#dev-git-result");
+  root.replaceChildren(el("p", { textContent: data.stat || "Không có diff được theo dõi." }));
+  if (data.untracked?.length) {
+    root.append(el("p", { textContent: `File chưa theo dõi:\n${data.untracked.join("\n")}` }));
+  }
+  const pre = el("pre", { className: "dev-diff" });
+  for (const line of data.diff.split("\n")) {
+    const className = line.startsWith("+") && !line.startsWith("+++")
+      ? "diff-add"
+      : line.startsWith("-") && !line.startsWith("---")
+        ? "diff-remove"
+        : "";
+    const span = el("span", { className, textContent: line + "\n" });
+    pre.append(span);
+  }
+  root.append(pre);
+  if (data.truncated) {
+    root.append(el("p", { textContent: "Diff đã giới hạn ở 200 KB." }));
+  }
+}
 export async function streamDevRun(url, target) {
   target.hidden = false;
   target.textContent = "";
@@ -43,7 +111,26 @@ export async function streamDevRun(url, target) {
 export async function startDevBuild() {
   showDevBanner("Đang build…",false);
   try { const response=await fetch("/api/dev/rebuild",{method:"POST"}); if(!response.ok){const error=await response.json();showDevBanner(error.error||"Không thể build",false);return;}
-    const reader=response.body.getReader(), decoder=new TextDecoder(); let buffer="";
-    while(true){const item=await reader.read();if(item.done)break;buffer+=decoder.decode(item.value,{stream:true});const chunks=buffer.split("\n\n");buffer=chunks.pop();for(const chunk of chunks){const event=chunk.match(/^event: (.+)$/m)?.[1], data=chunk.match(/^data: (.+)$/m)?.[1];if(event==="rebuild"&&data){const result=JSON.parse(data);showDevBanner(result.ok?"Đang khởi động lại…":"Build lỗi:\n"+result.errors_tail,false);}}}
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const item = await reader.read();
+      if (item.done) break;
+      buffer += decoder.decode(item.value, { stream: true });
+      const chunks = buffer.split("\n\n");
+      buffer = chunks.pop();
+      for (const chunk of chunks) {
+        const event = chunk.match(/^event: (.+)$/m)?.[1];
+        const data = chunk.match(/^data: (.+)$/m)?.[1];
+        if (event === "rebuild" && data) {
+          const result = JSON.parse(data);
+          showDevBanner(
+            result.ok ? "Đang khởi động lại…" : "Build lỗi:\n" + result.errors_tail,
+            false,
+          );
+        }
+      }
+    }
   } catch(error) { showDevBanner(error.message,false); }
 }

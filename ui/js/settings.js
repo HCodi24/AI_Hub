@@ -20,7 +20,14 @@ export function resolveConnectedRole(key) {
   const order = { lead: ["claude_cli", "anthropic", "codex_cli"], big: ["codex_cli", "claude_cli"], small: ["deepseek_agent", "codex_cli"] }[key];
   const provider = order.flatMap(kind => state.config.providers.filter(item => item.kind === kind))
     .find(item => state.providerStatuses.get(item.id)?.status === "connected");
-  return provider ? { ...current, provider_id: provider.id, model: current?.provider_id === provider.id && current.model ? current.model : (provider.models || [])[0] || "", effort: current?.effort || "default" } : null;
+  return provider ? {
+    ...current,
+    provider_id: provider.id,
+    model: current?.provider_id === provider.id && current.model
+      ? current.model
+      : (provider.models || [])[0] || "",
+    effort: current?.effort || "default",
+  } : null;
 }
 export const ROUTE_KINDS = ["small_edit", "code", "test", "docs", "plan", "review"];
 export const ASSIGNEE_KINDS = ["lead", "big", "small"];
@@ -57,7 +64,12 @@ export function updateOrchestrationDisabled() {
   $("#orchestration-controls").classList.toggle("orchestration-disabled", !enabled);
   for (const input of $("#orchestration-controls").querySelectorAll("input,select")) input.disabled = !enabled;
   $("#orchestration-badge").textContent = `MutiS: ${enabled ? "BẬT" : "TẮT"}`;
-  const sourceRow=$("#mode-providers")?.querySelector('[data-source="mutis"]');if(sourceRow){sourceRow.disabled=!enabled;sourceRow.textContent=enabled?"✦ MutiS (3 AI)":"✦ MutiS — bật trong Cài đặt";} renderModePicker();
+  const sourceRow = $("#mode-providers")?.querySelector('[data-source="mutis"]');
+  if (sourceRow) {
+    sourceRow.disabled = !enabled;
+    sourceRow.textContent = enabled ? "✦ MutiS (3 AI)" : "✦ MutiS — bật trong Cài đặt";
+  }
+  renderModePicker();
 }
 let orchestrationSaveTimer;
 export function scheduleOrchestrationSave() {
@@ -66,7 +78,15 @@ export function scheduleOrchestrationSave() {
 }
 export async function saveOrchestration() {
   const next = {...state.orchestration};
-  for (const input of document.querySelectorAll("[data-orch]")) next[input.dataset.orch] = input.type === "checkbox" ? input.checked : (input.type === "number" ? Number(input.value) : input.dataset.orch === "verify_ignore" ? input.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean) : input.value);
+  for (const input of document.querySelectorAll("[data-orch]")) {
+    next[input.dataset.orch] = input.type === "checkbox"
+      ? input.checked
+      : input.type === "number"
+        ? Number(input.value)
+        : input.dataset.orch === "verify_ignore"
+          ? input.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean)
+          : input.value;
+  }
   next.routing = ROUTE_KINDS.map(kind => ({kind,role:$(`[data-route="${kind}"]`).value,note:""}));
   try { state.orchestration = await api("/api/mutis", {method:"PUT",body:JSON.stringify(next)}); updateOrchestrationDisabled(); }
   catch(error) { showToast(error.message); renderOrchestrationSettings(); }
@@ -352,7 +372,11 @@ export async function discoverCli() {
     } else {
       const hint = name === "codex" ? "npm i -g @openai/codex" : "npm i -g @anthropic-ai/claude-code";
       const text = document.createElement("span"); text.textContent = `Không tìm thấy · ${hint}`;
-      const copy = document.createElement("button"); copy.type = "button"; copy.className = "subtle-button"; copy.textContent = "Sao chép"; copy.addEventListener("click", () => navigator.clipboard.writeText(hint));
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "subtle-button";
+      copy.textContent = "Sao chép";
+      copy.addEventListener("click", () => navigator.clipboard.writeText(hint));
       area.append(text, copy); area.hidden = false;
     }
   } catch (error) { area.textContent = error.message; area.hidden = false; }
@@ -361,6 +385,15 @@ export async function discoverCli() {
 export async function saveDefaultFolder() {
   if (!state.config || !folderInput.value.trim()) return;
   state.config.default_folder = folderInput.value.trim();
-  try { state.config = await api("/api/config", { method: "PUT", body: JSON.stringify({ default_folder: state.config.default_folder, planner_provider_id: state.config.planner_provider_id || "", planner_model: state.config.planner_model || "" }) }); }
+  try {
+    state.config = await api("/api/config", {
+      method: "PUT",
+      body: JSON.stringify({
+        default_folder: state.config.default_folder,
+        planner_provider_id: state.config.planner_provider_id || "",
+        planner_model: state.config.planner_model || "",
+      }),
+    });
+  }
   catch (error) { showToast(error.message); }
 }

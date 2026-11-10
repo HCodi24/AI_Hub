@@ -30,7 +30,7 @@ docs/{SPEC.md,CODEX_RULES.md,design/*,history/tasks/*}
   sửa đường dẫn trong dev.ps1 (repo = thư mục cha của scripts/), README, docs.
 - [x] R1b (Codex) — verify/smoke scripts, verify_ignore default, MutiS auto-detect, README updated.
 - [x] R2 — tách backend.
-- [ ] R3 — tách frontend + nhúng nhiều file UI.
+- [x] R3 — tách frontend + nhúng nhiều file UI.
 - [ ] R4 — dọn tàn dư, thông báo lỗi tiếng Việt thống nhất, README/SPEC.
 
 ## Nhật ký
@@ -49,3 +49,5 @@ docs/{SPEC.md,CODEX_RULES.md,design/*,history/tasks/*}
 - 2026-11-10: R2g complete. Moved business-logic modules into src/features; centralized executable resolution and CLI candidate/version discovery in src/providers/discovery.rs; made Rust source line lengths over 200 characters a verification error. README source map updated. Verification passed: `CARGO_TARGET_DIR=target/codex cargo build --release --offline`, `scripts/verify.ps1`, and `scripts/smoke.ps1`.
 
 - 2026-11-10: R3a complete. Split the frontend into ES modules under ui/js/ and CSS under ui/styles/. Added build-time embedded asset generation and path-based static serving, retained no legacy app.js/style.css routes after migrating the entry page, and extended smoke coverage to GET every UI asset. UI dev snapshot is recursive. Verification passed: `CARGO_TARGET_DIR=target/codex cargo build --release --offline`, `scripts/verify.ps1`, and `scripts/smoke.ps1`.
+
+- 2026-11-10: R3c complete. Reflowed overlength lines in ui/js/*.js, ui/index.html, and ui/styles/*.css by hand; no intended behavior changes. Before counts: 61 JS lines, 24 HTML lines, and 11 CSS lines over 200 characters. After counts: 0 in every target file. Verification: scripts/verify.ps1 and scripts/smoke.ps1 passed.

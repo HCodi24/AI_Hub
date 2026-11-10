@@ -19,16 +19,49 @@
 .code-wrap code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; }
 .activity-foldout summary { display: flex; align-items: baseline; gap: 9px; }
 .activity-preview { min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
-.composer { width: min(calc(100% - 48px), 850px); margin: 0 auto 18px; padding: 11px 12px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); box-shadow: 0 5px 22px #00000012; }
+.composer {
+  width: min(calc(100% - 48px), 850px);
+  margin: 0 auto 18px;
+  padding: 11px 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 5px 22px #00000012;
+}
 .composer:focus-within { border-color: color-mix(in srgb, var(--accent) 72%, var(--line)); }
-.composer textarea { display: block; width: 100%; min-height: 36px; max-height: 180px; resize: none; border: 0; outline: none; padding: 5px 4px 8px; background: transparent; font-size: 13px; line-height: 1.5; }
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  max-height: 180px;
+  resize: none;
+  border: 0;
+  outline: none;
+  padding: 5px 4px 8px;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.5;
+}
 .composer textarea::placeholder { color: var(--muted); }
 .composer-footer, .composer-actions { display: flex; align-items: center; }
 .composer-footer { justify-content: space-between; }
 .composer-hint { color: var(--muted); font-size: 10px; }
 .mode-picker { position: relative; }
 .mode-chevron { color: var(--muted); font-size: 10px; }
-.mode-popover { position: absolute; z-index: 5; left: 0; bottom: calc(100% + 9px); width: min(330px, calc(100vw - 32px)); max-height: min(65vh, 460px); overflow-y: auto; padding: 10px; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); box-shadow: 0 12px 38px #0007; }
+.mode-popover {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  bottom: calc(100% + 9px);
+  width: min(330px, calc(100vw - 32px));
+  max-height: min(65vh, 460px);
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+  box-shadow: 0 12px 38px #0007;
+}
 .mode-popover section + section { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
 .mode-popover h3 { margin: 0 0 5px; padding: 0 7px; color: var(--muted); font-size: 10px; font-weight: 600; }
 .mode-row { display: block; width: 100%; border: 0; border-radius: 6px; padding: 7px; background: transparent; color: var(--text); text-align: left; font-size: 11px; }

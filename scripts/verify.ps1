@@ -75,9 +75,9 @@ $null = Invoke-LoggedCheck 'line-length' {
     }
   }
   if ($longUi.Count) {
-    Write-Host "⚠ UI line length: $($longUi.Count) lines exceed 200 characters (report only)"
-    Write-Output "WARNING: $($longUi.Count) UI lines exceed 200 characters (report only)"
+    Write-Output "ERROR: $($longUi.Count) UI lines exceed 200 characters"
     $longUi
+    throw 'UI source line-length check failed'
   }
   if ($longSrc.Count) {
     Write-Output "ERROR: $($longSrc.Count) Rust source lines exceed 200 characters"

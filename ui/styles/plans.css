@@ -3,7 +3,19 @@
 .plan-hint button:last-child { float:right; color:var(--muted); }
 .planner-settings { display:grid; gap:8px; margin-bottom:22px; padding:13px; border:1px solid var(--line); border-radius:9px; }
 .planner-settings label { display:grid; gap:5px; color:var(--muted); font-size:11px; }
-.planner-settings select,.planner-settings input,.plan-title,.plan-table input,.plan-table textarea,.plan-table select { min-width:70px; border:1px solid var(--line); border-radius:5px; padding:6px; background:var(--panel); color:var(--text); }
+.planner-settings select,
+.planner-settings input,
+.plan-title,
+.plan-table input,
+.plan-table textarea,
+.plan-table select {
+  min-width: 70px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
 .plan-list-item { display:block; width:100%; margin:7px 0; padding:13px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); text-align:left; }
 .plan-title { width:min(700px,100%); margin-bottom:12px; font-size:19px; }
 .plan-table { width:100%; border-collapse:collapse; font-size:11px; }

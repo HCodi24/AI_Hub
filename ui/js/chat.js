@@ -133,7 +133,13 @@ export function renderDevChatControls() {
   if (state.devChat) strip.textContent = `⚒ Chat tự phát triển · thư mục: ${folderInput.value}${state.devChat && !state.dev ? " (chế độ dev đang tắt)" : ""}`;
 }
 export function devChatPreamble(repo) {
-  return `Bạn đang sửa chính ứng dụng AI Hub (repo: ${repo}) đang chạy ở chế độ dev.\n- Giao diện ở ui/ tự tải lại khi lưu; code Rust ở src/ cần người dùng bấm 'Build & khởi động lại'.\n- Không chạy \`cargo build --release\`, không tắt tiến trình ai-hub, không sửa target/.\n- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy \`cargo test\` với CARGO_TARGET_DIR=target\\dev-check nếu cần.\n- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.`;
+  return [
+    `Bạn đang sửa chính ứng dụng AI Hub (repo: ${repo}) đang chạy ở chế độ dev.\n`,
+    `- Giao diện ở ui/ tự tải lại khi lưu; code Rust ở src/ cần người dùng bấm 'Build & khởi động lại'.\n`,
+    `- Không chạy \`cargo build --release\`, không tắt tiến trình ai-hub, không sửa target/.\n`,
+    `- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy \`cargo test\` với CARGO_TARGET_DIR=target\\dev-check nếu cần.\n`,
+    `- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.`,
+  ].join("");
 }
 export async function openDevChat() {
   if (!state.devRepo) await refreshDevRepo();

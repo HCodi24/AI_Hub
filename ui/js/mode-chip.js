@@ -132,12 +132,25 @@ export function renderModePicker() {
   $("#mode-effort-section").hidden = !supported;
   const models = $("#mode-models"); models.replaceChildren();
   for (const model of provider?.models || []) {
-    const row = document.createElement("button"); row.type = "button"; row.className = "mode-row"; row.setAttribute("role", "radio"); row.setAttribute("aria-checked", String(model === modelInput.value)); row.dataset.model = model; row.textContent = prettyModel(model); row.title = model;
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "mode-row";
+    row.setAttribute("role", "radio");
+    row.setAttribute("aria-checked", String(model === modelInput.value));
+    row.dataset.model = model;
+    row.textContent = prettyModel(model);
+    row.title = model;
     models.append(row);
   }
   const efforts = $("#mode-efforts"); efforts.replaceChildren();
   for (const effort of EFFORTS) {
-    const row = document.createElement("button"); row.type = "button"; row.className = "effort-button"; row.dataset.effort = effort; row.setAttribute("aria-pressed", String(effort === state.effort)); row.textContent = EFFORT_LABELS[effort]; efforts.append(row);
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "effort-button";
+    row.dataset.effort = effort;
+    row.setAttribute("aria-pressed", String(effort === state.effort));
+    row.textContent = EFFORT_LABELS[effort];
+    efforts.append(row);
   }
 }
 export function renderMutisRoleRows(containerId) {
@@ -239,5 +252,16 @@ export async function saveMutisRoles(containerId = "mode-mutis-section") {
   renderMutisRoleRows("settings-mutis-roles");
 }
 export function saveLastMode() {
-  try { const value={source:state.selectedSource,provider_id: providerSelect.value, model: modelInput.value, effort: state.effort };localStorage.setItem("ai-hub-last-mode", JSON.stringify(value));if(state.chatId)localStorage.setItem(`ai-hub-last-mode-${state.chatId}`,JSON.stringify(value)); } catch (_) { /* Storage may be disabled. */ }
+  try {
+    const value = {
+      source: state.selectedSource,
+      provider_id: providerSelect.value,
+      model: modelInput.value,
+      effort: state.effort,
+    };
+    localStorage.setItem("ai-hub-last-mode", JSON.stringify(value));
+    if (state.chatId) {
+      localStorage.setItem(`ai-hub-last-mode-${state.chatId}`, JSON.stringify(value));
+    }
+  } catch (_) { /* Storage may be disabled. */ }
 }

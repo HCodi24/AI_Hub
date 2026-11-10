@@ -36,11 +36,26 @@ export async function planFromRequest(text) {
   card.append(label, spinner, logs, cancel);
   root.append(card);
   const started = Date.now();
-  const timer = setInterval(() => { const seconds = Math.floor((Date.now() - started) / 1000); label.textContent = `Đang lập kế hoạch bằng ${provider?.name || "provider"} · ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`; }, 1000);
+  const timer = setInterval(() => {
+    const seconds = Math.floor((Date.now() - started) / 1000);
+    label.textContent = `Đang lập kế hoạch bằng ${provider?.name || "provider"} · ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  }, 1000);
   try {
     if (state.orchestration?.enabled) await api("/api/mutis/roles/resolve");
     const response = await fetch("/api/plans", { method: "POST", signal: controller.signal,
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request, folder: folderInput.value.trim(), dev_chat: state.devChat, provider_id: state.orchestration?.roles?.lead?.provider_id || $("#planner-provider").value || state.config.planner_provider_id, model: state.orchestration?.roles?.lead?.model || $("#planner-model").value || state.config.planner_model }) });
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        request,
+        folder: folderInput.value.trim(),
+        dev_chat: state.devChat,
+        provider_id: state.orchestration?.roles?.lead?.provider_id
+          || $("#planner-provider").value
+          || state.config.planner_provider_id,
+        model: state.orchestration?.roles?.lead?.model
+          || $("#planner-model").value
+          || state.config.planner_model,
+      }),
+    });
     if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
     if (!response.body) throw new Error("Browser does not support response streaming");
     let receivedPlan = null;
@@ -80,7 +95,19 @@ export function renderPlanEditor() {
     const row = el("tr"), cell = child => row.append(el("td", {}, [child]));
     cell(el("span", { textContent: task.id }));
     const editor = el("div");
-    editor.append(el("input", { value: task.title, placeholder: "Tên việc", oninput: event => task.title = event.target.value }), el("textarea", { value: task.detail, placeholder: "Tệp cần sửa và kết quả mong đợi", oninput: event => task.detail = event.target.value })); cell(editor);
+    editor.append(
+      el("input", {
+        value: task.title,
+        placeholder: "Tên việc",
+        oninput: event => task.title = event.target.value,
+      }),
+      el("textarea", {
+        value: task.detail,
+        placeholder: "Tệp cần sửa và kết quả mong đợi",
+        oninput: event => task.detail = event.target.value,
+      }),
+    );
+    cell(editor);
     const assignee = el("select");
     for (const provider of state.config.providers) assignee.append(el("option", { value: provider.id, textContent: provider.name }));
     assignee.value = task.assignee;
@@ -112,11 +139,24 @@ export function renderPlanEditor() {
       approve.disabled = invalid || hasCycle(plan.tasks);
     };
     deps.oninput = validateDeps; const depwrap = el("div"); depwrap.append(deps, depError); cell(depwrap);
-    const kind = el("select"); for (const value of ["plan", "small_edit", "code", "test", "docs", "review"]) kind.append(el("option", { value, textContent: value })); kind.value = task.kind; kind.onchange = () => task.kind = kind.value; cell(kind);
+    const kind = el("select");
+    for (const value of ["plan", "small_edit", "code", "test", "docs", "review"]) {
+      kind.append(el("option", { value, textContent: value }));
+    }
+    kind.value = task.kind;
+    kind.onchange = () => task.kind = kind.value;
+    cell(kind);
     const status = el("div", { dataset: { taskStatus: String(task.id) } });
     status.append(el("span", { textContent: `${task.status === "waiting" ? "chờ" : task.status}${task.tokens ? ` · ${task.tokens} tokens` : ""}${task.log?.length ? ` · ${task.log.at(-1)}` : ""}` }));
     if (task.verify) status.append(el("span", { className: "gate-chip", textContent: `Kiểm tra: ${task.verify.ok ? "ĐẠT" : "LỖI"}` }));
-    if (task.review) status.append(el("span", { className: "gate-chip", textContent: task.review.verdict === "SKIPPED" ? "Review: bỏ qua" : `Review: ${task.review.verdict || "FAIL"} (${task.review.issues?.length || 0} vấn đề)` }));
+    if (task.review) {
+      status.append(el("span", {
+        className: "gate-chip",
+        textContent: task.review.verdict === "SKIPPED"
+          ? "Review: bỏ qua"
+          : `Review: ${task.review.verdict || "FAIL"} (${task.review.issues?.length || 0} vấn đề)`,
+      }));
+    }
     if (task.verify) status.append(el("details", {}, [el("summary", { textContent: "Tóm tắt kiểm tra" }), el("pre", { textContent: (task.verify.summary_lines || []).join("\n") })]));
     if (task.review) status.append(el("details", {}, [el("summary", { textContent: "Vấn đề review" }), el("pre", { textContent: JSON.stringify(task.review.issues || [], null, 2) })]));
     cell(status);
@@ -168,7 +208,15 @@ export function renderPlanEditor() {
     cell(actions); body.append(row);
   }
   table.append(body); root.append(table);
-  const approve = el("button", { textContent: plan.approved ? "Đã duyệt" : "Duyệt kế hoạch", disabled: plan.approved || hasCycle(plan.tasks), onclick: async () => { plan.approved = true; await persistPlan(); renderPlanEditor(); } });
+  const approve = el("button", {
+    textContent: plan.approved ? "Đã duyệt" : "Duyệt kế hoạch",
+    disabled: plan.approved || hasCycle(plan.tasks),
+    onclick: async () => {
+      plan.approved = true;
+      await persistPlan();
+      renderPlanEditor();
+    },
+  });
   const add = el("button", {
     textContent: "+ Thêm công việc",
     onclick: () => {
@@ -184,14 +232,34 @@ export function renderPlanEditor() {
   const regen = el("button", { textContent: "Lập lại kế hoạch", onclick: () => planFromRequest(plan.request) });
   const gates = el("div", { className: "plan-gates" });
   gates.append(el("button", { textContent: "Chạy kiểm tra", disabled: !state.orchestration?.enabled || !state.orchestration?.verify_gate, onclick: () => verifyPlan(plan) }));
-  if (state.orchestration?.enabled) gates.append(el("label", {}, [el("input", { type: "checkbox", checked: !!plan.auto_continue, onchange: event => { plan.auto_continue = event.target.checked; persistPlan(); } }), " Tự chạy tiếp"]));
+  if (state.orchestration?.enabled) gates.append(el("label", {}, [
+    el("input", {
+      type: "checkbox",
+      checked: !!plan.auto_continue,
+      onchange: event => {
+        plan.auto_continue = event.target.checked;
+        persistPlan();
+      },
+    }),
+    " Tự chạy tiếp",
+  ]));
   root.append(el("p", { className: "token-usage", textContent: `Tổng token kế hoạch: ${plan.tasks.reduce((sum, task) => sum + (task.tokens || 0), 0)}` }), gates, add, regen, approve);
   for (const task of plan.tasks) if (task.log?.length) root.append(el("pre", { className: "task-log", textContent: task.log.join("\n") }));
 }
 export function hasCycle(tasks) {
   const byId = new Map(tasks.map(task => [task.id, task]));
   const visiting = new Set(), done = new Set();
-  const visit = id => { if (done.has(id)) return false; if (visiting.has(id)) return true; visiting.add(id); for (const dep of byId.get(id)?.depends_on || []) if (byId.has(dep) && visit(dep)) return true; visiting.delete(id); done.add(id); return false; };
+  const visit = id => {
+    if (done.has(id)) return false;
+    if (visiting.has(id)) return true;
+    visiting.add(id);
+    for (const dep of byId.get(id)?.depends_on || []) {
+      if (byId.has(dep) && visit(dep)) return true;
+    }
+    visiting.delete(id);
+    done.add(id);
+    return false;
+  };
   return tasks.some(task => visit(task.id));
 }
 export async function persistPlan() {
@@ -291,14 +359,38 @@ export async function runTaskGates(task) {
     const response = await api("/api/verify", { method: "POST", body: JSON.stringify({ folder: plan.folder }) });
     await readSse(response.body, (event, data) => { if (event === "verify") task.verify = data; if (event === "log") task.log.push(data.text || ""); });
     // Record the verify outcome so MutiS stats and self-diagnosis see it (found by the self-diagnosis: verify_fail_rate stayed 0).
-    await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(task.id), task_kind: task.kind, provider_id: task.assignee, kind: "verify", ok: !!task.verify?.ok, detail: (task.verify?.summary_lines || []).join(" | ").slice(0, 2000) }) }).catch(() => {});
+    await api("/api/mutis/events", {
+      method: "POST",
+      body: JSON.stringify({
+        plan_id: plan.id,
+        task_id: String(task.id),
+        task_kind: task.kind,
+        provider_id: task.assignee,
+        kind: "verify",
+        ok: !!task.verify?.ok,
+        detail: (task.verify?.summary_lines || []).join(" | ").slice(0, 2000),
+      }),
+    }).catch(() => {});
     if (!task.verify?.ok) {
-      const action = nextReviewAction(task, { verdict: "FAIL", issues: (task.verify?.summary_lines || []).map(problem => ({ severity: "high", problem })) }, task.fix_rounds_used ?? 0, cfg.fix_rounds_max);
+      const action = nextReviewAction(task, {
+        verdict: "FAIL",
+        issues: (task.verify?.summary_lines || []).map(problem => ({ severity: "high", problem })),
+      }, task.fix_rounds_used ?? 0, cfg.fix_rounds_max);
       if (cfg.auto_fix && action === "create_fix") {
         task.status = "cần sửa"; task.fix_rounds_used = (task.fix_rounds_used || 0) + 1;
         const fix = buildFixTask(plan, task, "Sửa lỗi kiểm tra", (task.verify.summary_lines || []).join("\n"));
         plan.tasks.push(fix); await persistPlan(); await runPlanTask(fix);
-        await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(fix.id), provider_id: fix.assignee, kind: "fix_task", ok: fix.status === "xong", detail: `Task sửa verify được tạo cho ${task.id}` }) });
+        await api("/api/mutis/events", {
+          method: "POST",
+          body: JSON.stringify({
+            plan_id: plan.id,
+            task_id: String(fix.id),
+            provider_id: fix.assignee,
+            kind: "fix_task",
+            ok: fix.status === "xong",
+            detail: `Task sửa verify được tạo cho ${task.id}`,
+          }),
+        });
         task.status = fix.status === "xong" ? "xong" : "lỗi";
       } else task.status = "lỗi";
       await persistPlan(); return;
@@ -309,21 +401,86 @@ export async function runTaskGates(task) {
     const resolvedLead = resolved.lead || {};
     const lead = cfg.roles?.lead;
     const reviewer = resolvedLead.used_provider;
-    if (!reviewer) { task.review = { verdict: "SKIPPED", issues: [], notes: "Không có nguồn review đang kết nối" }; task.status = task.verify?.ok === false ? "lỗi" : "xong"; await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(task.id), provider_id: "", kind: "review", ok: true, detail: JSON.stringify(task.review) }) }); await persistPlan(); return; }
+    if (!reviewer) {
+      task.review = { verdict: "SKIPPED", issues: [], notes: "Không có nguồn review đang kết nối" };
+      task.status = task.verify?.ok === false ? "lỗi" : "xong";
+      await api("/api/mutis/events", {
+        method: "POST",
+        body: JSON.stringify({
+          plan_id: plan.id,
+          task_id: String(task.id),
+          provider_id: "",
+          kind: "review",
+          ok: true,
+          detail: JSON.stringify(task.review),
+        }),
+      });
+      await persistPlan();
+      return;
+    }
     const gitDiff = task.diff ? "" : (await api("/api/plan-diff", { method: "POST", body: JSON.stringify({ folder: plan.folder }) })).diff;
-    const prompt = `Review task và trả CHỈ JSON theo schema {"verdict":"PASS|FAIL","issues":[{"severity":"high|medium|low","file":"","line":0,"problem":"","fix":""}],"notes":""}. Task: ${task.title}\nChi tiết: ${task.detail}\nTóm tắt: ${task.summary}\nVerify: ${(task.verify?.summary_lines || []).join("\n")}\nDiff (nếu có):\n${(task.diff || gitDiff || "").slice(0, 30000)}`;
+    const prompt = [
+      `Review task và trả CHỈ JSON theo schema {"verdict":"PASS|FAIL","issues":[{"severity":"high|medium|low","file":"","line":0,"problem":"","fix":""}],"notes":""}. Task: ${task.title}\n`,
+      `Chi tiết: ${task.detail}\nTóm tắt: ${task.summary}\n`,
+      `Verify: ${(task.verify?.summary_lines || []).join("\n")}\nDiff (nếu có):\n`,
+      (task.diff || gitDiff || "").slice(0, 30000),
+    ].join("");
     const reviewModel = resolvedLead.used_provider.id === lead?.provider_id ? (lead?.model || reviewer.models[0] || "") : (reviewer.models[0] || "");
     let answer = ""; const chatId = crypto.randomUUID();
-    const response = await api("/api/chat", { method: "POST", body: JSON.stringify({ chat_id: chatId, plan_id: plan.id, task_id: String(task.id), task_kind: task.kind, provider_id: reviewer.id, model: reviewModel, effort: lead?.effort || "default", folder: plan.folder, permission: "read", messages: [{ role: "user", content: prompt }] }) });
+    const response = await api("/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        chat_id: chatId,
+        plan_id: plan.id,
+        task_id: String(task.id),
+        task_kind: task.kind,
+        provider_id: reviewer.id,
+        model: reviewModel,
+        effort: lead?.effort || "default",
+        folder: plan.folder,
+        permission: "read",
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
     await readSse(response.body, (event, data) => { if (event === "delta") answer += data.text || ""; });
-    task.review = extractJson(answer) || { verdict: "FAIL", issues: [{ severity: "high", file: "", line: 0, problem: "Reviewer trả JSON không hợp lệ", fix: "Review lại" }], notes: answer.slice(-1000) };
-    await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(task.id), provider_id: reviewer.id, kind: "review", ok: task.review.verdict === "PASS", detail: JSON.stringify(task.review).slice(0, 4000) }) });
+    task.review = extractJson(answer) || {
+      verdict: "FAIL",
+      issues: [{
+        severity: "high",
+        file: "",
+        line: 0,
+        problem: "Reviewer trả JSON không hợp lệ",
+        fix: "Review lại",
+      }],
+      notes: answer.slice(-1000),
+    };
+    await api("/api/mutis/events", {
+      method: "POST",
+      body: JSON.stringify({
+        plan_id: plan.id,
+        task_id: String(task.id),
+        provider_id: reviewer.id,
+        kind: "review",
+        ok: task.review.verdict === "PASS",
+        detail: JSON.stringify(task.review).slice(0, 4000),
+      }),
+    });
     if (task.review.verdict === "FAIL") {
       if (cfg.auto_fix && nextReviewAction(task, task.review, task.fix_rounds_used ?? 0, cfg.fix_rounds_max) === "create_fix") {
         task.status = "cần sửa"; task.fix_rounds_used++;
         const fix = buildFixTask(plan, task, "Sửa lỗi review", (task.review.issues || []).map(i => `${i.severity} ${i.file}:${i.line} ${i.problem} — ${i.fix}`).join("\n"));
         plan.tasks.push(fix); await persistPlan(); await runPlanTask(fix);
-        await api("/api/mutis/events", { method: "POST", body: JSON.stringify({ plan_id: plan.id, task_id: String(fix.id), provider_id: reviewer.id, kind: "fix_task", ok: fix.status === "xong", detail: `Task sửa được tạo cho ${task.id}` }) });
+        await api("/api/mutis/events", {
+          method: "POST",
+          body: JSON.stringify({
+            plan_id: plan.id,
+            task_id: String(fix.id),
+            provider_id: reviewer.id,
+            kind: "fix_task",
+            ok: fix.status === "xong",
+            detail: `Task sửa được tạo cho ${task.id}`,
+          }),
+        });
         if (fix.status === "xong") task.status = "xong";
       } else { task.status = "lỗi"; showToast("Review thất bại; đã hết vòng sửa tự động"); }
     }
