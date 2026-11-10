@@ -1,3 +1,4 @@
+import { hideMemory, memoryEvent } from "./memory.js";
 import { $, showToast } from "./util.js";
 import { state } from "./state.js";
 import { hideDevPage, refreshDevRepo } from "./dev.js";
@@ -248,7 +249,7 @@ export function renderMessages() {
       }
       body.append(thumbs);
     }
-    renderMarkdown(body, message.content || "");
+    renderMarkdown(body, message.role === "assistant" ? hideMemory(message.content || "") : message.content || "");
     if (tokenLog) {
       const usage = document.createElement("div");
       usage.className = "token-usage";
@@ -574,3 +575,4 @@ export async function stopChat() {
   } catch (error) { showToast(error.message); }
   finally { $("#stop-button").disabled = false; }
 }
+      if (eventName === "memory") memoryEvent(data, folderInput.value);

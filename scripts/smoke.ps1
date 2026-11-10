@@ -14,13 +14,13 @@ if (Test-Path $dataRoot) {
 New-Item -ItemType Directory -Force -Path $dataRoot,$logs | Out-Null
 $configPath = Join-Path $dataRoot 'config.json'
 if (Test-Path $configPath) { Remove-Item -LiteralPath $configPath -Force }
-$env:CARGO_TARGET_DIR = 'target\smoke'
+if (-not $env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR = 'target\smoke' }
 $failures = [System.Collections.Generic.List[string]]::new()
 $process = $null
 try {
   $build = Start-Process -FilePath 'cargo' -ArgumentList @('build','--offline') -WorkingDirectory $repo -PassThru -Wait -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'build.txt') -RedirectStandardError (Join-Path $logs 'build-stderr.txt')
   if ($build.ExitCode -ne 0) { throw "cargo build failed with exit $($build.ExitCode); see target\smoke\logs" }
-  $exe = Join-Path $targetRoot 'debug\ai-hub.exe'
+  $exe = Join-Path $env:CARGO_TARGET_DIR 'debug\ai-hub.exe'
   $env:AI_HUB_CONFIG_PATH = $configPath
   $env:AI_HUB_PORT = '7911'
   $process = Start-Process -FilePath $exe -ArgumentList @('--port','7911','--no-open') -PassThru -WindowStyle Hidden
@@ -47,6 +47,49 @@ try {
     if ($relative -ne 'index.html') { $assetPaths.Add("/$relative") }
   }
   foreach ($path in $assetPaths) { try { $status=Get-Status "$base$path"; if ($status -ne 200) { $failures.Add("GET $path => $status") } } catch { $failures.Add("GET $path => $($_.Exception.Message)") } }
+  # Memory CRUD stays entirely local; no provider request is made.
+  try {
+    $folderQuery = [Uri]::EscapeDataString($repo)
+    $memoryUrl = "$base/api/memory"
+    $scopeUrl = "$memoryUrl/smoke-memory"
+    # ASCII base64 keeps this UTF-8 fixture intact even in Windows PowerShell 5.1.
+    $scopeText = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(
+      'LS0tCnNjb3BlOiBzbW9rZS1tZW1vcnkKdGl0bGU6IELhu5kgbmjhu5sga2nhu4NtIHRyYQpzdGF0dXM6IGFjdGl2ZQp1cGRhdGVkOiAyMDI2LTExLTEwVDAwOjAwOjAwWgpjaGF0czogW10KZmlsZXM6IFtdCm5leHQ6IFJlc3RvcmUKZXZpZGVuY2U6IFtdCi0tLQojIyBN4bulYyB0acOqdQotIEdp4buvIHRp4bq/bmcgVmnhu4d0CiMjIMSQw6MgY2jhu5F0Ci0gSFRUUCBsb2NhbAojIyDEkMOjIGzDoG0KIyMgQ8OybiBt4bufCg=='))
+    $expectedText = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('R2nhu68gdGnhur9uZyBWaeG7h3Q='))
+    function Invoke-MemoryJson([string]$Url, [string]$Method = 'GET', [byte[]]$Body = $null) {
+      $request = [Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::new($Method), $Url)
+      if ($Body) {
+        $request.Content = [Net.Http.ByteArrayContent]::new($Body)
+        $request.Content.Headers.ContentType = [Net.Http.Headers.MediaTypeHeaderValue]::new('application/json')
+      }
+      $response = $client.SendAsync($request).GetAwaiter().GetResult()
+      try {
+        $response.EnsureSuccessStatusCode() | Out-Null
+        return ($response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json)
+      } finally { $response.Dispose(); $request.Dispose() }
+    }
+    $body = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json @{text=$scopeText}))
+    $saved = Invoke-MemoryJson "${scopeUrl}?folder=$folderQuery" 'PUT' $body
+    if (-not $saved.text.Contains($expectedText)) { throw 'memory UTF-8 roundtrip failed' }
+    $view = Invoke-MemoryJson "${memoryUrl}?folder=$folderQuery"
+    if ($view.scopes.Count -ne 1 -or -not $view.index.Contains('smoke-memory')) { throw 'memory index missing' }
+    Invoke-MemoryJson "${scopeUrl}/archive?folder=$folderQuery" 'POST' | Out-Null
+    $view = Invoke-MemoryJson "${memoryUrl}?folder=$folderQuery"
+    if ($view.archived.Count -ne 1 -or $view.scopes.Count -ne 0) { throw 'memory archive failed' }
+    Invoke-MemoryJson "${scopeUrl}/restore?folder=$folderQuery" 'POST' | Out-Null
+    $restored = Invoke-MemoryJson "${scopeUrl}?folder=$folderQuery"
+    if (-not $restored.text.Contains('status: active')) { throw 'memory restore failed' }
+    Invoke-MemoryJson "${scopeUrl}/archive?folder=$folderQuery" 'POST' | Out-Null
+    Invoke-MemoryJson "${scopeUrl}?folder=$folderQuery" 'DELETE' | Out-Null
+    $view = Invoke-MemoryJson "${memoryUrl}?folder=$folderQuery"
+    if ($view.archived.Count -ne 0) { throw 'memory delete failed' }
+    $config = Invoke-RestMethod "$base/api/config"
+    $configBody = ConvertTo-Json @{default_folder=$repo; memory=@{enabled=$false;max_scopes_in_prompt=4;max_chars_per_scope=7000}}
+    Invoke-RestMethod -Method Put "$base/api/config" -ContentType 'application/json' -Body $configBody | Out-Null
+    $partial = ConvertTo-Json @{default_folder=$repo}
+    $config = Invoke-RestMethod -Method Put "$base/api/config" -ContentType 'application/json' -Body $partial
+    if ($config.memory.enabled -or $config.memory.max_scopes_in_prompt -ne 4) { throw 'partial config reset memory' }
+  } catch { $failures.Add("memory: $($_.Exception.Message)") }
   try { $r=Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$base/api/providers/codex-cli/test" -TimeoutSec 15; if ([int]$r.StatusCode -ge 500) { $failures.Add("POST codex-cli/test => $($r.StatusCode)") } } catch { $failures.Add("POST codex-cli/test => $($_.Exception.Message)") }
   try { $current=Invoke-RestMethod -UseBasicParsing "$base/api/mutis" -TimeoutSec 10; $body=ConvertTo-Json -InputObject $current -Depth 30; $r=Invoke-WebRequest -UseBasicParsing -Method Put -Uri "$base/api/mutis" -ContentType 'application/json' -Body $body -TimeoutSec 10; if ([int]$r.StatusCode -ge 500) { $failures.Add("PUT /api/mutis => $($r.StatusCode)") } } catch { $failures.Add("PUT /api/mutis => $($_.Exception.Message)") }
 } catch { $failures.Add($_.Exception.Message) }

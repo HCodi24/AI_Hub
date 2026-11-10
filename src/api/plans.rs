@@ -236,6 +236,12 @@ pub(super) async fn generate_plan(
     } else {
         String::new()
     };
+    let memory = crate::features::memory::memory_context(
+        &state.config_path,
+        &folder.to_string_lossy(),
+        &cfg.memory,
+    );
+    let request_context = format!("{memory}\n{request_context}");
     let prompt = format!(
         concat!(
             "Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[",

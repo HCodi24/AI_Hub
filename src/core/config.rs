@@ -27,6 +27,8 @@ pub struct ProviderConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
+    pub memory: crate::features::memory::MemoryConfig,
+    #[serde(default)]
     pub providers: Vec<ProviderConfig>,
     #[serde(default = "default_folder")]
     pub default_folder: String,
@@ -241,6 +243,7 @@ fn default_folder() -> String {
 impl Config {
     pub fn seeded() -> Self {
         Self {
+            memory: Default::default(),
             providers: vec![
                 ProviderConfig {
                     id: "deploy-deepseek".to_owned(),

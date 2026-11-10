@@ -1,3 +1,4 @@
+import { renderMemorySettings } from "./memory.js";
 import { $, el, showToast } from "./util.js";
 import { state } from "./state.js";
 import { renderModePicker, renderMutisRoleRows, saveLastMode, setupProviderControls } from "./mode-chip.js";
@@ -14,6 +15,7 @@ export async function loadConfig() {
   const idleTimeout = $("#chat-idle-timeout");
   if (idleTimeout) idleTimeout.value = state.config.chat_idle_timeout_minutes ?? 10;
   renderPlannerSettings();
+  renderMemorySettings();
   if (state.selectedSource === "mutis") testAllProviders();
 }
 export function resolveConnectedRole(key) {

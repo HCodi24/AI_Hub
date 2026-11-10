@@ -113,7 +113,13 @@ pub(crate) async fn chat_handler(
     let mutis_config = state.config.read().await.mutis.clone();
     let provider = providers::for_kind(&provider_config.kind)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?;
+    let switched_source = existing
+        .as_ref()
+        .is_some_and(|r| r.provider_id != request.provider_id);
     let mut record = existing.unwrap_or_else(|| chat::new_record(&request));
+    if switched_source {
+        record.session_id = None;
+    }
     record.provider_id = request.provider_id.clone();
     record.model = request.model.clone();
     record.folder = folder.clone();
@@ -126,6 +132,9 @@ pub(crate) async fn chat_handler(
         .iter()
         .map(|message| {
             let mut saved = message.clone();
+            if saved.role == "assistant" {
+                saved.content = crate::features::memory::strip_blocks(&saved.content).0;
+            }
             saved.attachments = crate::api::attachments::resolve_message_attachments(
                 &state,
                 &request.chat_id,
@@ -178,7 +187,14 @@ pub(crate) async fn chat_handler(
     let (sse_sender, sse_receiver) = mpsc::channel::<axum::response::sse::Event>(32);
     let (provider_sender, mut provider_receiver) = mpsc::channel::<ProviderEvent>(32);
     let provider_cancel = cancel.clone();
-    let provider_request = ProviderRequest {
+    let mut memory_config = state.config.read().await.memory.clone();
+    // Plan task workers neither read nor write the memory: the planner already got it, the main chat AI writes it.
+    if request.plan_id.is_some() {
+        memory_config.enabled = false;
+    }
+    let memory_context =
+        crate::features::memory::memory_context(&state.config_path, &folder, &memory_config);
+    let mut provider_request = ProviderRequest {
         provider: provider_config,
         model: request.model,
         folder,
@@ -187,12 +203,17 @@ pub(crate) async fn chat_handler(
         messages: record
             .messages
             .iter()
-            .filter(|message| message.role != "assistant")
+            .take(record.messages.len().saturating_sub(1))
+            // Failed/empty assistant turns would be rejected by chat APIs.
+            .filter(|message| message.role != "assistant" || !message.content.trim().is_empty())
             .cloned()
             .collect(),
         session_id: record.session_id.clone(),
         mutis: mutis_config.clone(),
     };
+    if memory_config.enabled {
+        crate::features::memory::inject(&mut provider_request, &memory_context);
+    }
     let event_provider_id = provider_request.provider.id.clone();
     let provider_name = provider_request.provider.name.clone();
     let status_model = provider_request.model.clone();
@@ -371,6 +392,7 @@ pub(crate) async fn chat_handler(
                             detail: event.data["text"].as_str().map(str::to_owned),
                         });
                     }
+                    if event.name == "done" { continue; }
                     persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
                     if sse_sender.send(chat::sse_event(event.name, &event.data)).await.is_err() {
                         task_cancel.cancel();
@@ -386,6 +408,35 @@ pub(crate) async fn chat_handler(
             );
             persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
             let _ = sse_sender.send(chat::sse_event("error", &event.data)).await;
+        }
+        if let Some(message) = record.messages.last_mut() {
+            let (clean, block) = crate::features::memory::strip_blocks(&message.content);
+            message.content = clean;
+            if memory_config.enabled {
+                if let Some(block) = block.filter(|b| b.trim() != "none") {
+                    match serde_json::from_str::<crate::features::memory::Scope>(&block) {
+                        Ok(update) => {
+                            if let Ok(store) = crate::features::memory::Store::open(
+                                &task_state.config_path,
+                                &record.folder,
+                            ) {
+                                if let Ok(change) = store.merge(update, &chat_id, &memory_config) {
+                                    let _ = sse_sender
+                                        .send(chat::sse_event("memory", &json!(change)))
+                                        .await;
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            let text = "Bộ nhớ: khối <memory> không hợp lệ";
+                            message.logs.push(text.into());
+                            let _ = sse_sender
+                                .send(chat::sse_event("log", &json!({"text":text})))
+                                .await;
+                        }
+                    }
+                }
+            }
         }
         let _ = chat::save_record(&task_state.chats, &mut record);
         if log_enabled {
@@ -498,7 +549,12 @@ fn persist_event(
         _ => return,
     };
     if force_persist || last_persist.elapsed() >= Duration::from_secs(1) {
-        let _ = chat::save_record(store, record);
+        // Keep raw streamed text in RAM until final extraction; never persist protocol blocks.
+        let mut clean = record.clone();
+        if let Some(message) = clean.messages.last_mut() {
+            message.content = crate::features::memory::strip_blocks(&message.content).0;
+        }
+        let _ = chat::save_record(store, &mut clean);
         *last_persist = Instant::now();
     }
 }

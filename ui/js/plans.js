@@ -1,3 +1,4 @@
+import { hideMemory, memoryEvent } from "./memory.js";
 import { $, el, showToast } from "./util.js";
 import { state } from "./state.js";
 import { EFFORTS, findProvider } from "./mode-chip.js";
@@ -300,6 +301,7 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
         file_tools: provider.agent_capable ? (taskCanWrite(task) ? "write" : "read") : "none",
         messages: [{ role: "user", content: prompt }],
       }),
+      if (event === "memory") memoryEvent(data, plan.folder);
     });
     await readSse(response.body, (event, data) => {
       if (event === "error") { hadError = true; task.log.push(data.text || "Lỗi"); }
@@ -314,6 +316,7 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
       const node = $(`[data-task-status="${task.id}"]`);
       if (node) node.textContent = `${task.status} · ${task.log.at(-1) || ""}`;
     });
+  task.summary = hideMemory(task.summary);
     task.status = task._stopped ? "đã dừng" : hadError ? "lỗi" : "xong";
   } catch (error) { hadError = true; task.status = task._stopped ? "đã dừng" : "lỗi"; task.log.push(error.message); }
   await persistPlan();

@@ -15,6 +15,7 @@ pub mod config;
 pub mod debate;
 pub mod dev;
 pub mod extensions;
+pub mod memory;
 pub mod mutis;
 pub mod plans;
 pub mod providers;
@@ -73,6 +74,13 @@ pub fn router(state: AppState) -> Router {
             "/api/config",
             get(crate::api::config::get_config).put(crate::api::config::put_config),
         )
+        .route("/api/memory", get(memory::list))
+        .route(
+            "/api/memory/{scope}",
+            get(memory::get).put(memory::put).delete(memory::delete),
+        )
+        .route("/api/memory/{scope}/archive", post(memory::archive))
+        .route("/api/memory/{scope}/restore", post(memory::restore))
         // MutiS routes.
         .route(
             "/api/mutis",

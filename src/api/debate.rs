@@ -5,7 +5,7 @@ use crate::{
     app::{AppState, JobGuard},
     chat::{self, ChatMessage},
     config::{Config, MutisConfig, MutisRole, ProviderConfig},
-    features::debate::{self, Debate, Round, Turn, SIDES},
+    features::debate::{self, Debate, Round, Side, Turn, SIDES},
     mutis::Event,
     providers::{self, ProviderEvent, ProviderRequest},
 };
@@ -198,6 +198,7 @@ pub(crate) async fn start_debate(
     }
     let folder = folder.to_string_lossy().into_owned();
     let cfg = state.config.read().await.clone();
+    let memory = crate::features::memory::memory_context(&state.config_path, &folder, &cfg.memory);
     let codex = pick_debater(&state, &cfg, "codex_cli", &cfg.mutis.roles.big).await;
     let claude = pick_debater(&state, &cfg, "claude_cli", &cfg.mutis.roles.lead).await;
     let (Some(codex), Some(claude)) = (codex, claude) else {
@@ -252,52 +253,51 @@ pub(crate) async fn start_debate(
         for index in 1..=max_rounds {
             let _ = out.send(sse("round", json!({"round": index}))).await;
             let previous = record.rounds.last().cloned();
-            let prompts = SIDES.map(|side| match &previous {
-                None => debate::proposal_prompt(side, &record.request),
-                Some(prev) => debate::critique_prompt(
-                    side,
-                    &record.request,
-                    &prev.turn(side).text,
-                    &prev.turn(side.other()).text,
-                    index,
-                ),
-            });
-            let [codex_prompt, claude_prompt] = prompts;
-            let (codex_debater, claude_debater) = (debaters[0].clone(), debaters[1].clone());
-            let ((codex_turn, codex_session), (claude_turn, claude_session)) = tokio::join!(
-                run_turn(
-                    &codex_debater,
-                    &record.folder,
-                    codex_prompt,
-                    &mutis,
-                    "codex",
-                    index,
-                    &out,
-                    &task_cancel
-                ),
-                run_turn(
-                    &claude_debater,
-                    &record.folder,
-                    claude_prompt,
-                    &mutis,
-                    "claude",
-                    index,
-                    &out,
-                    &task_cancel
-                ),
-            );
-            debaters[0].session = codex_session.or(debaters[0].session.take());
-            debaters[1].session = claude_session.or(debaters[1].session.take());
+            // Claude speaks first; Codex then reads it and rebuts; next round Claude answers the rebuttal.
             let mut round = Round {
                 index,
-                codex: codex_turn,
-                claude: claude_turn,
+                ..Default::default()
             };
             for side in SIDES {
-                let turn = round.turn_mut(side);
+                let slot = if side == Side::Codex { 0 } else { 1 };
+                let prompt = match (side, &previous) {
+                    (Side::Claude, None) => {
+                        debate::proposal_prompt(side, &record.request, Some(&memory))
+                    }
+                    (Side::Claude, Some(prev)) => debate::critique_prompt(
+                        side,
+                        &format!("{memory}\n{}", record.request),
+                        &prev.claude.text,
+                        &prev.codex.text,
+                        index,
+                    ),
+                    (Side::Codex, _) => debate::critique_prompt(
+                        side,
+                        &format!("{memory}\n{}", record.request),
+                        previous
+                            .as_ref()
+                            .map_or("", |prev| prev.codex.text.as_str()),
+                        &round.claude.text,
+                        index,
+                    ),
+                };
+                let debater = debaters[slot].clone();
+                let (mut turn, session) = run_turn(
+                    &debater,
+                    &record.folder,
+                    prompt,
+                    &mutis,
+                    side.key(),
+                    index,
+                    &out,
+                    &task_cancel,
+                )
+                .await;
+                debaters[slot].session = session.or(debaters[slot].session.take());
                 let (shown, agree, disagreements) = debate::split_stance(&turn.text);
                 turn.text = shown;
-                if index >= 2 {
+                // Claude's round-1 turn is the opening proposal: no stance yet.
+                if !(side == Side::Claude && index == 1) {
                     turn.agree = agree;
                     turn.disagreements = disagreements;
                 }
@@ -307,6 +307,11 @@ pub(crate) async fn start_debate(
                         json!({"side": side.key(), "round": index, "turn": turn}),
                     ))
                     .await;
+                let broken = turn.text.trim().is_empty() && turn.error.is_some();
+                *round.turn_mut(side) = turn;
+                if broken || task_cancel.is_cancelled() {
+                    break;
+                }
             }
             let converged = round.converged();
             let failed = SIDES.iter().any(|side| {
@@ -345,7 +350,7 @@ pub(crate) async fn start_debate(
         let (judge_turn, _) = run_turn(
             &judge,
             &record.folder,
-            debate::judge_prompt(&record),
+            debate::judge_prompt(&record, Some(&memory)),
             &mutis,
             "judge",
             0,

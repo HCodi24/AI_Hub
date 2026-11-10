@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{fs, path::PathBuf};
 
-pub const SIDES: [Side; 2] = [Side::Codex, Side::Claude];
+/// Speaking order inside a round: Claude proposes / answers, then Codex reads it and rebuts.
+pub const SIDES: [Side; 2] = [Side::Claude, Side::Codex];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -77,9 +78,10 @@ impl Round {
             Side::Claude => &mut self.claude,
         }
     }
-    /// Both sides explicitly agree (only meaningful from round 2, after they have read each other).
+    /// Codex (who read Claude's latest answer) agrees, and from round 2 Claude agrees too.
+    /// In round 1 Claude only proposed, so Codex's agreement alone settles it.
     pub fn converged(&self) -> bool {
-        self.index >= 2 && self.codex.agree == Some(true) && self.claude.agree == Some(true)
+        self.codex.agree == Some(true) && (self.index == 1 || self.claude.agree == Some(true))
     }
 }
 
@@ -149,7 +151,8 @@ const STANCE_RULE: &str = concat!(
 );
 
 /// Round 1: independent proposal.
-pub fn proposal_prompt(side: Side, request: &str) -> String {
+pub fn proposal_prompt(side: Side, request: &str, memory: Option<&str>) -> String {
+    let request = format!("{}\n{request}", memory.unwrap_or_default());
     format!(
         "Bạn là {me} trong một cuộc tranh luận kỹ thuật với {other} để tìm hướng giải quyết ĐÚNG nhất.\n\
          Bạn chỉ được ĐỌC code trong thư mục (không sửa file, không chạy lệnh làm thay đổi gì).\n\n\
@@ -173,14 +176,19 @@ pub fn critique_prompt(
     other_text: &str,
     round: u32,
 ) -> String {
+    let own_part = if own.trim().is_empty() {
+        String::new()
+    } else {
+        format!("Ý kiến trước của BẠN:\n<<<\n{own}\n>>>\n\n")
+    };
     format!(
-        "Vòng {round} của cuộc tranh luận. Bạn là {me}. Vấn đề:\n{request}\n\n\
-         Đề xuất trước của BẠN:\n<<<\n{own}\n>>>\n\n\
-         Đề xuất mới nhất của {other}:\n<<<\n{other_text}\n>>>\n\n\
-         Hãy phản biện thẳng thắn và công bằng (vẫn chỉ đọc code, không sửa file):\n\
-         - Chỗ sai, thiếu hoặc rủi ro trong đề xuất của {other} (kiểm chứng bằng code nếu cần).\n\
+        "Vòng {round} của cuộc tranh luận (hai bên nói lần lượt, bên kia vừa nói xong). Bạn là {me}. Vấn đề:\n{request}\n\n\
+         {own_part}\
+         Ý kiến mới nhất của {other}:\n<<<\n{other_text}\n>>>\n\n\
+         Hãy đáp lại thẳng thắn và công bằng (vẫn chỉ đọc code, không sửa file):\n\
+         - Chỗ sai, thiếu hoặc rủi ro trong ý kiến của {other} (kiểm chứng bằng code nếu cần).\n\
          - Điểm hay của {other} mà bạn nên lấy.\n\
-         - Đề xuất đã sửa của bạn (có thể gộp ý của cả hai).\n\
+         - Hướng giải quyết hiện tại của bạn sau khi cân nhắc (có thể gộp ý của cả hai).\n\
          Đừng đồng ý chỉ để kết thúc nhanh: chỉ đồng ý khi bạn thật sự thấy hướng đó đúng.\n\
          {STANCE_RULE}",
         me = side.name(),
@@ -189,7 +197,7 @@ pub fn critique_prompt(
 }
 
 /// The judge: a second, fresh Claude session that did not take part in the debate.
-pub fn judge_prompt(debate: &Debate) -> String {
+pub fn judge_prompt(debate: &Debate, memory: Option<&str>) -> String {
     let mut transcript = String::new();
     for round in &debate.rounds {
         for side in SIDES {
@@ -223,12 +231,13 @@ pub fn judge_prompt(debate: &Debate) -> String {
     }
     format!(
         "Bạn là TRỌNG TÀI độc lập (bạn KHÔNG tham gia tranh luận). Codex và Claude đã tranh luận về vấn đề sau:\n\
-         {request}\n\nBiên bản tranh luận:{transcript}\n\n\
+         {memory}\n{request}\n\nBiên bản tranh luận:{transcript}\n\n\
          Hãy đánh giá công bằng dựa trên lập luận và bằng chứng (có thể đọc code để kiểm chứng; không sửa file). \
          Chọn hướng ĐÚNG nhất: của Codex, của Claude, hoặc gộp. Trả lời CHỈ bằng một JSON:\n\
          {{\"decision\": \"kết luận ngắn gọn: làm gì và vì sao\", \"chosen\": \"codex|claude|merged\", \
          \"agreed_points\": [\"...\"], \"disagreements\": [\"điểm còn tranh cãi và bạn phân xử ra sao\"], \
          \"risks\": [\"...\"], \"plan_steps\": [\"bước 1 ...\", \"bước 2 ...\"]}}",
+        memory = memory.unwrap_or_default(),
         request = debate.request,
     )
 }
@@ -424,12 +433,21 @@ mod tests {
         let round1 = Round {
             index: 1,
             codex: agree.clone(),
-            claude: agree.clone(),
+            claude: Turn::default(),
         };
         assert!(
-            !round1.converged(),
-            "round 1 proposals are independent, never 'agreement'"
+            round1.converged(),
+            "round 1: Claude only proposed, Codex agreeing settles it"
         );
+        let codex_disagrees = Round {
+            index: 1,
+            codex: Turn {
+                agree: Some(false),
+                ..Default::default()
+            },
+            claude: Turn::default(),
+        };
+        assert!(!codex_disagrees.converged());
         let round2 = Round {
             index: 2,
             codex: agree.clone(),
@@ -479,7 +497,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let prompt = judge_prompt(&debate);
+        let prompt = judge_prompt(&debate, None);
         assert!(prompt.contains("Sửa lỗi X"));
         assert!(prompt.contains("Đề xuất A") && prompt.contains("Đề xuất B"));
         assert!(prompt.contains("chưa đồng ý") && prompt.contains("khoá"));

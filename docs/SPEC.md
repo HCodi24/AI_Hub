@@ -87,3 +87,41 @@ Dữ liệu nằm trong thư mục cấu hình hệ điều hành, dưới `ai-h
 - Migration khi nạp cấu hình (`merge_agent_providers`): nguồn kiểu `deepseek_agent` cũ được gộp vào nguồn OpenAI-compatible cùng URL
   (đặt `agent_capable`, giữ key nếu nguồn cha chưa có, ánh xạ lại vai trò MutiS) rồi xoá; không có nguồn cha thì đổi kiểu tại chỗ.
   Id cũ `deepseek-agent-deploy` vẫn được hiểu là nguồn agent-capable (`resolve_provider_id`).
+## Bộ nhớ dự án (M1)
+
+Nghiệp vụ nằm trong `src/features/memory.rs`, HTTP trong `src/api/memory.rs`,
+giao diện trong `ui/js/memory.js` và `ui/styles/memory.css`. Không có lượt gọi AI bổ sung.
+Mỗi thư mục canonical có kho `<data_dir>/memory/<project_key>/`; project key là 16 hex
+đầu SHA-256 của đường dẫn đã bỏ verbatim prefix và chuyển chữ thường.
+
+Scope id chỉ nhận `[a-z0-9-]{1,48}`. File markdown có frontmatter `scope`, `title`,
+`status`, `updated` UTC, `chats`, `files`, `next`, `evidence` và bốn mục bullet:
+Mục tiêu, Đã chốt, Đã làm, Còn mở. Index tự tạo lại cho mọi scope đang hoạt động.
+Quyết định/đã làm và bằng chứng được cộng dồn, bỏ trùng; câu hỏi mở được thay thế.
+Mỗi danh sách tối đa 30 mục, cả file tối đa `max_chars_per_scope`; loại mục cũ của
+đã làm/còn mở trước, quyết định sau. `done` thiếu bằng chứng giữ active và ghi việc
+cần bằng chứng. `done` có bằng chứng hoặc `obsolete` chuyển vào `archive/`, không xoá
+ngay. Mở kho sẽ xoá archive có thời điểm sửa quá 14 ngày; restore đặt lại active.
+
+Config top-level `memory` có serde defaults: `enabled=true`, `max_scopes_in_prompt=3`
+(1..10), `max_chars_per_scope=6000` (1000..20000). GET/PUT config round-trip; PUT bỏ
+trường memory giữ nguyên cấu hình hiện tại. Dev chat dùng thư mục repo như chat thường.
+
+Chỉ dẫn cập nhật tiếng Việt được nối vào user message mới nhất của bản sao provider
+request. Cuối lượt, lấy block `<memory>` cuối cùng, bỏ mọi block khỏi assistant lưu
+trữ; JSON sai được bỏ qua và ghi log `Bộ nhớ: khối <memory> không hợp lệ`. SSE `memory`
+trả `{scope,status,action:created|updated|archived}` trước `done`. UI ẩn cả block đang
+stream chưa kết thúc và cho phép hoàn tác việc đóng scope.
+
+Context gồm index và nội dung đầy đủ tối đa N active scope mới cập nhật nhất, với
+lời nhắc kiểm chứng code/git. CLI chỉ nhận context trong user message cuối khi chưa
+có session; HTTP kể cả agent nhận ở user message đầu mỗi lượt. Planner, đề xuất và
+trọng tài Tranh luận cũng nhận context. Tắt memory bỏ qua cả đọc lẫn ghi tự động.
+
+API (mọi tuyến yêu cầu `?folder=…`, thư mục không tồn tại trả 400):
+
+- `GET /api/memory` → `{project,index,scopes,archived}`.
+- `GET /api/memory/{scope}` → `{text}` (active hoặc archived).
+- `PUT /api/memory/{scope}` `{text}` → `{text}`; kiểm tra scope frontmatter, tái tạo index.
+- `POST /api/memory/{scope}/archive`, `POST /api/memory/{scope}/restore`.
+- `DELETE /api/memory/{scope}`: chỉ xoá scope đã archive.

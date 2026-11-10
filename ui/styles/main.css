@@ -6,3 +6,5 @@
 @import url("/styles/mutis.css");
 @import url("/styles/extensions.css");
 @import url("/styles/dev.css");
+
+@import url("./memory.css");

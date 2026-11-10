@@ -1,0 +1,17 @@
+.memory-dialog {
+  width: min(960px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 24px;
+  color: inherit;
+  background: var(--panel, #202124);
+  border: 1px solid #777;
+  border-radius: 14px;
+}
+.memory-dialog::backdrop { background: #0008; }
+.memory-list { display: grid; gap: 8px; margin: 16px 0; }
+.memory-list button { text-align: left; padding: 8px; }
+.memory-editor { width: 100%; min-height: 360px; font-family: monospace; line-height: 1.5; }
+.memory-actions { display: flex; gap: 10px; margin-top: 12px; }
+#memory-settings label { display: flex; justify-content: space-between; gap: 16px; margin: 10px 0; }
+#memory-settings input[type="number"] { width: 110px; }

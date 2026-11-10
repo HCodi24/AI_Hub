@@ -215,3 +215,26 @@ Chạy `scripts\\dev.ps1` từ thư mục gốc repo. Chế độ này khởi ch
 Trong chế độ dev, trang Tự phát triển hiển thị trạng thái repo, diff, checkpoint, commit, test và build release. Chat phát triển được ghim vào repo AI Hub và dùng đúng thư mục repo làm phạm vi làm việc.
 
 Nếu AI Hub dev đang chạy sẵn, `scripts\dev.ps1` chỉ báo PID và địa chỉ rồi dừng; muốn tắt bản cũ và chạy lại từ đầu thì dùng `.\scripts\dev.ps1 -Restart`.
+## Bộ nhớ dự án
+
+Mỗi thư mục chat có bộ nhớ markdown riêng để AI chính tiếp tục công việc ở chat sau,
+cả chat một nguồn, MutiS và chat phát triển. Cuối mỗi lượt, AI gửi một khối cập nhật
+ẩn trong cùng câu trả lời; ứng dụng không gọi thêm AI. Chi phí dự kiến khoảng
+300–800 output tokens mỗi lượt có cập nhật, tùy nội dung và model.
+
+Nhấn **📝 Bộ nhớ** cạnh **⚖ Tranh luận** để xem, sửa, lưu trữ, khôi phục hoặc xoá
+scope đã lưu trữ. Trong Cài đặt → **Bộ nhớ dự án**, có thể tắt tính năng, chọn số scope
+đưa vào prompt (1–10, mặc định 3) và giới hạn ký tự mỗi scope (1000–20000, mặc định 6000).
+
+Các file nằm ở `<data_dir>/memory/<project_key>/`: mỗi scope là `<scope>.md`,
+`index.md` tự tạo lại, `project.txt` ghi thư mục dự án và `archive/` giữ scope đã đóng.
+`project_key` là 16 ký tự hex đầu SHA-256 của đường dẫn thư mục canonical, bỏ tiền tố
+verbatim Windows và chuyển chữ thường. Không sửa tay `index.md` vì ứng dụng tái tạo nó.
+Quyết định và việc đã làm được cộng dồn, bỏ trùng; khi vượt giới hạn sẽ bỏ các mục cũ,
+ưu tiên giữ quyết định. AI chỉ đóng `done` khi có bằng chứng; `obsolete` dành cho hướng
+đã bỏ. Scope đóng được chuyển vào archive, tự xoá sau 14 ngày tính từ lần lưu trữ;
+có thể **Hoàn tác** trên thông báo hoặc **Khôi phục** trong bảng bộ nhớ trước hạn đó.
+
+Với Codex/Claude CLI, ngữ cảnh bộ nhớ chỉ được đưa vào phiên mới hoặc khi đổi nguồn;
+với nguồn HTTP, nó đi cùng lịch sử mỗi lượt. Planner và Tranh luận cũng đọc bộ nhớ.
+Ghi chú AI có thể cũ hoặc sai: AI được nhắc kiểm chứng với code/git trước khi tin.

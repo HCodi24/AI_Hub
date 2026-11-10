@@ -12,6 +12,10 @@ pub fn data_dir(config_path: &Path) -> Result<PathBuf> {
     config_dir(config_path)
 }
 
+pub fn memory_dir(config_path: &Path) -> Result<PathBuf> {
+    Ok(data_dir(config_path)?.join("memory"))
+}
+
 pub fn chats_dir(config_path: &Path) -> Result<PathBuf> {
     Ok(data_dir(config_path)?.join("chats"))
 }
