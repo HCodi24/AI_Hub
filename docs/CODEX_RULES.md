@@ -1,8 +1,8 @@
 # Rules for every Codex step in AI Hub (C:\TOOL\ai-hub)
 
-- Read SPEC.md, plans/mutis.md and the existing code before changing anything. Keep existing features working —
+- Read docs/SPEC.md, the relevant docs/design/*.md and the existing code before changing anything. Keep existing features working —
   do NOT drop behaviour when rewriting a function (a previous rewrite silently removed buttons).
-- Build/verify (all must pass): `CARGO_TARGET_DIR=target-codex cargo build --release --offline`,
+- Build/verify (all must pass): `CARGO_TARGET_DIR=target/codex cargo build --release --offline`,
   `cargo clippy --offline --all-targets -- -D warnings`, `cargo test --offline`, `node --check ui/app.js`.
 - ENCODING: write files as UTF-8 only (never PowerShell Set-Content/Out-File/redirection). After editing, scan src/ and
   ui/ for U+FFFD, `Ã`, `á»`, `áº` and Vietnamese words turned into `?` (e.g. `l?i`, `Ch?y`, `k? ho?ch`) and fix them.

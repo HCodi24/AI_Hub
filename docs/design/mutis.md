@@ -46,7 +46,7 @@ tính năng **bật/tắt được**, gồm các cải tiến đã chốt:
 - Tên tính năng: **MutiS** (đúng chính tả) — tính năng của người dùng; mọi chữ "Điều phối" trên UI đổi thành MutiS.
 - MutiS dùng 3 vai trò (lead/big/small) thay vì chọn theo loại provider.
 - Thứ tự làm: 10a → 10b → 10b2 → 10c → 10d; mỗi bước Codex (gpt-6-luna, effort high) code, Claude review + chạy thử thật
-  bằng bản build riêng `CARGO_TARGET_DIR=target-test` cổng 7897 (không đụng app người dùng đang chạy).
+  bằng bản build riêng `CARGO_TARGET_DIR=target/review` cổng 7897 (không đụng app người dùng đang chạy).
 
 ## Cách tiếp tục ở phiên mới
 Đọc file này + .tasks/RULES.md + .tasks/step<bước kế>.md, chạy:

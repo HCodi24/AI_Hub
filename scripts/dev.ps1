@@ -1,6 +1,6 @@
 ﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Continue'
-$repo = $PSScriptRoot
+$repo = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $repo 'target\dev-run\ai-hub.exe'
 New-Item -ItemType Directory -Force -Path (Split-Path $exe) | Out-Null
 while ($true) {

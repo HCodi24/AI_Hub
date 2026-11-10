@@ -203,9 +203,11 @@ Về bảo mật, ứng dụng chỉ bind trên 127.0.0.1; từ chối các head
 | `src/providers/deepseek_agent.rs` | DeepSeek làm việc (Deploy) |
 | `src/providers/cli_support.rs` | Phần dùng chung cho các nguồn CLI |
 | `ui/index.html`, `ui/app.js`, `ui/style.css` | Giao diện web nhúng trong exe |
-| `SPEC.md` | Đặc tả kỹ thuật |
-| `plans/mutis.md` | Thiết kế MutiS, tiến độ và bài học |
-| `.tasks/` | Đề bài task giao cho Codex |
+| `docs/design/` | Thiết kế MutiS và Tự phát triển, tiến độ, bài học |
+| `docs/SPEC.md` | Đặc tả kỹ thuật |
+| `docs/CODEX_RULES.md` | Quy tắc khi giao việc cho Codex |
+| `docs/history/tasks/` | Lịch sử các nhiệm vụ đã giao |
+| `scripts/` | dev.ps1, dev.cmd |
 
 Chạy bộ kiểm thử bằng:
 
@@ -215,7 +217,7 @@ cargo test
 
 ## Chế độ dev (tự phát triển)
 
-Chạy `.\dev.ps1` từ thư mục gốc repo (hoặc `dev.cmd`). App chạy từ bản sao `target\dev-run\ai-hub.exe`, dùng dữ liệu AI Hub thật của bạn. UI được đọc từ `ui\` mỗi request và tự tải lại khi thay đổi. Khi Rust hoặc Cargo manifest đổi, banner cho phép build và khởi động lại; có thể bật tự build trong Cài đặt › Tự phát triển. Build thành công khởi động lại app qua launcher.
+Chạy `.\scripts\dev.ps1` từ thư mục gốc repo (hoặc `scripts\dev.cmd`). App chạy từ bản sao `target\dev-run\ai-hub.exe`, dùng dữ liệu AI Hub thật của bạn. UI được đọc từ `ui\` mỗi request và tự tải lại khi thay đổi. Khi Rust hoặc Cargo manifest đổi, banner cho phép build và khởi động lại; có thể bật tự build trong Cài đặt › Tự phát triển. Build thành công khởi động lại app qua launcher.
 
 Trong chế độ dev, nút **Tự phát triển** ở thanh bên hiển thị nhánh, file thay đổi và commit gần nhất; thông tin repo tự làm mới mỗi 10 giây. Có thể mở chat với quyền sửa file hoặc lập kế hoạch trên repo này, tạo checkpoint, xem diff, bỏ thay đổi có xác nhận, commit, chạy test và build exe release theo yêu cầu. Test dùng `target\dev-check` để tách sản phẩm biên dịch khỏi app đang chạy. MutiS verify chạy tiếp sau `cargo test` khi cổng kiểm tra được bật. Không thao tác nào tự push; build release chỉ chạy khi bấm nút. Nếu build báo `Access is denied`, hãy đóng exe release đang chạy để nhả khóa tệp.
 
