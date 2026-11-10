@@ -39,3 +39,5 @@ docs/{SPEC.md,CODEX_RULES.md,design/*,history/tasks/*}
 - 2026-11-10: R2a in progress. Moved config, AppState, shared text/path/process foundations, and API error types. Handler extraction and router ownership remain for completion; gates are being run against this intermediate state.
 
 - 2026-11-10: R2b complete. Moved `/api/dev/*` handlers and `/`, `/app.js`, `/style.css` serving (including dev disk serving) from `src/server.rs` into `src/api/dev.rs` and `src/api/static_ui.rs`; moved the dev chat-folder unit test. No intended behavior changes.
+
+- 2026-11-10: R2c complete. Moved all `/api/mutis*` and `/api/orchestration*` handlers, `/api/verify`, `/api/plan-diff`, and `/api/extensions*` handlers plus their private helpers and extension helper tests into `src/api/{mutis,verify,extensions}.rs`. Router now references those modules; behavior unchanged. `src/server.rs`: 2,653 to 1,948 lines.

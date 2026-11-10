@@ -19,14 +19,13 @@ use futures_util::{future::join_all, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
     convert::Infallible,
     ffi::OsString,
     path::PathBuf,
     process::Stdio,
     time::{Duration, Instant},
 };
-use tokio::{io::AsyncBufReadExt, sync::mpsc, time::timeout};
+use tokio::{sync::mpsc, time::timeout};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -114,22 +113,44 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/api/dev/events", get(crate::api::dev::dev_events))
         .route("/api/dev/rebuild", post(crate::api::dev::dev_rebuild))
         .route("/api/config", get(get_config).put(put_config))
-        .route("/api/mutis", get(get_orchestration).put(put_orchestration))
-        .route("/api/mutis/roles/resolve", get(resolve_mutis_roles))
-        .route("/api/mutis/stats", get(mutis_stats))
-        .route("/api/mutis/diagnose", post(mutis_diagnose))
-        .route("/api/mutis/apply", post(mutis_setting_change))
-        .route("/api/mutis/setting-change", post(mutis_setting_change))
-        .route("/api/mutis/diagnoses", get(mutis_diagnoses))
+        .route(
+            "/api/mutis",
+            get(crate::api::mutis::get_orchestration).put(crate::api::mutis::put_orchestration),
+        )
+        .route(
+            "/api/mutis/roles/resolve",
+            get(crate::api::mutis::resolve_mutis_roles),
+        )
+        .route("/api/mutis/stats", get(crate::api::mutis::mutis_stats))
+        .route(
+            "/api/mutis/diagnose",
+            post(crate::api::mutis::mutis_diagnose),
+        )
+        .route(
+            "/api/mutis/apply",
+            post(crate::api::mutis::mutis_setting_change),
+        )
+        .route(
+            "/api/mutis/setting-change",
+            post(crate::api::mutis::mutis_setting_change),
+        )
+        .route(
+            "/api/mutis/diagnoses",
+            get(crate::api::mutis::mutis_diagnoses),
+        )
         .route(
             "/api/mutis/events",
-            get(orchestration_events).post(record_orchestration_event),
+            get(crate::api::mutis::orchestration_events)
+                .post(crate::api::mutis::record_orchestration_event),
         )
         .route(
             "/api/orchestration",
-            get(get_orchestration).put(put_orchestration),
+            get(crate::api::mutis::get_orchestration).put(crate::api::mutis::put_orchestration),
         )
-        .route("/api/orchestration/events", get(orchestration_events))
+        .route(
+            "/api/orchestration/events",
+            get(crate::api::mutis::orchestration_events),
+        )
         .route("/api/providers", post(create_provider))
         .route(
             "/api/providers/{id}",
@@ -146,594 +167,26 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/api/chats/{chat_id}", get(get_chat).delete(delete_chat))
         .route("/api/plans", get(list_plans).post(generate_plan))
         .route("/api/plans/{id}", get(get_plan).put(save_plan))
-        .route("/api/verify", post(verify_handler))
-        .route("/api/plan-diff", post(plan_diff_handler))
+        .route("/api/verify", post(crate::api::verify::verify_handler))
+        .route(
+            "/api/plan-diff",
+            post(crate::api::verify::plan_diff_handler),
+        )
         .route("/api/cli-status", get(cli_status))
-        .route("/api/extensions", get(extension_list))
+        .route(
+            "/api/extensions",
+            get(crate::api::extensions::extension_list),
+        )
         .route(
             "/api/extensions/{id}/actions/{action}",
-            post(extension_action),
+            post(crate::api::extensions::extension_action),
         )
-        .route("/api/extensions/{id}/stop", post(extension_stop))
+        .route(
+            "/api/extensions/{id}/stop",
+            post(crate::api::extensions::extension_stop),
+        )
         .layer(middleware::from_fn_with_state(port, enforce_local_host))
         .with_state(state)
-}
-
-#[derive(Deserialize)]
-struct PlanEventInput {
-    plan_id: String,
-    task_id: String,
-    provider_id: String,
-    kind: String,
-    #[serde(default)]
-    task_kind: Option<String>,
-    ok: bool,
-    detail: Option<String>,
-}
-async fn record_orchestration_event(
-    State(state): State<AppState>,
-    Json(input): Json<PlanEventInput>,
-) -> ApiResult<Json<Value>> {
-    let config = state.config.read().await;
-    if !config.mutis.effective(config.mutis.event_log) {
-        return Ok(Json(json!({"ok": true, "skipped": true})));
-    }
-    if !matches!(input.kind.as_str(), "review" | "fix_task" | "verify") {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Loại sự kiện không hợp lệ",
-        ));
-    }
-    state
-        .event_log
-        .append(&Event {
-            ts: mutis::now(),
-            plan_id: Some(input.plan_id),
-            task_id: Some(input.task_id),
-            provider_id: input.provider_id,
-            kind: input.kind,
-            task_kind: input.task_kind,
-            ok: input.ok,
-            duration_ms: None,
-            tokens: None,
-            detail: input.detail,
-        })
-        .map_err(|_| {
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Không thể ghi nhật ký MutiS",
-            )
-        })?;
-    Ok(Json(json!({"ok": true})))
-}
-
-#[derive(Deserialize)]
-struct VerifyRequest {
-    folder: String,
-}
-async fn verify_handler(
-    State(state): State<AppState>,
-    Json(input): Json<VerifyRequest>,
-) -> ApiResult<Response> {
-    let _job_guard = JobGuard::new(state.active_jobs.clone());
-    let config = state.config.read().await.clone();
-    if !config.mutis.effective(config.mutis.verify_gate) {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Bật MutiS và Cổng kiểm tra trong Cài đặt",
-        ));
-    }
-    let folder = PathBuf::from(input.folder)
-        .canonicalize()
-        .map(crate::core::text::strip_verbatim)
-        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục không tồn tại"))?;
-    if !folder.is_dir() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Đường dẫn không phải thư mục",
-        ));
-    }
-    let (tx, rx) = mpsc::channel::<String>(32);
-    tokio::spawn(async move {
-        let report = crate::verify::run(
-            &folder,
-            &config.mutis.verify_command,
-            &config.mutis.verify_ignore,
-            tx.clone(),
-        )
-        .await;
-        let _ = tx
-            .send(format!(
-                "__VERIFY__{}",
-                serde_json::to_string(&report).unwrap_or_default()
-            ))
-            .await;
-    });
-    let stream = async_stream::stream! { let mut rx=ReceiverStream::new(rx); while let Some(line)=rx.next().await { if let Some(json)=line.strip_prefix("__VERIFY__") { yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("verify").data(json)); } else { yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").json_data(json!({"text":line})).unwrap()); } } };
-    Ok(Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response())
-}
-
-#[derive(Deserialize)]
-struct PlanDiffRequest {
-    folder: String,
-}
-async fn plan_diff_handler(Json(input): Json<PlanDiffRequest>) -> ApiResult<Json<Value>> {
-    let folder = PathBuf::from(input.folder)
-        .canonicalize()
-        .map(crate::core::text::strip_verbatim)
-        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục không tồn tại"))?;
-    let output = tokio::process::Command::new("git")
-        .args(["diff", "--no-color", "HEAD"])
-        .current_dir(folder)
-        .output()
-        .await
-        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Không chạy được git diff"))?;
-    let diff = String::from_utf8_lossy(&output.stdout)
-        .chars()
-        .take(30_000)
-        .collect::<String>();
-    Ok(Json(json!({"diff":diff})))
-}
-
-async fn get_orchestration(State(state): State<AppState>) -> Json<config::MutisConfig> {
-    Json(state.config.read().await.mutis.clone())
-}
-#[derive(Serialize)]
-struct ResolvedRole {
-    configured_provider: Option<ProviderConfig>,
-    live_status: Option<ConnectionTest>,
-    used_provider: Option<ProviderConfig>,
-}
-async fn resolve_mutis_roles(State(state): State<AppState>) -> ApiResult<Json<Value>> {
-    let cfg = state.config.read().await.clone();
-    let mut output = serde_json::Map::new();
-    for (name, role, fallback) in [
-        (
-            "lead",
-            &cfg.mutis.roles.lead,
-            ["claude_cli", "anthropic", "codex_cli"].as_slice(),
-        ),
-        (
-            "big",
-            &cfg.mutis.roles.big,
-            ["codex_cli", "claude_cli", "anthropic"].as_slice(),
-        ),
-        (
-            "small",
-            &cfg.mutis.roles.small,
-            ["deepseek_agent", "codex_cli", "claude_cli"].as_slice(),
-        ),
-    ] {
-        let configured = cfg
-            .providers
-            .iter()
-            .find(|p| p.id == role.provider_id)
-            .cloned();
-        let mut candidates = Vec::new();
-        if let Some(provider) = &configured {
-            candidates.push(provider.clone());
-        }
-        for kind in fallback {
-            for provider in cfg.providers.iter().filter(|p| p.kind == *kind) {
-                if !candidates.iter().any(|x| x.id == provider.id) {
-                    candidates.push(provider.clone());
-                }
-            }
-        }
-        let results = join_all(
-            candidates
-                .iter()
-                .map(|p| cached_provider_test(&state, &p.id)),
-        )
-        .await;
-        let statuses = candidates
-            .iter()
-            .cloned()
-            .zip(results.into_iter().map(Result::ok))
-            .collect::<Vec<_>>();
-        let configured_status = configured.as_ref().and_then(|c| {
-            statuses
-                .iter()
-                .find(|(p, _)| p.id == c.id)
-                .and_then(|(_, s)| s.clone())
-        });
-        let used = statuses
-            .iter()
-            .find(|(_, s)| s.as_ref().is_some_and(|s| s.status == "connected"))
-            .map(|(p, _)| p.clone());
-        // Never send raw API keys to the browser.
-        let mask = |mut provider: ProviderConfig| {
-            provider.api_key = config::masked_key(&provider.api_key);
-            provider
-        };
-        output.insert(
-            name.into(),
-            serde_json::to_value(ResolvedRole {
-                configured_provider: configured.map(mask),
-                live_status: configured_status,
-                used_provider: used.map(mask),
-            })
-            .unwrap_or(Value::Null),
-        );
-    }
-    Ok(Json(Value::Object(output)))
-}
-async fn put_orchestration(
-    State(state): State<AppState>,
-    Json(value): Json<config::MutisConfig>,
-) -> ApiResult<Json<config::MutisConfig>> {
-    if !(1..=5).contains(&value.retry_attempts)
-        || !(1..=60).contains(&value.watchdog_minutes)
-        || value.resume_max > 3
-        || value.fix_rounds_max > 5
-        || !(50..=5000).contains(&value.deepseek_max_file_lines)
-        || !(5..=40).contains(&value.deepseek_max_steps)
-        || value.retry_base_ms > 60000
-    {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Tham số điều phối nằm ngoài phạm vi cho phép",
-        ));
-    }
-    for rule in &value.routing {
-        if !matches!(
-            rule.kind.as_str(),
-            "small_edit" | "code" | "test" | "docs" | "plan" | "review"
-        ) || !matches!(rule.role.as_str(), "lead" | "big" | "small")
-        {
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                "Quy tắc định tuyến không hợp lệ",
-            ));
-        }
-    }
-    for role in [&value.roles.lead, &value.roles.big, &value.roles.small] {
-        if !matches!(
-            role.effort.as_str(),
-            "default" | "low" | "medium" | "high" | "xhigh" | "max"
-        ) {
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                "Mức suy luận không hợp lệ",
-            ));
-        }
-    }
-    let mut config = state.config.write().await;
-    config.planner_provider_id = value.roles.lead.provider_id.clone();
-    config.planner_model = value.roles.lead.model.clone();
-    config.mutis = value.clone();
-    config.mutis.reviewer_provider_id = value.roles.lead.provider_id.clone();
-    config.mutis.reviewer_model = value.roles.lead.model.clone();
-    config::save(&state.config_path, &config)
-        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
-    Ok(Json(value))
-}
-async fn orchestration_events(
-    State(state): State<AppState>,
-    axum::extract::Query(query): axum::extract::Query<HashMap<String, String>>,
-) -> ApiResult<Json<Vec<Event>>> {
-    let limit = query
-        .get("limit")
-        .and_then(|x| x.parse().ok())
-        .unwrap_or(200)
-        .min(2000);
-    state.event_log.recent(limit).map(Json).map_err(|_| {
-        ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Không đọc được nhật ký điều phối",
-        )
-    })
-}
-
-async fn mutis_stats(
-    State(state): State<AppState>,
-    axum::extract::Query(query): axum::extract::Query<HashMap<String, String>>,
-) -> ApiResult<Json<Value>> {
-    let days = query
-        .get("days")
-        .and_then(|x| x.parse::<u64>().ok())
-        .unwrap_or(30)
-        .clamp(1, 365);
-    let cutoff = mutis::now().saturating_sub(days.saturating_mul(86400));
-    let events = state.event_log.recent(2000).map_err(|_| {
-        ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Không đọc được nhật ký MutiS",
-        )
-    })?;
-    let events = events
-        .into_iter()
-        .filter(|event| event.ts >= cutoff)
-        .collect::<Vec<_>>();
-    let mut providers: HashMap<String, Vec<Event>> = HashMap::new();
-    let mut kinds: HashMap<String, Vec<Event>> = HashMap::new();
-    for event in &events {
-        providers
-            .entry(event.provider_id.clone())
-            .or_default()
-            .push(event.clone());
-        kinds
-            .entry(event.task_kind.clone().unwrap_or_else(|| "không rõ".into()))
-            .or_default()
-            .push(event.clone());
-    }
-    let summarize = |groups: HashMap<String, Vec<Event>>| -> Value {
-        Value::Object(groups.into_iter().map(|(key, group)| {
-            let starts = group.iter().filter(|e| e.kind == "task_start").count();
-            let ends = group.iter().filter(|e| e.kind == "task_end").collect::<Vec<_>>();
-            let ok = ends.iter().filter(|e| e.ok).count();
-            let duration = ends.iter().filter_map(|e| e.duration_ms).sum::<u64>();
-            let tokens = ends.iter().filter_map(|e| e.tokens).sum::<u64>();
-            let mut errors: HashMap<String, usize> = HashMap::new();
-            for event in group.iter().filter(|e| !e.ok || e.kind == "error") {
-                if let Some(detail) = &event.detail { *errors.entry(mutis::normalize_error(detail)).or_default() += 1; }
-            }
-            let mut errors = errors.into_iter().collect::<Vec<_>>();
-            errors.sort_by(|a,b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-            let top_errors = errors.into_iter().take(5).map(|(message,count)| json!({"message":message,"count":count})).collect::<Vec<_>>();
-            (key, json!({"tasks_run": starts, "success_rate": if ends.is_empty() {0.0} else {ok as f64 / ends.len() as f64}, "avg_duration_ms": if ends.is_empty() {0} else {duration / ends.len() as u64}, "total_tokens": tokens, "retries": group.iter().filter(|e| e.kind == "retry").count(), "watchdog_kills": group.iter().filter(|e| e.kind == "watchdog_kill").count(), "resumes": group.iter().filter(|e| e.kind == "resume").count(), "verify_fail_rate": rate(&group, "verify", false), "review_fail_rate": rate(&group, "review", false), "fix_rounds": group.iter().filter(|e| e.kind == "fix_task").count(), "top_errors": top_errors}))
-        }).collect())
-    };
-    Ok(Json(
-        json!({"days": days, "providers": summarize(providers), "task_kinds": summarize(kinds), "events": events.into_iter().rev().take(50).collect::<Vec<_>>()}),
-    ))
-}
-async fn mutis_diagnoses(State(state): State<AppState>) -> ApiResult<Json<Vec<Value>>> {
-    let directory = state
-        .config_path
-        .parent()
-        .unwrap()
-        .join("mutis")
-        .join("diagnoses");
-    let mut items: Vec<Value> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(directory) {
-        for entry in entries.flatten() {
-            if let Ok(data) = std::fs::read_to_string(entry.path()) {
-                if let Ok(value) = serde_json::from_str(&data) {
-                    items.push(value);
-                }
-            }
-        }
-    }
-    items.sort_by_key(|v| std::cmp::Reverse(v["ts"].as_u64().unwrap_or(0)));
-    Ok(Json(items))
-}
-
-#[derive(Deserialize)]
-struct SettingChange {
-    path: String,
-    value: Value,
-}
-async fn mutis_setting_change(
-    State(state): State<AppState>,
-    Json(change): Json<SettingChange>,
-) -> ApiResult<Json<Value>> {
-    let mut config = state.config.write().await;
-    let (old, new) = mutis::apply_setting_change(&mut config, &change.path, &change.value)
-        .map_err(|message| ApiError::new(StatusCode::BAD_REQUEST, message))?;
-    if change.path == "mutis.roles.lead.provider_id" || change.path == "mutis.roles.lead.model" {
-        config.planner_provider_id = config.mutis.roles.lead.provider_id.clone();
-        config.planner_model = config.mutis.roles.lead.model.clone();
-        config.mutis.reviewer_provider_id = config.planner_provider_id.clone();
-        config.mutis.reviewer_model = config.planner_model.clone();
-    }
-    config::save(&state.config_path, &config)
-        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được cấu hình"))?;
-    Ok(Json(json!({"old":old,"new":new})))
-}
-
-async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<Response> {
-    let _job_guard = JobGuard::new(state.active_jobs.clone());
-    let all_events = state
-        .event_log
-        .recent(2000)
-        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không đọc được nhật ký"))?;
-    let ts = mutis::now();
-    let insufficient = all_events.len() < 5;
-    let config_snapshot = state.config.read().await.clone();
-    let mut failure_events = all_events
-        .iter()
-        .filter(|event| {
-            matches!(
-                event.kind.as_str(),
-                "retry" | "watchdog_kill" | "resume" | "fix_task" | "error"
-            ) || (event.kind == "verify" && !event.ok)
-                || (event.kind == "review" && !event.ok)
-                || event
-                    .detail
-                    .as_deref()
-                    .is_some_and(|detail| detail.to_lowercase().contains("empty deepseek"))
-        })
-        .take(150)
-        .cloned()
-        .collect::<Vec<_>>();
-    for event in &mut failure_events {
-        if let Some(detail) = &mut event.detail {
-            *detail = detail.chars().take(300).collect();
-        }
-    }
-    let stats = mutis_stats(
-        State(state.clone()),
-        axum::extract::Query(HashMap::from([("days".to_owned(), "30".to_owned())])),
-    )
-    .await?
-    .0;
-    if insufficient {
-        let diagnosis = json!({"ts":ts,"health":"chưa đủ dữ liệu","findings":[],"summary":"Chưa đủ dữ liệu để chẩn đoán"});
-        save_diagnosis(&state, &diagnosis)?;
-        let _ = state.event_log.append(&Event {
-            ts,
-            plan_id: None,
-            task_id: None,
-            provider_id: String::new(),
-            kind: "diagnosis".into(),
-            task_kind: None,
-            ok: true,
-            duration_ms: None,
-            tokens: None,
-            detail: Some(diagnosis["summary"].as_str().unwrap_or_default().into()),
-        });
-        let stream = async_stream::stream! {yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("diagnosis").json_data(diagnosis).unwrap());};
-        return Ok(Sse::new(stream)
-            .keep_alive(KeepAlive::default())
-            .into_response());
-    }
-    let (provider_config, model, effort) = resolve_connected_lead(&state, &config_snapshot).await?;
-    let provider = providers::for_kind(&provider_config.kind)
-        .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
-    let settings = serde_json::to_value(&config_snapshot.mutis).unwrap_or(Value::Null);
-    let prompt = format!("You are the read-only MutiS reviewer. Analyze the provided settings, stats and recent failure events. Return ONLY JSON matching this contract exactly: {{\"health\":\"tốt|trung bình|kém\",\"findings\":[{{\"problem\":\"\",\"evidence\":\"\",\"cause\":\"\",\"severity\":\"high|medium|low\",\"suggestion\":\"\",\"setting_change\":{{\"path\":\"mutis.<field> or mutis.roles.<lead|big|small>.<provider_id|model|effort> or mutis.routing[i].role\",\"value\":null}} or null}}],\"summary\":\"\"}}. Do not include unknown fields or propose secrets, provider keys, paths, verify commands or worker rules.\nSETTINGS (no provider keys):\n{}\nSTATS:\n{}\nLAST FAILURE EVENTS (max 150, each detail max 300 chars):\n{}", settings, stats, serde_json::to_string(&failure_events).unwrap_or_default());
-    let request = ProviderRequest {
-        provider: provider_config.clone(),
-        model,
-        folder: config_snapshot.default_folder.clone(),
-        permission: chat::Permission::Read,
-        effort,
-        messages: vec![ChatMessage {
-            role: "user".into(),
-            content: prompt,
-            reasoning: String::new(),
-            logs: Vec::new(),
-            diff: String::new(),
-            error: None,
-        }],
-        session_id: None,
-        mutis: config_snapshot.mutis.clone(),
-    };
-    let (sender, mut receiver) = mpsc::channel::<ProviderEvent>(32);
-    tokio::spawn(async move {
-        if let Err(error) = provider
-            .run(request, sender.clone(), CancellationToken::new())
-            .await
-        {
-            let _ = sender
-                .send(ProviderEvent::text("error", error.to_string()))
-                .await;
-        }
-    });
-    let stream_state = state.clone();
-    let stream = async_stream::stream! {
-        let mut raw = String::new();
-        let mut failed = false;
-        while let Some(event) = receiver.recv().await {
-            match event.name {
-                "delta" => raw.push_str(event.data["text"].as_str().unwrap_or_default()),
-                "log" => yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").json_data(event.data).unwrap()),
-                "error" => { failed = true; yield Ok(axum::response::sse::Event::default().event("error").json_data(event.data).unwrap()); },
-                _ => {}
-            }
-        }
-        if !failed {
-            match crate::core::text::extract_json(&raw).and_then(|text| serde_json::from_str::<Value>(text).ok()).and_then(|value| mutis::validate_diagnosis(value).ok()) {
-                Some(value) => {
-                    let diagnosis = json!({"ts":ts,"health":value["health"],"findings":value["findings"],"summary":value["summary"]});
-                    if let Err(error) = save_diagnosis(&stream_state, &diagnosis) { yield Ok(axum::response::sse::Event::default().event("error").json_data(json!({"message":error.message})).unwrap()); }
-                    else {
-                        let _ = stream_state.event_log.append(&Event { ts, plan_id:None, task_id:None, provider_id:provider_config.id.clone(), kind:"diagnosis".into(), task_kind:None, ok:true, duration_ms:None, tokens:None, detail:Some(diagnosis["summary"].as_str().unwrap_or_default().into()) });
-                        yield Ok(axum::response::sse::Event::default().event("diagnosis").json_data(diagnosis).unwrap());
-                    }
-                }
-                None => yield Ok(axum::response::sse::Event::default().event("error").json_data(json!({"message":"Không phân tích được kết quả chẩn đoán JSON"})).unwrap()),
-            }
-        }
-    };
-    Ok(Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response())
-}
-
-fn save_diagnosis(state: &AppState, diagnosis: &Value) -> ApiResult<()> {
-    let dir = state
-        .config_path
-        .parent()
-        .unwrap()
-        .join("mutis")
-        .join("diagnoses");
-    std::fs::create_dir_all(&dir).map_err(|_| {
-        ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Không lưu được chẩn đoán",
-        )
-    })?;
-    std::fs::write(
-        dir.join(format!(
-            "{}.json",
-            diagnosis["ts"].as_u64().unwrap_or_default()
-        )),
-        serde_json::to_vec_pretty(diagnosis).unwrap(),
-    )
-    .map_err(|_| {
-        ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Không lưu được chẩn đoán",
-        )
-    })
-}
-
-async fn resolve_connected_lead(
-    state: &AppState,
-    config: &Config,
-) -> ApiResult<(ProviderConfig, String, chat::Effort)> {
-    let role = &config.mutis.roles.lead;
-    let mut candidates = Vec::new();
-    if let Some(provider) = config
-        .providers
-        .iter()
-        .find(|p| p.id == role.provider_id && p.kind != "deepseek_agent")
-    {
-        candidates.push(provider.clone());
-    }
-    for kind in ["claude_cli", "anthropic", "codex_cli"] {
-        for provider in config
-            .providers
-            .iter()
-            .filter(|p| p.kind == kind && p.kind != "deepseek_agent")
-        {
-            if !candidates
-                .iter()
-                .any(|candidate| candidate.id == provider.id)
-            {
-                candidates.push(provider.clone());
-            }
-        }
-    }
-    for provider in candidates {
-        if cached_provider_test(state, &provider.id)
-            .await
-            .is_ok_and(|status| status.status == "connected")
-        {
-            let model = if role.provider_id == provider.id && !role.model.is_empty() {
-                role.model.clone()
-            } else {
-                provider.models.first().cloned().unwrap_or_default()
-            };
-            if model.is_empty() {
-                continue;
-            }
-            let effort = chat::parse_effort(if role.provider_id == provider.id {
-                &role.effort
-            } else {
-                "default"
-            })
-            .unwrap_or_default();
-            return Ok((provider, model, effort));
-        }
-    }
-    Err(ApiError::new(
-        StatusCode::SERVICE_UNAVAILABLE,
-        "Không có nguồn đang kết nối để chẩn đoán",
-    ))
-}
-
-fn rate(events: &[Event], kind: &str, ok: bool) -> f64 {
-    let matching = events.iter().filter(|e| e.kind == kind).collect::<Vec<_>>();
-    if matching.is_empty() {
-        0.0
-    } else {
-        matching.iter().filter(|e| e.ok == ok).count() as f64 / matching.len() as f64
-    }
 }
 
 async fn enforce_local_host(State(port): State<u16>, request: Request, next: Next) -> Response {
@@ -1376,7 +829,7 @@ async fn provider_models(
 #[derive(Clone, Serialize)]
 pub(crate) struct ConnectionTest {
     ok: bool,
-    status: &'static str,
+    pub(crate) status: &'static str,
     message: String,
     detail: String,
 }
@@ -1559,7 +1012,7 @@ async fn test_provider_uncached(
     Ok(Json(result))
 }
 
-async fn cached_provider_test(state: &AppState, id: &str) -> ApiResult<ConnectionTest> {
+pub(crate) async fn cached_provider_test(state: &AppState, id: &str) -> ApiResult<ConnectionTest> {
     if let Some((checked, status)) = state.provider_status.lock().await.get(id).cloned() {
         if checked.elapsed() < Duration::from_secs(60) {
             return Ok(status);
@@ -2456,175 +1909,6 @@ async fn cli_info(name: &str, explicit_path: String) -> CliInfo {
         installed: true,
         version,
         path: Some(path_text),
-    }
-}
-
-#[derive(Deserialize)]
-struct ExtensionQuery {
-    folder: Option<String>,
-}
-#[derive(Deserialize)]
-struct ExtensionActionInput {
-    folder: Option<String>,
-}
-async fn extension_list(
-    axum::extract::Query(q): axum::extract::Query<ExtensionQuery>,
-) -> Json<Vec<crate::extensions::Card>> {
-    Json(crate::extensions::status(q.folder.as_deref()).await)
-}
-async fn extension_stop(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> Json<StopResponse> {
-    let token = state.extension_running.lock().await.get(&id).cloned();
-    if let Some(token) = token {
-        token.cancel();
-        Json(StopResponse { stopped: true })
-    } else {
-        Json(StopResponse { stopped: false })
-    }
-}
-async fn extension_action(
-    State(state): State<AppState>,
-    Path((id, action_id)): Path<(String, String)>,
-    Json(input): Json<ExtensionActionInput>,
-) -> ApiResult<Response> {
-    let Some((definition, action)) = crate::extensions::action(&id, &action_id) else {
-        return Err(ApiError::new(
-            StatusCode::NOT_FOUND,
-            "Extension/action không tồn tại",
-        ));
-    };
-    let mut running = state.extension_running.lock().await;
-    if running.contains_key(&id) {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            "Extension đang có tác vụ",
-        ));
-    }
-    let token = CancellationToken::new();
-    running.insert(id.clone(), token.clone());
-    drop(running);
-    let mut folder = None;
-    if action.needs_folder {
-        let Some(raw) = input.folder.as_deref() else {
-            state.extension_running.lock().await.remove(&id);
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                "Cần thư mục hiện tại",
-            ));
-        };
-        let path = PathBuf::from(raw);
-        if !path.is_dir() || raw.contains('%') {
-            state.extension_running.lock().await.remove(&id);
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                "Thư mục không hợp lệ hoặc không tồn tại",
-            ));
-        }
-        folder = Some(path);
-    }
-    let (tx, rx) = mpsc::channel::<Result<String, String>>(64);
-    let state2 = state.clone();
-    let id2 = id.clone();
-    let exe = crate::extensions::resolve(action.command).or_else(|| {
-        if action.command == "npm" {
-            crate::extensions::resolve("npm.cmd")
-        } else {
-            None
-        }
-    });
-    let args = action
-        .args
-        .iter()
-        .map(|s| OsString::from(*s))
-        .collect::<Vec<_>>();
-    let backup = action.backup.map(str::to_owned);
-    let configured_backups = crate::core::paths::backups_dir(&state.config_path).ok();
-    let modify = action.modifies.to_owned();
-    let job_guard = JobGuard::new(state.active_jobs.clone());
-    tokio::spawn(async move {
-        let _job_guard = job_guard;
-        let result=async {
-            if let Some(file)=backup.as_deref(){if let Some(home)=dirs::home_dir(){let source=home.join(file);if source.exists(){let dir=configured_backups.clone().unwrap_or_else(||dirs::config_dir().unwrap_or_else(||home.clone()).join("ai-hub").join("backups"));tokio::fs::create_dir_all(&dir).await.map_err(|e|e.to_string())?;let stamp=backup_timestamp();let target=dir.join(format!("{}.{}.bak",source.file_name().unwrap_or_default().to_string_lossy(),stamp));tokio::fs::copy(&source,&target).await.map_err(|e|e.to_string())?;let _=tx.send(Ok(format!("Backup: {}",target.display()))).await;}}}
-            let path=exe.ok_or_else(||format!("Không tìm thấy executable: {}",action.command))?;
-            let _=tx.send(Ok(format!("{} {} | có thể sửa: {}",path.display(),args.iter().map(|x|x.to_string_lossy()).collect::<Vec<_>>().join(" "),modify))).await;
-            let mut cmd=providers::cli_support::command_for(&path,&args);if let Some(cwd)=folder.as_ref(){cmd.current_dir(cwd);}cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
-            let mut child=cmd.spawn().map_err(|e|e.to_string())?;let stdout=child.stdout.take().ok_or_else(||"Không đọc được output".to_string())?;let stderr=child.stderr.take();if let Some(stderr)=stderr{let tx_err=tx.clone();tokio::spawn(async move{let mut reader=tokio::io::BufReader::new(stderr);let mut line=String::new();loop{line.clear();if reader.read_line(&mut line).await.unwrap_or(0)==0{break}let _=tx_err.send(Ok(crate::core::text::strip_ansi(&line))).await;}});}
-            let mut reader=tokio::io::BufReader::new(stdout);let mut line=String::new();
-            let wait=async{let deadline=tokio::time::sleep(Duration::from_secs(600));tokio::pin!(deadline);loop{line.clear();tokio::select!{_ = token.cancelled()=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Đã dừng".to_string())},_ = &mut deadline=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Quá thời gian chờ 10 phút".to_string())},read=reader.read_line(&mut line)=>{let n=read.map_err(|e|e.to_string())?;if n==0{break}let _=tx.send(Ok(crate::core::text::strip_ansi(&line))).await;}}}let status=child.wait().await.map_err(|e|e.to_string())?;if status.success(){Ok(())}else{Err(format!("Lệnh kết thúc với {status}"))}}.await;
-            wait
-        }.await;
-        let _ = tx.send(Err(result.err().unwrap_or_default())).await;
-        state2.extension_running.lock().await.remove(&id2);
-    });
-    let stream = ReceiverStream::new(rx).flat_map(|item| {
-        let events = match item {
-            Ok(line) => vec![axum::response::sse::Event::default()
-                .event("log")
-                .data(json!(line).to_string())],
-            Err(error) => {
-                let mut out = Vec::new();
-                if !error.is_empty() {
-                    out.push(
-                        axum::response::sse::Event::default()
-                            .event("error")
-                            .data(json!({"message":error}).to_string()),
-                    );
-                }
-                out.push(
-                    axum::response::sse::Event::default()
-                        .event("done")
-                        .data(json!({"ok":error.is_empty()}).to_string()),
-                );
-                out
-            }
-        };
-        tokio_stream::iter(events.into_iter().map(Ok::<_, Infallible>))
-    });
-    let _ = definition;
-    Ok(Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response())
-}
-fn backup_timestamp() -> String {
-    let seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64;
-    let days = seconds.div_euclid(86400);
-    let rem = seconds.rem_euclid(86400);
-    let z = days + 719468;
-    let era = if z >= 0 { z } else { z - 146096 } / 146097;
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let mut year = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = mp + if mp < 10 { 3 } else { -9 };
-    year += i64::from(month <= 2);
-    format!(
-        "{year:04}{month:02}{day:02}-{:02}{:02}{:02}",
-        rem / 3600,
-        (rem % 3600) / 60,
-        rem % 60
-    )
-}
-#[cfg(test)]
-mod extension_tests {
-    #[test]
-    fn ansi_sequences_are_removed() {
-        assert_eq!(
-            crate::core::text::strip_ansi("\u{1b}[31mred\u{1b}[0m"),
-            "red"
-        );
-    }
-    #[test]
-    fn backup_timestamp_has_required_shape() {
-        let stamp = super::backup_timestamp();
-        assert_eq!(stamp.len(), 15);
-        assert_eq!(stamp.as_bytes()[8], b'-');
     }
 }
 
