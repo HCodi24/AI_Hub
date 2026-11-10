@@ -16,6 +16,16 @@ pub enum Permission {
     Write,
 }
 
+/// File tools an OpenAI-compatible source may use in agent mode (never commands).
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum FileTools {
+    #[default]
+    None,
+    Read,
+    Write,
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Effort {
@@ -64,6 +74,8 @@ pub struct ChatRecord {
     #[serde(default)]
     pub permission: Permission,
     #[serde(default)]
+    pub file_tools: FileTools,
+    #[serde(default)]
     pub effort: Effort,
     pub messages: Vec<ChatMessage>,
     #[serde(default)]
@@ -90,6 +102,8 @@ pub struct ChatRequest {
     pub dev_chat: bool,
     #[serde(default)]
     pub permission: Permission,
+    #[serde(default)]
+    pub file_tools: FileTools,
     #[serde(default)]
     pub effort: Option<String>,
     pub messages: Vec<ChatMessage>,
@@ -205,6 +219,7 @@ pub fn new_record(request: &ChatRequest) -> ChatRecord {
         folder: request.folder.clone(),
         dev_chat: request.dev_chat,
         permission: request.permission,
+        file_tools: request.file_tools,
         effort: request
             .effort
             .as_deref()
@@ -261,4 +276,77 @@ fn unix_time() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
+}
+
+/// Decide how a chat message is run for a source:
+/// - `Ok(None)`: normal chat (no file tools);
+/// - `Ok(Some(permission))`: agent mode with read-only (`Read`) or full (`Write`) file tools;
+/// - `Err(message)`: the user asked for file tools on a source that does not allow them.
+pub fn agent_permission(
+    provider: &crate::config::ProviderConfig,
+    file_tools: FileTools,
+) -> Result<Option<Permission>, &'static str> {
+    if file_tools == FileTools::None {
+        return Ok(None);
+    }
+    if provider.kind != "openai_compat" || !provider.agent_capable {
+        return Err("Bật «Cho phép AI đọc/sửa file» cho nguồn này trong Cài đặt");
+    }
+    Ok(Some(match file_tools {
+        FileTools::Read => Permission::Read,
+        _ => Permission::Write,
+    }))
+}
+
+#[cfg(test)]
+mod file_tools_tests {
+    use super::*;
+    use crate::config::ProviderConfig;
+
+    fn source(kind: &str, agent_capable: bool) -> ProviderConfig {
+        ProviderConfig {
+            id: "p".into(),
+            kind: kind.into(),
+            agent_capable,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn no_file_tools_is_a_normal_chat_for_any_source() {
+        assert_eq!(
+            agent_permission(&source("anthropic", false), FileTools::None),
+            Ok(None)
+        );
+        assert_eq!(
+            agent_permission(&source("openai_compat", true), FileTools::None),
+            Ok(None)
+        );
+    }
+
+    #[test]
+    fn file_tools_map_to_agent_read_or_write() {
+        let deploy = source("openai_compat", true);
+        assert_eq!(
+            agent_permission(&deploy, FileTools::Read),
+            Ok(Some(Permission::Read))
+        );
+        assert_eq!(
+            agent_permission(&deploy, FileTools::Write),
+            Ok(Some(Permission::Write))
+        );
+    }
+
+    #[test]
+    fn file_tools_are_refused_when_the_source_is_not_agent_capable() {
+        assert!(agent_permission(&source("openai_compat", false), FileTools::Write).is_err());
+        assert!(agent_permission(&source("codex_cli", true), FileTools::Read).is_err());
+    }
+
+    #[test]
+    fn file_tools_values_deserialize_from_lowercase_and_default_to_none() {
+        let tools: FileTools = serde_json::from_str("\"read\"").unwrap();
+        assert_eq!(tools, FileTools::Read);
+        assert_eq!(FileTools::default(), FileTools::None);
+    }
 }

@@ -36,6 +36,9 @@ pub(crate) struct ProviderInput {
     executable: String,
     #[serde(default)]
     models: Vec<String>,
+    /// None = keep the stored value (partial updates must not reset it).
+    #[serde(default)]
+    agent_capable: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -72,6 +75,7 @@ pub(crate) async fn create_provider(
             "Mã nhà cung cấp đã tồn tại",
         ));
     }
+    let kind_is_openai = input.kind == "openai_compat";
     let provider = ProviderConfig {
         id,
         name: input.name.trim().to_owned(),
@@ -80,6 +84,7 @@ pub(crate) async fn create_provider(
         api_key: input.api_key.unwrap_or_default(),
         executable: input.executable.trim().to_owned(),
         models: clean_models(input.models),
+        agent_capable: kind_is_openai && input.agent_capable.unwrap_or(false),
     };
     config.providers.push(provider);
     persist_config(&state, &config)?;
@@ -104,12 +109,14 @@ pub(crate) async fn update_provider(
         ));
     };
     let old_key = config.providers[index].api_key.clone();
+    let old_agent_capable = config.providers[index].agent_capable;
     let submitted_key = input.api_key.unwrap_or_default();
     let api_key = if submitted_key.trim().is_empty() || config::is_masked_key(&submitted_key) {
         old_key
     } else {
         submitted_key
     };
+    let kind_is_openai = input.kind == "openai_compat";
     config.providers[index] = ProviderConfig {
         id,
         name: input.name.trim().to_owned(),
@@ -118,6 +125,7 @@ pub(crate) async fn update_provider(
         api_key,
         executable: input.executable.trim().to_owned(),
         models: clean_models(input.models),
+        agent_capable: kind_is_openai && input.agent_capable.unwrap_or(old_agent_capable),
     };
     persist_config(&state, &config)?;
     Ok(Json(masked_config(&config)))
@@ -140,38 +148,6 @@ pub(crate) async fn remove_provider(
     Ok(Json(masked_config(&config)))
 }
 
-pub(crate) async fn use_deploy_key(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<Json<Config>> {
-    let mut config = state.config.write().await;
-    let key = config
-        .providers
-        .iter()
-        .find(|p| p.id == "deploy-deepseek" && p.kind == "openai_compat")
-        .map(|p| p.api_key.clone())
-        .filter(|key| !key.trim().is_empty())
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::BAD_REQUEST,
-                "Chưa có key trong nguồn Deploy (DeepSeek)",
-            )
-        })?;
-    let target = config
-        .providers
-        .iter_mut()
-        .find(|p| p.id == id && p.kind == "deepseek_agent")
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::NOT_FOUND,
-                "Không tìm thấy nguồn DeepSeek làm việc",
-            )
-        })?;
-    target.api_key = key;
-    persist_config(&state, &config)?;
-    Ok(Json(masked_config(&config)))
-}
-
 pub(crate) async fn provider_models(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -185,7 +161,7 @@ pub(crate) async fn provider_models(
         .find(|provider| provider.id == id)
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?;
-    if !matches!(provider.kind.as_str(), "openai_compat" | "deepseek_agent") {
+    if provider.kind != "openai_compat" {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "Chỉ hỗ trợ tải model cho OpenAI-compatible",
@@ -254,13 +230,13 @@ async fn test_provider_uncached(
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?;
     let result = match provider.kind.as_str() {
-        "openai_compat" | "deepseek_agent" if provider.api_key.trim().is_empty() => connection(
+        "openai_compat" if provider.api_key.trim().is_empty() => connection(
             false,
             "not_configured",
             "Chưa nhập API key",
             "Chưa nhập API key",
         ),
-        "openai_compat" | "deepseek_agent" => {
+        "openai_compat" => {
             let url = format!("{}/models", provider.base_url.trim().trim_end_matches('/'));
             match timeout(
                 Duration::from_secs(15),
@@ -813,16 +789,14 @@ fn validate_provider(id: &str, input: &ProviderInput) -> ApiResult<()> {
     }
     if !matches!(
         input.kind.as_str(),
-        "openai_compat" | "deepseek_agent" | "anthropic" | "codex_cli" | "claude_cli"
+        "openai_compat" | "anthropic" | "codex_cli" | "claude_cli"
     ) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "Loại nhà cung cấp không hợp lệ",
         ));
     }
-    if matches!(input.kind.as_str(), "openai_compat" | "deepseek_agent")
-        && input.base_url.trim().is_empty()
-    {
+    if input.kind == "openai_compat" && input.base_url.trim().is_empty() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "OpenAI-compatible cần URL cơ sở",

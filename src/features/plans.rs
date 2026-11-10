@@ -59,12 +59,13 @@ pub struct PlanTask {
     pub fix_root_detail: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct ProviderSummary {
     pub id: String,
     pub name: String,
     pub kind: String,
     pub models: Vec<String>,
+    pub agent_capable: bool,
 }
 
 pub fn reassign(kind: &str, connected: &[ProviderSummary], planner_id: &str) -> String {
@@ -270,18 +271,21 @@ mod tests {
                 name: "Claude".into(),
                 kind: "claude_cli".into(),
                 models: vec![],
+                ..Default::default()
             },
             ProviderSummary {
                 id: "openai".into(),
                 name: "OpenAI".into(),
                 kind: "openai_compat".into(),
                 models: vec![],
+                ..Default::default()
             },
             ProviderSummary {
                 id: "codex".into(),
                 name: "Codex".into(),
                 kind: "codex_cli".into(),
                 models: vec![],
+                ..Default::default()
             },
         ];
         assert_eq!(reassign("code", &connected, "planner"), "codex");
@@ -296,14 +300,16 @@ mod tests {
             ProviderSummary {
                 id: "ds".into(),
                 name: "DS".into(),
-                kind: "deepseek_agent".into(),
+                kind: "openai_compat".into(),
                 models: vec![],
+                ..Default::default()
             },
             ProviderSummary {
                 id: "codex".into(),
                 name: "Codex".into(),
                 kind: "codex_cli".into(),
                 models: vec![],
+                ..Default::default()
             },
         ];
         let routes = vec![crate::config::RoutingRule {

@@ -31,7 +31,7 @@ AI Hub là ứng dụng desktop cục bộ dạng một binary Rust, phục vụ
 
 ### Nhà cung cấp và CLI
 - `POST /api/providers`; `PUT, DELETE /api/providers/{id}`
-- `GET /api/providers/{id}/models`; `POST /api/providers/{id}/test`, `/api/providers/{id}/use-deploy-key`
+- `GET /api/providers/{id}/models`; `POST /api/providers/{id}/test`
 - Đăng nhập web Claude Code CLI: `/login/start` chạy `claude auth login --claudeai` ẩn, trả URL HTTPS hợp lệ và session ID; `/login/code` gửi mã web; `/login/cancel` dừng phiên. Mỗi lần chỉ giữ một phiên; phiên hết hạn sau 10 phút không hoạt động và tiến trình bị dừng khi thoát ứng dụng.
 - `GET /api/cli-status`, `/api/cli-discover/{name}`
 
@@ -69,3 +69,13 @@ Dữ liệu nằm trong thư mục cấu hình hệ điều hành, dưới `ai-h
 - API key không được đưa vào URL hoặc log. `GET /api/config` trả key đã che; cập nhật với key trống/đã che giữ nguyên key hiện tại.
 - CLI nhận prompt qua stdin. MutiS worker bị giới hạn vào các công cụ file được cung cấp; thao tác tiện ích dùng catalog lệnh cố định và yêu cầu xác nhận ở giao diện.
 - Đường dẫn làm việc được kiểm tra phía máy chủ. Chức năng thực thi lệnh AI có quyền theo từng task; xác minh/review dùng quyền chỉ đọc theo cấu hình.
+
+## Chế độ agent của nguồn OpenAI-compatible
+- `ProviderConfig.agent_capable` (chỉ `openai_compat`): AI được dùng công cụ file (list/read/edit/write, không chạy lệnh) trong thư mục chat.
+- `POST /api/chat` nhận `file_tools: none|read|write` (mặc định `none`, lưu trong bản ghi chat). `read` chỉ cấp `list_dir`/`read_file`;
+  `write` cấp đủ 4 công cụ. Nguồn chưa bật `agent_capable` mà đòi công cụ file → 400.
+- Chạy qua vòng lặp agent (`providers/deepseek_agent.rs`) với base_url/key/model của chính nguồn đó; giữ sandbox đường dẫn, diff,
+  giới hạn bước, retry, heartbeat/watchdog như mọi lượt chat.
+- Migration khi nạp cấu hình (`merge_agent_providers`): nguồn kiểu `deepseek_agent` cũ được gộp vào nguồn OpenAI-compatible cùng URL
+  (đặt `agent_capable`, giữ key nếu nguồn cha chưa có, ánh xạ lại vai trò MutiS) rồi xoá; không có nguồn cha thì đổi kiểu tại chỗ.
+  Id cũ `deepseek-agent-deploy` vẫn được hiểu là nguồn agent-capable (`resolve_provider_id`).

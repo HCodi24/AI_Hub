@@ -11,6 +11,7 @@ import {
   openDevChat,
   permissionSelect,
   providerSelect,
+  fileToolsSelect,
   refreshChats,
   rememberCurrentChat,
   renderDevChatControls,
@@ -39,7 +40,6 @@ import {
   testProvider,
   updateMutisDisabled,
   updateProviderFormKind,
-  useDeployKey,
 } from "./settings.js";
 import { loadMutisPage, renderDiagnosis } from "./mutis-page.js";
 import { loadPlans, planFromRequest, renderPlanList } from "./plans.js";
@@ -264,6 +264,7 @@ $("#message-input").addEventListener("keydown", (event) => {
 $("#folder-input").addEventListener("input", () => { renderDevChatControls(); rememberCurrentChat(); });
 permissionSelect.addEventListener("change", rememberCurrentChat);
 $("#folder-input").addEventListener("change", saveDefaultFolder);
+fileToolsSelect.addEventListener("change", rememberCurrentChat);
 $("#provider-add").addEventListener("click", clearProviderForm);
 $("#provider-kind").addEventListener("change", updateProviderFormKind);
 $("#provider-form").addEventListener("submit", saveProvider);
@@ -278,7 +279,6 @@ $("#claude-login-copy").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText($("#claude-login-link").href); showToast("Đã sao chép link"); }
   catch (_) { showToast("Không thể truy cập clipboard"); }
 });
-$("#use-deploy-key").addEventListener("click", useDeployKey);
 $("#cli-discover").addEventListener("click", discoverCli);
 $("#models-load").addEventListener("click", loadModels);
 $("#cli-refresh").addEventListener("click", refreshCliStatus);

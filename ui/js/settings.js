@@ -19,8 +19,9 @@ export async function loadConfig() {
 export function resolveConnectedRole(key) {
   const current = state.mutis?.roles?.[key];
   if (current && state.providerStatuses.get(current.provider_id)?.status === "connected") return current;
-  const order = { lead: ["claude_cli", "anthropic", "codex_cli"], big: ["codex_cli", "claude_cli"], small: ["deepseek_agent", "codex_cli"] }[key];
-  const provider = order.flatMap(kind => state.config.providers.filter(item => item.kind === kind))
+  const order = { lead: ["claude_cli", "anthropic", "codex_cli"], big: ["codex_cli", "claude_cli"], small: ["codex_cli", "claude_cli"] }[key];
+  const provider = (key === "small" ? state.config.providers.filter(item => item.agent_capable) : [])
+    .concat(order.flatMap(kind => state.config.providers.filter(item => item.kind === kind)))
     .find(item => state.providerStatuses.get(item.id)?.status === "connected");
   return provider ? {
     ...current,
@@ -127,6 +128,7 @@ export function clearProviderForm() {
   $("#provider-executable").value = "";
   $("#provider-key").placeholder = "Nhập API key (không bắt buộc với CLI)";
   $("#provider-models").value = "";
+  $("#provider-agent-capable").checked = false;
   $("#provider-delete").hidden = true;
   $("#provider-form-note").textContent = "";
   $("#cli-candidates").hidden = true;
@@ -163,6 +165,7 @@ export function editProvider(id) {
   $("#provider-executable").value = provider.executable || "";
   $("#provider-key").placeholder = provider.api_key ? "Key đã lưu — để trống để giữ nguyên" : "Nhập API key (không bắt buộc với CLI)";
   $("#provider-models").value = (provider.models || []).join("\n");
+  $("#provider-agent-capable").checked = Boolean(provider.agent_capable);
   $("#provider-delete").hidden = false;
   $("#provider-form-note").textContent = "";
   $("#cli-candidates").hidden = true;
@@ -297,22 +300,13 @@ export async function loginClaude() {
 }
 export function updateProviderFormKind() {
   const kind = $("#provider-kind").value;
-  const showUrl = kind === "openai_compat" || kind === "deepseek_agent";
+  const showUrl = kind === "openai_compat";
   const showExecutable = kind === "codex_cli" || kind === "claude_cli";
   $("#base-url-field").hidden = !showUrl;
   $("#provider-executable-field").hidden = !showExecutable;
   $("#cli-discover").hidden = !showExecutable;
   $("#models-load").hidden = !showUrl;
-  $("#use-deploy-key").hidden = kind !== "deepseek_agent" || !state.settingsProviderId;
-}
-export async function useDeployKey() {
-  if (!state.settingsProviderId) return;
-  try {
-    state.config = await api(`/api/providers/${encodeURIComponent(state.settingsProviderId)}/use-deploy-key`, {method:"POST"});
-    $("#provider-form-note").textContent = "Đã sao chép key phía máy chủ từ Deploy (DeepSeek).";
-    editProvider(state.settingsProviderId);
-    $("#provider-form-note").textContent = "Đã sao chép key phía máy chủ từ Deploy (DeepSeek).";
-  } catch (error) { $("#provider-form-note").textContent = error.message; }
+  $("#agent-capable-field").hidden = kind !== "openai_compat";
 }
 export async function saveProvider(event, testAfterSave = true) {
   event.preventDefault();
@@ -325,6 +319,7 @@ export async function saveProvider(event, testAfterSave = true) {
     api_key: $("#provider-key").value,
     executable: $("#provider-executable").value.trim(),
     models,
+    agent_capable: $("#provider-agent-capable").checked,
   };
   try {
     const config = await api(id ? `/api/providers/${encodeURIComponent(id)}` : "/api/providers", {

@@ -121,10 +121,6 @@ pub fn router(state: AppState) -> Router {
             post(crate::api::providers::test_provider),
         )
         .route(
-            "/api/providers/{id}/use-deploy-key",
-            post(crate::api::providers::use_deploy_key),
-        )
-        .route(
             "/api/providers/{id}/login/start",
             post(crate::api::providers::login_provider_start),
         )

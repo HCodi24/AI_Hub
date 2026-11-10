@@ -50,6 +50,14 @@
             <option value="write">Được sửa file</option>
           </select>
         </label>
+        <label id="file-tools-control" class="control-group permission-control" hidden>
+          <span>Công cụ file</span>
+          <select id="file-tools-select" aria-label="Công cụ file">
+            <option value="none">Không (chỉ chat)</option>
+            <option value="read">Chỉ đọc file</option>
+            <option value="write">Được sửa file</option>
+          </select>
+        </label>
       </header>
       <div id="dev-chat-strip" class="dev-chat-strip" hidden></div>
 
@@ -245,8 +253,8 @@
             <input type="number" min="0" max="3" data-orch="resume_max" aria-label="Số lần tiếp tục tối đa">
           </label>
           <label>
-            <span><input type="checkbox" data-orch="deepseek_agent"> DeepSeek làm việc trên file</span>
-            <small>Cho phép chế độ agent DeepSeek.</small>
+            <span><input type="checkbox" data-orch="deepseek_agent"> Giao việc nhỏ cho nguồn ở chế độ agent</span>
+            <small>MutiS được giao việc nhỏ cho nguồn có bật «Cho phép AI đọc/sửa file» (vd. Deploy DeepSeek).</small>
             <div class="field-row">
               <input type="number" min="50" max="5000" data-orch="deepseek_max_file_lines" aria-label="Ngưỡng số dòng">
               <input type="number" min="5" max="40" data-orch="deepseek_max_steps" aria-label="Số bước tối đa">
@@ -296,7 +304,6 @@
             <label>Loại
               <select id="provider-kind">
                 <option value="openai_compat">OpenAI-compatible</option>
-                <option value="deepseek_agent">DeepSeek agent</option>
                 <option value="anthropic">Anthropic</option>
                 <option value="codex_cli">Codex CLI</option>
                 <option value="claude_cli">Claude Code CLI</option>
@@ -305,7 +312,10 @@
           </div>
           <label id="base-url-field">URL cơ sở<input id="provider-url" type="url" placeholder="https://api.example.com/v1"></label>
           <label>API key<input id="provider-key" type="password" autocomplete="new-password" placeholder="Để trống để giữ key đã lưu"></label>
-          <button id="use-deploy-key" class="subtle-button" type="button" hidden>Dùng key của Deploy (DeepSeek)</button>
+          <label id="agent-capable-field" class="check-row" hidden>
+            <input id="provider-agent-capable" type="checkbox">
+            Cho phép AI đọc/sửa file trong thư mục chat (chế độ agent, không chạy lệnh)
+          </label>
           <div id="provider-executable-field" class="executable-row" hidden>
             <label>Đường dẫn file chạy (để trống = tự tìm)
               <input id="provider-executable" type="text" autocomplete="off" placeholder="C:\Users\...\AppData\Roaming\npm\codex.cmd">

@@ -79,3 +79,15 @@
 .cli-card strong { display: block; margin-bottom: 4px; font-size: 11px; }
 .cli-card span { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
 .cli-card .cli-path { display: block; margin-top: 5px; }
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted, #9aa0aa);
+}
+.check-row input {
+  width: auto;
+  margin: 0;
+}

@@ -94,17 +94,26 @@ pub(crate) async fn resolve_mutis_roles(State(state): State<AppState>) -> ApiRes
         (
             "small",
             &cfg.mutis.roles.small,
-            ["deepseek_agent", "codex_cli", "claude_cli"].as_slice(),
+            ["codex_cli", "claude_cli"].as_slice(),
         ),
     ] {
-        let configured = cfg
-            .providers
-            .iter()
-            .find(|p| p.id == role.provider_id)
-            .cloned();
+        // The removed legacy agent id still resolves to the agent-capable Deploy source.
+        let configured =
+            crate::config::resolve_provider_id(&cfg.providers, &role.provider_id).cloned();
         let mut candidates = Vec::new();
         if let Some(provider) = &configured {
             candidates.push(provider.clone());
+        }
+        if name == "small" {
+            for provider in cfg
+                .providers
+                .iter()
+                .filter(|p| p.kind == "openai_compat" && p.agent_capable)
+            {
+                if !candidates.iter().any(|x| x.id == provider.id) {
+                    candidates.push(provider.clone());
+                }
+            }
         }
         for kind in fallback {
             for provider in cfg.providers.iter().filter(|p| p.kind == *kind) {
@@ -549,19 +558,11 @@ async fn resolve_connected_lead(
 ) -> ApiResult<(ProviderConfig, String, chat::Effort)> {
     let role = &config.mutis.roles.lead;
     let mut candidates = Vec::new();
-    if let Some(provider) = config
-        .providers
-        .iter()
-        .find(|p| p.id == role.provider_id && p.kind != "deepseek_agent")
-    {
+    if let Some(provider) = config.providers.iter().find(|p| p.id == role.provider_id) {
         candidates.push(provider.clone());
     }
     for kind in ["claude_cli", "anthropic", "codex_cli"] {
-        for provider in config
-            .providers
-            .iter()
-            .filter(|p| p.kind == kind && p.kind != "deepseek_agent")
-        {
+        for provider in config.providers.iter().filter(|p| p.kind == kind) {
             if !candidates
                 .iter()
                 .any(|candidate| candidate.id == provider.id)

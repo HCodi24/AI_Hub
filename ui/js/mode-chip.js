@@ -9,6 +9,15 @@ export const EFFORTS = ["default", "low", "medium", "high", "xhigh", "max"];
 export function currentProvider() {
   return state.config?.providers.find((provider) => provider.id === providerSelect.value);
 }
+// Old plans/chats may still reference the removed "DeepSeek làm việc" source: it now lives in the Deploy source
+// (OpenAI-compatible with agent mode), so map the old id to it.
+export function findProvider(id) {
+  const providers = state.config?.providers || [];
+  return providers.find(item => item.id === id)
+    || (id === "deepseek-agent-deploy"
+      ? providers.find(item => item.kind === "openai_compat" && item.agent_capable)
+      : undefined);
+}
 export function setupProviderControls(providerId, preferredModel = "") {
   if (!state.config) return;
   providerSelect.replaceChildren();
@@ -18,7 +27,7 @@ export function setupProviderControls(providerId, preferredModel = "") {
     option.textContent = provider.name;
     providerSelect.append(option);
   }
-  const selected = state.config.providers.find((provider) => provider.id === providerId) || state.config.providers[0];
+  const selected = findProvider(providerId) || state.config.providers[0];
   if (!selected) {
     updatePermissionControl();
     return;
@@ -28,8 +37,10 @@ export function setupProviderControls(providerId, preferredModel = "") {
   updatePermissionControl();
 }
 export function updatePermissionControl() {
-  const kind = currentProvider()?.kind;
-  $("#permission-control").hidden = !["codex_cli", "claude_cli"].includes(kind);
+  const provider = currentProvider();
+  $("#permission-control").hidden = !["codex_cli", "claude_cli"].includes(provider?.kind);
+  // OpenAI-compatible sources with agent mode enabled can read/edit files in the chat folder.
+  $("#file-tools-control").hidden = !(provider?.kind === "openai_compat" && provider.agent_capable);
 }
 export function updateModels(preferredModel = "") {
   const provider = currentProvider();
@@ -196,8 +207,9 @@ export function renderMutisRoleRows(containerId) {
       if (!status) {
         row.append(el("small", { className: "muted-inline", textContent: "Đang kiểm tra kết nối…" }));
       } else if (status && status.status !== "connected") {
-        const fallbackKinds = { lead: ["claude_cli", "anthropic", "codex_cli"], big: ["codex_cli", "claude_cli"], small: ["deepseek_agent", "codex_cli"] }[key];
-        const fallback = fallbackKinds.flatMap(kind => state.config.providers.filter(item => item.kind === kind))
+        const fallbackKinds = { lead: ["claude_cli", "anthropic", "codex_cli"], big: ["codex_cli", "claude_cli"], small: ["codex_cli", "claude_cli"] }[key];
+        const agentFirst = key === "small" ? state.config.providers.filter(item => item.agent_capable) : [];
+        const fallback = agentFirst.concat(fallbackKinds.flatMap(kind => state.config.providers.filter(item => item.kind === kind)))
           .find(item => item.id !== role.provider_id && state.providerStatuses.get(item.id)?.status === "connected");
         row.append(el("small", { textContent: fallback ? `⚠ chưa kết nối — sẽ dùng ${fallback.name}` : "⚠ Không có nguồn nào đang kết nối cho vai trò này" }));
       }

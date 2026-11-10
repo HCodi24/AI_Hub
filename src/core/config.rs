@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderConfig {
     pub id: String,
     pub name: String,
@@ -18,6 +18,10 @@ pub struct ProviderConfig {
     pub executable: String,
     #[serde(default)]
     pub models: Vec<String>,
+    /// OpenAI-compatible sources only: the AI may use file tools (list/read/edit/write, never commands) inside
+    /// the chat folder through this source ("agent mode"). Replaces the old separate `deepseek_agent` source.
+    #[serde(default)]
+    pub agent_capable: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -231,15 +235,7 @@ impl Config {
                     api_key: String::new(),
                     executable: String::new(),
                     models: vec!["deepseek-ai/deepseek-v4.1-flash-1017".to_owned()],
-                },
-                ProviderConfig {
-                    id: "deepseek-agent-deploy".to_owned(),
-                    name: "DeepSeek làm việc (Deploy)".to_owned(),
-                    kind: "deepseek_agent".to_owned(),
-                    base_url: "https://api.deploy.com/api/v1".to_owned(),
-                    api_key: String::new(),
-                    executable: String::new(),
-                    models: vec!["deepseek-ai/deepseek-v4.1-flash-1017".to_owned()],
+                    agent_capable: true,
                 },
                 ProviderConfig {
                     id: "openai".to_owned(),
@@ -249,6 +245,7 @@ impl Config {
                     api_key: String::new(),
                     executable: String::new(),
                     models: vec!["gpt-5.1".to_owned()],
+                    ..Default::default()
                 },
                 ProviderConfig {
                     id: "anthropic".to_owned(),
@@ -258,6 +255,7 @@ impl Config {
                     api_key: String::new(),
                     executable: String::new(),
                     models: vec!["claude-opus-5-5".to_owned(), "claude-sonnet-5-5".to_owned()],
+                    ..Default::default()
                 },
                 ProviderConfig {
                     id: "codex-cli".to_owned(),
@@ -267,6 +265,7 @@ impl Config {
                     api_key: String::new(),
                     executable: String::new(),
                     models: vec!["gpt-6-luna".to_owned()],
+                    ..Default::default()
                 },
                 ProviderConfig {
                     id: "claude-cli".to_owned(),
@@ -276,6 +275,7 @@ impl Config {
                     api_key: String::new(),
                     executable: String::new(),
                     models: vec!["opus".to_owned(), "sonnet".to_owned()],
+                    ..Default::default()
                 },
             ],
             default_folder: default_folder(),
@@ -303,20 +303,7 @@ pub fn load_or_seed(path: &Path) -> Result<Config> {
             .with_context(|| format!("Could not read config file at {}", path.display()))?;
         let mut config: Config = serde_json::from_str(&content)
             .with_context(|| format!("Could not parse config file at {}", path.display()))?;
-        if !config
-            .providers
-            .iter()
-            .any(|provider| provider.id == "deepseek-agent-deploy")
-        {
-            let seeded = Config::seeded();
-            if let Some(provider) = seeded
-                .providers
-                .into_iter()
-                .find(|provider| provider.id == "deepseek-agent-deploy")
-            {
-                config.providers.push(provider);
-            }
-        }
+        merge_agent_providers(&mut config);
         migrate_mutis(&mut config);
         save(path, &config)?;
         Ok(config)
@@ -326,6 +313,97 @@ pub fn load_or_seed(path: &Path) -> Result<Config> {
         save(path, &config)?;
         Ok(config)
     }
+}
+
+/// Id of the removed separate "DeepSeek làm việc" source; old chats/plans/roles may still mention it.
+pub const LEGACY_AGENT_PROVIDER_ID: &str = "deepseek-agent-deploy";
+
+fn same_endpoint(a: &str, b: &str) -> bool {
+    a.trim()
+        .trim_end_matches('/')
+        .eq_ignore_ascii_case(b.trim().trim_end_matches('/'))
+}
+
+/// Merge every legacy `deepseek_agent` source into the OpenAI-compatible source of the same account:
+/// the parent becomes `agent_capable` (agent mode), references are remapped, the duplicate is removed.
+/// Without a matching parent the agent source is converted in place. Idempotent.
+pub fn merge_agent_providers(config: &mut Config) {
+    let agent_ids: Vec<String> = config
+        .providers
+        .iter()
+        .filter(|provider| provider.kind == "deepseek_agent")
+        .map(|provider| provider.id.clone())
+        .collect();
+    for agent_id in agent_ids {
+        let Some(agent) = config.providers.iter().find(|p| p.id == agent_id).cloned() else {
+            continue;
+        };
+        let parent_index = config
+            .providers
+            .iter()
+            .position(|p| {
+                p.kind == "openai_compat"
+                    && p.id == "deploy-deepseek"
+                    && same_endpoint(&p.base_url, &agent.base_url)
+            })
+            .or_else(|| {
+                config.providers.iter().position(|p| {
+                    p.kind == "openai_compat" && same_endpoint(&p.base_url, &agent.base_url)
+                })
+            });
+        let Some(parent_index) = parent_index else {
+            if let Some(own) = config.providers.iter_mut().find(|p| p.id == agent_id) {
+                own.kind = "openai_compat".into();
+                own.agent_capable = true;
+            }
+            continue;
+        };
+        let parent_id = config.providers[parent_index].id.clone();
+        {
+            let parent = &mut config.providers[parent_index];
+            parent.agent_capable = true;
+            if parent.api_key.trim().is_empty() && !agent.api_key.trim().is_empty() {
+                parent.api_key = agent.api_key.clone();
+            }
+            for model in &agent.models {
+                if !parent.models.contains(model) {
+                    parent.models.push(model.clone());
+                }
+            }
+        }
+        for role in [
+            &mut config.mutis.roles.lead,
+            &mut config.mutis.roles.big,
+            &mut config.mutis.roles.small,
+        ] {
+            if role.provider_id == agent_id {
+                role.provider_id = parent_id.clone();
+            }
+        }
+        if config.planner_provider_id == agent_id {
+            config.planner_provider_id = parent_id.clone();
+        }
+        if config.mutis.reviewer_provider_id == agent_id {
+            config.mutis.reviewer_provider_id = parent_id.clone();
+        }
+        config.providers.retain(|p| p.id != agent_id);
+    }
+}
+
+/// Resolve a provider id, mapping the removed legacy agent id to the Deploy source.
+pub fn resolve_provider_id<'a>(
+    providers: &'a [ProviderConfig],
+    id: &str,
+) -> Option<&'a ProviderConfig> {
+    providers.iter().find(|p| p.id == id).or_else(|| {
+        (id == LEGACY_AGENT_PROVIDER_ID)
+            .then(|| {
+                providers
+                    .iter()
+                    .find(|p| p.kind == "openai_compat" && p.agent_capable)
+            })
+            .flatten()
+    })
 }
 
 fn default_effort() -> String {
@@ -387,9 +465,9 @@ fn migrate_mutis(config: &mut Config) {
         roles.small.provider_id = config
             .providers
             .iter()
-            .find(|p| p.id == "deepseek-agent-deploy")
+            .find(|p| p.kind == "openai_compat" && p.agent_capable)
             .map(|p| p.id.clone())
-            .unwrap_or_else(|| find(&["deepseek_agent"]));
+            .unwrap_or_else(|| find(&["codex_cli"]));
     }
     if roles.small.model.is_empty() {
         roles.small.model = config
@@ -489,7 +567,7 @@ mod role_tests {
         config.mutis.reviewer_provider_id = "claude-cli".into();
         config.mutis.reviewer_model = "opus".into();
         config.mutis.routing[0].role.clear();
-        config.mutis.routing[0].assignee_kind = "deepseek_agent".into();
+        config.mutis.routing[0].assignee_kind = "deepseek_agent".into(); // legacy value
         config.mutis.routing[2].role.clear();
         config.mutis.routing[2].assignee_kind = "codex_cli".into();
         config.mutis.routing[4].role.clear();
@@ -503,15 +581,12 @@ mod role_tests {
     }
 
     #[test]
-    fn migration_fills_small_with_deepseek_agent_and_first_model() {
+    fn migration_fills_small_with_agent_capable_source_and_first_model() {
         let mut config = Config::seeded();
         config.mutis.roles.small.provider_id.clear();
         config.mutis.roles.small.model.clear();
         migrate_mutis(&mut config);
-        assert_eq!(
-            config.mutis.roles.small.provider_id,
-            "deepseek-agent-deploy"
-        );
+        assert_eq!(config.mutis.roles.small.provider_id, "deploy-deepseek");
         assert_eq!(
             config.mutis.roles.small.model,
             "deepseek-ai/deepseek-v4.1-flash-1017"
@@ -558,10 +633,20 @@ pub fn first_connected_fallback(
     role: &str,
     connected: &std::collections::HashSet<String>,
 ) -> Option<String> {
+    if role == "small" {
+        // Agent-capable OpenAI-compatible source (e.g. Deploy/DeepSeek in agent mode) first, then CLIs.
+        if let Some(provider) = providers.iter().find(|provider| {
+            provider.kind == "openai_compat"
+                && provider.agent_capable
+                && connected.contains(&provider.id)
+        }) {
+            return Some(provider.id.clone());
+        }
+    }
     let kinds: &[&str] = match role {
         "lead" => &["claude_cli", "anthropic", "codex_cli"],
         "big" => &["codex_cli", "claude_cli"],
-        "small" => &["deepseek_agent", "codex_cli"],
+        "small" => &["codex_cli", "claude_cli"],
         _ => return None,
     };
     kinds.iter().find_map(|kind| {
@@ -575,4 +660,118 @@ pub fn first_connected_fallback(
 #[allow(clippy::items_after_test_module)]
 pub fn is_masked_key(value: &str) -> bool {
     value.contains('…') || value.contains("••") || value.starts_with("****")
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    fn legacy_config(agent_key: &str) -> Config {
+        let mut config = Config::seeded();
+        config.providers.push(ProviderConfig {
+            id: LEGACY_AGENT_PROVIDER_ID.into(),
+            name: "DeepSeek làm việc (Deploy)".into(),
+            kind: "deepseek_agent".into(),
+            base_url: "https://api.deploy.com/api/v1/".into(),
+            api_key: agent_key.into(),
+            models: vec!["deepseek-ai/extra-model".into()],
+            ..Default::default()
+        });
+        for provider in &mut config.providers {
+            if provider.id == "deploy-deepseek" {
+                provider.agent_capable = false;
+            }
+        }
+        config.mutis.roles.small.provider_id = LEGACY_AGENT_PROVIDER_ID.into();
+        config
+    }
+
+    #[test]
+    fn legacy_agent_source_is_merged_into_the_matching_deploy_source() {
+        let mut config = legacy_config("sk-agent-key");
+        merge_agent_providers(&mut config);
+        assert!(config.providers.iter().all(|p| p.kind != "deepseek_agent"));
+        let deploy = config
+            .providers
+            .iter()
+            .find(|p| p.id == "deploy-deepseek")
+            .unwrap();
+        assert!(deploy.agent_capable);
+        assert_eq!(
+            deploy.api_key, "sk-agent-key",
+            "key is kept when only the agent had one"
+        );
+        assert!(deploy
+            .models
+            .contains(&"deepseek-ai/extra-model".to_owned()));
+        assert_eq!(config.mutis.roles.small.provider_id, "deploy-deepseek");
+    }
+
+    #[test]
+    fn merge_does_not_overwrite_an_existing_parent_key_and_is_idempotent() {
+        let mut config = legacy_config("sk-agent-key");
+        config
+            .providers
+            .iter_mut()
+            .find(|p| p.id == "deploy-deepseek")
+            .unwrap()
+            .api_key = "sk-parent".into();
+        merge_agent_providers(&mut config);
+        let once = serde_json::to_string(&config).unwrap();
+        merge_agent_providers(&mut config);
+        assert_eq!(once, serde_json::to_string(&config).unwrap());
+        let deploy = config
+            .providers
+            .iter()
+            .find(|p| p.id == "deploy-deepseek")
+            .unwrap();
+        assert_eq!(deploy.api_key, "sk-parent");
+    }
+
+    #[test]
+    fn legacy_agent_without_a_matching_parent_is_converted_in_place() {
+        let mut config = legacy_config("sk-own");
+        config
+            .providers
+            .retain(|p| p.id != "deploy-deepseek" && p.id != "openai");
+        config
+            .providers
+            .iter_mut()
+            .find(|p| p.id == LEGACY_AGENT_PROVIDER_ID)
+            .unwrap()
+            .base_url = "https://other.example/v1".into();
+        merge_agent_providers(&mut config);
+        let own = config
+            .providers
+            .iter()
+            .find(|p| p.id == LEGACY_AGENT_PROVIDER_ID)
+            .unwrap();
+        assert_eq!(own.kind, "openai_compat");
+        assert!(own.agent_capable);
+        assert_eq!(own.api_key, "sk-own");
+    }
+
+    #[test]
+    fn removed_agent_id_still_resolves_to_the_agent_capable_source() {
+        let config = Config::seeded();
+        let found = resolve_provider_id(&config.providers, LEGACY_AGENT_PROVIDER_ID).unwrap();
+        assert_eq!(found.id, "deploy-deepseek");
+        assert!(resolve_provider_id(&config.providers, "nope").is_none());
+    }
+
+    #[test]
+    fn small_role_falls_back_from_the_agent_capable_source_to_codex() {
+        let config = Config::seeded();
+        let mut connected = std::collections::HashSet::new();
+        connected.insert("codex-cli".to_owned());
+        assert_eq!(
+            first_connected_fallback(&config.providers, "small", &connected).as_deref(),
+            Some("codex-cli")
+        );
+        connected.insert("deploy-deepseek".to_owned());
+        assert_eq!(
+            first_connected_fallback(&config.providers, "small", &connected).as_deref(),
+            Some("deploy-deepseek")
+        );
+    }
 }

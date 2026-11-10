@@ -4,7 +4,7 @@ AI Hub là ứng dụng chạy cục bộ trên máy, dùng qua trình duyệt: 
 
 ## Tính năng chính
 
-- Nhiều nguồn AI trong cùng một giao diện: OpenAI-compatible API, Anthropic API, Codex CLI, Claude Code CLI và DeepSeek làm việc (Deploy).
+- Nhiều nguồn AI trong cùng một giao diện: OpenAI-compatible API, Anthropic API, Codex CLI, Claude Code CLI. Mọi nguồn OpenAI-compatible (như Deploy/DeepSeek) có thể bật chế độ agent để đọc/sửa file.
 - Chat có lưu lịch sử, trả lời dạng streaming, nút Dừng và các khối gấp mở "Đang suy nghĩ", "Hoạt động", "Thay đổi".
 - Thanh chế độ ngay cạnh khung nhập: đổi nguồn, model và mức suy luận (effort) chỉ trong vài cú nhấp.
 - Kiểm tra kết nối từng nguồn bằng chấm trạng thái xanh/đỏ/xám và thông báo lỗi rõ ràng.
@@ -57,13 +57,12 @@ Tất cả nguồn được cấu hình trong mục **Cài đặt** của giao d
 | Anthropic API | Kết nối trực tiếp bằng API key |
 | Codex CLI | Chạy CLI trên máy trong thư mục đã chọn, quyền "Chỉ đọc" hoặc "Được sửa file" |
 | Claude Code CLI | Chạy CLI trên máy trong thư mục đã chọn, quyền "Chỉ đọc" hoặc "Được sửa file" |
-| DeepSeek làm việc (Deploy) | DeepSeek sửa tệp trong thư mục (chỉ list/read/edit/write, không chạy lệnh, luôn trả diff) |
 
 Với nguồn OpenAI-compatible, nút "Tải danh sách model" sẽ gọi `/models` của Base URL để lấy danh sách model khả dụng. Cấu hình mẫu cho Deploy: Base URL `https://api.deploy.com/api/v1`, model `deepseek-ai/deepseek-v4.1-flash-1017`.
 
 Hai nguồn CLI tiếp tục cuộc trò chuyện qua cơ chế resume, nên ngữ cảnh được giữ giữa các lượt hỏi đáp.
 
-"DeepSeek làm việc (Deploy)" chỉ dùng được khi MutiS đang bật và tùy chọn "DeepSeek làm việc trên file" đang mở. Nút "Dùng key của Deploy" sao chép API key từ nguồn Deploy ở phía máy chủ.
+**Chế độ agent (đọc/sửa file) là một chế độ của cùng một nguồn**, không phải nguồn riêng. Với nguồn OpenAI-compatible, bật "Cho phép AI đọc/sửa file trong thư mục chat" trong Cài đặt; khi đó khung chat có ô **"Công cụ file"**: *Không (chỉ chat)* / *Chỉ đọc file* / *Được sửa file*. Agent chỉ có công cụ liệt kê, đọc, sửa, ghi file trong thư mục chat (không chạy lệnh) và luôn trả diff. Dùng chung key, URL và trạng thái kết nối của nguồn, nên Deploy (DeepSeek) chỉ cần cấu hình một lần. Cấu hình cũ có nguồn "DeepSeek làm việc (Deploy)" được tự gộp vào nguồn Deploy khi khởi động.
 
 Mỗi nguồn hiển thị một chấm trạng thái:
 
@@ -138,7 +137,7 @@ Ba vai trò, mỗi vai trò có nguồn/model/effort riêng:
 | --- | --- | --- |
 | Lập kế hoạch & review (lead) | Lập kế hoạch, review kết quả, tự chẩn đoán | Nguồn đầu tiên đang kết nối trong: Claude Code CLI → Anthropic → Codex CLI (chỉ đọc) |
 | Làm việc lớn (big) | code/test | Codex CLI |
-| Làm việc nhỏ (small) | small_edit/docs | DeepSeek làm việc |
+| Làm việc nhỏ (small) | small_edit/docs | Nguồn OpenAI-compatible bật chế độ agent (mặc định Deploy/DeepSeek) |
 
 Nếu nguồn của một vai trò không sẵn sàng, vai trò tự chuyển sang một nguồn đã kết nối. Bảng định tuyến (loại việc → vai trò) có thể sửa trong Cài đặt.
 
@@ -149,7 +148,7 @@ Các tùy chọn của MutiS, mỗi tùy chọn bật/tắt kèm tham số:
 | Retry API | Thử lại khi gặp 429/5xx/lỗi kết nối, backoff 2s/4s/8s, tối đa 3 lần |
 | Codex watchdog | Dừng riêng Codex trong tác vụ MutiS nếu không có đầu ra trong N phút (mặc định 5) |
 | Codex tự tiếp tục | Khi Codex báo dừng sớm ("incomplete", "chưa xong"…), tự chạy tiếp phiên đó (tối đa 2 vòng) |
-| DeepSeek làm việc trên file | Cho phép DeepSeek sửa tệp, có giới hạn số bước, cảnh báo với tệp dài hơn 400 dòng |
+| Giao việc nhỏ cho nguồn agent | MutiS được giao việc nhỏ cho nguồn ở chế độ agent; giới hạn số bước, cảnh báo với tệp dài hơn 400 dòng |
 | Cổng kiểm tra | Tự nhận diện `scripts/verify/verify.sh` → Cargo → npm, hoặc dùng lệnh tùy chỉnh; luôn kiểm tra UTF-8 và lỗi "mojibake" trong tệp đã sửa và tệp mới; danh sách bỏ qua mặc định `.tasks/**`, `plans/**`, `**/*.md` |
 | Review tự động | Vai trò lead đọc diff và kết quả kiểm tra, trả lời PASS/FAIL kèm vấn đề; bỏ qua khi chưa có reviewer kết nối |
 | Tự sửa lỗi | Kiểm tra hoặc review thất bại sẽ tạo task "Sửa lỗi …: <task> (vòng n)" cho chính worker đó, kèm ngữ cảnh task gốc; mặc định tối đa 2 vòng |

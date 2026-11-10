@@ -97,24 +97,20 @@ pub(crate) async fn chat_handler(
             "Lịch sử chat không hợp lệ",
         ));
     }
-    let provider_config = state
-        .config
-        .read()
-        .await
-        .providers
-        .iter()
-        .find(|provider| provider.id == request.provider_id)
-        .cloned()
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?;
-    let mutis_config = state.config.read().await.mutis.clone();
-    if provider_config.kind == "deepseek_agent"
-        && !mutis_config.effective(mutis_config.deepseek_agent)
-    {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            "Bật MutiS › DeepSeek làm việc trên file để dùng nguồn này",
-        ));
+    let mut provider_config = {
+        let config = state.config.read().await;
+        // Old chats may still point at the removed "DeepSeek làm việc" source: resolve it to the Deploy source.
+        crate::config::resolve_provider_id(&config.providers, &request.provider_id)
+            .cloned()
+            .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?
+    };
+    // File tools = agent mode of the SAME source (list/read/edit/write inside the chat folder, never commands).
+    let agent = chat::agent_permission(&provider_config, request.file_tools)
+        .map_err(|message| ApiError::new(StatusCode::BAD_REQUEST, message))?;
+    if agent.is_some() {
+        provider_config.kind = "deepseek_agent".into();
     }
+    let mutis_config = state.config.read().await.mutis.clone();
     let provider = providers::for_kind(&provider_config.kind)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?;
     let mut record = existing.unwrap_or_else(|| chat::new_record(&request));
@@ -123,6 +119,7 @@ pub(crate) async fn chat_handler(
     record.folder = folder.clone();
     record.dev_chat = dev_chat;
     record.permission = request.permission;
+    record.file_tools = request.file_tools;
     record.effort = effort;
     record.messages = request
         .messages
@@ -185,7 +182,7 @@ pub(crate) async fn chat_handler(
         provider: provider_config,
         model: request.model,
         folder,
-        permission: request.permission,
+        permission: agent.unwrap_or(request.permission),
         effort,
         messages: record
             .messages

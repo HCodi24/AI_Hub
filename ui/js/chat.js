@@ -10,6 +10,7 @@ export const modelInput = $("#model-input");
 export const modelOptions = $("#model-options");
 export const folderInput = $("#folder-input");
 export const permissionSelect = $("#permission-select");
+export const fileToolsSelect = $("#file-tools-select");
 export const messagesRoot = $("#messages");
 export const welcome = $("#welcome");
 export const messageInput = $("#message-input");
@@ -76,6 +77,7 @@ export function newChat() {
   state.effort = EFFORTS.includes(lastMode?.effort) ? lastMode.effort : "default";
   renderModePicker();
   permissionSelect.value = "write";
+  fileToolsSelect.value = "none";
   folderInput.value = state.config?.default_folder || "";
   rememberCurrentChat();
   renderMessages();
@@ -98,6 +100,7 @@ export async function loadChat(id) {
     messageInput.placeholder = state.selectedSource === "mutis" ? "Nhắn tin với MutiS — bấm ✦ Gợi ý chia việc để chia việc cho 3 AI…" : "Nhắn tin với AI…";
     setupProviderControls(cached.provider_id, cached.model);
     permissionSelect.value = cached.permission || "write";
+    fileToolsSelect.value = cached.file_tools || "none";
     state.effort = cached.effort || "default";
     renderModePicker();
     folderInput.value = cached.folder || state.config?.default_folder || "";
@@ -118,6 +121,7 @@ export async function loadChat(id) {
     state.memoryChats.set(chat.id, { id: chat.id, title: chat.title, updated_at: chat.updated_at, dev_chat: chat.dev_chat });
     setupProviderControls(chat.provider_id, chat.model);
     permissionSelect.value = chat.permission || "write";
+    fileToolsSelect.value = chat.file_tools || "none";
     state.effort = chat.effort || "default";
     renderModePicker();
     folderInput.value = chat.folder || state.config?.default_folder || "";
@@ -206,6 +210,7 @@ export async function openDevChat() {
   permissionSelect.value = "write";
   messageInput.placeholder = "Mô tả thay đổi cho AI Hub…";
   messageInput.value = "";
+  fileToolsSelect.value = "none";
   messageInput.focus(); rememberCurrentChat(); renderModePicker(); renderDevChatControls(); renderChatList();
   state.memoryChats.get(state.chatId).dev_chat = true;
 }
@@ -271,6 +276,7 @@ export function rememberCurrentChat() {
     permission: permissionSelect.value || "write",
     effort: state.effort,
     dev_chat: state.devChat,
+    file_tools: fileToolsSelect.value || "none",
     messages: state.messages.map((message) => ({ ...message, logs: [...(message.logs || [])] })),
   });
 }
@@ -380,6 +386,11 @@ export function appendInline(parent, text) {
 }
 // Short "who is answering" text for the live status strip.
 export function runningLabel(status = null) {
+// File tools only apply to sources that allow agent mode; every other source always sends "none".
+function activeFileTools() {
+  return currentProvider()?.agent_capable ? fileToolsSelect.value || "none" : "none";
+}
+
   if (status?.provider_name) {
     const effort = status.effort ? ` · ${status.effort}` : "";
     return `${status.provider_name} · ${status.model || "model"}${effort}`;
@@ -435,6 +446,7 @@ export function setStreaming(value) {
   permissionSelect.disabled = value;
   $("#mode-chip").disabled = value;
   $("#new-chat").disabled = value;
+  fileToolsSelect.disabled = value;
   renderChatList();
   if (value) {
     clearInterval(statusTimer);
@@ -508,6 +520,7 @@ export async function sendMessage() {
         permission: permissionSelect.value || "write",
         effort: state.effort,
         messages: state.messages.filter((message) => message !== assistant).map(({ role, content, attachments }) => ({ role, content, attachments: attachments || [] })),
+        file_tools: activeFileTools(),
       }),
     });
     if (!response.body) throw new Error("Trình duyệt không hỗ trợ đọc luồng phản hồi");

@@ -130,6 +130,7 @@ pub(super) async fn generate_plan(
                         name: p.name.clone(),
                         kind: p.kind.clone(),
                         models: p.models.clone(),
+                        agent_capable: p.agent_capable,
                     }
                 })
             })
@@ -196,11 +197,16 @@ pub(super) async fn generate_plan(
         .iter()
         .map(|p| {
             format!(
-                "id: {}, name: {}, kind: {}, models: {}",
+                "id: {}, name: {}, kind: {}, models: {}{}",
                 p.id,
                 p.name,
                 p.kind,
-                p.models.join(", ")
+                p.models.join(", "),
+                if p.kind == "openai_compat" && p.agent_capable {
+                    ", agent mode: yes (reads/edits files in the folder, never runs commands)"
+                } else {
+                    ""
+                }
             )
         })
         .collect::<Vec<_>>()
@@ -208,7 +214,7 @@ pub(super) async fn generate_plan(
     let routes = if cfg.mutis.enabled {
         format!(
             "\nMutiS routing table (kind -> role):\n{}\nRoles: lead={}, big={}, small={}. \
-             Use deepseek_agent only for small tasks; never run commands.",
+             Use a source marked agent mode only for small tasks; it never runs commands.",
             cfg.mutis
                 .routing
                 .iter()

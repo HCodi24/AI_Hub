@@ -1,6 +1,6 @@
 import { $, el, showToast } from "./util.js";
 import { state } from "./state.js";
-import { EFFORTS } from "./mode-chip.js";
+import { EFFORTS, findProvider } from "./mode-chip.js";
 import { devChatPreamble, folderInput } from "./chat.js";
 import { api, readSse } from "./api.js";
 
@@ -110,7 +110,7 @@ export function renderPlanEditor() {
     cell(editor);
     const assignee = el("select");
     for (const provider of state.config.providers) assignee.append(el("option", { value: provider.id, textContent: provider.name }));
-    assignee.value = task.assignee;
+    assignee.value = findProvider(task.assignee)?.id ?? task.assignee;
     assignee.onchange = () => {
       task.assignee = assignee.value;
       task.model = state.config.providers.find(p => p.id === task.assignee)?.models[0] || "";
@@ -122,7 +122,7 @@ export function renderPlanEditor() {
       textContent: `⚠ đã đổi từ ${task.reassigned_from} (chưa kết nối)`,
     }));
     cell(assigneeCell);
-    const provider = state.config.providers.find(item => item.id === task.assignee);
+    const provider = findProvider(task.assignee);
     const settings = el("div"), model = el("select");
     for (const item of provider?.models || []) model.append(el("option", { value: item, textContent: item }));
     model.value = task.model || provider?.models[0] || ""; model.onchange = () => task.model = model.value;
@@ -270,9 +270,14 @@ export async function persistPlan() {
   await api(`/api/plans/${plan.id}`, { method: "PUT", body });
   await loadPlans();
 }
+// Task kinds that may change files (small_edit used to be treated as read-only by mistake).
+function taskCanWrite(task) {
+  return ["code", "test", "docs", "small_edit"].includes(task.kind);
+}
+
 export async function runPlanTask(task) {
   task._stopped = false; task.summary = ""; task.diff = "";
-  const plan = state.currentPlan, provider = state.config.providers.find(item => item.id === task.assignee);
+  const plan = state.currentPlan, provider = findProvider(task.assignee);
   if (!provider) return;
   if (state.mutis?.enabled) await api("/api/mutis/roles/resolve");
   const prompt = `${plan.dev_chat ? devChatPreamble(plan.folder) + "\n\n" : ""}${state.mutis?.enabled ? `${state.mutis.worker_rules || ""}\n\n` : ""}Kế hoạch: ${plan.title}
@@ -290,7 +295,9 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
         chat_id: chatId, dev_chat: Boolean(plan.dev_chat), plan_id: plan.id, task_id: String(task.id), task_kind: task.kind, provider_id: provider.id,
         model: task.model || provider.models[0] || "", effort: task.effort || "default",
         folder: plan.folder,
-        permission: ["code", "test", "docs"].includes(task.kind) ? "write" : "read",
+        permission: taskCanWrite(task) ? "write" : "read",
+        // Sources with agent mode read/edit files through file tools; other sources ignore this field.
+        file_tools: provider.agent_capable ? (taskCanWrite(task) ? "write" : "read") : "none",
         messages: [{ role: "user", content: prompt }],
       }),
     });

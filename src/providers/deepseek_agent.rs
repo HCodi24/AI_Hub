@@ -10,7 +10,16 @@ use std::{
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-const SYSTEM: &str = "You are a file editing agent. Work only in the supplied folder with the tools. Do not run commands. Make only the requested changes, then give a concise report.";
+const SYSTEM_WRITE: &str = concat!(
+    "You are a coding assistant with file tools. Work only in the supplied folder with the tools. ",
+    "Do not run commands. Answer the user's request; make only the changes they asked for, ",
+    "then give a concise report."
+);
+const SYSTEM_READ: &str = concat!(
+    "You are a coding assistant with READ-ONLY file tools (list and read). ",
+    "Work only in the supplied folder. You cannot edit files or run commands. ",
+    "Explore the folder as needed and answer the user's question concisely."
+);
 
 #[async_trait]
 impl Provider for DeepSeekAgentProvider {
@@ -26,9 +35,6 @@ impl Provider for DeepSeekAgentProvider {
             .any(|message| !message.attachments.is_empty())
         {
             bail!("DeepSeek làm việc chưa hỗ trợ ảnh — hãy dùng nguồn khác");
-        }
-        if !request.mutis.effective(request.mutis.deepseek_agent) {
-            bail!("Bật MutiS › DeepSeek làm việc trên file để dùng nguồn này");
         }
         if request.provider.api_key.trim().is_empty() {
             bail!("API key chưa được cấu hình cho nhà cung cấp này");
@@ -50,9 +56,11 @@ impl Provider for DeepSeekAgentProvider {
             .find(|m| m.role == "user")
             .map(|m| m.content.as_str())
             .unwrap_or_default();
+        let can_write = request.permission == super::Permission::Write;
         let excerpts = parse_edit_only(task);
-        let edits_requested = task_asks_edits(task);
-        let mut messages = vec![json!({"role":"system","content":SYSTEM})];
+        let edits_requested = can_write && task_asks_edits(task);
+        let system = if can_write { SYSTEM_WRITE } else { SYSTEM_READ };
+        let mut messages = vec![json!({"role":"system","content":system})];
         if excerpts.is_empty() {
             messages.extend(
                 request
@@ -77,7 +85,7 @@ impl Provider for DeepSeekAgentProvider {
             }
             messages.push(json!({"role":"user","content":prompt}));
         }
-        let tools = tool_definitions();
+        let tools = tool_definitions(can_write);
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
             .build()?;
@@ -198,6 +206,16 @@ impl Provider for DeepSeekAgentProvider {
                         }
                     }
                 }
+                if matches!(name, "edit_file" | "write_file") && !can_write {
+                    let _ = emit_text(&events, "log", format!("Từ chối: {path} (chế độ chỉ đọc)"))
+                        .await;
+                    messages.push(json!({
+                        "role": "tool",
+                        "tool_call_id": id,
+                        "content": "error: chế độ chỉ đọc — không được sửa hoặc ghi file"
+                    }));
+                    continue;
+                }
                 if matches!(name, "edit_file" | "write_file") {
                     match safe_path(&root, path) {
                         Ok(_) => {
@@ -269,9 +287,9 @@ impl Provider for DeepSeekAgentProvider {
 
 pub struct DeepSeekAgentProvider;
 
-fn tool_definitions() -> Value {
+fn tool_definitions(write: bool) -> Value {
     let s = json!({"type":"string"});
-    json!([
+    let all = json!([
         {
             "type": "function",
             "function": {
@@ -327,7 +345,24 @@ fn tool_definitions() -> Value {
                 }
             }
         }
-    ])
+    ]);
+    // Read-only mode: only list_dir and read_file are offered to the model.
+    if write {
+        return all;
+    }
+    let read_only: Vec<Value> = all
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|tool| {
+            matches!(
+                tool["function"]["name"].as_str(),
+                Some("list_dir" | "read_file")
+            )
+        })
+        .cloned()
+        .collect();
+    json!(read_only)
 }
 
 fn safe_path(root: &Path, raw: &str) -> Result<PathBuf> {
@@ -604,5 +639,32 @@ mod tests {
     #[test]
     fn diff_counts_changed_lines() {
         assert_eq!(line_counts("a\nb\n", "a\nc\n"), (1, 1));
+    }
+}
+
+#[cfg(test)]
+mod tool_set_tests {
+    use super::tool_definitions;
+
+    fn names(write: bool) -> Vec<String> {
+        tool_definitions(write)
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["function"]["name"].as_str().unwrap().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn read_only_mode_offers_no_editing_tools() {
+        assert_eq!(names(false), ["list_dir", "read_file"]);
+    }
+
+    #[test]
+    fn write_mode_offers_all_four_tools() {
+        assert_eq!(
+            names(true),
+            ["list_dir", "read_file", "edit_file", "write_file"]
+        );
     }
 }
