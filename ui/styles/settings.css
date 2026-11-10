@@ -1,0 +1,30 @@
+.orchestration-settings small { color:var(--muted); font-size:10px; font-weight:400; }
+.orchestration-disabled { opacity:.48; }
+.route-row { display:flex!important; align-items:center; justify-content:space-between; padding:3px 0; }
+.route-row select { min-width:150px; }
+.new-chat, .settings-open { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 10px 11px; text-align: left; background: transparent; color: var(--text); transition: background .15s ease, border-color .15s ease; }
+.new-chat:hover, .settings-open:hover { background: var(--panel-2); border-color: #535967; }
+.settings-open { border: 0; color: var(--muted); font-size: 12px; }
+.settings-open span { margin-right: 8px; }
+.settings-dialog { width: min(760px, calc(100vw - 28px)); max-height: min(90vh, 850px); padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); color: var(--text); box-shadow: 0 22px 80px #0008; }
+.settings-dialog::backdrop { background: #0009; backdrop-filter: blur(4px); }
+.dialog-head { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px 13px; border-bottom: 1px solid var(--line); }
+.dialog-head h2 { margin: 0; font-size: 19px; letter-spacing: -.03em; }
+.settings-content { max-height: calc(90vh - 75px); overflow-y: auto; padding: 18px 22px 22px; }
+.provider-settings-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 15px; }
+.provider-chip { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; background: transparent; color: var(--muted); font-size: 10px; }
+.provider-chip.selected { border-color: var(--accent); color: var(--text); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.provider-chip { display: inline-flex; align-items: center; gap: 6px; }
+.legacy-role-settings { display:none !important; }
+.cli-candidates { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 10px; }
+.provider-form { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.provider-form label { display: grid; gap: 5px; color: var(--muted); font-size: 10px; font-weight: 600; }
+.provider-form input, .provider-form select, .provider-form textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; outline: none; padding: 8px 9px; background: var(--panel); color: var(--text); font-size: 11px; font-weight: 400; }
+.provider-form input:focus, .provider-form select:focus, .provider-form textarea:focus { border-color: var(--accent); }
+.provider-form textarea { resize: vertical; font-family: ui-monospace, Consolas, monospace; }
+.cli-settings { margin-top: 22px; padding-top: 17px; border-top: 1px solid var(--line); }
+.cli-status { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 11px; }
+.cli-card { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.cli-card strong { display: block; margin-bottom: 4px; font-size: 11px; }
+.cli-card span { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.cli-card .cli-path { display: block; margin-top: 5px; }

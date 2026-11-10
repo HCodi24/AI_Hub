@@ -47,8 +47,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         // Static UI routes.
         .route("/", get(crate::api::static_ui::index))
-        .route("/app.js", get(crate::api::static_ui::app_js))
-        .route("/style.css", get(crate::api::static_ui::style_css))
+        .route("/{*path}", get(crate::api::static_ui::asset))
         // Development routes.
         .route("/api/dev/status", get(crate::api::dev::dev_status))
         .route("/api/dev/repo", get(crate::api::dev::dev_repo_info))

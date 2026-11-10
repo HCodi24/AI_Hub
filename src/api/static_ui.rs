@@ -1,56 +1,70 @@
 use crate::app::AppState;
 use axum::{
-    extract::State,
-    http::StatusCode,
+    extract::{Path, State},
+    http::{header, StatusCode},
     response::{IntoResponse, Response},
 };
+use std::path::{Component, Path as FsPath};
+
+include!(concat!(env!("OUT_DIR"), "/ui_assets.rs"));
 
 pub(crate) async fn index(State(state): State<AppState>) -> Response {
-    if let Some(repo) = state.dev_repo.as_ref() {
-        return asset_response(&repo.join("ui/index.html"), "text/html; charset=utf-8").await;
-    }
-    (
-        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        include_str!("../../ui/index.html"),
-    )
-        .into_response()
+    serve_asset(&state, "index.html").await
 }
 
-pub(crate) async fn app_js(State(state): State<AppState>) -> Response {
-    if let Some(repo) = state.dev_repo.as_ref() {
-        return asset_response(&repo.join("ui/app.js"), "text/javascript; charset=utf-8").await;
+pub(crate) async fn asset(State(state): State<AppState>, Path(path): Path<String>) -> Response {
+    if !safe_ui_path(&path) {
+        return StatusCode::NOT_FOUND.into_response();
     }
-    (
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "text/javascript; charset=utf-8",
-        )],
-        include_str!("../../ui/app.js"),
-    )
-        .into_response()
+    serve_asset(&state, &path).await
 }
 
-pub(crate) async fn style_css(State(state): State<AppState>) -> Response {
-    if let Some(repo) = state.dev_repo.as_ref() {
-        return asset_response(&repo.join("ui/style.css"), "text/css; charset=utf-8").await;
-    }
-    (
-        [(axum::http::header::CONTENT_TYPE, "text/css; charset=utf-8")],
-        include_str!("../../ui/style.css"),
-    )
-        .into_response()
-}
-
-async fn asset_response(path: &std::path::Path, content_type: &'static str) -> Response {
-    match tokio::fs::read(path).await {
-        Ok(body) => (
-            [
-                (axum::http::header::CONTENT_TYPE, content_type),
-                (axum::http::header::CACHE_CONTROL, "no-store"),
-            ],
-            body,
+fn safe_ui_path(path: &str) -> bool {
+    let path = FsPath::new(path);
+    !path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
+        && matches!(
+            path.extension().and_then(|ext| ext.to_str()),
+            Some("html" | "js" | "css" | "svg" | "png")
         )
-            .into_response(),
-        Err(_) => (StatusCode::NOT_FOUND, "Dev UI file not found").into_response(),
+}
+
+async fn serve_asset(state: &AppState, path: &str) -> Response {
+    let Some(content_type) = content_type(path) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if let Some(repo) = state.dev_repo.as_ref() {
+        if !safe_ui_path(path) {
+            return StatusCode::NOT_FOUND.into_response();
+        }
+        let file = repo.join("ui").join(path);
+        return match tokio::fs::read(file).await {
+            Ok(body) => (
+                [
+                    (header::CONTENT_TYPE, content_type),
+                    (header::CACHE_CONTROL, "no-store"),
+                ],
+                body,
+            )
+                .into_response(),
+            Err(_) => StatusCode::NOT_FOUND.into_response(),
+        };
+    }
+    match UI_ASSETS.iter().find(|(name, _)| *name == path) {
+        Some((_, body)) => ([(header::CONTENT_TYPE, content_type)], *body).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+fn content_type(path: &str) -> Option<&'static str> {
+    match FsPath::new(path).extension()?.to_str()? {
+        "html" => Some("text/html; charset=utf-8"),
+        "js" => Some("text/javascript; charset=utf-8"),
+        "css" => Some("text/css; charset=utf-8"),
+        "svg" => Some("image/svg+xml"),
+        "png" => Some("image/png"),
+        _ => None,
     }
 }

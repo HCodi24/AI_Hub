@@ -1,0 +1,15 @@
+.plan-hint { padding: 3px 4px 8px; color: var(--muted); font-size: 11px; }
+.plan-hint button { border:0; padding:0; background:transparent; color:var(--accent); }
+.plan-hint button:last-child { float:right; color:var(--muted); }
+.planner-settings { display:grid; gap:8px; margin-bottom:22px; padding:13px; border:1px solid var(--line); border-radius:9px; }
+.planner-settings label { display:grid; gap:5px; color:var(--muted); font-size:11px; }
+.planner-settings select,.planner-settings input,.plan-title,.plan-table input,.plan-table textarea,.plan-table select { min-width:70px; border:1px solid var(--line); border-radius:5px; padding:6px; background:var(--panel); color:var(--text); }
+.plan-list-item { display:block; width:100%; margin:7px 0; padding:13px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); text-align:left; }
+.plan-title { width:min(700px,100%); margin-bottom:12px; font-size:19px; }
+.plan-table { width:100%; border-collapse:collapse; font-size:11px; }
+.plan-table th,.plan-table td { padding:7px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+.plan-table textarea { display:block; width:100%; min-height:65px; margin-top:5px; resize:vertical; }
+.plan-table td:nth-child(2) { min-width:230px; }
+.plan-table td:last-child div { display:flex; flex-wrap:wrap; gap:3px; }
+.plan-table button,.plan-editor>button { margin:8px 5px 8px 0; border:1px solid var(--line); border-radius:5px; padding:6px; background:var(--panel-2); color:var(--text); }
+.task-log { max-height:180px; overflow:auto; padding:9px; border:1px solid var(--line); border-radius:6px; color:var(--muted); white-space:pre-wrap; }

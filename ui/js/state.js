@@ -1,0 +1,17 @@
+export const state = {
+  config: null,
+  chats: [],
+  memoryChats: new Map(),
+  memoryData: new Map(),
+  chatId: null,
+  messages: [],
+  streaming: false,
+  settingsProviderId: null,
+  toastTimer: null,
+  effort: "default",
+  providerStatuses: new Map(),
+  providerChecking: new Set(),
+  plans: [], currentPlan: null, planRunning: false,
+  selectedSource: "provider",
+  dev: false, devAutoRebuild: false, devRepoTimer: null, devRepo: null, devChat: false,
+};

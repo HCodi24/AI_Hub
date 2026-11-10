@@ -1,0 +1,14 @@
+.extensions-view { min-width:0; flex:1; overflow:auto; padding:32px clamp(18px,4vw,58px); }
+.extensions-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+.extensions-header h1 { margin:0; font-size:28px; }
+.extension-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; }
+.extension-card { display:grid; align-content:start; gap:10px; padding:18px; border:1px solid var(--line); border-radius:12px; background:var(--panel); }
+.extension-card h2,.extension-card p { margin:0; }
+.extension-card h2 { font-size:17px; }
+.extension-card p,.extension-card a { font-size:12px; }
+.extension-card a { color:var(--accent); }
+.extension-badges,.extension-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.extension-badge { padding:5px 8px; border:1px solid var(--line); border-radius:999px; color:var(--muted); font-size:10px; }
+.extension-log { margin-top:25px; padding:15px; border:1px solid var(--line); border-radius:11px; background:var(--panel); }
+.extension-log h2 { margin:0 0 10px; font-size:14px; }
+.extension-log pre { max-height:240px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--muted); font:11px/1.6 ui-monospace,Consolas,monospace; }

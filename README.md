@@ -211,7 +211,7 @@ Về bảo mật, ứng dụng chỉ bind trên 127.0.0.1; từ chối các head
 | `src/providers/deepseek_agent.rs` | DeepSeek làm việc (Deploy) |
 | `src/providers/cli_support.rs` | Phần dùng chung cho các nguồn CLI |
 | `src/providers/discovery.rs` | CLI resolution, candidate discovery and version probing |
-| `ui/index.html`, `ui/app.js`, `ui/style.css` | Giao diện web nhúng trong exe |
+| `ui/index.html`, `ui/js/*.js`, `ui/styles/*.css` | Giao di?n web ES module, nh?ng trong exe |
 | `docs/design/` | Thiết kế MutiS và Tự phát triển, tiến độ, bài học |
 | `docs/SPEC.md` | Đặc tả kỹ thuật |
 | `docs/CODEX_RULES.md` | Quy tắc khi giao việc cho Codex |

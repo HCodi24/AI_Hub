@@ -1,0 +1,21 @@
+.mutis-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:10px; margin:18px 0 26px; }
+.mutis-stat-card,.mutis-finding { display:grid; gap:7px; padding:15px; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+.mutis-stat-card strong { font-size:24px; }
+.mutis-stat-card span,.mutis-filters { color:var(--muted); }
+.mutis-filters { display:flex; gap:8px; margin:10px 0; }
+.mutis-filters select { padding:6px; border:1px solid var(--line); border-radius:5px; background:var(--panel); color:var(--text); }
+.mutis-role-row { display:grid; grid-template-columns:minmax(105px,1fr) minmax(90px,1fr) minmax(85px,1fr) auto; align-items:center; gap:5px; padding:5px 2px; }
+.mutis-role-row select { min-width:0; max-width:145px; border:1px solid var(--line); border-radius:5px; padding:5px; background:var(--panel); color:var(--text); font-size:10px; }
+.mutis-role-row small { grid-column:1/-1; color:#d9a441; }
+.mutis-chip #mode-chip-model { font-size:11px; }
+.mutis-progress-heading, .mutis-diagnosis-result > header, .mutis-finding > header { display: flex; align-items: center; gap: 10px; }
+.mutis-diagnosis-result, .mutis-finding { margin: 10px 0; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.mutis-diagnosis-result > header { justify-content: space-between; }
+.mutis-finding.severity-high { border-left: 4px solid #e05252; }
+.mutis-finding.severity-medium { border-left: 4px solid #d99a2b; }
+.mutis-finding.severity-low { border-left: 4px solid #48a778; }
+.mutis-health { padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.mutis-health-good { color: #167447; background: #dff4e8; }
+.mutis-health-medium { color: #8c5b05; background: #fff0cf; }
+.mutis-health-bad { color: #a12222; background: #fde0e0; }
+.mutis-finding p { margin: 7px 0; }
