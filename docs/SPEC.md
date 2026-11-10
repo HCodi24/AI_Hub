@@ -46,6 +46,14 @@ Composer hỗ trợ dán, kéo thả và chọn ảnh PNG/JPEG/WebP/GIF, tối �
 - `GET, POST /api/plans`; `GET, PUT /api/plans/{id}`
 - `POST /api/verify`, `/api/plan-diff`
 
+### Tranh luận (`/api/debates`)
+- `POST /api/debates` `{request, folder}` → SSE: `debate`, `round`, `delta{side,round,text}`, `log`, `turn{side,round,turn}`,
+  `judging`, `verdict`, `error`, `done`. Codex (vai trò big nếu là codex_cli) và Claude (vai trò lead nếu là claude_cli) đều phải
+  đang kết nối, chỉ đọc file. Vòng 1: hai bên đề xuất song song; vòng 2+: mỗi bên phản biện (tiếp tục phiên CLI của mình) và kết
+  bằng khối JSON `{agree, disagreements}`; dừng sớm khi cả hai đồng ý. Trọng tài là một phiên Claude CLI MỚI (không session_id),
+  model = `mutis.debate_judge_model` hoặc model của Claude, trả JSON phán quyết. Số vòng `mutis.debate_rounds` (1–3, mặc định 2).
+- `GET /api/debates`, `GET /api/debates/{id}` (kèm `plan_request` để đưa sang Chia việc). Lưu ở `<data>/debates/<id>.json`.
+
 ### Tiện ích
 - `GET /api/extensions`
 - `POST /api/extensions/{id}/actions/{action}`, `/api/extensions/{id}/stop`

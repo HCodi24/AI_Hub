@@ -79,6 +79,12 @@ pub struct MutisConfig {
     pub deepseek_max_file_lines: u32,
     #[serde(default = "default_deepseek_max_steps")]
     pub deepseek_max_steps: u32,
+    /// "⚖ Tranh luận": maximum rounds (1 = independent proposals only, 2 = + critique, 3 = + final stance).
+    #[serde(default = "default_debate_rounds")]
+    pub debate_rounds: u32,
+    /// Model for the judge (a SECOND, fresh Claude Code session). Empty = same model as the Claude debater.
+    #[serde(default)]
+    pub debate_judge_model: String,
     #[serde(default)]
     pub verify_gate: bool,
     #[serde(default)]
@@ -145,6 +151,8 @@ impl Default for MutisConfig {
             deepseek_agent: false,
             deepseek_max_file_lines: 400,
             deepseek_max_steps: 15,
+            debate_rounds: 2,
+            debate_judge_model: String::new(),
             verify_gate: false,
             verify_command: String::new(),
             verify_ignore: default_verify_ignore(),
@@ -175,6 +183,9 @@ impl MutisConfig {
 }
 fn default_deepseek_max_steps() -> u32 {
     15
+}
+fn default_debate_rounds() -> u32 {
+    2
 }
 fn default_retry_attempts() -> u32 {
     3

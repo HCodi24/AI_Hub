@@ -170,6 +170,7 @@ pub(crate) async fn put_mutis(
         || value.fix_rounds_max > 5
         || !(50..=5000).contains(&value.deepseek_max_file_lines)
         || !(5..=40).contains(&value.deepseek_max_steps)
+        || !(1..=3).contains(&value.debate_rounds)
         || value.retry_base_ms > 60000
     {
         return Err(ApiError::new(

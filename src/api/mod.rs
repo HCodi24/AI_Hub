@@ -12,6 +12,7 @@ use serde_json::json;
 pub mod attachments;
 pub mod chat;
 pub mod config;
+pub mod debate;
 pub mod dev;
 pub mod extensions;
 pub mod mutis;
@@ -155,6 +156,12 @@ pub fn router(state: AppState) -> Router {
             "/api/chats/{chat_id}",
             get(crate::api::chat::get_chat).delete(crate::api::chat::delete_chat),
         )
+        // Codex vs Claude debate ("⚖ Tranh luận").
+        .route(
+            "/api/debates",
+            get(crate::api::debate::list_debates).post(crate::api::debate::start_debate),
+        )
+        .route("/api/debates/{id}", get(crate::api::debate::get_debate))
         // Plan management and generation routes.
         .route(
             "/api/plans",

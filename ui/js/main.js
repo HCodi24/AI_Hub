@@ -44,6 +44,7 @@ import {
 import { loadMutisPage, renderDiagnosis } from "./mutis-page.js";
 import { loadPlans, planFromRequest, renderPlanList } from "./plans.js";
 import { loadExtensions } from "./extensions.js";
+import { debateFromRequest, renderDebateList } from "./debate.js";
 
 $("#self-dev-open").addEventListener("click",showDevPage);
 $("#self-dev-back").addEventListener("click",hideDevPage);
@@ -120,12 +121,14 @@ $("#plans-open").addEventListener("click", async () => {
   $(".main-panel").hidden = true;
   $("#extensions-view").hidden = true;
   $("#plans-view").hidden = false;
+    renderDebateList();
   $("#plan-editor").hidden = true;
   try {
     await loadPlans();
   } catch (e) {
     showToast(e.message);
   }
+$("#debate-button").addEventListener("click",()=>debateFromRequest(messageInput.value));
 });
 $("#plans-back").addEventListener("click",()=>{$("#plans-view").hidden=true;$(".main-panel").hidden=false});
 $("#plan-button").addEventListener("click",()=>planFromRequest(messageInput.value));

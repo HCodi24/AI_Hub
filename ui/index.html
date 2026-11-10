@@ -97,6 +97,7 @@
           <div class="composer-actions">
             <span class="composer-hint">Enter để gửi · Shift+Enter xuống dòng</span>
             <button id="stop-button" class="stop-button" type="button" hidden>Dừng</button>
+            <button id="debate-button" class="subtle-button" type="button" title="Codex và Claude tranh luận, một phiên Claude khác làm trọng tài">⚖ Tranh luận</button>
             <button id="plan-button" class="subtle-button" type="button" title="Lập kế hoạch chia nhỏ yêu cầu">✦ Gợi ý chia việc</button>
             <button id="attachment-button" class="subtle-button" type="button" aria-label="Đính kèm ảnh" title="Đính kèm ảnh">📎</button>
             <button id="send-button" class="send-button" type="submit" aria-label="Gửi tin nhắn">↑</button>
@@ -161,6 +162,8 @@
           <p class="muted">Lập kế hoạch, chỉnh sửa và duyệt trước khi chạy từng công việc.</p>
         </div>
         <button id="plans-back" class="subtle-button">Quay lại chat</button>
+      <h3 class="debate-list-title">⚖ Tranh luận</h3>
+      <section id="debates-list"></section>
       </header>
       <section id="plans-list"></section>
       <section id="plan-editor" hidden></section>
@@ -264,6 +267,12 @@
             <span><input type="checkbox" data-orch="verify_gate"> Cổng kiểm tra</span>
             <small>Chạy kiểm tra sau mỗi công việc.</small>
             <input type="text" data-orch="verify_command" placeholder="Để trống để tự nhận diện">
+        <label>
+          <span>⚖ Tranh luận Codex ↔ Claude</span>
+          <small>Số vòng (1–3) và model trọng tài — một phiên Claude mới; để trống = dùng model của Claude.</small>
+          <input type="number" min="1" max="3" data-orch="debate_rounds" aria-label="Số vòng tranh luận">
+          <input type="text" data-orch="debate_judge_model" placeholder="Model trọng tài (tuỳ chọn)">
+        </label>
             <textarea data-orch="verify_ignore" rows="3" aria-label="Bỏ qua quét mojibake (mỗi glob một dòng)" placeholder="Glob bỏ qua mojibake, mỗi dòng một mẫu"></textarea>
           </label>
           <label class="legacy-role-settings">

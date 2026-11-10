@@ -16,6 +16,10 @@ pub fn chats_dir(config_path: &Path) -> Result<PathBuf> {
     Ok(data_dir(config_path)?.join("chats"))
 }
 
+pub fn debates_dir(config_path: &Path) -> Result<PathBuf> {
+    Ok(data_dir(config_path)?.join("debates"))
+}
+
 pub fn plans_dir(config_path: &Path) -> Result<PathBuf> {
     Ok(data_dir(config_path)?.join("plans"))
 }

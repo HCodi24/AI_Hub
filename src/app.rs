@@ -20,6 +20,7 @@ pub struct AppState {
     pub(crate) config_path: PathBuf,
     pub(crate) chats: ChatStore,
     pub(crate) plans: PlanStore,
+    pub(crate) debates: crate::features::debate::DebateStore,
     pub(crate) running: Arc<Mutex<HashMap<String, RunningChat>>>,
     pub(crate) extension_running: Arc<Mutex<HashMap<String, CancellationToken>>>,
     pub(crate) provider_status:
@@ -70,6 +71,9 @@ impl AppState {
         port: u16,
     ) -> Self {
         let plans = PlanStore::new(&config_path).expect("config path has a parent");
+        let debates = crate::features::debate::DebateStore::new(
+            crate::core::paths::debates_dir(&config_path).expect("config path has a parent"),
+        );
         let event_log = EventLog::new(&config_path).expect("config path has a parent");
         let (dev_events, _) = broadcast::channel(64);
         let state = Self {
@@ -78,6 +82,7 @@ impl AppState {
             config_path,
             chats: ChatStore::new(chat_dir),
             plans,
+            debates,
             running: Arc::new(Mutex::new(HashMap::new())),
             extension_running: Arc::new(Mutex::new(HashMap::new())),
             provider_status: Arc::new(Mutex::new(HashMap::new())),

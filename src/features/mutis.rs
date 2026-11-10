@@ -159,6 +159,7 @@ pub fn apply_setting_change(
         "mutis.deepseek_agent" => boolean!(deepseek_agent),
         "mutis.deepseek_max_file_lines" => bounded!(deepseek_max_file_lines, 50, 5000),
         "mutis.deepseek_max_steps" => bounded!(deepseek_max_steps, 5, 40),
+        "mutis.debate_rounds" => bounded!(debate_rounds, 1, 3),
         "mutis.verify_gate" => boolean!(verify_gate),
         "mutis.auto_review" => boolean!(auto_review),
         "mutis.auto_fix" => boolean!(auto_fix),
