@@ -16,7 +16,7 @@ const state = {
   providerChecking: new Set(),
   plans: [], currentPlan: null, planRunning: false,
   selectedSource: "provider",
-  dev: false, devAutoRebuild: false, devRepoTimer: null, devRepo: null,
+  dev: false, devAutoRebuild: false, devRepoTimer: null, devRepo: null, devChat: false,
 };
 
 function showDevBanner(message, action) {
@@ -351,6 +351,7 @@ function saveLastMode() {
 function newChat() {
   if (state.streaming) return;
   state.chatId = crypto.randomUUID();
+  state.devChat = false;
   state.messages = [];
   state.memoryChats.set(state.chatId, { id: state.chatId, title: "Chat mới", updated_at: Date.now() / 1000 });
   let lastMode = null;
@@ -366,6 +367,7 @@ function newChat() {
   rememberCurrentChat();
   renderMessages();
   renderChatList();
+  renderDevChatControls();
   messageInput.focus();
 }
 
@@ -375,6 +377,7 @@ async function loadChat(id) {
   const cached = state.memoryData.get(id);
   if (!saved && cached) {
     state.chatId = id;
+    state.devChat = Boolean(cached.dev_chat);
     state.messages = cached.messages.map((message) => ({ ...message, logs: [...(message.logs || [])] }));
     let mode = null;
     try { mode = JSON.parse(localStorage.getItem(`ai-hub-last-mode-${id}`) || "null"); } catch (_) { /* Ignore invalid mode cache. */ }
@@ -387,17 +390,19 @@ async function loadChat(id) {
     folderInput.value = cached.folder || state.config?.default_folder || "";
     renderMessages();
     renderChatList();
+    renderDevChatControls();
     return;
   }
   try {
     const chat = await api(`/api/chats/${encodeURIComponent(id)}`);
     state.chatId = chat.id;
+    state.devChat = Boolean(chat.dev_chat);
     state.messages = chat.messages || [];
     let mode = null;
     try { mode = JSON.parse(localStorage.getItem(`ai-hub-last-mode-${id}`) || "null"); } catch (_) { /* Ignore invalid mode cache. */ }
     state.selectedSource = mode?.source === "mutis" ? "mutis" : "provider";
     messageInput.placeholder = state.selectedSource === "mutis" ? "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…" : "Nhắn tin với AI…";
-    state.memoryChats.set(chat.id, { id: chat.id, title: chat.title, updated_at: chat.updated_at });
+    state.memoryChats.set(chat.id, { id: chat.id, title: chat.title, updated_at: chat.updated_at, dev_chat: chat.dev_chat });
     setupProviderControls(chat.provider_id, chat.model);
     permissionSelect.value = chat.permission || "write";
     state.effort = chat.effort || "default";
@@ -405,6 +410,7 @@ async function loadChat(id) {
     folderInput.value = chat.folder || state.config?.default_folder || "";
     renderMessages();
     renderChatList();
+    renderDevChatControls();
   } catch (error) {
     showToast(error.message);
   }
@@ -433,7 +439,7 @@ function renderChatList() {
     select.className = "chat-select";
     select.type = "button";
     select.disabled = state.streaming;
-    select.textContent = chat.title || "Chat mới";
+    select.textContent = `${chat.dev_chat ? "⚒ " : ""}${chat.title || "Chat mới"}`;
     select.title = select.textContent;
     select.addEventListener("click", () => loadChat(chat.id));
     const remove = document.createElement("button");
@@ -455,6 +461,34 @@ function renderChatList() {
     item.append(select, remove);
     root.append(item);
   }
+}
+
+function renderDevChatControls() {
+  const strip = $("#dev-chat-strip");
+  strip.hidden = !state.devChat;
+  folderInput.readOnly = state.devChat;
+  messageInput.placeholder = state.devChat ? "Mô tả thay đổi cho AI Hub…" : state.selectedSource === "mutis" ? "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…" : "Nhắn tin với AI…";
+  if (state.devChat) strip.textContent = `⚒ Chat tự phát triển · thư mục: ${folderInput.value}${state.devChat && !state.dev ? " (chế độ dev đang tắt)" : ""}`;
+}
+
+function devChatPreamble(repo) {
+  return `Bạn đang sửa chính ứng dụng AI Hub (repo: ${repo}) đang chạy ở chế độ dev.\n- Giao diện ở ui/ tự tải lại khi lưu; code Rust ở src/ cần người dùng bấm 'Build & khởi động lại'.\n- Không chạy \`cargo build --release\`, không tắt tiến trình ai-hub, không sửa target/.\n- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy \`cargo test\` với CARGO_TARGET_DIR=target\\dev-check nếu cần.\n- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.`;
+}
+
+async function openDevChat() {
+  if (!state.devRepo) await refreshDevRepo();
+  if (!state.devRepo?.path) { showToast("Không lấy được đường dẫn repo"); return; }
+  hideDevPage(); newChat(); state.devChat = true;
+  folderInput.value = state.devRepo.path;
+  const mutis = state.orchestration?.enabled;
+  const provider = state.config.providers.find(item => item.kind === "codex_cli");
+  if (mutis) state.selectedSource = "mutis";
+  else if (provider) { providerSelect.value = provider.id; state.selectedSource = "provider"; updateModels(); updatePermissionControl(); state.effort = "high"; }
+  permissionSelect.value = "write";
+  messageInput.placeholder = "Mô tả thay đổi cho AI Hub…";
+  messageInput.value = "";
+  messageInput.focus(); rememberCurrentChat(); renderModePicker(); renderDevChatControls(); renderChatList();
+  state.memoryChats.get(state.chatId).dev_chat = true;
 }
 
 function renderMessages() {
@@ -501,6 +535,7 @@ function rememberCurrentChat() {
     folder: folderInput.value,
     permission: permissionSelect.value || "write",
     effort: state.effort,
+    dev_chat: state.devChat,
     messages: state.messages.map((message) => ({ ...message, logs: [...(message.logs || [])] })),
   });
 }
@@ -686,6 +721,7 @@ async function sendMessage() {
       method: "POST",
       body: JSON.stringify({
         chat_id: chatId,
+        dev_chat: state.devChat,
         provider_id: providerSelect.value,
         model: modelInput.value.trim(),
         folder: folderInput.value.trim(),
@@ -980,7 +1016,7 @@ async function planFromRequest(text) {
   try {
     if (state.orchestration?.enabled) await api("/api/mutis/roles/resolve");
     const response = await fetch("/api/plans", { method: "POST", signal: controller.signal,
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request, folder: folderInput.value.trim(), provider_id: state.orchestration?.roles?.lead?.provider_id || $("#planner-provider").value || state.config.planner_provider_id, model: state.orchestration?.roles?.lead?.model || $("#planner-model").value || state.config.planner_model }) });
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request, folder: folderInput.value.trim(), dev_chat: state.devChat, provider_id: state.orchestration?.roles?.lead?.provider_id || $("#planner-provider").value || state.config.planner_provider_id, model: state.orchestration?.roles?.lead?.model || $("#planner-model").value || state.config.planner_model }) });
     if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
     if (!response.body) throw new Error("Browser does not support response streaming");
     let receivedPlan = null;
@@ -1152,7 +1188,7 @@ async function runPlanTask(task) {
   const plan = state.currentPlan, provider = state.config.providers.find(item => item.id === task.assignee);
   if (!provider) return;
   if (state.orchestration?.enabled) await api("/api/mutis/roles/resolve");
-  const prompt = `${state.orchestration?.enabled ? `${state.orchestration.worker_rules || ""}\n\n` : ""}Kế hoạch: ${plan.title}
+  const prompt = `${plan.dev_chat ? devChatPreamble(plan.folder) + "\n\n" : ""}${state.orchestration?.enabled ? `${state.orchestration.worker_rules || ""}\n\n` : ""}Kế hoạch: ${plan.title}
 Công việc: ${task.title}
 Chi tiết: ${task.detail}
 Tóm tắt công việc phụ thuộc đã hoàn tất:
@@ -1164,7 +1200,7 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
     const response = await api("/api/chat", {
       method: "POST",
       body: JSON.stringify({
-        chat_id: chatId, plan_id: plan.id, task_id: String(task.id), task_kind: task.kind, provider_id: provider.id,
+        chat_id: chatId, dev_chat: Boolean(plan.dev_chat), plan_id: plan.id, task_id: String(task.id), task_kind: task.kind, provider_id: provider.id,
         model: task.model || provider.models[0] || "", effort: task.effort || "default",
         folder: plan.folder,
         permission: ["code", "test", "docs"].includes(task.kind) ? "write" : "read",
@@ -1593,8 +1629,8 @@ async function runExtensionAction(card,action){
 }
 $("#self-dev-open").addEventListener("click",showDevPage);
 $("#self-dev-back").addEventListener("click",hideDevPage);
-$("#dev-open-chat").addEventListener("click",()=>{hideDevPage();newChat();folderInput.value=state.devRepo?.path||"";const mutis=state.orchestration?.enabled;const provider=state.config.providers.find(p=>p.kind==="codex_cli");if(mutis){state.selectedSource="mutis";}else if(provider){providerSelect.value=provider.id;state.selectedSource="provider";updateModels();updatePermissionControl();}permissionSelect.value="write";messageInput.value="Sửa AI Hub: ";messageInput.focus();rememberCurrentChat();renderModePicker();});
-$("#dev-open-plan").addEventListener("click",()=>{hideDevPage();folderInput.value=state.devRepo?.path||"";planFromRequest("Sửa AI Hub: ");});
+$("#dev-open-chat").addEventListener("click",openDevChat);
+$("#dev-open-plan").addEventListener("click",async()=>{await openDevChat();messageInput.value="Sửa AI Hub: ";planFromRequest(messageInput.value);});
 $("#dev-checkpoint").addEventListener("click",async()=>{try{const r=await devAction("/api/dev/git/checkpoint",{});$("#dev-git-result").textContent=r.skipped?r.message:"Đã tạo checkpoint "+r.hash;await refreshDevRepo();}catch(e){showToast(e.message)}});
 $("#dev-show-diff").addEventListener("click",async()=>{try{renderDevDiff(await devAction("/api/dev/git/diff"));}catch(e){showToast(e.message)}});
 $("#dev-reset").addEventListener("click",async()=>{try{const before=await devAction("/api/dev/git/diff");if(!window.confirm("Bỏ thay đổi các file này?\n\n"+before.files.join("\n")))return;const r=await devAction("/api/dev/git/reset",{});$("#dev-git-result").textContent="Đã bỏ thay đổi:\n"+r.files.join("\n");await refreshDevRepo();}catch(e){showToast(e.message)}});
@@ -1631,6 +1667,7 @@ $("#planner-model").addEventListener("change",()=>savePlannerConfig().catch(e=>s
 $("#extension-stop").addEventListener("click",()=>fetch("/api/extensions/codegraph/stop",{method:"POST"}));
 
 $("#new-chat").addEventListener("click", newChat);
+$("#dev-chat-new").addEventListener("click", openDevChat);
 $("#settings-open").addEventListener("click", async () => {
   $("#settings-dialog").showModal();
   renderPlannerSettings();
@@ -1704,7 +1741,7 @@ $("#message-input").addEventListener("keydown", (event) => {
     sendMessage();
   }
 });
-$("#folder-input").addEventListener("input", rememberCurrentChat);
+$("#folder-input").addEventListener("input", () => { renderDevChatControls(); rememberCurrentChat(); });
 permissionSelect.addEventListener("change", rememberCurrentChat);
 $("#folder-input").addEventListener("change", saveDefaultFolder);
 $("#provider-add").addEventListener("click", clearProviderForm);
@@ -1730,7 +1767,7 @@ $('[data-orch="reviewer_provider_id"]').addEventListener("change", () => {
 
 (async function init() {
   try {
-    try { const dev=await api("/api/dev/status"); state.dev=dev.dev; $("#dev-badge").hidden=!state.dev; $("#self-dev-open").hidden=!state.dev; $("#self-dev-settings").hidden=!state.dev; if(state.dev){const settings=await api("/api/dev/settings");state.devAutoRebuild=settings.auto_rebuild;$("#dev-auto-rebuild").checked=state.devAutoRebuild;connectDevEvents();} } catch (_) {}
+    try { const dev=await api("/api/dev/status"); state.dev=dev.dev; $("#dev-badge").hidden=!state.dev; $("#self-dev-open").hidden=!state.dev; $("#self-dev-settings").hidden=!state.dev; $("#dev-chat-new").hidden=!state.dev; if(state.dev){const settings=await api("/api/dev/settings");state.devAutoRebuild=settings.auto_rebuild;$("#dev-auto-rebuild").checked=state.devAutoRebuild;connectDevEvents();} renderDevChatControls(); } catch (_) {}
     await loadConfig();
     renderModePicker();
     await refreshChats();

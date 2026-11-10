@@ -153,6 +153,8 @@ struct PlanRequest {
     request: String,
     folder: String,
     #[serde(default)]
+    dev_chat: bool,
+    #[serde(default)]
     provider_id: String,
     #[serde(default)]
     model: String,
@@ -309,6 +311,7 @@ async fn verify_handler(
     }
     let folder = PathBuf::from(input.folder)
         .canonicalize()
+        .map(strip_verbatim)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục không tồn tại"))?;
     if !folder.is_dir() {
         return Err(ApiError::new(
@@ -345,6 +348,7 @@ struct PlanDiffRequest {
 async fn plan_diff_handler(Json(input): Json<PlanDiffRequest>) -> ApiResult<Json<Value>> {
     let folder = PathBuf::from(input.folder)
         .canonicalize()
+        .map(strip_verbatim)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục không tồn tại"))?;
     let output = tokio::process::Command::new("git")
         .args(["diff", "--no-color", "HEAD"])
@@ -916,6 +920,23 @@ fn dev_repo_path(state: &AppState) -> ApiResult<PathBuf> {
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"))
 }
 
+fn effective_chat_folder(
+    dev_mode: bool,
+    dev_chat: bool,
+    client_folder: &str,
+    repo: &str,
+) -> String {
+    if dev_mode && dev_chat {
+        repo.to_owned()
+    } else {
+        client_folder.to_owned()
+    }
+}
+
+fn dev_chat_preamble(repo: &str) -> String {
+    format!("Bạn đang sửa chính ứng dụng AI Hub (repo: {repo}) đang chạy ở chế độ dev.\n- Giao diện ở ui/ tự tải lại khi lưu; code Rust ở src/ cần người dùng bấm 'Build & khởi động lại'.\n- Không chạy `cargo build --release`, không tắt tiến trình ai-hub, không sửa target/.\n- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy `cargo test` với CARGO_TARGET_DIR=target\\dev-check nếu cần.\n- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.")
+}
+
 async fn git_output(repo: &std::path::Path, args: &[&str]) -> ApiResult<std::process::Output> {
     tokio::process::Command::new("git")
         .args(args)
@@ -934,7 +955,9 @@ async fn git_text(repo: &std::path::Path, args: &[&str]) -> ApiResult<String> {
         ));
     }
     // Only trim the end: `git status --porcelain` lines start with a significant space (" M path").
-    Ok(String::from_utf8_lossy(&output.stdout).trim_end().to_owned())
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .trim_end()
+        .to_owned())
 }
 
 async fn dev_git_diff(State(state): State<AppState>) -> ApiResult<Json<Value>> {
@@ -1405,8 +1428,19 @@ async fn generate_plan(
     State(state): State<AppState>,
     Json(input): Json<PlanRequest>,
 ) -> ApiResult<Response> {
-    let folder = PathBuf::from(input.folder.trim())
+    let requested_folder = if input.dev_chat && state.dev_repo.is_some() {
+        PathBuf::from(effective_chat_folder(
+            true,
+            true,
+            &input.folder,
+            &dev_repo_path(&state)?.to_string_lossy(),
+        ))
+    } else {
+        PathBuf::from(input.folder.trim())
+    };
+    let folder = requested_folder
         .canonicalize()
+        .map(strip_verbatim)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Working folder does not exist"))?;
     let cfg = state.config.read().await.clone();
     let statuses = join_all(
@@ -1506,7 +1540,12 @@ async fn generate_plan(
     } else {
         String::new()
     };
-    let prompt = format!("Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[{{\"id\":1,\"title\":\"...\",\"detail\":\"files + expected result\",\"assignee\":\"provider id\",\"depends_on\":[ids],\"kind\":\"plan|small_edit|code|test|docs|review\"}}]}}. Keep tasks small and avoid editing same file in parallel.\nRequest:\n{}\nWorking folder: {}\nFiles:\n{}\nConnected workers (id, name, kind, models):\n{}{}",input.request,folder.display(),file_tree(&folder),workers,routes);
+    let request_context = if input.dev_chat {
+        format!("{}\n\n", dev_chat_preamble(&folder.to_string_lossy()))
+    } else {
+        String::new()
+    };
+    let prompt = format!("Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[{{\"id\":1,\"title\":\"...\",\"detail\":\"files + expected result\",\"assignee\":\"provider id\",\"depends_on\":[ids],\"kind\":\"plan|small_edit|code|test|docs|review\"}}]}}. Keep tasks small and avoid editing same file in parallel.\nRequest:\n{}{}\nWorking folder: {}\nFiles:\n{}\nConnected workers (id, name, kind, models):\n{}{}",request_context,input.request,folder.display(),file_tree(&folder),workers,routes);
     let provider = providers::for_kind(&planner.kind)
         .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
     let cancel = CancellationToken::new();
@@ -1661,7 +1700,8 @@ async fn generate_plan(
                     folder_text,
                     request_text,
                     tasks,
-                ))
+                )
+                .with_dev_chat(input.dev_chat))
             })();
         match result {
             Ok(plan) => match task_state.plans.save(&plan) {
@@ -1717,7 +1757,7 @@ fn extract_json(raw: &str) -> Option<&str> {
 
 #[cfg(test)]
 mod plan_tests {
-    use super::extract_json;
+    use super::{effective_chat_folder, extract_json};
     use serde_json::Value;
 
     #[test]
@@ -1727,6 +1767,26 @@ mod plan_tests {
         let value: Value = serde_json::from_str(extracted).expect("extracted JSON should parse");
         assert_eq!(value["title"], "Ship it");
         assert_eq!(value["tasks"][0]["id"], 1);
+    }
+
+    #[test]
+    fn dev_chat_folder_uses_repo_only_when_dev_mode_is_on() {
+        assert_eq!(
+            effective_chat_folder(true, true, "C:/client", "C:/repo"),
+            "C:/repo"
+        );
+        assert_eq!(
+            effective_chat_folder(true, false, "C:/client", "C:/repo"),
+            "C:/client"
+        );
+        assert_eq!(
+            effective_chat_folder(false, true, "C:/saved", "C:/repo"),
+            "C:/saved"
+        );
+        assert_eq!(
+            effective_chat_folder(false, false, "C:/client", "C:/repo"),
+            "C:/client"
+        );
     }
 }
 fn file_tree(root: &std::path::Path) -> String {
@@ -2400,7 +2460,7 @@ fn drop_bundled_cli_duplicates(candidates: Vec<CliCandidate>) -> Vec<CliCandidat
         .collect()
 }
 fn canonical_install(path: PathBuf) -> PathBuf {
-    path.canonicalize().unwrap_or(path)
+    path.canonicalize().map(strip_verbatim).unwrap_or(path)
 }
 fn discovery_paths(name: &str) -> Vec<(PathBuf, String)> {
     let mut out = Vec::new();
@@ -2565,8 +2625,30 @@ async fn chat_handler(
             "chat_id phải là UUID hợp lệ",
         ));
     }
-    let folder = request.folder.trim();
-    if folder.is_empty() || !PathBuf::from(folder).is_dir() {
+    let existing = state.chats.get(&request.chat_id).map_err(|_| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Không thể đọc lịch sử chat",
+        )
+    })?;
+    let dev_chat = request.dev_chat || existing.as_ref().is_some_and(|chat| chat.dev_chat);
+    let requested_folder = if dev_chat && state.dev_repo.is_some() {
+        PathBuf::from(effective_chat_folder(
+            true,
+            true,
+            request.folder.trim(),
+            &dev_repo_path(&state)?.to_string_lossy(),
+        ))
+    } else {
+        PathBuf::from(effective_chat_folder(
+            false,
+            dev_chat,
+            request.folder.trim(),
+            "",
+        ))
+    };
+    let folder = requested_folder.to_string_lossy().into_owned();
+    if folder.is_empty() || !PathBuf::from(&folder).is_dir() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "Thư mục làm việc không tồn tại",
@@ -2574,6 +2656,7 @@ async fn chat_handler(
     }
     let folder = PathBuf::from(folder)
         .canonicalize()
+        .map(strip_verbatim)
         .map_err(|_| {
             ApiError::new(
                 StatusCode::BAD_REQUEST,
@@ -2621,22 +2704,26 @@ async fn chat_handler(
     let provider = providers::for_kind(&provider_config.kind)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?;
 
-    let mut record = state
-        .chats
-        .get(&request.chat_id)
-        .map_err(|_| {
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Không thể đọc lịch sử chat",
-            )
-        })?
-        .unwrap_or_else(|| chat::new_record(&request));
+    let mut record = existing.unwrap_or_else(|| chat::new_record(&request));
     record.provider_id = request.provider_id.clone();
     record.model = request.model.clone();
     record.folder = folder.clone();
+    record.dev_chat = dev_chat;
     record.permission = request.permission;
     record.effort = effort;
     record.messages = request.messages.clone();
+    if dev_chat {
+        let preamble = dev_chat_preamble(&folder);
+        if let Some(first) = record
+            .messages
+            .iter_mut()
+            .find(|message| message.role == "user")
+        {
+            if !first.content.starts_with(&preamble) {
+                first.content = format!("{preamble}\n\n{}", first.content);
+            }
+        }
+    }
     record.messages.push(ChatMessage {
         role: "assistant".to_owned(),
         content: String::new(),
@@ -2676,7 +2763,12 @@ async fn chat_handler(
         folder,
         permission: request.permission,
         effort,
-        messages: request.messages,
+        messages: record
+            .messages
+            .iter()
+            .filter(|message| message.role != "assistant")
+            .cloned()
+            .collect(),
         session_id: record.session_id.clone(),
         mutis: mutis_config.clone(),
     };
@@ -3255,4 +3347,39 @@ fn masked_config(config: &Config) -> Config {
 fn persist_config(state: &AppState, config: &Config) -> ApiResult<()> {
     config::save(&state.config_path, config)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))
+}
+
+/// `canonicalize()` on Windows returns verbatim paths like `\?\C:\TOOL\ai-hub`. cmd.exe cannot use those as the
+/// current directory (and they look odd in the UI), so convert them back to normal paths.
+pub(crate) fn strip_verbatim(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\?\UNC\") {
+        return PathBuf::from(format!(r"\{rest}"));
+    }
+    if let Some(rest) = text.strip_prefix(r"\?\") {
+        return PathBuf::from(rest);
+    }
+    path
+}
+
+#[cfg(test)]
+mod strip_verbatim_tests {
+    use super::strip_verbatim;
+    use std::path::PathBuf;
+
+    #[test]
+    fn strips_windows_verbatim_prefixes() {
+        assert_eq!(
+            strip_verbatim(PathBuf::from(r"\?\C:\TOOL\ai-hub")),
+            PathBuf::from(r"C:\TOOL\ai-hub")
+        );
+        assert_eq!(
+            strip_verbatim(PathBuf::from(r"\?\UNC\srv\share")),
+            PathBuf::from(r"\srv\share")
+        );
+        assert_eq!(
+            strip_verbatim(PathBuf::from(r"C:\x")),
+            PathBuf::from(r"C:\x")
+        );
+    }
 }

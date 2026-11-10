@@ -63,6 +63,7 @@ async fn main() -> Result<()> {
         let path = if let Some(value) = std::env::var_os("AI_HUB_REPO") {
             let path = std::path::PathBuf::from(value)
                 .canonicalize()
+                .map(server::strip_verbatim)
                 .context("AI_HUB_REPO is not a valid directory")?;
             if dev::discover_repo_root(&path).as_deref() != Some(path.as_path()) {
                 anyhow::bail!("AI_HUB_REPO must point to the ai-hub repository root (Cargo.toml name = ai-hub)");

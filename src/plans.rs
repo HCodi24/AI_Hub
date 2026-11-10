@@ -11,6 +11,8 @@ pub struct Plan {
     pub id: String,
     pub title: String,
     pub folder: String,
+    #[serde(default)]
+    pub dev_chat: bool,
     pub request: String,
     pub approved: bool,
     pub tasks: Vec<PlanTask>,
@@ -202,6 +204,7 @@ impl Plan {
             id: Uuid::new_v4().to_string(),
             title,
             folder,
+            dev_chat: false,
             request,
             approved: false,
             tasks,
@@ -211,6 +214,10 @@ impl Plan {
     }
     pub fn touch(&mut self) {
         self.updated_at = now();
+    }
+    pub fn with_dev_chat(mut self, dev_chat: bool) -> Self {
+        self.dev_chat = dev_chat;
+        self
     }
 }
 fn now() -> u64 {

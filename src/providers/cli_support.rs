@@ -392,6 +392,7 @@ pub async fn run_jsonl(
     let cli_name = command_spec.cli_name;
     let folder = tokio::fs::canonicalize(command_spec.folder)
         .await
+        .map(crate::server::strip_verbatim)
         .with_context(|| format!("Không thể giải quyết thư mục làm việc cho {cli_name}"))?;
     let folder_text = folder.to_string_lossy();
     if folder_text.contains('%') || folder_text.contains('"') {

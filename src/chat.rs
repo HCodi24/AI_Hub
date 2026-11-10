@@ -50,6 +50,8 @@ pub struct ChatRecord {
     pub model: String,
     pub folder: String,
     #[serde(default)]
+    pub dev_chat: bool,
+    #[serde(default)]
     pub permission: Permission,
     #[serde(default)]
     pub effort: Effort,
@@ -64,6 +66,8 @@ pub struct ChatSummary {
     pub id: String,
     pub title: String,
     pub updated_at: u64,
+    #[serde(default)]
+    pub dev_chat: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -72,6 +76,8 @@ pub struct ChatRequest {
     pub provider_id: String,
     pub model: String,
     pub folder: String,
+    #[serde(default)]
+    pub dev_chat: bool,
     #[serde(default)]
     pub permission: Permission,
     #[serde(default)]
@@ -125,6 +131,7 @@ impl ChatStore {
                     id: chat.id,
                     title: chat.title,
                     updated_at: chat.updated_at,
+                    dev_chat: chat.dev_chat,
                 });
             }
         }
@@ -186,6 +193,7 @@ pub fn new_record(request: &ChatRequest) -> ChatRecord {
         provider_id: request.provider_id.clone(),
         model: request.model.clone(),
         folder: request.folder.clone(),
+        dev_chat: request.dev_chat,
         permission: request.permission,
         effort: request
             .effort
