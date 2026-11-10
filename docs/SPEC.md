@@ -50,7 +50,9 @@ Composer hỗ trợ dán, kéo thả và chọn ảnh PNG/JPEG/WebP/GIF, tối �
 - `GET /api/extensions`
 - `POST /api/extensions/{id}/actions/{action}`, `/api/extensions/{id}/stop`
 
-Chat, planner và thao tác tiện ích có thể trả SSE để cập nhật tiến trình. Các tuyến khác trả JSON hoặc mã trạng thái HTTP.
+Chat trả SSE gồm `status` (provider, model, effort, role và thời điểm bắt đầu), `heartbeat` (elapsed_s, idle_s và last_activity), cùng các sự kiện nội dung `delta`, `reasoning`, `log`, `diff`, `error` và `done`. Heartbeat chỉ thuộc luồng trực tiếp, không lưu vào lịch sử chat. Chat idle timeout được cấu hình bằng `chat_idle_timeout_minutes` trong `/api/config` (mặc định 10 phút, 0 tắt, giới hạn 120).
+
+Planner và thao tác tiện ích có thể trả SSE để cập nhật tiến trình. Các tuyến khác trả JSON hoặc mã trạng thái HTTP.
 
 ## Dữ liệu
 

@@ -75,7 +75,7 @@ pub(crate) fn latest_chat_attachment_dir(messages: &[ChatMessage]) -> Option<Pat
         .parse::<PathBuf>()
         .ok()?
         .parent()
-        .map(Path::to_path_buf)
+        .map(|path| crate::core::text::strip_verbatim(path.to_path_buf()))
 }
 
 pub(crate) fn latest_image_paths(
@@ -98,7 +98,7 @@ pub(crate) fn latest_image_paths(
             if !path.starts_with(&expected_dir) || !path.is_file() {
                 anyhow::bail!("Đường dẫn ảnh nằm ngoài thư mục đính kèm chat");
             }
-            Ok(path)
+            Ok(crate::core::text::strip_verbatim(path))
         })
         .collect()
 }

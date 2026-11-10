@@ -26,6 +26,8 @@ pub struct Config {
     pub providers: Vec<ProviderConfig>,
     #[serde(default = "default_folder")]
     pub default_folder: String,
+    #[serde(default = "default_chat_idle_timeout_minutes")]
+    pub chat_idle_timeout_minutes: u32,
     #[serde(default)]
     pub planner_provider_id: String,
     #[serde(default)]
@@ -35,6 +37,10 @@ pub struct Config {
     pub mutis: MutisConfig,
     #[serde(default)]
     pub self_dev: SelfDevConfig,
+}
+
+fn default_chat_idle_timeout_minutes() -> u32 {
+    10
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -273,6 +279,7 @@ impl Config {
                 },
             ],
             default_folder: default_folder(),
+            chat_idle_timeout_minutes: default_chat_idle_timeout_minutes(),
             planner_provider_id: String::new(),
             planner_model: String::new(),
             mutis: MutisConfig::default(),

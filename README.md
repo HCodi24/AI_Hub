@@ -95,6 +95,8 @@ AI Hub cho Claude Code CLI dùng **thư mục cấu hình riêng** `%APPDATA%\ai
 
 Cột bên trái là danh sách các cuộc trò chuyện đã lưu; chọn một chat để tiếp tục hoặc tạo chat mới. Câu trả lời hiện dần theo kiểu streaming, có nút Dừng để ngắt giữa chừng. Nhấn Enter để gửi, Shift+Enter để xuống dòng. Dùng nút 📎, dán ảnh (Ctrl+V) hoặc kéo ảnh vào khung nhập. Mỗi tin nhắn nhận tối đa 5 ảnh PNG/JPEG/WebP/GIF, mỗi ảnh tối đa 10 MB; có thể gửi chỉ ảnh. Bấm thumbnail trong chat để mở ảnh đầy đủ ở tab mới.
 
+Khi AI đang chạy, thanh trạng thái phía trên khung nhập cho biết nguồn, model, effort, thời gian đã chạy và hoạt động gần nhất. Nếu không nhận được sự kiện trong 45 giây, giao diện cảnh báo; từ 120 giây sẽ gợi ý dừng và gửi lại. **Cài đặt › Chat** có thời gian chờ không hoạt động áp dụng cho mọi nguồn (mặc định 10 phút, 0 để tắt, tối đa 120 phút).
+
 Ảnh được lưu cục bộ trong `attachments/<chat_id>/`. Anthropic và OpenAI-compatible gửi ảnh cho model qua API; Claude CLI nhận đường dẫn ảnh trong prompt; Codex CLI nhận từng ảnh bằng `-i`. DeepSeek agent chưa hỗ trợ ảnh. Các provider API chỉ giữ ảnh lịch sử khi tổng dung lượng dưới 15 MB; Claude/Codex CLI chỉ nhận ảnh ở tin nhắn người dùng mới nhất.
 
 Dưới mỗi câu trả lời có các khối có thể gấp mở:
@@ -145,7 +147,7 @@ Các tùy chọn của MutiS, mỗi tùy chọn bật/tắt kèm tham số:
 | Tùy chọn | Mô tả |
 | --- | --- |
 | Retry API | Thử lại khi gặp 429/5xx/lỗi kết nối, backoff 2s/4s/8s, tối đa 3 lần |
-| Codex watchdog | Dừng Codex nếu không có phản hồi trong N phút (mặc định 5) |
+| Codex watchdog | Dừng riêng Codex trong tác vụ MutiS nếu không có đầu ra trong N phút (mặc định 5) |
 | Codex tự tiếp tục | Khi Codex báo dừng sớm ("incomplete", "chưa xong"…), tự chạy tiếp phiên đó (tối đa 2 vòng) |
 | DeepSeek làm việc trên file | Cho phép DeepSeek sửa tệp, có giới hạn số bước, cảnh báo với tệp dài hơn 400 dòng |
 | Cổng kiểm tra | Tự nhận diện `scripts/verify/verify.sh` → Cargo → npm, hoặc dùng lệnh tùy chỉnh; luôn kiểm tra UTF-8 và lỗi "mojibake" trong tệp đã sửa và tệp mới; danh sách bỏ qua mặc định `.tasks/**`, `plans/**`, `**/*.md` |

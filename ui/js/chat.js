@@ -249,6 +249,14 @@ export function renderMessages() {
       usage.textContent = tokenLog;
       body.append(usage);
     }
+    if (message.running) {
+      const live = document.createElement("div");
+      live.className = "running-indicator";
+      const dots = document.createElement("span"); dots.className = "running-dots"; dots.append(...[0, 1, 2].map(() => document.createElement("i")));
+      const text = document.createElement("span"); text.textContent = `${message.running} đang chạy…`;
+      live.append(dots, text);
+      body.append(live);
+    }
     row.append(body);
     messagesRoot.append(row);
   }
@@ -370,11 +378,56 @@ export function appendInline(parent, text) {
   }
   if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
 }
+// Short "who is answering" text for the live status strip.
+export function runningLabel(status = null) {
+  if (status?.provider_name) {
+    const effort = status.effort ? ` · ${status.effort}` : "";
+    return `${status.provider_name} · ${status.model || "model"}${effort}`;
+  }
+  const provider = currentProvider();
+  const name = provider ? provider.name : "AI";
+  const model = modelInput.value ? ` · ${modelInput.value}` : "";
+  return `${name}${model}`;
+}
+
+let liveStatus = null;
+let statusTimer = null;
+function renderRunningStatus() {
+  const strip = $("#running-model");
+  if (!strip) return;
+  strip.replaceChildren();
+  strip.hidden = !state.streaming;
+  if (!state.streaming) return;
+  const elapsed = liveStatus?.elapsed_s || 0;
+  const mmss = `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
+  const dot = document.createElement("i"); dot.className = "running-dot";
+  const identity = document.createElement("span"); identity.textContent = `${liveStatus?.role ? `${liveStatus.role} · ` : ""}${runningLabel(liveStatus)}`;
+  const time = document.createElement("span"); time.className = "running-time"; time.textContent = mmss;
+  strip.append(dot, identity, time);
+  const idle = liveStatus?.idle_s || 0;
+  if (liveStatus) {
+    const activity = document.createElement("span"); activity.className = "running-activity";
+    activity.textContent = `hoạt động cuối: ${liveStatus.last_activity || "đang chờ phản hồi"} (${idle}s trước)`;
+    strip.append(activity);
+  }
+  strip.classList.toggle("warning", idle >= 45);
+  strip.classList.toggle("critical", idle >= 120);
+  if (idle >= 45) {
+    const warning = document.createElement("span"); warning.className = "running-warning";
+    warning.textContent = `⚠ Chưa có phản hồi 45s — AI có thể đang suy nghĩ lâu hoặc bị treo${idle >= 120 ? ". Bấm Dừng rồi gửi lại nếu cần" : ""}`;
+    strip.append(warning);
+    $("#stop-button").classList.add("stop-emphasis");
+  } else $("#stop-button").classList.remove("stop-emphasis");
+}
+
 export function setStreaming(value) {
   state.streaming = value;
   $("#send-button").disabled = value;
   $("#attachment-button").disabled = value;
   $("#stop-button").hidden = !value;
+  if (value) liveStatus = { provider_name: currentProvider()?.name || "AI", model: modelInput.value, effort: state.effort, idle_s: 0, elapsed_s: 0 };
+  else { liveStatus = null; clearInterval(statusTimer); statusTimer = null; $("#stop-button").classList.remove("stop-emphasis"); }
+  renderRunningStatus();
   messageInput.disabled = value;
   providerSelect.disabled = value;
   modelInput.disabled = value;
@@ -383,6 +436,10 @@ export function setStreaming(value) {
   $("#mode-chip").disabled = value;
   $("#new-chat").disabled = value;
   renderChatList();
+  if (value) {
+    clearInterval(statusTimer);
+    statusTimer = setInterval(() => { if (liveStatus) { liveStatus.elapsed_s += 1; liveStatus.idle_s += 1; renderRunningStatus(); } }, 1000);
+  }
 }
 export async function sendMessage() {
   const text = messageInput.value.trim();
@@ -427,6 +484,7 @@ export async function sendMessage() {
   state.messages.push({ role: "user", content: text, attachments: sentAttachments });
   clearPendingAttachments();
   const assistant = { role: "assistant", content: "", reasoning: "", logs: [], diff: "" };
+  assistant.running = currentProvider()?.name || "AI";
   state.messages.push(assistant);
   const existing = [...state.messages].reverse().find((message) => message.role === "user");
   const memory = state.memoryChats.get(chatId) || { id: chatId };
@@ -453,16 +511,26 @@ export async function sendMessage() {
       }),
     });
     if (!response.body) throw new Error("Trình duyệt không hỗ trợ đọc luồng phản hồi");
+    let receivedDone = false;
     await readSse(response.body, (eventName, data) => {
+      if (eventName === "status") {
+        liveStatus = { ...liveStatus, ...data };
+        assistant.running = [data.role, data.provider_name].filter(Boolean).join(" · ") || "AI";
+        renderRunningStatus(); renderMessages();
+      }
+      else if (eventName === "heartbeat") { liveStatus = { ...liveStatus, ...data }; renderRunningStatus(); }
+      else if (eventName === "done") { receivedDone = true; assistant.running = ""; }
       if (eventName === "delta") assistant.content += data.text || "";
       else if (eventName === "reasoning") assistant.reasoning += data.text || "";
       else if (eventName === "log") assistant.logs.push(data.text || "");
       else if (eventName === "diff") assistant.diff = data.text || "";
       else if (eventName === "error") assistant.error = data.text || "Đã xảy ra lỗi";
-      if (["delta", "reasoning", "log", "diff", "error"].includes(eventName)) renderMessages();
+      if (["delta", "reasoning", "log", "diff", "error", "done"].includes(eventName)) renderMessages();
     });
+    if (!receivedDone) throw new Error("Mất kết nối với app (có thể app đang khởi động lại). Tin nhắn có thể chưa hoàn tất — kiểm tra rồi gửi lại.");
   } catch (error) {
-    assistant.error = error.message;
+    assistant.running = "";
+    assistant.error = "Mất kết nối với app (có thể app đang khởi động lại). Tin nhắn có thể chưa hoàn tất — kiểm tra rồi gửi lại.";
     renderMessages();
     showToast(error.message);
   } finally {

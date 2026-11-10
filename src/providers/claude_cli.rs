@@ -25,6 +25,7 @@ impl Provider for ClaudeCliProvider {
             OsString::from("--output-format"),
             OsString::from("stream-json"),
             OsString::from("--verbose"),
+            OsString::from("--include-partial-messages"),
         ];
         let permission_mode = match request.permission {
             Permission::Read => "plan",
@@ -59,7 +60,8 @@ impl Provider for ClaudeCliProvider {
                 prompt.push_str("Hãy dùng công cụ đọc tệp để xem ảnh trên.");
             }
         }
-        cli_support::run_jsonl(
+        let parser = std::sync::Mutex::new(ClaudeParser::default());
+        let result = cli_support::run_jsonl(
             cli_support::JsonlCommand {
                 cli_name: "Claude Code CLI",
                 executable_name: "claude",
@@ -70,84 +72,163 @@ impl Provider for ClaudeCliProvider {
                 prompt,
                 watchdog_minutes: None,
             },
-            events,
-            cancel,
-            parse_claude_line,
+            events.clone(),
+            cancel.clone(),
+            |line| {
+                parser
+                    .lock()
+                    .expect("Claude parser mutex poisoned")
+                    .parse(line)
+            },
         )
-        .await
+        .await;
+        if missing_result_event(
+            parser
+                .lock()
+                .expect("Claude parser mutex poisoned")
+                .result_seen,
+            cancel.is_cancelled(),
+        ) {
+            let _ = events
+                .send(ProviderEvent::text(
+                    "error",
+                    "Claude Code CLI kết thúc đột ngột (không có kết quả)",
+                ))
+                .await;
+        }
+        result
     }
 }
 
-fn parse_claude_line(line: &str) -> Vec<ProviderEvent> {
-    if line.trim().is_empty() {
-        return Vec::new();
-    }
-    let Ok(value) = serde_json::from_str::<Value>(line) else {
-        return vec![ProviderEvent::text(
-            "log",
-            format!("Claude output: {}", cli_support::one_line(line, 240)),
-        )];
-    };
-    let event_type = value["type"].as_str().unwrap_or("unknown");
-    let mut events = Vec::new();
-    if let Some(session_id) = value["session_id"]
-        .as_str()
-        .filter(|id| cli_support::safe_session_id(id))
-    {
-        events.push(ProviderEvent {
-            name: "session",
-            data: serde_json::json!({ "session_id": session_id }),
-        });
-    }
-    match event_type {
-        "system" | "user" => {}
-        "assistant" => {
-            if let Some(blocks) = value["message"]["content"].as_array() {
-                for block in blocks {
-                    match block["type"].as_str().unwrap_or("") {
-                        "text" => {
-                            if let Some(text) =
-                                block["text"].as_str().filter(|text| !text.is_empty())
-                            {
-                                events.push(ProviderEvent::text("delta", text.to_owned()));
+fn missing_result_event(result_seen: bool, cancelled: bool) -> bool {
+    !result_seen && !cancelled
+}
+
+#[derive(Default)]
+struct ClaudeParser {
+    result_seen: bool,
+    partial_seen: bool,
+    delta_seen: bool,
+}
+
+impl ClaudeParser {
+    fn parse(&mut self, line: &str) -> Vec<ProviderEvent> {
+        if line.trim().is_empty() {
+            return Vec::new();
+        }
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            return vec![ProviderEvent::text(
+                "log",
+                format!("Claude output: {}", cli_support::one_line(line, 240)),
+            )];
+        };
+        let event_type = value["type"].as_str().unwrap_or("unknown");
+        let mut events = Vec::new();
+        if let Some(session_id) = value["session_id"]
+            .as_str()
+            .filter(|id| cli_support::safe_session_id(id))
+        {
+            events.push(ProviderEvent {
+                name: "session",
+                data: serde_json::json!({ "session_id": session_id }),
+            });
+        }
+        match event_type {
+            "system" | "user" => {}
+            "assistant" => {
+                if let Some(blocks) = value["message"]["content"].as_array() {
+                    for block in blocks {
+                        match block["type"].as_str().unwrap_or("") {
+                            "text" if !self.partial_seen => {
+                                if let Some(text) =
+                                    block["text"].as_str().filter(|text| !text.is_empty())
+                                {
+                                    self.delta_seen = true;
+                                    events.push(ProviderEvent::text("delta", text.to_owned()));
+                                }
                             }
+                            "tool_use" => {
+                                events.push(ProviderEvent::text("log", summarize_tool_use(block)))
+                            }
+                            _ => {}
                         }
-                        "tool_use" => {
-                            events.push(ProviderEvent::text("log", summarize_tool_use(block)))
-                        }
-                        _ => {}
+                    }
+                }
+                self.partial_seen = false;
+            }
+            "stream_event" => {
+                if value["event"]["type"].as_str() == Some("content_block_delta")
+                    && value["event"]["delta"]["type"].as_str() == Some("text_delta")
+                {
+                    if let Some(text) = value["event"]["delta"]["text"]
+                        .as_str()
+                        .filter(|text| !text.is_empty())
+                    {
+                        self.partial_seen = true;
+                        self.delta_seen = true;
+                        events.push(ProviderEvent::text("delta", text.to_owned()));
                     }
                 }
             }
-        }
-        "result" => {
-            if value["is_error"].as_bool() == Some(true) {
-                let message = value["result"]
-                    .as_str()
-                    .or_else(|| value["error"].as_str())
-                    .unwrap_or("Claude Code CLI trả về lỗi");
-                let message = if message.contains("Not logged in") {
-                    "Claude Code chưa đăng nhập — mở Cài đặt › Claude Code CLI › Đăng nhập"
-                } else {
-                    message
-                };
-                events.push(ProviderEvent::text("error", message.to_owned()));
+            "rate_limit_event" => {
+                let info = &value["rate_limit_info"];
+                let status = info["status"].as_str().unwrap_or("unknown");
+                let reset = info
+                    .get("resetsAt")
+                    .filter(|value| !value.is_null())
+                    .or_else(|| info.get("resets_at").filter(|value| !value.is_null()));
+                if !matches!(status.to_ascii_lowercase().as_str(), "allowed" | "ok")
+                    || reset.is_some()
+                {
+                    let detail = reset
+                        .map(|time| {
+                            let time = time
+                                .as_str()
+                                .map(str::to_owned)
+                                .unwrap_or_else(|| time.to_string());
+                            format!("Claude đang gần/chạm giới hạn lượt dùng — reset lúc {time}")
+                        })
+                        .unwrap_or_else(|| "Claude đang gần/chạm giới hạn lượt dùng".to_owned());
+                    events.push(ProviderEvent::text("log", detail));
+                }
             }
-            if let Some(usage) =
-                cli_support::token_usage_log(&value["usage"], value.get("total_cost_usd"))
-            {
-                events.push(ProviderEvent::text("log", usage));
+            "result" => {
+                self.result_seen = true;
+                let subtype = value["subtype"].as_str().unwrap_or("unknown");
+                let is_error = value["is_error"].as_bool().unwrap_or(false);
+                let result_text = value["result"].as_str().unwrap_or_default();
+                if subtype != "success" || is_error {
+                    let label = match subtype {
+                        "error_max_turns" => "Claude dừng vì hết số lượt (max turns)".to_owned(),
+                        "error_during_execution" => "Claude gặp lỗi khi chạy".to_owned(),
+                        "success" if is_error => "Claude Code CLI trả về lỗi".to_owned(),
+                        other => other.to_owned(),
+                    };
+                    let message = if result_text.is_empty() {
+                        label
+                    } else {
+                        format!("{label}: {result_text}")
+                    };
+                    events.push(ProviderEvent::text("error", message));
+                } else if !self.delta_seen && !result_text.is_empty() {
+                    events.push(ProviderEvent::text("delta", result_text.to_owned()));
+                }
+                if let Some(usage) =
+                    cli_support::token_usage_log(&value["usage"], value.get("total_cost_usd"))
+                {
+                    events.push(ProviderEvent::text("log", usage));
+                }
             }
+            _ => events.push(ProviderEvent::text(
+                "log",
+                format!(
+                    "Claude event {event_type}: {}",
+                    cli_support::one_line(&value.to_string(), 220)
+                ),
+            )),
         }
-        _ => events.push(ProviderEvent::text(
-            "log",
-            format!(
-                "Claude event {event_type}: {}",
-                cli_support::one_line(&value.to_string(), 220)
-            ),
-        )),
+        events
     }
-    events
 }
 
 fn summarize_tool_use(block: &Value) -> String {
@@ -167,5 +248,55 @@ fn summarize_tool_use(block: &Value) -> String {
             cli_support::one_line(name, 80),
             cli_support::one_line(&input.to_string(), 220)
         ),
+    }
+}
+
+#[cfg(test)]
+fn parse_claude_line(line: &str) -> Vec<ProviderEvent> {
+    ClaudeParser::default().parse(line)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_claude_line, ClaudeParser};
+    #[test]
+    fn maps_claude_result_subtypes_and_returns_success_text() {
+        let max_turns =
+            parse_claude_line(r#"{"type":"result","subtype":"error_max_turns","result":"limit"}"#);
+        assert_eq!(
+            max_turns[0].data["text"],
+            "Claude dừng vì hết số lượt (max turns): limit"
+        );
+        let other = parse_claude_line(
+            r#"{"type":"result","subtype":"error_max_budget_usd","result":"budget"}"#,
+        );
+        assert!(other[0].data["text"]
+            .as_str()
+            .unwrap()
+            .contains("error_max_budget_usd"));
+        let success =
+            parse_claude_line(r#"{"type":"result","subtype":"success","result":"answer"}"#);
+        assert_eq!(success[0].name, "delta");
+    }
+    #[test]
+    fn partial_text_suppresses_full_assistant_text_and_result_duplicate() {
+        let mut parser = ClaudeParser::default();
+        let partial = parser.parse(r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"partial"}}}"#);
+        assert_eq!(partial.len(), 1);
+        let complete = parser.parse(
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"partial"}]}}"#,
+        );
+        assert!(complete.is_empty());
+        let result = parser.parse(r#"{"type":"result","subtype":"success","result":"partial"}"#);
+        assert!(result.is_empty());
+    }
+    #[test]
+    fn detects_missing_result_event_with_default_state() {
+        assert!(super::missing_result_event(false, false));
+        assert!(!super::missing_result_event(true, false));
+        assert!(!super::missing_result_event(false, true));
+        let mut parser = ClaudeParser::default();
+        parser.parse(r#"{"type":"result","subtype":"success","result":"ok"}"#);
+        assert!(parser.result_seen);
     }
 }

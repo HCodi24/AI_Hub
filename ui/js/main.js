@@ -143,6 +143,12 @@ $("#planner-provider").addEventListener("change", () => {
   savePlannerConfig().catch(e => showToast(e.message));
 });
 $("#planner-model").addEventListener("change",()=>savePlannerConfig().catch(e=>showToast(e.message)));
+$("#chat-idle-timeout").addEventListener("change", () => {
+  const input = $("#chat-idle-timeout");
+  input.value = String(Math.max(0, Math.min(120, Number(input.value) || 0)));
+  savePlannerConfig().then(() => { state.config.chat_idle_timeout_minutes = Number(input.value); })
+    .catch(e => showToast(e.message));
+});
 $("#extension-stop").addEventListener("click",()=>fetch("/api/extensions/codegraph/stop",{method:"POST"}));
 
 $("#new-chat").addEventListener("click", newChat);

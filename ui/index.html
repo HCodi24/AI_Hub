@@ -68,6 +68,7 @@
         </div>
         <div id="composer-attachments" class="composer-attachments" aria-label="Ảnh đính kèm"></div>
         <input id="attachment-input" type="file" accept="image/*" multiple hidden>
+        <div id="running-model" class="running-status" role="status" aria-live="polite" hidden></div>
         <textarea id="message-input" rows="1" placeholder="Nhắn tin với AI…" aria-label="Tin nhắn"></textarea>
         <div class="composer-footer">
           <div class="mode-picker">
@@ -276,6 +277,14 @@
         <div class="section-heading"><h3>Người lập kế hoạch</h3></div>
         <label>Nhà cung cấp<select id="planner-provider"></select></label>
         <label>Model<input id="planner-model" list="planner-model-options"><datalist id="planner-model-options"></datalist></label>
+      </section>
+      <section class="planner-settings">
+        <div class="section-heading"><h3>Chat</h3></div>
+        <label>
+          <span>Thời gian chờ khi chat không có phản hồi (phút)</span>
+          <small>Áp dụng cho mọi nguồn AI. Đặt 0 để tắt.</small>
+          <input id="chat-idle-timeout" type="number" min="0" max="120" step="1" aria-label="Thời gian chờ chat (phút)">
+        </label>
       </section>
       <section class="provider-settings">
         <div class="section-heading"><h3>Nguồn AI</h3><button id="provider-add" class="subtle-button" type="button">＋ Thêm nguồn</button></div>

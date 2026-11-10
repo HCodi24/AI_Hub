@@ -197,6 +197,22 @@ pub(crate) async fn chat_handler(
         mutis: mutis_config.clone(),
     };
     let event_provider_id = provider_request.provider.id.clone();
+    let provider_name = provider_request.provider.name.clone();
+    let status_model = provider_request.model.clone();
+    let status_effort = format!("{:?}", provider_request.effort).to_lowercase();
+    let status_role = (mutis_config.enabled || request.plan_id.is_some())
+        .then(|| {
+            ["lead", "big", "small"]
+                .into_iter()
+                .find(|role| match *role {
+                    "lead" => mutis_config.roles.lead.provider_id == event_provider_id,
+                    "big" => mutis_config.roles.big.provider_id == event_provider_id,
+                    _ => mutis_config.roles.small.provider_id == event_provider_id,
+                })
+                .map(str::to_owned)
+        })
+        .flatten();
+    let idle_timeout_minutes = state.config.read().await.chat_idle_timeout_minutes;
     let provider_events = provider_sender.clone();
     tokio::spawn(async move {
         if let Err(error) = provider
@@ -216,6 +232,22 @@ pub(crate) async fn chat_handler(
     let event_logging_enabled = mutis_config.effective(mutis_config.event_log);
     let log_enabled = event_logging_enabled && plan_id.is_some() && task_id.is_some();
     let started = Instant::now();
+    let started_at_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+    let _ = sse_sender
+        .send(chat::sse_event(
+            "status",
+            &json!({
+                "provider_name": provider_name,
+                "model": status_model,
+                "effort": status_effort,
+                "role": status_role,
+                "started_at_ms": started_at_ms,
+            }),
+        ))
+        .await;
     if log_enabled {
         let _ = state.event_log.append(&Event {
             ts: mutis::now(),
@@ -236,6 +268,12 @@ pub(crate) async fn chat_handler(
         let _job_guard = job_guard;
         let mut record = record;
         let mut last_persist = Instant::now();
+        let mut last_event_at = Instant::now();
+        let mut last_activity = String::new();
+        let mut heartbeat = tokio::time::interval(Duration::from_secs(3));
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut received_delta = false;
+        let mut received_error = false;
         loop {
             tokio::select! {
                 _ = task_cancel.cancelled() => break,
@@ -243,8 +281,39 @@ pub(crate) async fn chat_handler(
                     task_cancel.cancel();
                     break;
                 }
+                _ = heartbeat.tick() => {
+                    let idle_s = last_event_at.elapsed().as_secs();
+                    if idle_timeout_reached(last_event_at.elapsed(), idle_timeout_minutes) {
+                        task_cancel.cancel();
+                        let message = format!("Không có phản hồi sau {idle_timeout_minutes} phút — đã dừng");
+                        let event = ProviderEvent::text("error", message);
+                        persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
+                        received_error = true;
+                        let _ = sse_sender.send(chat::sse_event("error", &event.data)).await;
+                        if event_logging_enabled {
+                            let _ = task_state.event_log.append(&Event {
+                                ts: mutis::now(), plan_id: plan_id.clone(), task_id: task_id.clone(),
+                                provider_id: event_provider_id.clone(), kind: "watchdog_kill".into(),
+                                task_kind: task_kind.clone(), ok: false, duration_ms: None, tokens: None,
+                                detail: Some(format!("Chat idle timeout: {idle_timeout_minutes} minutes")),
+                            });
+                        }
+                        break;
+                    }
+                    let _ = sse_sender.send(chat::sse_event("heartbeat", &json!({
+                        "elapsed_s": started.elapsed().as_secs(),
+                        "idle_s": idle_s,
+                        "last_activity": last_activity,
+                    }))).await;
+                }
                 event = provider_receiver.recv() => {
                     let Some(event) = event else { break };
+                    last_event_at = Instant::now();
+                    if event.name == "delta" { received_delta = true; }
+                    if event.name == "error" { received_error = true; }
+                    if event.name == "log" {
+                        last_activity = event.data["text"].as_str().unwrap_or_default().chars().take(100).collect();
+                    }
                     if event_logging_enabled && event.name == "watchdog_kill" {
                         let _ = task_state.event_log.append(&Event {
                             ts: mutis::now(),
@@ -256,7 +325,7 @@ pub(crate) async fn chat_handler(
                             ok: false,
                             duration_ms: None,
                             tokens: None,
-                            detail: Some("Codex watchdog".into()),
+                            detail: Some("Provider watchdog".into()),
                         });
                     }
                     if event_logging_enabled && event.name == "retry" {
@@ -313,6 +382,14 @@ pub(crate) async fn chat_handler(
                 }
             }
         }
+        if should_emit_empty_reply(received_delta, received_error, task_cancel.is_cancelled()) {
+            let event = ProviderEvent::text(
+                "error",
+                "AI kết thúc mà không trả lời — có thể bị ngắt giữa chừng. Hãy gửi lại.",
+            );
+            persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
+            let _ = sse_sender.send(chat::sse_event("error", &event.data)).await;
+        }
         let _ = chat::save_record(&task_state.chats, &mut record);
         if log_enabled {
             let token_line = record
@@ -367,6 +444,14 @@ pub(crate) async fn chat_handler(
         .keep_alive(KeepAlive::default())
         .into_response())
 }
+fn idle_timeout_reached(idle: Duration, minutes: u32) -> bool {
+    minutes > 0 && idle >= Duration::from_secs(u64::from(minutes) * 60)
+}
+
+fn should_emit_empty_reply(has_delta: bool, has_error: bool, cancelled: bool) -> bool {
+    !has_delta && !has_error && !cancelled
+}
+
 fn persist_event(
     store: &ChatStore,
     record: &mut ChatRecord,
@@ -496,4 +581,23 @@ pub(crate) async fn delete_chat(
         running.cancel.cancel();
     }
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod run_status_tests {
+    use super::{idle_timeout_reached, should_emit_empty_reply};
+    use std::time::Duration;
+    #[test]
+    fn idle_watchdog_obeys_off_and_timeout_threshold() {
+        assert!(!idle_timeout_reached(Duration::from_secs(7200), 0));
+        assert!(!idle_timeout_reached(Duration::from_secs(599), 10));
+        assert!(idle_timeout_reached(Duration::from_secs(600), 10));
+    }
+    #[test]
+    fn emits_empty_reply_only_when_unanswered_and_not_cancelled() {
+        assert!(should_emit_empty_reply(false, false, false));
+        assert!(!should_emit_empty_reply(true, false, false));
+        assert!(!should_emit_empty_reply(false, true, false));
+        assert!(!should_emit_empty_reply(false, false, true));
+    }
 }

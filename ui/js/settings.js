@@ -11,6 +11,8 @@ export async function loadConfig() {
   renderModePicker();
   setupProviderControls(state.config.providers[0]?.id);
   folderInput.value = state.config.default_folder || "";
+  const idleTimeout = $("#chat-idle-timeout");
+  if (idleTimeout) idleTimeout.value = state.config.chat_idle_timeout_minutes ?? 10;
   renderPlannerSettings();
   if (state.selectedSource === "mutis") testAllProviders();
 }
@@ -112,6 +114,7 @@ export async function savePlannerConfig() {
     default_folder: state.config.default_folder,
     planner_provider_id: state.config.planner_provider_id,
     planner_model: state.config.planner_model,
+    chat_idle_timeout_minutes: Number($("#chat-idle-timeout")?.value ?? state.config.chat_idle_timeout_minutes ?? 10),
   }) });
 }
 export function clearProviderForm() {
