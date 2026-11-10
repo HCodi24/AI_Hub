@@ -6,8 +6,8 @@ import { api } from "./api.js";
 
 export async function loadConfig() {
   state.config = await api("/api/config");
-  state.orchestration = await api("/api/mutis");
-  renderOrchestrationSettings();
+  state.mutis = await api("/api/mutis");
+  renderMutisSettings();
   renderModePicker();
   setupProviderControls(state.config.providers[0]?.id);
   folderInput.value = state.config.default_folder || "";
@@ -15,7 +15,7 @@ export async function loadConfig() {
   if (state.selectedSource === "mutis") testAllProviders();
 }
 export function resolveConnectedRole(key) {
-  const current = state.orchestration?.roles?.[key];
+  const current = state.mutis?.roles?.[key];
   if (current && state.providerStatuses.get(current.provider_id)?.status === "connected") return current;
   const order = { lead: ["claude_cli", "anthropic", "codex_cli"], big: ["codex_cli", "claude_cli"], small: ["deepseek_agent", "codex_cli"] }[key];
   const provider = order.flatMap(kind => state.config.providers.filter(item => item.kind === kind))
@@ -31,8 +31,8 @@ export function resolveConnectedRole(key) {
 }
 export const ROUTE_KINDS = ["small_edit", "code", "test", "docs", "plan", "review"];
 export const ASSIGNEE_KINDS = ["lead", "big", "small"];
-export function renderOrchestrationSettings() {
-  const config = state.orchestration || {};
+export function renderMutisSettings() {
+  const config = state.mutis || {};
   renderMutisRoleRows("settings-mutis-roles");
   for (const input of document.querySelectorAll("[data-orch]")) {
     const key = input.dataset.orch;
@@ -45,25 +45,25 @@ export function renderOrchestrationSettings() {
   const reviewerModel = $('[data-orch="reviewer_model"]');
   reviewerModel.replaceChildren(...(reviewerProvider?.models || []).map(model => el("option", {value:model,textContent:model})));
   reviewerModel.value = config.reviewer_model || reviewerProvider?.models?.[0] || "";
-  const routes = $("#orchestration-routing"); routes.replaceChildren();
+  const routes = $("#mutis-routing"); routes.replaceChildren();
   for (const kind of ROUTE_KINDS) {
     const rule = (config.routing || []).find(r => r.kind === kind) || {kind,role:(kind==="small_edit"||kind==="docs"?"small":kind==="plan"||kind==="review"?"lead":"big"),note:""};
     const select = el("select", {dataset:{route:kind}}, ASSIGNEE_KINDS.map(value => el("option", {value,textContent:value})));
     select.value = rule.role || ({deepseek_agent:"small",codex_cli:"big",claude_cli:"lead"}[rule.assignee_kind]||"big");
     routes.append(el("label", {className:"route-row"}, [el("span", {textContent:kind}), select]));
   }
-  updateOrchestrationDisabled();
+  updateMutisDisabled();
 }
-export function updateOrchestrationDisabled() {
+export function updateMutisDisabled() {
   const enabled = $('[data-orch="enabled"]').checked;
   if (!enabled && state.selectedSource === "mutis") {
     state.selectedSource = "provider";
     messageInput.placeholder = "Nhắn tin với AI…";
     saveLastMode();
   }
-  $("#orchestration-controls").classList.toggle("orchestration-disabled", !enabled);
-  for (const input of $("#orchestration-controls").querySelectorAll("input,select")) input.disabled = !enabled;
-  $("#orchestration-badge").textContent = `MutiS: ${enabled ? "BẬT" : "TẮT"}`;
+  $("#mutis-controls").classList.toggle("mutis-disabled", !enabled);
+  for (const input of $("#mutis-controls").querySelectorAll("input,select")) input.disabled = !enabled;
+  $("#mutis-badge").textContent = `MutiS: ${enabled ? "BẬT" : "TẮT"}`;
   const sourceRow = $("#mode-providers")?.querySelector('[data-source="mutis"]');
   if (sourceRow) {
     sourceRow.disabled = !enabled;
@@ -71,13 +71,13 @@ export function updateOrchestrationDisabled() {
   }
   renderModePicker();
 }
-let orchestrationSaveTimer;
-export function scheduleOrchestrationSave() {
-  clearTimeout(orchestrationSaveTimer);
-  orchestrationSaveTimer = setTimeout(saveOrchestration, 180);
+let mutisSaveTimer;
+export function scheduleMutisSave() {
+  clearTimeout(mutisSaveTimer);
+  mutisSaveTimer = setTimeout(saveMutis, 180);
 }
-export async function saveOrchestration() {
-  const next = {...state.orchestration};
+export async function saveMutis() {
+  const next = {...state.mutis};
   for (const input of document.querySelectorAll("[data-orch]")) {
     next[input.dataset.orch] = input.type === "checkbox"
       ? input.checked
@@ -88,21 +88,21 @@ export async function saveOrchestration() {
           : input.value;
   }
   next.routing = ROUTE_KINDS.map(kind => ({kind,role:$(`[data-route="${kind}"]`).value,note:""}));
-  try { state.orchestration = await api("/api/mutis", {method:"PUT",body:JSON.stringify(next)}); updateOrchestrationDisabled(); }
-  catch(error) { showToast(error.message); renderOrchestrationSettings(); }
+  try { state.mutis = await api("/api/mutis", {method:"PUT",body:JSON.stringify(next)}); updateMutisDisabled(); }
+  catch(error) { showToast(error.message); renderMutisSettings(); }
 }
 export function renderPlannerSettings() {
   const select = $("#planner-provider");
   if (!select) return;
   select.replaceChildren(...(state.config?.providers || []).map(provider =>
     el("option", { value: provider.id, textContent: provider.name })));
-  const preferred = state.orchestration?.roles?.lead?.provider_id || state.config?.planner_provider_id || ["claude_cli", "anthropic", "codex_cli"]
+  const preferred = state.mutis?.roles?.lead?.provider_id || state.config?.planner_provider_id || ["claude_cli", "anthropic", "codex_cli"]
     .map(kind => state.config?.providers.find(provider => provider.kind === kind))
     .find(provider => provider && (state.providerStatuses.get(provider.id)?.ok ?? true))?.id
     || state.config?.providers[0]?.id;
   select.value = preferred || "";
   const provider = state.config?.providers.find(item => item.id === select.value);
-  $("#planner-model").value = state.orchestration?.roles?.lead?.model || state.config?.planner_model || provider?.models[0] || "";
+  $("#planner-model").value = state.mutis?.roles?.lead?.model || state.config?.planner_model || provider?.models[0] || "";
   $("#planner-model-options").replaceChildren(...(provider?.models || []).map(model => el("option", { value: model })));
 }
 export async function savePlannerConfig() {
@@ -203,9 +203,9 @@ export async function testAllProviders() {
   await Promise.all((state.config?.providers || []).map((p) => testProvider(p.id, false)));
   if (state.selectedSource === "mutis") {
     const resolvedLead = resolveConnectedRole("lead");
-    if (resolvedLead && resolvedLead.provider_id !== state.orchestration?.roles?.lead?.provider_id) {
-      state.orchestration.roles.lead = resolvedLead;
-      try { state.orchestration = await api("/api/mutis", { method: "PUT", body: JSON.stringify(state.orchestration) }); }
+    if (resolvedLead && resolvedLead.provider_id !== state.mutis?.roles?.lead?.provider_id) {
+      state.mutis.roles.lead = resolvedLead;
+      try { state.mutis = await api("/api/mutis", { method: "PUT", body: JSON.stringify(state.mutis) }); }
       catch (error) { showToast(error.message); }
       renderModePicker();
     }

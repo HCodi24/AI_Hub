@@ -31,7 +31,7 @@ pub(crate) struct PlanEventInput {
     ok: bool,
     detail: Option<String>,
 }
-pub(crate) async fn record_orchestration_event(
+pub(crate) async fn record_mutis_event(
     State(state): State<AppState>,
     Json(input): Json<PlanEventInput>,
 ) -> ApiResult<Json<Value>> {
@@ -68,7 +68,7 @@ pub(crate) async fn record_orchestration_event(
     Ok(Json(json!({"ok": true})))
 }
 
-pub(crate) async fn get_orchestration(State(state): State<AppState>) -> Json<config::MutisConfig> {
+pub(crate) async fn get_mutis(State(state): State<AppState>) -> Json<config::MutisConfig> {
     Json(state.config.read().await.mutis.clone())
 }
 #[derive(Serialize)]
@@ -151,7 +151,7 @@ pub(crate) async fn resolve_mutis_roles(State(state): State<AppState>) -> ApiRes
     }
     Ok(Json(Value::Object(output)))
 }
-pub(crate) async fn put_orchestration(
+pub(crate) async fn put_mutis(
     State(state): State<AppState>,
     Json(value): Json<config::MutisConfig>,
 ) -> ApiResult<Json<config::MutisConfig>> {
@@ -165,7 +165,7 @@ pub(crate) async fn put_orchestration(
     {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "Tham số điều phối nằm ngoài phạm vi cho phép",
+            "Giá trị ngoài giới hạn",
         ));
     }
     for rule in &value.routing {
@@ -201,7 +201,7 @@ pub(crate) async fn put_orchestration(
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
     Ok(Json(value))
 }
-pub(crate) async fn orchestration_events(
+pub(crate) async fn mutis_events(
     State(state): State<AppState>,
     axum::extract::Query(query): axum::extract::Query<HashMap<String, String>>,
 ) -> ApiResult<Json<Vec<Event>>> {
@@ -213,7 +213,7 @@ pub(crate) async fn orchestration_events(
     state.event_log.recent(limit).map(Json).map_err(|_| {
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Không đọc được nhật ký điều phối",
+            "Không đọc được nhật ký MutiS",
         )
     })
 }
@@ -413,7 +413,7 @@ pub(crate) async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<R
     }
     let (provider_config, model, effort) = resolve_connected_lead(&state, &config_snapshot).await?;
     let provider = providers::for_kind(&provider_config.kind)
-        .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nguồn AI không hợp lệ"))?;
     let settings = serde_json::to_value(&config_snapshot.mutis).unwrap_or(Value::Null);
     let prompt = format!(
         concat!(

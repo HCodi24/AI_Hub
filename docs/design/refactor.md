@@ -1,53 +1,22 @@
-# Tái cấu trúc AI Hub (R1–R4) — thiết kế & file bàn giao
+# Tái cấu trúc AI Hub R1–R4
 
-Trạng thái: đang làm · Bắt đầu: 2026-11-10 · Giám sát: Claude · Code: Codex
+Trạng thái: hoàn tất · Ngày: 2026-11-10
 
-## Nguyên tắc
-- **Không đổi hành vi** app: chỉ di chuyển/tách/gộp code. Mọi bước phải qua `scripts/verify.ps1` + `scripts/smoke.ps1`.
-- Bản build phụ đặt **trong `target\`** (`target\codex`, `target\review`, `target\dev-check`), không tạo `target-*` ở gốc.
-- Không dùng Chat phát triển để sửa app trong lúc tái cấu trúc.
+## Kết quả
 
-## Hiện trạng (khảo sát 2026-11-10)
-- `src/server.rs` 3.385 dòng, 101 hàm, 44 route (mọi tính năng + tiện ích); 19 dòng > 200 ký tự.
-- `ui/app.js` 1.778 dòng, 85 hàm, 64 dòng > 200 ký tự; index.html 25, style.css 19 dòng dồn.
-- Trùng: `strip_ansi` (server.rs, verify.rs); tìm CLI ở cả server.rs và providers/cli_support.rs.
-- Tàn dư "orchestration" (11 chỗ) + thư mục dữ liệu `%APPDATA%\ai-hub\orchestration`.
+- R1: chuẩn hóa tài liệu và scripts kiểm tra.
+- R2: tách router/API, nghiệp vụ, nền tảng dùng chung và provider; xóa `src/server.rs` sau khi chuyển toàn bộ tuyến.
+- R3: tách giao diện thành ES modules và CSS riêng; `build.rs` nhúng tài nguyên lúc build.
+- R4: xóa alias API `/api/orchestration*`, đổi tên tham chiếu giao diện sang MutiS, dịch lỗi API sang tiếng Việt, cập nhật smoke routes, SPEC và README. Giữ bí danh cấu hình Serde `orchestration` để đọc tệp cũ và chuyển nhật ký cũ nếu có.
 
-## Cấu trúc đích
-```
-src/main.rs, src/app.rs (AppState + router)
-src/api/{mod,chat,providers,plans,mutis,verify,extensions,dev,static_ui}.rs   — chỉ HTTP (parse, gọi feature, trả JSON/SSE)
-src/features/{chat,plans,mutis,verify,extensions,dev}/                       — logic nghiệp vụ, không phụ thuộc axum
-src/providers/*                                                               — giữ, gom phần tìm CLI về cli_support/discovery.rs
-src/core/{config,paths,process,text}.rs                                       — dùng chung
-ui/index.html, ui/styles/*.css, ui/js/*.js (ES modules)
-scripts/{dev.ps1,dev.cmd,verify.ps1,smoke.ps1}
-docs/{SPEC.md,CODEX_RULES.md,design/*,history/tasks/*}
-```
+## Tóm tắt kích thước
 
-## Các bước
-- [x] R1a (Claude) — chuyển file: docs/, scripts/, lịch sử .tasks → docs/history/tasks, RULES → docs/CODEX_RULES.md;
-  sửa đường dẫn trong dev.ps1 (repo = thư mục cha của scripts/), README, docs.
-- [x] R1b (Codex) — verify/smoke scripts, verify_ignore default, MutiS auto-detect, README updated.
-- [x] R2 — tách backend.
-- [x] R3 — tách frontend + nhúng nhiều file UI.
-- [ ] R4 — dọn tàn dư, thông báo lỗi tiếng Việt thống nhất, README/SPEC.
+| Khu vực | Trước | Sau |
+| --- | ---: | ---: |
+| Backend | `src/server.rs`: 3.385 dòng | Đã xóa sau khi chia vào `src/api/`, `src/features/`, `src/core/` và `src/providers/` |
+| Giao diện | `ui/app.js`: 1.778 dòng | 11 module trong `ui/js/`, tổng 2.323 dòng; CSS nằm riêng trong `ui/styles/` |
+| Dòng dài hơn 200 ký tự | Server: 19; giao diện: 64 JS, 24 HTML, 11 CSS | 0 trong các tệp đã rà soát ở các bước R2/R3 |
 
-## Nhật ký
-- 2026-11-10: xoá target-codex/target-test (1,5 GB, không ảnh hưởng). R1a xong.
-- 2026-11-10: R1b complete. Watcher continues to monitor ui/, src/, Cargo.toml and Cargo.lock only; docs/ and scripts/ are ignored.
-- 2026-11-10: R2a in progress. Moved config, AppState, shared text/path/process foundations, and API error types. Handler extraction and router ownership remain for completion; gates are being run against this intermediate state.
+## Xác minh
 
-- 2026-11-10: R2b complete. Moved `/api/dev/*` handlers and `/`, `/app.js`, `/style.css` serving (including dev disk serving) from `src/server.rs` into `src/api/dev.rs` and `src/api/static_ui.rs`; moved the dev chat-folder unit test. No intended behavior changes.
-
-- 2026-11-10: R2c complete. Moved all `/api/mutis*` and `/api/orchestration*` handlers, `/api/verify`, `/api/plan-diff`, and `/api/extensions*` handlers plus their private helpers and extension helper tests into `src/api/{mutis,verify,extensions}.rs`. Router now references those modules; behavior unchanged. `src/server.rs`: 2,653 to 1,948 lines.
-
-- 2026-11-10: R2d complete. Moved `/api/chat`, `/api/chat/{id}/stop`, `/api/chats*` handlers, chat streaming/provider orchestration, event persistence, and job counter to `src/api/chat.rs`; moved `/api/config` GET/PUT to `src/api/config.rs`. Router references the new modules; behavior unchanged. `src/server.rs`: 1,999 to 1,556 lines. Verification: build, `scripts/verify.ps1`, and `scripts/smoke.ps1` passed.
-- 2026-11-10: R2e complete. Moved all /api/providers*, /api/cli-status, and /api/cli-discover/{name} handlers, the provider test cache, CLI status/discovery helpers, and the CLI discovery unit test into src/api/providers.rs. Updated the router, AppState cache result type, plan generation, and MutiS cache consumers. Behavior unchanged. src/server.rs: 1,520 to 616 lines; src/api/providers.rs: 936 lines; no src/providers/discovery.rs created. Verification: CARGO_TARGET_DIR=target/codex cargo build, scripts/verify.ps1, and scripts/smoke.ps1 passed (PowerShell invoked with process-scoped ExecutionPolicy Bypass).
-- 2026-11-10: R2f complete. Moved plan API endpoints, planner prompt/SSE generation, reassignment logic, plan events and helpers into src/api/plans.rs. Moved router assembly and Host/Origin middleware into src/api/mod.rs; AppState carries the actual bound port so the middleware retains its checks with the new router(state) API. Removed src/server.rs and mod server. Updated README source map. Behavior unchanged. Verification: `CARGO_TARGET_DIR=target/codex cargo build --release --offline`, `scripts/verify.ps1`, and `scripts/smoke.ps1` passed.
-
-- 2026-11-10: R2g complete. Moved business-logic modules into src/features; centralized executable resolution and CLI candidate/version discovery in src/providers/discovery.rs; made Rust source line lengths over 200 characters a verification error. README source map updated. Verification passed: `CARGO_TARGET_DIR=target/codex cargo build --release --offline`, `scripts/verify.ps1`, and `scripts/smoke.ps1`.
-
-- 2026-11-10: R3a complete. Split the frontend into ES modules under ui/js/ and CSS under ui/styles/. Added build-time embedded asset generation and path-based static serving, retained no legacy app.js/style.css routes after migrating the entry page, and extended smoke coverage to GET every UI asset. UI dev snapshot is recursive. Verification passed: `CARGO_TARGET_DIR=target/codex cargo build --release --offline`, `scripts/verify.ps1`, and `scripts/smoke.ps1`.
-
-- 2026-11-10: R3c complete. Reflowed overlength lines in ui/js/*.js, ui/index.html, and ui/styles/*.css by hand; no intended behavior changes. Before counts: 61 JS lines, 24 HTML lines, and 11 CSS lines over 200 characters. After counts: 0 in every target file. Verification: scripts/verify.ps1 and scripts/smoke.ps1 passed.
+R4: `CARGO_TARGET_DIR=target/codex cargo build --release --offline`, `scripts/verify.ps1` và `scripts/smoke.ps1`.

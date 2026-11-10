@@ -1,5 +1,5 @@
-.orchestration-settings small { color:var(--muted); font-size:10px; font-weight:400; }
-.orchestration-disabled { opacity:.48; }
+.mutis-settings small { color:var(--muted); font-size:10px; font-weight:400; }
+.mutis-disabled { opacity:.48; }
 .route-row { display:flex!important; align-items:center; justify-content:space-between; padding:3px 0; }
 .route-row select { min-width:150px; }
 .new-chat, .settings-open {

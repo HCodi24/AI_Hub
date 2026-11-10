@@ -49,7 +49,7 @@ pub(crate) fn dev_repo_path(state: &AppState) -> ApiResult<PathBuf> {
     state
         .dev_repo
         .clone()
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"))
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Chế độ phát triển đang tắt"))
 }
 
 pub(crate) fn effective_chat_folder(
@@ -346,7 +346,10 @@ pub(crate) async fn put_dev_settings(
     Json(value): Json<config::SelfDevConfig>,
 ) -> ApiResult<Json<config::SelfDevConfig>> {
     if state.dev_repo.is_none() {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"));
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "Chế độ phát triển đang tắt",
+        ));
     }
     let mut cfg = state.config.write().await;
     cfg.self_dev = value.clone();
@@ -426,7 +429,7 @@ pub(crate) async fn dev_rebuild(State(state): State<AppState>) -> ApiResult<Resp
     let repo = state
         .dev_repo
         .clone()
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"))?;
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Chế độ phát triển đang tắt"))?;
     let jobs = state.active_jobs.load(Ordering::SeqCst);
     if jobs > 0 {
         return Err(ApiError::new(

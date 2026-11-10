@@ -146,7 +146,7 @@ export async function openDevChat() {
   if (!state.devRepo?.path) { showToast("Không lấy được đường dẫn repo"); return; }
   hideDevPage(); newChat(); state.devChat = true;
   folderInput.value = state.devRepo.path;
-  const mutis = state.orchestration?.enabled;
+  const mutis = state.mutis?.enabled;
   const provider = state.config.providers.find(item => item.kind === "codex_cli");
   if (mutis) state.selectedSource = "mutis";
   else if (provider) { providerSelect.value = provider.id; state.selectedSource = "provider"; updateModels(); updatePermissionControl(); state.effort = "high"; }
@@ -327,7 +327,7 @@ export async function sendMessage() {
   if (state.selectedSource === "mutis") {
     await testAllProviders();
     const lead = resolveConnectedRole("lead");
-    if (!state.orchestration?.enabled) {
+    if (!state.mutis?.enabled) {
       showToast("Hãy bật MutiS trong Cài đặt.");
       return;
     }
@@ -335,9 +335,9 @@ export async function sendMessage() {
       showToast("⚠ Không có nguồn nào đang kết nối cho vai trò lập kế hoạch & review. Hãy kết nối ít nhất một nguồn trong Cài đặt.");
       return;
     }
-    if (lead.provider_id !== state.orchestration.roles.lead.provider_id) {
-      state.orchestration.roles.lead = lead;
-      state.orchestration = await api("/api/mutis", { method: "PUT", body: JSON.stringify(state.orchestration) });
+    if (lead.provider_id !== state.mutis.roles.lead.provider_id) {
+      state.mutis.roles.lead = lead;
+      state.mutis = await api("/api/mutis", { method: "PUT", body: JSON.stringify(state.mutis) });
     }
     if (lead) {
       providerSelect.value = lead.provider_id;

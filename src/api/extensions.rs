@@ -55,7 +55,7 @@ pub(crate) async fn extension_action(
     let Some((definition, action)) = crate::extensions::action(&id, &action_id) else {
         return Err(ApiError::new(
             StatusCode::NOT_FOUND,
-            "Extension/action không tồn tại",
+            "Không tìm thấy tiện ích hoặc thao tác",
         ));
     };
     let mut running = state.extension_running.lock().await;

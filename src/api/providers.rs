@@ -450,15 +450,15 @@ pub(crate) async fn login_provider(
         .iter()
         .find(|p| p.id == id)
         .cloned()
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Provider not found"))?;
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nguồn AI"))?;
     if provider.kind != "claude_cli" {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "Login is only available for Claude Code CLI",
+            "Chỉ Claude Code CLI mới đăng nhập được",
         ));
     }
     let path = providers::cli_support::resolve_executable("claude", Some(&provider.executable))
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Claude Code CLI not found"))?;
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy Claude Code CLI"))?;
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

@@ -41,17 +41,17 @@ export async function planFromRequest(text) {
     label.textContent = `Đang lập kế hoạch bằng ${provider?.name || "provider"} · ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   }, 1000);
   try {
-    if (state.orchestration?.enabled) await api("/api/mutis/roles/resolve");
+    if (state.mutis?.enabled) await api("/api/mutis/roles/resolve");
     const response = await fetch("/api/plans", { method: "POST", signal: controller.signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         request,
         folder: folderInput.value.trim(),
         dev_chat: state.devChat,
-        provider_id: state.orchestration?.roles?.lead?.provider_id
+        provider_id: state.mutis?.roles?.lead?.provider_id
           || $("#planner-provider").value
           || state.config.planner_provider_id,
-        model: state.orchestration?.roles?.lead?.model
+        model: state.mutis?.roles?.lead?.model
           || $("#planner-model").value
           || state.config.planner_model,
       }),
@@ -231,8 +231,8 @@ export function renderPlanEditor() {
   });
   const regen = el("button", { textContent: "Lập lại kế hoạch", onclick: () => planFromRequest(plan.request) });
   const gates = el("div", { className: "plan-gates" });
-  gates.append(el("button", { textContent: "Chạy kiểm tra", disabled: !state.orchestration?.enabled || !state.orchestration?.verify_gate, onclick: () => verifyPlan(plan) }));
-  if (state.orchestration?.enabled) gates.append(el("label", {}, [
+  gates.append(el("button", { textContent: "Chạy kiểm tra", disabled: !state.mutis?.enabled || !state.mutis?.verify_gate, onclick: () => verifyPlan(plan) }));
+  if (state.mutis?.enabled) gates.append(el("label", {}, [
     el("input", {
       type: "checkbox",
       checked: !!plan.auto_continue,
@@ -274,8 +274,8 @@ export async function runPlanTask(task) {
   task._stopped = false; task.summary = ""; task.diff = "";
   const plan = state.currentPlan, provider = state.config.providers.find(item => item.id === task.assignee);
   if (!provider) return;
-  if (state.orchestration?.enabled) await api("/api/mutis/roles/resolve");
-  const prompt = `${plan.dev_chat ? devChatPreamble(plan.folder) + "\n\n" : ""}${state.orchestration?.enabled ? `${state.orchestration.worker_rules || ""}\n\n` : ""}Kế hoạch: ${plan.title}
+  if (state.mutis?.enabled) await api("/api/mutis/roles/resolve");
+  const prompt = `${plan.dev_chat ? devChatPreamble(plan.folder) + "\n\n" : ""}${state.mutis?.enabled ? `${state.mutis.worker_rules || ""}\n\n` : ""}Kế hoạch: ${plan.title}
 Công việc: ${task.title}
 Chi tiết: ${task.detail}
 Tóm tắt công việc phụ thuộc đã hoàn tất:
@@ -353,7 +353,7 @@ export function buildFixTask(plan, task, label, issuesText) {
   };
 }
 export async function runTaskGates(task) {
-  const plan = state.currentPlan, cfg = state.orchestration;
+  const plan = state.currentPlan, cfg = state.mutis;
   if (!cfg?.enabled) return;
   if (cfg.verify_gate) {
     const response = await api("/api/verify", { method: "POST", body: JSON.stringify({ folder: plan.folder }) });

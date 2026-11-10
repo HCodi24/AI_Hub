@@ -35,7 +35,7 @@ try {
   $ready = $false
   for ($i=0; $i -lt 40; $i++) { if ($process.HasExited) { throw "app exited with code $($process.ExitCode)" }; try { Get-Status "$base/" | Out-Null; $ready=$true; break } catch { Start-Sleep -Milliseconds 500 } }
   if (-not $ready) { throw 'server did not become ready on port 7911' }
-  $routes = @('/api/dev/status','/api/dev/repo','/api/dev/git/diff','/api/dev/settings','/api/dev/events','/api/config','/api/mutis','/api/mutis/roles/resolve','/api/mutis/stats','/api/mutis/diagnoses','/api/mutis/events','/api/orchestration','/api/orchestration/events','/api/chats','/api/plans','/api/cli-status','/api/extensions')
+  $routes = @('/api/dev/status','/api/dev/repo','/api/dev/git/diff','/api/dev/settings','/api/dev/events','/api/config','/api/mutis','/api/mutis/roles/resolve','/api/mutis/stats','/api/mutis/diagnoses','/api/mutis/events','/api/chats','/api/plans','/api/cli-status','/api/extensions')
   foreach ($route in $routes) { try { $status=Get-Status "$base$route"; if ($status -ge 500) { $failures.Add("GET $route => $status") } } catch { $failures.Add("GET $route => $($_.Exception.Message)") } }
   $uiFiles = @(Get-ChildItem -LiteralPath (Join-Path $repo 'ui') -File -Recurse | Where-Object { $_.Extension -in @('.html','.js','.css','.svg','.png') })
   $assetPaths = [System.Collections.Generic.List[string]]::new()

@@ -186,48 +186,20 @@ Về bảo mật, ứng dụng chỉ bind trên 127.0.0.1; từ chối các head
 
 ## Cấu trúc mã nguồn
 
-| Tệp / thư mục | Vai trò |
-| --- | --- |
-| `src/main.rs` | Khởi động, xử lý cổng, mở trình duyệt |
-| `src/api/mod.rs` | Router HTTP, nhóm route theo tính năng, kiểm tra Host/Origin |
-| `src/api/plans.rs` | API kế hoạch, tạo kế hoạch và SSE planner |
-| `src/api/chat.rs`, `src/api/config.rs`, `src/api/providers.rs` | API chat, cấu hình và provider |
-| `src/api/mutis.rs`, `src/api/verify.rs`, `src/api/extensions.rs` | API MutiS, kiểm tra và tiện ích |
-| `src/api/dev.rs`, `src/api/static_ui.rs` | API tự phát triển và phục vụ giao diện |
-| `src/app.rs` | AppState và trạng thái dùng chung |
-| `src/core/` | Cấu hình, đường dẫn, tiến trình và xử lý văn bản dùng chung |
-| `src/core/config.rs` | Cấu hình, che API key |
-| `src/features/chat.rs` | Lịch sử chat |
-| `src/features/plans.rs` | Kế hoạch của tính năng Chia việc |
-| `src/features/mutis.rs` | Cấu hình MutiS, nhật ký sự kiện, thống kê |
-| `src/features/verify.rs` | Cổng kiểm tra |
-| `src/features/extensions.rs` | Danh mục tiện ích |
-| `src/features/dev.rs` | Development-mode business logic |
-| `src/features/` | Business logic for chat, plans, MutiS, verify, extensions and dev |
-| `src/providers/openai_compat.rs` | Nguồn OpenAI-compatible |
-| `src/providers/anthropic.rs` | Nguồn Anthropic API |
-| `src/providers/codex_cli.rs` | Nguồn Codex CLI |
-| `src/providers/claude_cli.rs` | Nguồn Claude Code CLI |
-| `src/providers/deepseek_agent.rs` | DeepSeek làm việc (Deploy) |
-| `src/providers/cli_support.rs` | Phần dùng chung cho các nguồn CLI |
-| `src/providers/discovery.rs` | CLI resolution, candidate discovery and version probing |
-| `ui/index.html`, `ui/js/*.js`, `ui/styles/*.css` | Giao di?n web ES module, nh?ng trong exe |
-| `docs/design/` | Thiết kế MutiS và Tự phát triển, tiến độ, bài học |
-| `docs/SPEC.md` | Đặc tả kỹ thuật |
-| `docs/CODEX_RULES.md` | Quy tắc khi giao việc cho Codex |
-| `docs/history/tasks/` | Lịch sử các nhiệm vụ đã giao |
-| `scripts/` | dev.ps1, dev.cmd, verify.ps1 (kiểm tra build/UTF-8), smoke.ps1 (kiểm tra API cục bộ) |
-
-Chạy kiểm tra đầy đủ bằng `.\scripts\verify.ps1`; chạy smoke test API bằng `.\scripts\smoke.ps1`. Có thể chạy bộ kiểm thử Rust riêng bằng:
-
-```powershell
-cargo test
+```text
+src/           Rust: API, nghiệp vụ, nền tảng dùng chung và nhà cung cấp AI
+ui/            Giao diện HTML, CSS và JavaScript ES modules
+scripts/       Chạy chế độ dev, kiểm tra tổng hợp và smoke test API
+build.rs       Nhúng tài nguyên UI vào binary khi biên dịch
+docs/          Đặc tả, quy tắc, thiết kế và lịch sử công việc
 ```
+
+## Kiểm tra
+
+Chạy `scripts\\verify.ps1` để kiểm tra định dạng/encoding và build; chạy `scripts\\smoke.ps1` để khởi động ứng dụng với dữ liệu tạm và kiểm tra các tuyến API chính.
 
 ## Chế độ dev (tự phát triển)
 
-Chạy `.\scripts\dev.ps1` từ thư mục gốc repo (hoặc `scripts\dev.cmd`). App chạy từ bản sao `target\dev-run\ai-hub.exe`, dùng dữ liệu AI Hub thật của bạn. UI được đọc từ `ui\` mỗi request và tự tải lại khi thay đổi. Khi Rust hoặc Cargo manifest đổi, banner cho phép build và khởi động lại; có thể bật tự build trong Cài đặt › Tự phát triển. Build thành công khởi động lại app qua launcher. Dùng `.\scripts\verify.ps1` để chạy kiểm tra tổng hợp và `.\scripts\smoke.ps1` để kiểm tra API với cấu hình tạm.
+Chạy `scripts\\dev.ps1` từ thư mục gốc repo. Chế độ này khởi chạy ứng dụng với UI được đọc trực tiếp từ thư mục `ui\\`, tự tải lại khi giao diện thay đổi và hỗ trợ build lại khi mã Rust hoặc manifest thay đổi. Dữ liệu ứng dụng vẫn dùng thư mục dữ liệu AI Hub của người dùng.
 
-Trong chế độ dev, nút **Tự phát triển** ở thanh bên hiển thị nhánh, file thay đổi và commit gần nhất; thông tin repo tự làm mới mỗi 10 giây. Có thể mở chat với quyền sửa file hoặc lập kế hoạch trên repo này, tạo checkpoint, xem diff, bỏ thay đổi có xác nhận, commit, chạy test và build exe release theo yêu cầu. Test dùng `target\dev-check` để tách sản phẩm biên dịch khỏi app đang chạy. MutiS verify chạy tiếp sau `cargo test` khi cổng kiểm tra được bật. Không thao tác nào tự push; build release chỉ chạy khi bấm nút. Nếu build báo `Access is denied`, hãy đóng exe release đang chạy để nhả khóa tệp.
-
-Nút **⚒ Chat phát triển** mở một chat thường được ghim vào repo AI Hub. Trong dev mode, server luôn dùng đường dẫn repo dù client gửi folder khác; folder hiển thị chỉ đọc. Khi MutiS bật, chat dùng MutiS; nếu tắt, chat dùng Codex CLI với mức suy luận cao. Chat lưu cờ `dev_chat`, hiện biểu tượng ⚒ trong lịch sử và gửi hướng dẫn tự phát triển cho yêu cầu đầu tiên cũng như các task phát sinh từ kế hoạch. Nếu mở lại chat khi dev mode đã tắt, chat tiếp tục dùng folder đã lưu và báo chế độ dev đang tắt.
+Trong chế độ dev, trang Tự phát triển hiển thị trạng thái repo, diff, checkpoint, commit, test và build release. Chat phát triển được ghim vào repo AI Hub và dùng đúng thư mục repo làm phạm vi làm việc.

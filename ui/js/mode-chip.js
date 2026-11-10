@@ -73,7 +73,7 @@ export function renderModePicker() {
   chip.classList.toggle("mutis-chip", isMutis);
   $("#mode-chip-provider").textContent = isMutis ? "MutiS · " : (shortName && provider.name !== shortName ? `${shortName} · ` : "");
   if (isMutis) {
-    const roles = state.orchestration?.roles || {};
+    const roles = state.mutis?.roles || {};
     const roleNames = ["lead", "big", "small"].map(key => prettyModel(roles[key]?.model || "—"));
     $("#mode-chip-model").textContent = roleNames.join(" · ");
     $("#mode-chip-effort").textContent = "";
@@ -110,8 +110,8 @@ export function renderModePicker() {
   mutisRow.setAttribute("role", "radio");
   mutisRow.setAttribute("aria-checked", String(isMutis));
   mutisRow.dataset.source = "mutis";
-  mutisRow.textContent = state.orchestration?.enabled ? "✦ MutiS (3 AI)" : "✦ MutiS — bật trong Cài đặt";
-  mutisRow.disabled = !state.orchestration?.enabled;
+  mutisRow.textContent = state.mutis?.enabled ? "✦ MutiS (3 AI)" : "✦ MutiS — bật trong Cài đặt";
+  mutisRow.disabled = !state.mutis?.enabled;
   providers.append(mutisRow);
   for (const item of state.config?.providers || []) {
     const row = document.createElement("button");
@@ -163,7 +163,7 @@ export function renderMutisRoleRows(containerId) {
     ["small", "Làm việc nhỏ", "◦"],
   ];
   for (const [key, label, icon] of roleDefinitions) {
-    const role = state.orchestration.roles?.[key] || { provider_id: "", model: "", effort: "default" };
+    const role = state.mutis.roles?.[key] || { provider_id: "", model: "", effort: "default" };
     const row = el("div", { className: "mutis-role-row" });
     const provider = el("select", { dataset: { roleProvider: key }, ariaLabel: `Nguồn ${label}` });
     provider.append(...(state.config.providers || []).map(item => el("option", { value: item.id, textContent: item.name })));
@@ -213,7 +213,7 @@ export function renderMutisSwitches(containerId) {
   for (const [key, label] of switches) {
     const input = el("input", {
       type: "checkbox",
-      checked: Boolean(state.orchestration?.[key]),
+      checked: Boolean(state.mutis?.[key]),
       dataset: { mutisSwitch: key },
     });
     root.append(el("label", {}, [input, document.createTextNode(` ${label}`)]));
@@ -222,7 +222,7 @@ export function renderMutisSwitches(containerId) {
 export async function saveMutisRoles(containerId = "mode-mutis-section") {
   const root = $(`#${containerId}`);
   if (!root) return;
-  const next = { ...state.orchestration, roles: { ...state.orchestration.roles } };
+  const next = { ...state.mutis, roles: { ...state.mutis.roles } };
   for (const key of ["lead", "big", "small"]) {
     const role = { ...next.roles[key] };
     const provider = root.querySelector(`[data-role-provider="${key}"]`);
@@ -247,7 +247,7 @@ export async function saveMutisRoles(containerId = "mode-mutis-section") {
   for (const input of root.querySelectorAll("[data-mutis-switch]")) {
     next[input.dataset.mutisSwitch] = input.checked;
   }
-  state.orchestration = await api("/api/mutis", { method: "PUT", body: JSON.stringify(next) });
+  state.mutis = await api("/api/mutis", { method: "PUT", body: JSON.stringify(next) });
   renderModePicker();
   renderMutisRoleRows("settings-mutis-roles");
 }

@@ -20,7 +20,7 @@
       <button id="plans-open" class="new-chat" type="button">✦ Chia việc</button>
       <div class="sidebar-bottom">
         <div class="local-note"><span class="status-dot"></span> Chỉ chạy trên máy này</div>
-        <div id="orchestration-badge" class="local-note">MutiS: TẮT</div>
+        <div id="mutis-badge" class="local-note">MutiS: TẮT</div>
         <button id="settings-open" class="settings-open"><span aria-hidden="true">⚙</span> Cài đặt</button>
         <button id="extensions-open" class="settings-open"><span aria-hidden="true">◇</span> Tiện ích</button>
         <button id="mutis-open" class="settings-open" type="button">✦ MutiS</button>
@@ -214,14 +214,14 @@
           <small>Tự động build sau khi mã Rust ổn định 3 giây và không có việc AI đang chạy.</small>
         </label>
       </section>
-      <section class="planner-settings orchestration-settings">
+      <section class="planner-settings mutis-settings">
         <div class="section-heading"><h3>MutiS</h3></div>
         <label>
           <span><input type="checkbox" data-orch="enabled"> Bật MutiS</span>
           <small>Claude lập kế hoạch & review · Codex làm việc lớn · DeepSeek làm việc nhỏ</small>
         </label>
         <div id="settings-mutis-roles"></div>
-        <div id="orchestration-controls" class="orchestration-controls">
+        <div id="mutis-controls" class="mutis-controls">
           <label>
             <span><input type="checkbox" data-orch="retry_api"> Thử lại API</span>
             <small>Thử lại khi kết nối lỗi hoặc máy chủ trả lỗi tạm thời.</small>
@@ -267,7 +267,7 @@
           </label>
         <label><span><input type="checkbox" data-orch="event_log"> Ghi nhật ký sự kiện</span><small>Lưu thời gian, token và trạng thái của task plan.</small></label>
         <label>Quy tắc cho worker<textarea data-orch="worker_rules" rows="5" aria-label="Quy tắc worker"></textarea></label>
-        <div><strong>Định tuyến mặc định</strong><div id="orchestration-routing"></div></div>
+        <div><strong>Định tuyến mặc định</strong><div id="mutis-routing"></div></div>
       </div></section>
       <section class="planner-settings legacy-role-settings">
         <div class="section-heading"><h3>Người lập kế hoạch</h3></div>

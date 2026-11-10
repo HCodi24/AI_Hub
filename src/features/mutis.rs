@@ -81,7 +81,7 @@ pub fn validate_diagnosis(value: Value) -> anyhow::Result<Value> {
         || !value["findings"].is_array()
         || !value["summary"].is_string()
     {
-        anyhow::bail!("Invalid diagnosis shape");
+        anyhow::bail!("Cấu trúc kết quả chẩn đoán không hợp lệ");
     }
     let findings = value["findings"]
         .as_array()
@@ -91,21 +91,21 @@ pub fn validate_diagnosis(value: Value) -> anyhow::Result<Value> {
             let field = |name: &str| {
                 finding[name]
                     .as_str()
-                    .ok_or_else(|| anyhow::anyhow!("Invalid finding field: {name}"))
+                    .ok_or_else(|| anyhow::anyhow!("Trường phát hiện không hợp lệ: {name}"))
             };
             let severity = field("severity")?;
             if !matches!(severity, "high" | "medium" | "low") {
-                anyhow::bail!("Invalid finding severity");
+                anyhow::bail!("Mức độ nghiêm trọng của phát hiện không hợp lệ");
             }
             let setting_change_value = finding
                 .get("setting_change")
-                .ok_or_else(|| anyhow::anyhow!("Missing setting_change"))?;
+                .ok_or_else(|| anyhow::anyhow!("Thiếu thay đổi thiết lập"))?;
             let setting_change = match setting_change_value {
                 Value::Null => Value::Null,
                 change if change["path"].is_string() && change.get("value").is_some() => {
                     json!({"path": change["path"], "value": change["value"]})
                 }
-                _ => anyhow::bail!("Invalid setting_change shape"),
+                _ => anyhow::bail!("Cấu trúc thay đổi thiết lập không hợp lệ"),
             };
             Ok(json!({
                 "problem": field("problem")?,
@@ -131,7 +131,7 @@ pub fn apply_setting_change(
     let new: Value;
     macro_rules! boolean {
         ($field:ident) => {{
-            let v = value.as_bool().ok_or("Expected boolean")?;
+            let v = value.as_bool().ok_or("Giá trị phải là đúng hoặc sai")?;
             old = json!(m.$field);
             m.$field = v;
             new = json!(v);
@@ -142,7 +142,7 @@ pub fn apply_setting_change(
             let v = value
                 .as_u64()
                 .filter(|v| ($min..=$max).contains(v))
-                .ok_or("Value out of range")? as _;
+                .ok_or("Giá trị ngoài giới hạn")? as _;
             old = json!(m.$field);
             m.$field = v;
             new = json!(v);
@@ -171,20 +171,20 @@ pub fn apply_setting_change(
             let role_name = parts.next().unwrap_or_default();
             let field = parts.next().unwrap_or_default();
             if parts.next().is_some() {
-                return Err("Path is not allowed".into());
+                return Err("Không được phép đổi thiết lập này".into());
             }
             let role = match role_name {
                 "lead" => &mut m.roles.lead,
                 "big" => &mut m.roles.big,
                 "small" => &mut m.roles.small,
-                _ => return Err("Path is not allowed".into()),
+                _ => return Err("Không được phép đổi thiết lập này".into()),
             };
             match field {
                 "provider_id" => {
                     let v = value
                         .as_str()
                         .filter(|v| config.providers.iter().any(|p| p.id == *v))
-                        .ok_or("Provider does not exist")?;
+                        .ok_or("Không tìm thấy nguồn AI")?;
                     old = json!(role.provider_id);
                     role.provider_id = v.into();
                     new = json!(v);
@@ -193,7 +193,7 @@ pub fn apply_setting_change(
                     let v = value
                         .as_str()
                         .filter(|v| !v.trim().is_empty() && v.len() <= 200)
-                        .ok_or("Invalid model")?;
+                        .ok_or("Model không hợp lệ")?;
                     old = json!(role.model);
                     role.model = v.into();
                     new = json!(v);
@@ -204,12 +204,12 @@ pub fn apply_setting_change(
                         .filter(|v| {
                             matches!(*v, "default" | "low" | "medium" | "high" | "xhigh" | "max")
                         })
-                        .ok_or("Invalid effort")?;
+                        .ok_or("Mức suy luận không hợp lệ")?;
                     old = json!(role.effort);
                     role.effort = v.into();
                     new = json!(v);
                 }
-                _ => return Err("Path is not allowed".into()),
+                _ => return Err("Không được phép đổi thiết lập này".into()),
             }
         }
         _ if path.starts_with("mutis.routing[") && path.ends_with("].role") => {
@@ -217,20 +217,20 @@ pub fn apply_setting_change(
                 .strip_prefix("mutis.routing[")
                 .and_then(|p| p.strip_suffix("].role"))
                 .and_then(|i| i.parse::<usize>().ok())
-                .ok_or("Path is not allowed")?;
+                .ok_or("Không được phép đổi thiết lập này")?;
             let rule = m
                 .routing
                 .get_mut(index)
-                .ok_or("Routing rule does not exist")?;
+                .ok_or("Không tìm thấy quy tắc định tuyến")?;
             let role = value
                 .as_str()
                 .filter(|v| matches!(*v, "lead" | "big" | "small"))
-                .ok_or("Invalid role")?;
+                .ok_or("Vai trò không hợp lệ")?;
             old = json!(rule.role);
             rule.role = role.into();
             new = json!(role);
         }
-        _ => return Err("Path is not allowed".into()),
+        _ => return Err("Không được phép đổi thiết lập này".into()),
     }
     Ok((old, new))
 }

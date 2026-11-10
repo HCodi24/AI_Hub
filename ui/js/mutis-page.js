@@ -110,7 +110,7 @@ export function settingChangeAllowed(change) {
     return ["default", "low", "medium", "high", "xhigh", "max"].includes(value);
   }
   const routeMatch = path.match(/^mutis\.routing\[(\d+)\]\.role$/);
-  return !!routeMatch && Number(routeMatch[1]) < (state.orchestration?.routing?.length || 0) && ["lead", "big", "small"].includes(value);
+  return !!routeMatch && Number(routeMatch[1]) < (state.mutis?.routing?.length || 0) && ["lead", "big", "small"].includes(value);
 }
 export function renderDiagnosis(diagnosis) {
   const root = $("#mutis-diagnosis-current");
@@ -142,7 +142,7 @@ export function renderDiagnosis(diagnosis) {
           const current = await api("/api/mutis"), old = getSettingValue(current, change.path);
           if (!window.confirm(`Đổi ${change.path}: ${JSON.stringify(old)} → ${JSON.stringify(change.value)}?`)) return;
           const result = await api("/api/mutis/apply", { method: "POST", body: JSON.stringify(change) });
-          state.orchestration = await api("/api/mutis");
+          state.mutis = await api("/api/mutis");
           showToast(`Đã đổi ${change.path}: ${JSON.stringify(result.old)} → ${JSON.stringify(result.new)}`);
         } catch (error) { showToast(error.message); }
       }});

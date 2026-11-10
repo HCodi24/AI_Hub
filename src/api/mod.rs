@@ -71,10 +71,10 @@ pub fn router(state: AppState) -> Router {
             "/api/config",
             get(crate::api::config::get_config).put(crate::api::config::put_config),
         )
-        // MutiS and orchestration routes.
+        // MutiS routes.
         .route(
             "/api/mutis",
-            get(crate::api::mutis::get_orchestration).put(crate::api::mutis::put_orchestration),
+            get(crate::api::mutis::get_mutis).put(crate::api::mutis::put_mutis),
         )
         .route(
             "/api/mutis/roles/resolve",
@@ -99,16 +99,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/mutis/events",
-            get(crate::api::mutis::orchestration_events)
-                .post(crate::api::mutis::record_orchestration_event),
-        )
-        .route(
-            "/api/orchestration",
-            get(crate::api::mutis::get_orchestration).put(crate::api::mutis::put_orchestration),
-        )
-        .route(
-            "/api/orchestration/events",
-            get(crate::api::mutis::orchestration_events),
+            get(crate::api::mutis::mutis_events).post(crate::api::mutis::record_mutis_event),
         )
         // Provider management and discovery routes.
         .route(

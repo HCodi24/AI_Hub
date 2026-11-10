@@ -261,7 +261,10 @@ pub(crate) async fn chat_handler(
                         });
                     }
                     if event_logging_enabled && event.name == "error" {
-                        let detail = event.data["text"].as_str().unwrap_or("Unknown provider error").to_owned();
+                        let detail = event.data["text"]
+                            .as_str()
+                            .unwrap_or("Đã xảy ra lỗi với nguồn AI")
+                            .to_owned();
                         let _ = task_state.event_log.append(&Event {
                             ts: mutis::now(),
                             plan_id: plan_id.clone(),

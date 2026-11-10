@@ -111,7 +111,7 @@ pub(super) async fn generate_plan(
     let folder = requested_folder
         .canonicalize()
         .map(crate::core::text::strip_verbatim)
-        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Working folder does not exist"))?;
+        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục làm việc không tồn tại"))?;
     let cfg = state.config.read().await.clone();
     let statuses = join_all(
         cfg.providers
@@ -158,7 +158,7 @@ pub(super) async fn generate_plan(
         .ok_or_else(|| {
             ApiError::new(
                 StatusCode::BAD_REQUEST,
-                "Choose a connected planner provider in Settings",
+                "Hãy chọn nguồn AI lập kế hoạch đã kết nối trong Cài đặt",
             )
         });
     let planner = match planner {
@@ -189,7 +189,7 @@ pub(super) async fn generate_plan(
     if model.trim().is_empty() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "Planner needs a model",
+            "Nguồn lập kế hoạch cần có model",
         ));
     }
     let workers = connected
@@ -247,8 +247,12 @@ pub(super) async fn generate_plan(
         workers,
         routes
     );
-    let provider = providers::for_kind(&planner.kind)
-        .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
+    let provider = providers::for_kind(&planner.kind).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Loại nguồn AI lập kế hoạch không hợp lệ",
+        )
+    })?;
     let cancel = CancellationToken::new();
     let (out_tx, out_rx) = mpsc::channel(32);
     let (event_tx, mut event_rx) = mpsc::channel(32);
@@ -297,7 +301,12 @@ pub(super) async fn generate_plan(
                     if event.name == "delta" {
                         raw.push_str(event.data["text"].as_str().unwrap_or_default());
                     } else if event.name == "error" {
-                        error = Some(event.data["text"].as_str().unwrap_or("planner failed").to_owned());
+                        error = Some(
+                            event.data["text"]
+                                .as_str()
+                                .unwrap_or("Nguồn lập kế hoạch gặp lỗi")
+                                .to_owned(),
+                        );
                     } else if event.name == "log"
                         && out_tx.send(chat::sse_event("log", &event.data)).await.is_err()
                     {
@@ -314,10 +323,10 @@ pub(super) async fn generate_plan(
                 };
                 let parsed = crate::core::text::extract_json(&raw)
                     .and_then(|v| serde_json::from_str::<Value>(v).ok())
-                    .ok_or_else(|| format!("Could not parse planner JSON: {raw}"))?;
+                    .ok_or_else(|| format!("Không đọc được JSON từ nguồn lập kế hoạch: {raw}"))?;
                 let source = parsed["tasks"]
                     .as_array()
-                    .ok_or_else(|| "Missing tasks array".to_owned())?;
+                    .ok_or_else(|| "Kết quả lập kế hoạch thiếu danh sách công việc".to_owned())?;
                 let tasks =
                     source
                         .iter()

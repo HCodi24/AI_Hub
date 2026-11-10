@@ -18,7 +18,7 @@ import {
 } from "./chat.js";
 import { api, readSse } from "./api.js";
 import {
-  scheduleOrchestrationSave,
+  scheduleMutisSave,
   clearProviderForm,
   deleteProvider,
   discoverCli,
@@ -29,12 +29,12 @@ import {
   refreshCliStatus,
   renderPlannerSettings,
   saveDefaultFolder,
-  saveOrchestration,
+  saveMutis,
   savePlannerConfig,
   saveProvider,
   testAllProviders,
   testProvider,
-  updateOrchestrationDisabled,
+  updateMutisDisabled,
   updateProviderFormKind,
   useDeployKey,
 } from "./settings.js";
@@ -175,7 +175,7 @@ $("#mode-chip").addEventListener("click", () => {
 });
 $("#mode-popover").addEventListener("click", (event) => {
   const source=event.target.closest("[data-source]")?.dataset.source;
-  if (source === "mutis" && state.orchestration?.enabled) {
+  if (source === "mutis" && state.mutis?.enabled) {
     state.selectedSource = "mutis";
     messageInput.placeholder = "Mô tả việc cần làm — MutiS sẽ chia việc cho 3 AI…";
     renderModePicker();
@@ -200,8 +200,8 @@ $("#mode-popover").addEventListener("change", (event) => {
   if (provider) {
     const key = provider.dataset.roleProvider;
     const selected = state.config.providers.find(item => item.id === provider.value);
-    state.orchestration.roles[key].provider_id = provider.value;
-    state.orchestration.roles[key].model = selected?.models?.[0] || "";
+    state.mutis.roles[key].provider_id = provider.value;
+    state.mutis.roles[key].model = selected?.models?.[0] || "";
     renderMutisRoleRows("mode-mutis-roles");
     saveMutisRoles("mode-mutis-section").catch(error => showToast(error.message));
   } else if (event.target.matches("[data-role-model], [data-role-effort], [data-mutis-switch]")) {
@@ -255,14 +255,14 @@ $("#cli-discover").addEventListener("click", discoverCli);
 $("#models-load").addEventListener("click", loadModels);
 $("#cli-refresh").addEventListener("click", refreshCliStatus);
 document.querySelectorAll("[data-orch]").forEach(input => input.addEventListener("change", () => {
-  updateOrchestrationDisabled(); scheduleOrchestrationSave();
+  updateMutisDisabled(); scheduleMutisSave();
 }));
-$("#orchestration-routing").addEventListener("change", () => { scheduleOrchestrationSave(); });
+$("#mutis-routing").addEventListener("change", () => { scheduleMutisSave(); });
 $('[data-orch="reviewer_provider_id"]').addEventListener("change", () => {
   const provider = state.config.providers.find(p => p.id === $('[data-orch="reviewer_provider_id"]').value);
   const model = $('[data-orch="reviewer_model"]');
   model.replaceChildren(...(provider?.models || []).map(value => el("option", {value,textContent:value})));
-  saveOrchestration();
+  saveMutis();
 });
 
 (async function init() {
