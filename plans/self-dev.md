@@ -1,40 +1,45 @@
-# Tự phát triển (Self-dev) — dùng AI Hub để sửa chính AI Hub
+# Tự phát triển (Self-dev) — chạy AI Hub từ mã nguồn và dùng chính nó để sửa nó
 
 Trạng thái: đang làm · Bắt đầu: 2026-11-10 · Giám sát: Claude · Code: Codex (gpt-6-luna)
 
-## Mục tiêu
-AI Hub chỉ có một người dùng (chủ repo). Thêm chế độ để dùng chính app đang chạy sửa mã nguồn của nó:
-sửa (chat/Chia việc/MutiS) → build bản thử → chạy thử song song → ổn thì **áp dụng** thành exe chính; hỏng thì **khôi phục**.
+## Yêu cầu của người dùng (đã chốt 2026-11-10)
+- KHÔNG dùng file exe release, KHÔNG có "bản thử" chạy song song, KHÔNG thay exe.
+- App chạy **local từ mã nguồn** (chế độ dev) và AI sửa **chính bản đang chạy đó**; sửa xong thấy ngay.
+- Khi ổn thì người dùng tự build exe sau (có nút, nhưng chỉ khi người dùng bấm).
+- (Thiết kế cũ "build bản thử cổng 7879 + thay exe" đã bị huỷ; code dở đã bỏ.)
 
-## Vấn đề kỹ thuật cần giải
-- Windows khoá file exe đang chạy → không build đè `target/release/ai-hub.exe` được.
-  → Build bản thử vào `target-dev/` (CARGO_TARGET_DIR riêng).
-- Bản thử không được đụng dữ liệu thật → chạy với `AI_HUB_CONFIG_PATH` trỏ tới **bản sao** cấu hình trong
-  `%APPDATA%\ai-hub\dev-sandbox\config.json` (chats/plans/mutis của bản thử nằm cạnh đó), cổng riêng (mặc định 7879).
-- Thay exe đang chạy: Windows cho phép **đổi tên** exe đang chạy → đổi `ai-hub.exe` → `ai-hub.prev.exe`, chép bản mới
-  vào `ai-hub.exe`, khởi động bản mới (cùng cổng) rồi thoát bản cũ; lỗi → đổi tên ngược lại.
-- An toàn: checkpoint git trước khi sửa; không cho áp dụng khi build/test/verify chưa đạt.
+## Cách chạy chế độ dev
+`.\dev.ps1` trong repo (hoặc `dev.cmd`):
+1. `cargo build` (debug, target\debug).
+2. Chép `target\debug\ai-hub.exe` → `target\dev-run\ai-hub.exe` rồi chạy bản chép đó với `--dev`
+   (chạy bản chép để `cargo build` sau này không bị Windows khoá file).
+3. Khi app thoát với mã **75** ("xin khởi động lại") → quay lại bước 1 (build lỗi thì giữ bản cũ, chạy lại bản cũ và
+   báo lỗi build). Mã khác → dừng. Ctrl+C dừng hẳn.
 
-## Trang "Tự phát triển" (thanh bên, chỉ hiện khi bật trong Cài đặt)
-1. Dự án: đường dẫn repo của app (tự nhận từ vị trí exe: `<repo>\target\release\ai-hub.exe` → `<repo>`; sửa được).
-   Hiện nhánh git, số file thay đổi, commit cuối.
-2. "Sửa app bằng AI": nút mở Chat mới / Chia việc với Thư mục = repo (MutiS nếu bật).
-3. "Build bản thử": `cargo build --release` vào `target-dev`, log trực tiếp, rồi `cargo test` + cổng kiểm tra.
-4. "Chạy bản thử": chạy `target-dev\release\ai-hub.exe --port 7879 --no-open` với cấu hình sandbox, nút mở tab; dừng.
-5. "Áp dụng bản mới" (chỉ bật khi build+test+verify đạt và bản thử đã chạy được): xác nhận → thay exe chính → app tự
-   khởi động lại trên cổng hiện tại; trang tự tải lại.
-6. "Khôi phục bản trước": dùng `ai-hub.prev.exe`.
-7. Git: "Tạo checkpoint" (commit WIP), "Xem thay đổi" (diff), "Bỏ thay đổi về checkpoint" (xác nhận), "Commit" (tác giả theo
-   git config của repo — HCodi24).
+## Trong app khi `--dev`
+- **Giao diện đọc thẳng từ đĩa** (`<repo>\ui\*`) mỗi request thay vì bản nhúng → AI sửa HTML/CSS/JS là có hiệu lực.
+  **Tự tải lại trang**: server theo dõi mtime `ui\*` (poll 1s), báo qua SSE `/api/dev/events` → trình duyệt reload.
+- **Sửa Rust**: server theo dõi mtime `src\**\*.rs`, `Cargo.toml`. Có thay đổi → thanh thông báo
+  "Code Rust đã thay đổi · [Build & khởi động lại]". Bấm → app chạy `cargo build` (target\debug, không bị khoá vì app
+  đang chạy bản chép) với log trực tiếp; build lỗi → hiện lỗi, app vẫn chạy bản cũ; build đạt → app thoát mã 75,
+  dev.ps1 khởi động bản mới, trình duyệt tự kết nối lại và tải lại.
+  Tuỳ chọn "Tự build & khởi động lại khi code Rust đổi" (mặc định tắt).
+- **Không khởi động lại khi đang có chat/task AI chạy** → chờ xong (hiện "Đang chờ N việc xong…") hoặc người dùng huỷ.
+- Dùng **cùng dữ liệu thật** (%APPDATA%\ai-hub) — đúng ý "sửa chính bản đang chạy".
+- Huy hiệu "DEV" ở thanh bên.
+
+## Trang "Tự phát triển" (thanh bên, chỉ khi `--dev`)
+- Repo: đường dẫn, nhánh, số file thay đổi, commit cuối.
+- "Sửa app bằng AI": mở chat mới / Chia việc với Thư mục = repo (MutiS nếu bật, không thì Codex CLI, quyền Được sửa file).
+- Git: "Tạo checkpoint" (commit WIP), "Xem thay đổi" (diff), "Bỏ thay đổi về checkpoint" (xác nhận), "Commit" (tác giả theo
+  git config repo — HCodi24).
+- Kiểm tra: "Chạy test" (`cargo test` với CARGO_TARGET_DIR=target\dev-check để không đụng target\debug) + cổng kiểm tra MutiS.
+- "Build exe release" — chỉ khi người dùng bấm (`cargo build --release`), báo đường dẫn exe.
 
 ## Các bước
-- [ ] 11a — cấu hình `self_dev` + trang Tự phát triển: dự án/git status, build bản thử (target-dev) + test + verify,
-  chạy/dừng bản thử trên cổng 7879 với cấu hình sandbox.
-- [ ] 11b — áp dụng bản mới (đổi tên exe + khởi động lại), khôi phục, checkpoint/diff/bỏ thay đổi/commit; khoá an toàn.
-
-## Quyết định
-- Chỉ chạy local, chỉ người dùng hiện tại; không thêm đăng nhập.
-- Không tự động áp dụng; luôn cần người dùng bấm + xác nhận.
-- Bản thử luôn dùng dữ liệu sandbox (bản sao), không đụng dữ liệu thật.
+- [ ] 11a — `--dev`: UI từ đĩa + tự tải lại; theo dõi Rust; endpoint build & restart (mã 75) có khoá khi đang chạy việc;
+  `dev.ps1`/`dev.cmd`; huy hiệu DEV.
+- [ ] 11b — trang Tự phát triển: repo/git status, mở chat sửa app, checkpoint/diff/bỏ/commit, chạy test, build release.
 
 ## Nhật ký tiến độ
+- 2026-11-10: bỏ thiết kế cũ (exe thử + thay exe) theo yêu cầu; viết lại thiết kế chế độ dev.
