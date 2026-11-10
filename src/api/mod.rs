@@ -6,6 +6,8 @@ use axum::{
 };
 use serde_json::json;
 
+pub mod chat;
+pub mod config;
 pub mod dev;
 pub mod extensions;
 pub mod mutis;

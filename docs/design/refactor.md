@@ -41,3 +41,5 @@ docs/{SPEC.md,CODEX_RULES.md,design/*,history/tasks/*}
 - 2026-11-10: R2b complete. Moved `/api/dev/*` handlers and `/`, `/app.js`, `/style.css` serving (including dev disk serving) from `src/server.rs` into `src/api/dev.rs` and `src/api/static_ui.rs`; moved the dev chat-folder unit test. No intended behavior changes.
 
 - 2026-11-10: R2c complete. Moved all `/api/mutis*` and `/api/orchestration*` handlers, `/api/verify`, `/api/plan-diff`, and `/api/extensions*` handlers plus their private helpers and extension helper tests into `src/api/{mutis,verify,extensions}.rs`. Router now references those modules; behavior unchanged. `src/server.rs`: 2,653 to 1,948 lines.
+
+- 2026-11-10: R2d complete. Moved `/api/chat`, `/api/chat/{id}/stop`, `/api/chats*` handlers, chat streaming/provider orchestration, event persistence, and job counter to `src/api/chat.rs`; moved `/api/config` GET/PUT to `src/api/config.rs`. Router references the new modules; behavior unchanged. `src/server.rs`: 1,999 to 1,556 lines. Verification: build, `scripts/verify.ps1`, and `scripts/smoke.ps1` passed.
