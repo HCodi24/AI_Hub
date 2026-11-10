@@ -203,3 +203,5 @@ Chạy `scripts\\verify.ps1` để kiểm tra định dạng/encoding và build;
 Chạy `scripts\\dev.ps1` từ thư mục gốc repo. Chế độ này khởi chạy ứng dụng với UI được đọc trực tiếp từ thư mục `ui\\`, tự tải lại khi giao diện thay đổi và hỗ trợ build lại khi mã Rust hoặc manifest thay đổi. Dữ liệu ứng dụng vẫn dùng thư mục dữ liệu AI Hub của người dùng.
 
 Trong chế độ dev, trang Tự phát triển hiển thị trạng thái repo, diff, checkpoint, commit, test và build release. Chat phát triển được ghim vào repo AI Hub và dùng đúng thư mục repo làm phạm vi làm việc.
+
+Nếu AI Hub dev đang chạy sẵn, `scripts\dev.ps1` chỉ báo PID và địa chỉ rồi dừng; muốn tắt bản cũ và chạy lại từ đầu thì dùng `.\scripts\dev.ps1 -Restart`.
