@@ -221,13 +221,13 @@ async fn run_command(
     let output = tokio::select! {
         result = timeout(deadline.saturating_duration_since(Instant::now()), output_task) => result,
         _ = tx.closed() => {
-            kill_process_tree(pid).await;
+            crate::core::process::kill_process_tree(pid).await;
             return (false, "Đã hủy kiểm tra".into());
         },
     };
     match output {
         Ok(Ok(Ok(o))) => {
-            let s = strip_ansi(&format!(
+            let s = crate::core::text::strip_ansi(&format!(
                 "{}{}",
                 String::from_utf8_lossy(&o.stdout),
                 String::from_utf8_lossy(&o.stderr)
@@ -237,31 +237,9 @@ async fn run_command(
         Ok(Ok(Err(e))) => (false, e.to_string()),
         Ok(Err(e)) => (false, e.to_string()),
         Err(_) => {
-            kill_process_tree(pid).await;
+            crate::core::process::kill_process_tree(pid).await;
             (false, "Quá thời gian 15 phút".into())
         }
-    }
-}
-async fn kill_process_tree(pid: Option<u32>) {
-    let Some(pid) = pid else { return };
-    #[cfg(windows)]
-    {
-        let mut killer = Command::new("taskkill");
-        killer
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        killer.as_std_mut().creation_flags(CREATE_NO_WINDOW);
-        let _ = killer.status().await;
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = Command::new("kill")
-            .args(["-TERM", &pid.to_string()])
-            .status()
-            .await;
     }
 }
 async fn changed_files(folder: &Path) -> Vec<PathBuf> {
@@ -509,25 +487,6 @@ fn next_action(
         ReviewAction::Fail
     }
 }
-fn strip_ansi(s: &str) -> String {
-    let mut out = String::new();
-    let mut esc = false;
-    for c in s.chars() {
-        if c == '\u{1b}' {
-            esc = true;
-            continue;
-        }
-        if esc {
-            if c.is_ascii_alphabetic() {
-                esc = false
-            }
-            continue;
-        }
-        out.push(c)
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -155,10 +155,7 @@ pub struct PlanStore {
 }
 impl PlanStore {
     pub fn new(config_path: &Path) -> Result<Self> {
-        let directory = config_path
-            .parent()
-            .context("Config path has no parent")?
-            .join("plans");
+        let directory = crate::core::paths::plans_dir(config_path)?;
         Ok(Self { directory })
     }
     pub fn list(&self) -> Result<Vec<Plan>> {

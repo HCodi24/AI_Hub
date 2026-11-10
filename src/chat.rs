@@ -233,10 +233,7 @@ pub fn save_record(store: &ChatStore, chat: &mut ChatRecord) -> Result<()> {
 }
 
 pub fn config_chat_dir(config_path: &Path) -> Result<PathBuf> {
-    Ok(config_path
-        .parent()
-        .context("Config path has no parent directory")?
-        .join("chats"))
+    crate::core::paths::chats_dir(config_path)
 }
 
 fn truncate(value: &str, max_chars: usize) -> String {

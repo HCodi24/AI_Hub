@@ -240,10 +240,7 @@ pub struct EventLog {
 }
 impl EventLog {
     pub fn new(config_path: &std::path::Path) -> anyhow::Result<Self> {
-        let directory = config_path
-            .parent()
-            .ok_or_else(|| anyhow::anyhow!("Config path has no parent"))?
-            .join("mutis");
+        let directory = crate::core::paths::mutis_dir(config_path)?;
         fs::create_dir_all(&directory)?;
         let old = config_path
             .parent()

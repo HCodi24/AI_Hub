@@ -1,5 +1,10 @@
 mod chat;
-mod config;
+mod core;
+mod config {
+    pub use crate::core::config::*;
+}
+mod api;
+mod app;
 mod dev;
 mod extensions;
 mod mutis;
@@ -63,7 +68,7 @@ async fn main() -> Result<()> {
         let path = if let Some(value) = std::env::var_os("AI_HUB_REPO") {
             let path = std::path::PathBuf::from(value)
                 .canonicalize()
-                .map(server::strip_verbatim)
+                .map(crate::core::text::strip_verbatim)
                 .context("AI_HUB_REPO is not a valid directory")?;
             if dev::discover_repo_root(&path).as_deref() != Some(path.as_path()) {
                 anyhow::bail!("AI_HUB_REPO must point to the ai-hub repository root (Cargo.toml name = ai-hub)");
@@ -77,7 +82,7 @@ async fn main() -> Result<()> {
     } else {
         None
     };
-    let state = server::AppState::new(config, config_path, chat_dir, repo);
+    let state = app::AppState::new(config, config_path, chat_dir, repo);
 
     let address = SocketAddr::from(([127, 0, 0, 1], options.port));
     let listener = tokio::net::TcpListener::bind(address)
@@ -92,7 +97,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    axum::serve(listener, server::router(state, actual_port))
+    axum::serve(listener, api::router(state, actual_port))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

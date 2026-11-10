@@ -9,6 +9,8 @@ use std::{
     process::{Command as StdCommand, Stdio},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+pub use crate::core::text::one_line;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStderr, ChildStdin, Command},
@@ -392,7 +394,7 @@ pub async fn run_jsonl(
     let cli_name = command_spec.cli_name;
     let folder = tokio::fs::canonicalize(command_spec.folder)
         .await
-        .map(crate::server::strip_verbatim)
+        .map(crate::core::text::strip_verbatim)
         .with_context(|| format!("Không thể giải quyết thư mục làm việc cho {cli_name}"))?;
     let folder_text = folder.to_string_lossy();
     if folder_text.contains('%') || folder_text.contains('"') {
@@ -592,7 +594,7 @@ pub fn compose_prompt(messages: &[crate::chat::ChatMessage], has_session: bool) 
             "system" => "System",
             _ => "User",
         };
-        let content = truncate_chars(message.content.trim(), 700);
+        let content = crate::core::text::truncate_chars(message.content.trim(), 700);
         transcript.push_str(role);
         transcript.push_str(": ");
         transcript.push_str(&content);
@@ -621,22 +623,6 @@ pub fn safe_session_id(session_id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
 }
 
-pub fn one_line(value: &str, max_chars: usize) -> String {
-    truncate_chars(
-        &value.split_whitespace().collect::<Vec<_>>().join(" "),
-        max_chars,
-    )
-}
-
-fn truncate_chars(value: &str, max_chars: usize) -> String {
-    let mut chars = value.chars();
-    let mut result = chars.by_ref().take(max_chars).collect::<String>();
-    if chars.next().is_some() {
-        result.push('…');
-    }
-    result
-}
-
 async fn write_prompt(mut stdin: ChildStdin, prompt: String) -> std::io::Result<()> {
     stdin.write_all(prompt.as_bytes()).await?;
     stdin.shutdown().await
@@ -649,7 +635,7 @@ async fn collect_stderr(stderr: ChildStderr) -> Vec<String> {
         if tail.len() == 20 {
             tail.pop_front();
         }
-        tail.push_back(truncate_chars(&line, 2_000));
+        tail.push_back(crate::core::text::truncate_chars(&line, 2_000));
     }
     tail.into_iter().collect()
 }

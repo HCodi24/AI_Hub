@@ -1,8 +1,10 @@
 use crate::{
+    api::{ApiError, ApiResult},
+    app::{AppState, JobGuard, RunningChat},
     chat::{self, ChatMessage, ChatRecord, ChatRequest, ChatStore},
     config::{self, Config, ProviderConfig},
-    mutis::{self, Event, EventLog},
-    plans::{Plan, PlanStore, PlanTask},
+    mutis::{self, Event},
+    plans::{Plan, PlanTask},
     providers::{self, ProviderEvent, ProviderRequest},
 };
 use axum::{
@@ -22,106 +24,13 @@ use std::{
     ffi::OsString,
     path::PathBuf,
     process::Stdio,
-    sync::atomic::{AtomicUsize, Ordering},
-    sync::Arc,
+    sync::atomic::Ordering,
     time::{Duration, Instant},
 };
-use tokio::{
-    io::AsyncBufReadExt,
-    sync::broadcast,
-    sync::{mpsc, Mutex, RwLock},
-    time::timeout,
-};
+use tokio::{io::AsyncBufReadExt, sync::broadcast, sync::mpsc, time::timeout};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
-
-#[derive(Clone)]
-pub struct AppState {
-    config: Arc<RwLock<Config>>,
-    config_path: PathBuf,
-    chats: ChatStore,
-    plans: PlanStore,
-    running: Arc<Mutex<HashMap<String, RunningChat>>>,
-    extension_running: Arc<Mutex<HashMap<String, CancellationToken>>>,
-    provider_status: Arc<Mutex<HashMap<String, (Instant, ConnectionTest)>>>,
-    event_log: EventLog,
-    dev_repo: Option<PathBuf>,
-    dev_events: broadcast::Sender<String>,
-    active_jobs: Arc<AtomicUsize>,
-}
-
-#[derive(Clone)]
-struct RunningChat {
-    request_id: Uuid,
-    cancel: CancellationToken,
-}
-
-struct JobGuard(Arc<AtomicUsize>);
-impl JobGuard {
-    fn new(counter: Arc<AtomicUsize>) -> Self {
-        counter.fetch_add(1, Ordering::SeqCst);
-        Self(counter)
-    }
-}
-impl Drop for JobGuard {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::SeqCst);
-    }
-}
-
-impl AppState {
-    pub fn new(
-        config: Config,
-        config_path: PathBuf,
-        chat_dir: PathBuf,
-        dev_repo: Option<PathBuf>,
-    ) -> Self {
-        let plans = PlanStore::new(&config_path).expect("config path has a parent");
-        let event_log = EventLog::new(&config_path).expect("config path has a parent");
-        let (dev_events, _) = broadcast::channel(64);
-        let state = Self {
-            config: Arc::new(RwLock::new(config)),
-            config_path,
-            chats: ChatStore::new(chat_dir),
-            plans,
-            running: Arc::new(Mutex::new(HashMap::new())),
-            extension_running: Arc::new(Mutex::new(HashMap::new())),
-            provider_status: Arc::new(Mutex::new(HashMap::new())),
-            event_log,
-            dev_repo: dev_repo.clone(),
-            dev_events,
-            active_jobs: Arc::new(AtomicUsize::new(0)),
-        };
-        if let Some(repo) = dev_repo {
-            spawn_dev_watcher(state.clone(), repo);
-        }
-        state
-    }
-}
-
-#[derive(Debug)]
-struct ApiError {
-    status: StatusCode,
-    message: String,
-}
-
-impl ApiError {
-    fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        Self {
-            status,
-            message: message.into(),
-        }
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        (self.status, Json(json!({ "error": self.message }))).into_response()
-    }
-}
-
-type ApiResult<T> = Result<T, ApiError>;
 
 #[derive(Clone, Debug, Deserialize)]
 struct ProviderInput {
@@ -311,7 +220,7 @@ async fn verify_handler(
     }
     let folder = PathBuf::from(input.folder)
         .canonicalize()
-        .map(strip_verbatim)
+        .map(crate::core::text::strip_verbatim)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục không tồn tại"))?;
     if !folder.is_dir() {
         return Err(ApiError::new(
@@ -348,7 +257,7 @@ struct PlanDiffRequest {
 async fn plan_diff_handler(Json(input): Json<PlanDiffRequest>) -> ApiResult<Json<Value>> {
     let folder = PathBuf::from(input.folder)
         .canonicalize()
-        .map(strip_verbatim)
+        .map(crate::core::text::strip_verbatim)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục không tồn tại"))?;
     let output = tokio::process::Command::new("git")
         .args(["diff", "--no-color", "HEAD"])
@@ -712,7 +621,7 @@ async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<Response> {
             }
         }
         if !failed {
-            match extract_json(&raw).and_then(|text| serde_json::from_str::<Value>(text).ok()).and_then(|value| mutis::validate_diagnosis(value).ok()) {
+            match crate::core::text::extract_json(&raw).and_then(|text| serde_json::from_str::<Value>(text).ok()).and_then(|value| mutis::validate_diagnosis(value).ok()) {
                 Some(value) => {
                     let diagnosis = json!({"ts":ts,"health":value["health"],"findings":value["findings"],"summary":value["summary"]});
                     if let Err(error) = save_diagnosis(&stream_state, &diagnosis) { yield Ok(axum::response::sse::Event::default().event("error").json_data(json!({"message":error.message})).unwrap()); }
@@ -938,16 +847,15 @@ fn dev_chat_preamble(repo: &str) -> String {
 }
 
 async fn git_output(repo: &std::path::Path, args: &[&str]) -> ApiResult<std::process::Output> {
-    tokio::process::Command::new("git")
-        .args(args)
-        .current_dir(repo)
-        .output()
+    crate::core::process::git_output(repo, args)
         .await
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không chạy được Git"))
 }
 
 async fn git_text(repo: &std::path::Path, args: &[&str]) -> ApiResult<String> {
-    let output = git_output(repo, args).await?;
+    let output = crate::core::process::git_output(repo, args)
+        .await
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không chạy được Git"))?;
     if !output.status.success() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -1202,7 +1110,7 @@ async fn dev_events(State(state): State<AppState>) -> Response {
         .into_response()
 }
 
-fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
+pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
     tokio::spawn(async move {
         let (mut old_ui, mut old_rust) = crate::dev::snapshot(&repo);
         let mut pending: Option<Instant> = None;
@@ -1294,7 +1202,7 @@ async fn run_dev_build(state: &AppState, repo: &std::path::Path) -> Value {
                         if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
                             break;
                         }
-                        let clean = strip_ansi(&line);
+                        let clean = crate::core::text::strip_ansi(&line);
                         text.push_str(&clean);
                         let _ = tx1.send(clean).await;
                     }
@@ -1311,7 +1219,7 @@ async fn run_dev_build(state: &AppState, repo: &std::path::Path) -> Value {
                         if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
                             break;
                         }
-                        let clean = strip_ansi(&line);
+                        let clean = crate::core::text::strip_ansi(&line);
                         text.push_str(&clean);
                         let _ = tx2.send(clean).await;
                     }
@@ -1344,7 +1252,7 @@ async fn run_dev_build(state: &AppState, repo: &std::path::Path) -> Value {
         }
         Err(e) => (false, e.to_string()),
     };
-    let clean = strip_ansi(&logs);
+    let clean = crate::core::text::strip_ansi(&logs);
     let tail = clean
         .lines()
         .rev()
@@ -1440,7 +1348,7 @@ async fn generate_plan(
     };
     let folder = requested_folder
         .canonicalize()
-        .map(strip_verbatim)
+        .map(crate::core::text::strip_verbatim)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Working folder does not exist"))?;
     let cfg = state.config.read().await.clone();
     let statuses = join_all(
@@ -1611,7 +1519,7 @@ async fn generate_plan(
                 if let Some(e) = error {
                     return Err(e);
                 };
-                let parsed = extract_json(&raw)
+                let parsed = crate::core::text::extract_json(&raw)
                     .and_then(|v| serde_json::from_str::<Value>(v).ok())
                     .ok_or_else(|| format!("Could not parse planner JSON: {raw}"))?;
                 let source = parsed["tasks"]
@@ -1727,43 +1635,16 @@ async fn generate_plan(
         .keep_alive(KeepAlive::default())
         .into_response())
 }
-fn extract_json(raw: &str) -> Option<&str> {
-    let start = raw.find('{')?;
-    let mut depth = 0;
-    let mut quoted = false;
-    let mut escape = false;
-    for (offset, c) in raw[start..].char_indices() {
-        if quoted {
-            if escape {
-                escape = false
-            } else if c == '\\' {
-                escape = true
-            } else if c == '"' {
-                quoted = false
-            }
-        } else if c == '"' {
-            quoted = true
-        } else if c == '{' {
-            depth += 1
-        } else if c == '}' {
-            depth -= 1;
-            if depth == 0 {
-                return Some(&raw[start..start + offset + c.len_utf8()]);
-            }
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod plan_tests {
-    use super::{effective_chat_folder, extract_json};
+    use super::effective_chat_folder;
     use serde_json::Value;
 
     #[test]
     fn extracts_json_from_planner_answer_with_surrounding_text() {
         let answer = "Here is the plan:\n```json\n{\"title\":\"Ship it\",\"tasks\":[{\"id\":1}]}\n```\nDone.";
-        let extracted = extract_json(answer).expect("JSON object should be extracted");
+        let extracted =
+            crate::core::text::extract_json(answer).expect("JSON object should be extracted");
         let value: Value = serde_json::from_str(extracted).expect("extracted JSON should parse");
         assert_eq!(value["title"], "Ship it");
         assert_eq!(value["tasks"][0]["id"], 1);
@@ -2022,7 +1903,7 @@ async fn provider_models(
 }
 
 #[derive(Clone, Serialize)]
-struct ConnectionTest {
+pub(crate) struct ConnectionTest {
     ok: bool,
     status: &'static str,
     message: String,
@@ -2460,7 +2341,9 @@ fn drop_bundled_cli_duplicates(candidates: Vec<CliCandidate>) -> Vec<CliCandidat
         .collect()
 }
 fn canonical_install(path: PathBuf) -> PathBuf {
-    path.canonicalize().map(strip_verbatim).unwrap_or(path)
+    path.canonicalize()
+        .map(crate::core::text::strip_verbatim)
+        .unwrap_or(path)
 }
 fn discovery_paths(name: &str) -> Vec<(PathBuf, String)> {
     let mut out = Vec::new();
@@ -2656,7 +2539,7 @@ async fn chat_handler(
     }
     let folder = PathBuf::from(folder)
         .canonicalize()
-        .map(strip_verbatim)
+        .map(crate::core::text::strip_verbatim)
         .map_err(|_| {
             ApiError::new(
                 StatusCode::BAD_REQUEST,
@@ -3186,18 +3069,19 @@ async fn extension_action(
         .map(|s| OsString::from(*s))
         .collect::<Vec<_>>();
     let backup = action.backup.map(str::to_owned);
+    let configured_backups = crate::core::paths::backups_dir(&state.config_path).ok();
     let modify = action.modifies.to_owned();
     let job_guard = JobGuard::new(state.active_jobs.clone());
     tokio::spawn(async move {
         let _job_guard = job_guard;
         let result=async {
-            if let Some(file)=backup.as_deref(){if let Some(home)=dirs::home_dir(){let source=home.join(file);if source.exists(){let dir=dirs::config_dir().unwrap_or_else(||home.clone()).join("ai-hub").join("backups");tokio::fs::create_dir_all(&dir).await.map_err(|e|e.to_string())?;let stamp=backup_timestamp();let target=dir.join(format!("{}.{}.bak",source.file_name().unwrap_or_default().to_string_lossy(),stamp));tokio::fs::copy(&source,&target).await.map_err(|e|e.to_string())?;let _=tx.send(Ok(format!("Backup: {}",target.display()))).await;}}}
+            if let Some(file)=backup.as_deref(){if let Some(home)=dirs::home_dir(){let source=home.join(file);if source.exists(){let dir=configured_backups.clone().unwrap_or_else(||dirs::config_dir().unwrap_or_else(||home.clone()).join("ai-hub").join("backups"));tokio::fs::create_dir_all(&dir).await.map_err(|e|e.to_string())?;let stamp=backup_timestamp();let target=dir.join(format!("{}.{}.bak",source.file_name().unwrap_or_default().to_string_lossy(),stamp));tokio::fs::copy(&source,&target).await.map_err(|e|e.to_string())?;let _=tx.send(Ok(format!("Backup: {}",target.display()))).await;}}}
             let path=exe.ok_or_else(||format!("Không tìm thấy executable: {}",action.command))?;
             let _=tx.send(Ok(format!("{} {} | có thể sửa: {}",path.display(),args.iter().map(|x|x.to_string_lossy()).collect::<Vec<_>>().join(" "),modify))).await;
             let mut cmd=providers::cli_support::command_for(&path,&args);if let Some(cwd)=folder.as_ref(){cmd.current_dir(cwd);}cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
-            let mut child=cmd.spawn().map_err(|e|e.to_string())?;let stdout=child.stdout.take().ok_or_else(||"Không đọc được output".to_string())?;let stderr=child.stderr.take();if let Some(stderr)=stderr{let tx_err=tx.clone();tokio::spawn(async move{let mut reader=tokio::io::BufReader::new(stderr);let mut line=String::new();loop{line.clear();if reader.read_line(&mut line).await.unwrap_or(0)==0{break}let _=tx_err.send(Ok(strip_ansi(&line))).await;}});}
+            let mut child=cmd.spawn().map_err(|e|e.to_string())?;let stdout=child.stdout.take().ok_or_else(||"Không đọc được output".to_string())?;let stderr=child.stderr.take();if let Some(stderr)=stderr{let tx_err=tx.clone();tokio::spawn(async move{let mut reader=tokio::io::BufReader::new(stderr);let mut line=String::new();loop{line.clear();if reader.read_line(&mut line).await.unwrap_or(0)==0{break}let _=tx_err.send(Ok(crate::core::text::strip_ansi(&line))).await;}});}
             let mut reader=tokio::io::BufReader::new(stdout);let mut line=String::new();
-            let wait=async{let deadline=tokio::time::sleep(Duration::from_secs(600));tokio::pin!(deadline);loop{line.clear();tokio::select!{_ = token.cancelled()=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Đã dừng".to_string())},_ = &mut deadline=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Quá thời gian chờ 10 phút".to_string())},read=reader.read_line(&mut line)=>{let n=read.map_err(|e|e.to_string())?;if n==0{break}let _=tx.send(Ok(strip_ansi(&line))).await;}}}let status=child.wait().await.map_err(|e|e.to_string())?;if status.success(){Ok(())}else{Err(format!("Lệnh kết thúc với {status}"))}}.await;
+            let wait=async{let deadline=tokio::time::sleep(Duration::from_secs(600));tokio::pin!(deadline);loop{line.clear();tokio::select!{_ = token.cancelled()=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Đã dừng".to_string())},_ = &mut deadline=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Quá thời gian chờ 10 phút".to_string())},read=reader.read_line(&mut line)=>{let n=read.map_err(|e|e.to_string())?;if n==0{break}let _=tx.send(Ok(crate::core::text::strip_ansi(&line))).await;}}}let status=child.wait().await.map_err(|e|e.to_string())?;if status.success(){Ok(())}else{Err(format!("Lệnh kết thúc với {status}"))}}.await;
             wait
         }.await;
         let _ = tx.send(Err(result.err().unwrap_or_default())).await;
@@ -3232,23 +3116,6 @@ async fn extension_action(
         .keep_alive(KeepAlive::default())
         .into_response())
 }
-fn strip_ansi(input: &str) -> String {
-    let mut out = String::new();
-    let mut chars = input.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\u{1b}' && chars.peek() == Some(&'[') {
-            chars.next();
-            for x in chars.by_ref() {
-                if ('@'..='~').contains(&x) {
-                    break;
-                }
-            }
-        } else {
-            out.push(c)
-        }
-    }
-    out
-}
 fn backup_timestamp() -> String {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -3277,7 +3144,10 @@ fn backup_timestamp() -> String {
 mod extension_tests {
     #[test]
     fn ansi_sequences_are_removed() {
-        assert_eq!(super::strip_ansi("\u{1b}[31mred\u{1b}[0m"), "red");
+        assert_eq!(
+            crate::core::text::strip_ansi("\u{1b}[31mred\u{1b}[0m"),
+            "red"
+        );
     }
     #[test]
     fn backup_timestamp_has_required_shape() {
@@ -3351,20 +3221,9 @@ fn persist_config(state: &AppState, config: &Config) -> ApiResult<()> {
 
 /// `canonicalize()` on Windows returns verbatim paths like `\?\C:\TOOL\ai-hub`. cmd.exe cannot use those as the
 /// current directory (and they look odd in the UI), so convert them back to normal paths.
-pub(crate) fn strip_verbatim(path: PathBuf) -> PathBuf {
-    let text = path.to_string_lossy();
-    if let Some(rest) = text.strip_prefix(r"\?\UNC\") {
-        return PathBuf::from(format!(r"\{rest}"));
-    }
-    if let Some(rest) = text.strip_prefix(r"\?\") {
-        return PathBuf::from(rest);
-    }
-    path
-}
-
 #[cfg(test)]
 mod strip_verbatim_tests {
-    use super::strip_verbatim;
+    use crate::core::text::strip_verbatim;
     use std::path::PathBuf;
 
     #[test]
