@@ -31,7 +31,8 @@ AI Hub là ứng dụng desktop cục bộ dạng một binary Rust, phục vụ
 
 ### Nhà cung cấp và CLI
 - `POST /api/providers`; `PUT, DELETE /api/providers/{id}`
-- `GET /api/providers/{id}/models`; `POST /api/providers/{id}/test`, `/api/providers/{id}/use-deploy-key`, `/api/providers/{id}/login`
+- `GET /api/providers/{id}/models`; `POST /api/providers/{id}/test`, `/api/providers/{id}/use-deploy-key`
+- Đăng nhập web Claude Code CLI: `/login/start` chạy `claude auth login --claudeai` ẩn, trả URL HTTPS hợp lệ và session ID; `/login/code` gửi mã web; `/login/cancel` dừng phiên. Mỗi lần chỉ giữ một phiên; phiên hết hạn sau 10 phút không hoạt động và tiến trình bị dừng khi thoát ứng dụng.
 - `GET /api/cli-status`, `/api/cli-discover/{name}`
 
 ### Chat và lịch sử

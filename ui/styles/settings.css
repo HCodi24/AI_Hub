@@ -53,6 +53,26 @@
 }
 .provider-form input:focus, .provider-form select:focus, .provider-form textarea:focus { border-color: var(--accent); }
 .provider-form textarea { resize: vertical; font-family: ui-monospace, Consolas, monospace; }
+.claude-login-panel { display:grid; gap:8px; padding:12px; border:1px solid var(--line); border-radius:9px; background:var(--panel-2); }
+.claude-login-panel p { margin:0; color:var(--muted); font-size:11px; line-height:1.6; }
+.claude-login-panel label { color:var(--muted); font-size:10px; font-weight:600; }
+.claude-login-panel input { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; background:var(--panel); color:var(--text); }
+.login-link-row,.login-actions { display:flex; align-items:center; gap:8px; }
+.login-link-row a { color:var(--accent); font-size:11px; }
+.login-output { max-height:140px; overflow:auto; margin:0; padding:8px; white-space:pre-wrap; overflow-wrap:anywhere; border-radius:6px; background:var(--bg); color:var(--muted); font-size:10px; }
+.login-starting::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 7px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -2px;
+  animation: claude-login-spin .7s linear infinite;
+}
+@keyframes claude-login-spin { to { transform:rotate(360deg); } }
 .cli-settings { margin-top: 22px; padding-top: 17px; border-top: 1px solid var(--line); }
 .cli-status { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 11px; }
 .cli-card { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }

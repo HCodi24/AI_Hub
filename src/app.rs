@@ -4,9 +4,12 @@ use std::{
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
-use tokio::sync::{broadcast, Mutex, RwLock};
+use tokio::{
+    process::{Child, ChildStdin},
+    sync::{broadcast, mpsc, Mutex, RwLock},
+};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -21,10 +24,22 @@ pub struct AppState {
     pub(crate) extension_running: Arc<Mutex<HashMap<String, CancellationToken>>>,
     pub(crate) provider_status:
         Arc<Mutex<HashMap<String, (Instant, crate::api::providers::ConnectionTest)>>>,
+    pub(crate) claude_login: Arc<Mutex<Option<ClaudeLoginSession>>>,
     pub(crate) event_log: EventLog,
     pub(crate) dev_repo: Option<PathBuf>,
     pub(crate) dev_events: broadcast::Sender<String>,
     pub(crate) active_jobs: Arc<AtomicUsize>,
+}
+
+pub(crate) struct ClaudeLoginSession {
+    pub(crate) id: String,
+    pub(crate) provider_id: String,
+    pub(crate) child: Child,
+    pub(crate) stdin: ChildStdin,
+    pub(crate) stdout: mpsc::Receiver<String>,
+    pub(crate) output_tail: Vec<String>,
+    pub(crate) stderr_tail: Arc<Mutex<Vec<String>>>,
+    pub(crate) last_activity: Instant,
 }
 
 #[derive(Clone)]
@@ -66,14 +81,34 @@ impl AppState {
             running: Arc::new(Mutex::new(HashMap::new())),
             extension_running: Arc::new(Mutex::new(HashMap::new())),
             provider_status: Arc::new(Mutex::new(HashMap::new())),
+            claude_login: Arc::new(Mutex::new(None)),
             event_log,
             dev_repo: dev_repo.clone(),
             dev_events,
             active_jobs: Arc::new(AtomicUsize::new(0)),
         };
+        spawn_claude_login_reaper(state.clone());
         if let Some(repo) = dev_repo {
             crate::api::dev::spawn_dev_watcher(state.clone(), repo);
         }
         state
     }
+}
+
+fn spawn_claude_login_reaper(state: AppState) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            let mut session = state.claude_login.lock().await;
+            if session
+                .as_ref()
+                .is_some_and(|login| login.last_activity.elapsed() >= Duration::from_secs(600))
+            {
+                if let Some(mut expired) = session.take() {
+                    let _ = expired.child.kill().await;
+                }
+            }
+        }
+    });
 }

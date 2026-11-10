@@ -305,6 +305,19 @@
             <button id="provider-login" class="subtle-button" type="button" hidden>Đăng nhập Claude</button>
             <button id="provider-test" class="subtle-button" type="button">Kiểm tra kết nối</button>
           </div>
+          <section id="claude-login-panel" class="claude-login-panel" hidden>
+            <p>1. Bấm <strong>Mở trang đăng nhập</strong> (mở trên trình duyệt, không dùng app Claude) → đăng nhập tài khoản Claude.<br>
+              2. Trang sẽ hiện một mã → dán vào đây → <strong>Xác nhận</strong>.</p>
+            <div class="login-link-row"><a id="claude-login-link" target="_blank" rel="noopener noreferrer">Mở trang đăng nhập ↗</a>
+              <button id="claude-login-copy" class="subtle-button" type="button">Sao chép link</button></div>
+            <label for="claude-login-code">Mã xác nhận</label>
+            <input id="claude-login-code" type="text" autocomplete="one-time-code">
+            <div class="login-actions"><button id="claude-login-submit" class="primary-button" type="button">Xác nhận</button>
+              <button id="claude-login-cancel" class="subtle-button" type="button">Huỷ</button></div>
+            <p id="claude-login-message" class="form-note" aria-live="polite"></p>
+            <pre id="claude-login-output" class="login-output" hidden></pre>
+            <button id="claude-login-retry" class="subtle-button" type="button" hidden>Thử lại đăng nhập</button>
+          </section>
           <div id="cli-candidates" class="cli-candidates" hidden></div>
           <label>Danh sách model <span class="muted-inline">(mỗi dòng một model)</span><textarea id="provider-models" rows="3" placeholder="model-name"></textarea></label>
           <div class="form-actions">

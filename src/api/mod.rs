@@ -124,8 +124,16 @@ pub fn router(state: AppState) -> Router {
             post(crate::api::providers::use_deploy_key),
         )
         .route(
-            "/api/providers/{id}/login",
-            post(crate::api::providers::login_provider),
+            "/api/providers/{id}/login/start",
+            post(crate::api::providers::login_provider_start),
+        )
+        .route(
+            "/api/providers/{id}/login/code",
+            post(crate::api::providers::login_provider_code),
+        )
+        .route(
+            "/api/providers/{id}/login/cancel",
+            post(crate::api::providers::login_provider_cancel),
         )
         .route(
             "/api/cli-discover/{name}",

@@ -211,28 +211,86 @@ export async function testAllProviders() {
     }
   }
 }
+let claudeLoginSession = null;
+let claudeLoginPoll = null;
+
+function closeClaudeLoginPanel() {
+  if (claudeLoginPoll) clearInterval(claudeLoginPoll);
+  claudeLoginPoll = null;
+  claudeLoginSession = null;
+  $("#claude-login-panel").hidden = true;
+}
+async function pollClaudeLogin(id) {
+  if (!claudeLoginSession) return;
+  if (!$("#settings-dialog").open) {
+    await cancelClaudeLogin();
+    return;
+  }
+  await testProvider(id, false);
+  if (state.providerStatuses.get(id)?.status === "connected") {
+    closeClaudeLoginPanel();
+    showToast("✓ Đã đăng nhập Claude Code CLI");
+  }
+}
+export async function confirmClaudeLogin() {
+  if (!claudeLoginSession) return;
+  const id = state.settingsProviderId;
+  const message = $("#claude-login-message");
+  const output = $("#claude-login-output");
+  const submit = $("#claude-login-submit");
+  submit.disabled = true;
+  message.textContent = "Đang xác nhận…";
+  output.hidden = true;
+  try {
+    const result = await api(`/api/providers/${encodeURIComponent(id)}/login/code`, {
+      method: "POST",
+      body: JSON.stringify({ session_id: claudeLoginSession.session_id, code: $("#claude-login-code").value }),
+    });
+    message.textContent = result.message;
+    if (result.output_tail) { output.textContent = result.output_tail; output.hidden = false; }
+    $("#claude-login-retry").hidden = result.logged_in;
+    if (result.logged_in) {
+      closeClaudeLoginPanel();
+      showToast("✓ Đã đăng nhập Claude Code CLI");
+      await testProvider(id, false);
+    }
+  } catch (error) {
+    message.textContent = error.message;
+    $("#claude-login-retry").hidden = false;
+  }
+  finally { submit.disabled = false; }
+}
+export async function cancelClaudeLogin() {
+  const id = state.settingsProviderId;
+  try {
+    if (claudeLoginSession) await api(`/api/providers/${encodeURIComponent(id)}/login/cancel`, { method: "POST" });
+  } catch (_) { /* Server session may have expired. */ }
+  closeClaudeLoginPanel();
+  $("#provider-login").disabled = false;
+}
 export async function loginClaude() {
   const id = state.settingsProviderId;
   if (!id) return;
   const button = $("#provider-login");
+  const label = button.textContent;
   button.disabled = true;
-  $("#provider-form-note").textContent = "Hoàn tất đăng nhập trong trình duyệt rồi bấm Kiểm tra kết nối";
+  button.classList.add("login-starting");
+  button.textContent = "Đang mở…";
   try {
-    await api(`/api/providers/${encodeURIComponent(id)}/login`, { method: "POST" });
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < 3 * 60 * 1000) {
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-      await testProvider(id, false);
-      if (state.providerStatuses.get(id)?.status === "connected") {
-        showToast("✓ Đã kết nối Claude Code CLI");
-        break;
-      }
-    }
-  } catch (error) {
-    $("#provider-form-note").textContent = error.message;
-  } finally {
-    button.disabled = false;
-  }
+    const session = await api(`/api/providers/${encodeURIComponent(id)}/login/start`, { method: "POST" });
+    claudeLoginSession = session;
+    const link = $("#claude-login-link");
+    link.href = session.url;
+    link.textContent = "Mở trang đăng nhập ↗";
+    $("#claude-login-code").value = "";
+    $("#claude-login-message").textContent = "";
+    $("#claude-login-output").hidden = true;
+    $("#claude-login-retry").hidden = true;
+    $("#claude-login-panel").hidden = false;
+    claudeLoginPoll = setInterval(() => pollClaudeLogin(id), 5000);
+    await pollClaudeLogin(id);
+  } catch (error) { $("#provider-form-note").textContent = error.message; }
+  finally { button.classList.remove("login-starting"); button.textContent = label; button.disabled = false; }
 }
 export function updateProviderFormKind() {
   const kind = $("#provider-kind").value;

@@ -20,6 +20,8 @@ import { api, readSse } from "./api.js";
 import {
   scheduleMutisSave,
   clearProviderForm,
+  confirmClaudeLogin,
+  cancelClaudeLogin,
   deleteProvider,
   discoverCli,
   editProvider,
@@ -250,6 +252,14 @@ $("#provider-form").addEventListener("submit", saveProvider);
 $("#provider-delete").addEventListener("click", deleteProvider);
 $("#provider-test").addEventListener("click", () => testProvider(state.settingsProviderId));
 $("#provider-login").addEventListener("click", loginClaude);
+$("#claude-login-submit").addEventListener("click", confirmClaudeLogin);
+$("#claude-login-code").addEventListener("keydown", (event) => { if (event.key === "Enter") confirmClaudeLogin(); });
+$("#claude-login-cancel").addEventListener("click", cancelClaudeLogin);
+$("#claude-login-retry").addEventListener("click", loginClaude);
+$("#claude-login-copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("#claude-login-link").href); showToast("Đã sao chép link"); }
+  catch (_) { showToast("Không thể truy cập clipboard"); }
+});
 $("#use-deploy-key").addEventListener("click", useDeployKey);
 $("#cli-discover").addEventListener("click", discoverCli);
 $("#models-load").addEventListener("click", loadModels);

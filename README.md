@@ -81,7 +81,7 @@ Nút "Tự tìm trên máy" (cho Codex/Claude CLI) dò các vị trí: PATH, PAT
 
 ### Đăng nhập Claude Code CLI
 
-Bản Claude Code đi kèm cần đăng nhập riêng. Vào **Cài đặt › Claude Code CLI › "Đăng nhập Claude"**: ứng dụng mở một cửa sổ chạy `claude auth login`, bạn hoàn tất trong trình duyệt, sau đó ứng dụng kiểm tra lại và hiện ✓. Nếu chưa đăng nhập, trạng thái là "Claude Code chưa đăng nhập".
+Bản Claude Code CLI cần đăng nhập riêng. Vào **Cài đặt › Claude Code CLI › "Đăng nhập Claude"**. AI Hub mở một phiên đăng nhập web và hiển thị nút **Mở trang đăng nhập**; bấm nút để mở trang Claude trong trình duyệt, đăng nhập rồi sao chép mã trang web cung cấp vào ô **Mã xác nhận** và bấm **Xác nhận**. Luồng này không mở ứng dụng Claude desktop. AI Hub cũng tự kiểm tra trạng thái đăng nhập mỗi 5 giây khi bảng hướng dẫn đang mở. Bấm **Huỷ** để dừng phiên.
 
 Cách khác, cài qua npm:
 
