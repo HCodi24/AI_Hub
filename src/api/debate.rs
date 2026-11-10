@@ -234,6 +234,7 @@ pub(crate) async fn start_debate(
     };
     let max_rounds = cfg.mutis.debate_rounds.clamp(1, 3);
     let mut record = Debate {
+        chat_id: input.chat_id.clone(),
         id: uuid::Uuid::new_v4().to_string(),
         title: request
             .split_whitespace()
@@ -477,4 +478,102 @@ pub(crate) async fn get_debate(
     let mut value = json!(debate);
     value["plan_request"] = json!(plan_request);
     Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct PlanLink {
+    plan_id: String,
+}
+
+pub(crate) async fn link_plan(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<PlanLink>,
+) -> ApiResult<Json<Debate>> {
+    if !chat::valid_id(&id) || !chat::valid_id(&input.plan_id) {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "id không hợp lệ"));
+    }
+    let mut debate = state
+        .debates
+        .get(&id)
+        .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy tranh luận"))?;
+    state
+        .plans
+        .get(&input.plan_id)
+        .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy kế hoạch"))?;
+    if debate.status != "done" || debate.verdict.is_none() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Tranh luận chưa có phán quyết hoàn tất",
+        ));
+    }
+    debate.plan_id = Some(input.plan_id);
+    state
+        .debates
+        .save(&debate)
+        .map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+    Ok(Json(debate))
+}
+
+#[cfg(test)]
+mod plan_link_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn link_roundtrip_and_invalid_ids() {
+        let root = std::env::temp_dir().join(format!("debate-link-{}", uuid::Uuid::new_v4()));
+        let state = AppState::new(
+            Config::seeded(),
+            root.join("config.json"),
+            root.join("chats"),
+            None,
+            0,
+        );
+        let debate = Debate {
+            id: uuid::Uuid::new_v4().to_string(),
+            chat_id: Some(uuid::Uuid::new_v4().to_string()),
+            status: "done".into(),
+            verdict: Some(Default::default()),
+            ..Default::default()
+        };
+        state.debates.save(&debate).unwrap();
+        let plan = crate::plans::Plan::new("Kế hoạch".into(), "".into(), "".into(), vec![]);
+        let link = |id: String, plan_id: String| {
+            link_plan(State(state.clone()), Path(id), Json(PlanLink { plan_id }))
+        };
+        assert_eq!(
+            link(debate.id.clone(), plan.id.clone())
+                .await
+                .unwrap_err()
+                .status,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            link("bad".into(), plan.id.clone())
+                .await
+                .unwrap_err()
+                .status,
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            link(debate.id.clone(), "../bad".into())
+                .await
+                .unwrap_err()
+                .status,
+            StatusCode::BAD_REQUEST
+        );
+        state.plans.save(&plan).unwrap();
+        let _ = link(debate.id.clone(), plan.id.clone()).await.unwrap();
+        let saved = state.debates.get(&debate.id).unwrap().unwrap();
+        assert_eq!(saved.plan_id, Some(plan.id));
+        assert_eq!(saved.chat_id, debate.chat_id);
+        let mut old = json!(saved);
+        old.as_object_mut().unwrap().remove("plan_id");
+        old.as_object_mut().unwrap().remove("chat_id");
+        let old: Debate = serde_json::from_value(old).unwrap();
+        assert!(old.plan_id.is_none() && old.chat_id.is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

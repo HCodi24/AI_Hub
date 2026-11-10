@@ -20,6 +20,7 @@ function showView() {
 /** Use the same cached card as chat, including a live card if one exists. */
 export function renderDebate(debate) {
   let card = debateCards.get(debate.id);
+  card?.refresh();
   if (!card) {
     card = createDebateCard({ live: false });
     card.load(debate);

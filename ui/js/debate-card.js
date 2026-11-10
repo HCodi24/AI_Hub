@@ -1,6 +1,8 @@
 // Shared renderer for live SSE and persisted debate records. Plain text avoids chat import cycles.
-import { el, showToast } from "./util.js";
+import { el } from "./util.js";
 import { api } from "./api.js";
+import { createDebateActions } from "./debate-actions.js";
+import { state } from "./state.js";
 
 const names = { codex: "Codex", claude: "Claude" };
 const clock = seconds => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -13,6 +15,9 @@ const formatTokens = (value) => Number(value || 0).toLocaleString("vi-VN");
 
 export function createDebateCard({ live = false } = {}) {
   const root = el("section", { className: "debate-card" });
+  state.activeDebates ||= new Set();
+  if (live) state.activeDebates.add(root);
+  if (live) window.dispatchEvent(new Event("debate-busy"));
   let record = { status: "running", rounds: [], max_rounds: 2 };
   let running = live;
   let selected = 1;
@@ -21,7 +26,8 @@ export function createDebateCard({ live = false } = {}) {
   let mobileSide = "codex";
   let started = Date.now();
   let timer = null;
-  let planMade = false;
+  let linkedPlan = null;
+  const actions = createDebateActions(() => record, plan => { linkedPlan = plan; renderProgress(); });
   const expanded = new Set();
   const activity = new Map();
   const turnStarts = new Map();
@@ -44,7 +50,7 @@ export function createDebateCard({ live = false } = {}) {
     elapsed.textContent = clock(running ? Math.floor((Date.now() - started) / 1000) : record.elapsed_s || 0);
   }
   function step(label, state) {
-    const symbol = { done: "●", running: "◐", pending: "○", skipped: "○" }[state];
+    const symbol = { done: "●", running: "◐", pending: "○", failed: "✗", skipped: "○" }[state];
     return el("span", { className: `dc-step ${state}`, textContent: `${symbol} ${label}${state === "skipped" ? " · bỏ qua" : ""}` });
   }
   function renderProgress() {
@@ -59,7 +65,12 @@ export function createDebateCard({ live = false } = {}) {
       progress.append(step(`Vòng ${i} ${i === 1 ? "Đề xuất" : "Phản biện"}`, state));
     }
     progress.append(step("Trọng tài", record.verdict ? "done" : running && phase === "judge" ? "running" : "pending"));
-    if (planMade) progress.append(step("Chia việc", "done"));
+    progress.append(step("Chia việc", record.plan_id ? "done" : "pending"));
+    const tasks = linkedPlan?.tasks || [];
+    const execution = tasks.some(task => task.status === "lỗi") ? "failed"
+      : linkedPlan?._running || tasks.some(task => ["đang chạy", "cần sửa"].includes(task.status)) ? "running"
+        : linkedPlan && tasks.every(task => task.status === "xong") ? "done" : "pending";
+    progress.append(step("Thực hiện", execution));
   }
   let selectedRunning = 1;
   function renderVerdict() {
@@ -78,28 +89,12 @@ export function createDebateCard({ live = false } = {}) {
         el("ul", {}, items.map(textContent => el("li", { textContent }))));
       chips.append(details);
     }
-    const use = el("button", { textContent: "✦ Chia việc từ phán quyết" });
-    use.onclick = async () => {
-      use.disabled = true;
-      try {
-        const debate = await api(`/api/debates/${encodeURIComponent(record.id)}`);
-        const { folderInput } = await import("./chat.js");
-        const { planFromRequest } = await import("./plans.js");
-        folderInput.value = debate.folder;
-        const plan = await planFromRequest(debate.plan_request || "");
-        if (plan) {
-          planMade = true;
-          try { localStorage.setItem(`debate-plan-${record.id}`, plan.id); } catch (_) { /* Storage may be unavailable. */ }
-          renderProgress();
-        }
-      } catch (error) { showToast(error.message); }
-      finally { use.disabled = false; }
-    };
     const minutes = el("button", { textContent: "Xem biên bản", onclick: () => {
       for (const round of record.rounds) for (const side of Object.keys(names)) expanded.add(`${side}:${round.index}`);
       renderRounds(); transcript.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } });
-    verdict.append(chips, el("div", { className: "dc-actions" }, [use, minutes]));
+    verdict.append(chips, actions.el, el("div", { className: "dc-actions" }, [minutes]));
+    actions.update();
   }
   function sideBox(side, round) {
     const turn = round[side] || {};
@@ -155,9 +150,10 @@ export function createDebateCard({ live = false } = {}) {
     running = live && record.status === "running";
     selected = record.rounds?.at(-1)?.index || 1;
     record.rounds ||= [];
-    try { planMade = Boolean(localStorage.getItem(`debate-plan-${record.id}`)); } catch (_) { /* Storage may be unavailable. */ }
+
     started = (record.created_at || Date.now() / 1000) * 1000;
     render();
+    actions.refresh();
   }
   function handle(name, data) {
     if (name === "debate") { load(data); debateCards.set(data.id, card); }
@@ -187,18 +183,24 @@ export function createDebateCard({ live = false } = {}) {
     else if (name === "error") record.error = data.text || "Lỗi tranh luận";
     else if (name === "done") {
       running = false;
+      state.activeDebates.delete(root);
+      window.dispatchEvent(new Event("debate-busy"));
       record = { ...record, ...data, elapsed_s: data.elapsed_s ?? Math.floor((Date.now() - started) / 1000) };
     }
     render();
   }
-  const card = { el: root, handle, load };
+  const card = { el: root, handle, load, refresh: actions.refresh };
   if (live) timer = setInterval(() => { tick(); if (root.isConnected) renderRounds(); }, 1000);
   render();
   return card;
 }
 
 export function storedDebateCard(id) {
-  if (debateCards.has(id)) return debateCards.get(id);
+  if (debateCards.has(id)) {
+    const card = debateCards.get(id);
+    card.refresh();
+    return card;
+  }
   const card = createDebateCard({ live: false });
   debateCards.set(id, card);
   api(`/api/debates/${encodeURIComponent(id)}`).then(data => card.load(data)).catch(error => {

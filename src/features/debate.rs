@@ -109,6 +109,10 @@ pub struct Verdict {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Debate {
     #[serde(default)]
+    pub plan_id: Option<String>,
+    #[serde(default)]
+    pub chat_id: Option<String>,
+    #[serde(default)]
     pub elapsed_s: u64,
     pub id: String,
     pub title: String,

@@ -55,6 +55,15 @@ Composer hỗ trợ dán, kéo thả và chọn ảnh PNG/JPEG/WebP/GIF, tối �
   bằng khối JSON `{agree, disagreements}`; dừng sớm khi cả hai đồng ý. Trọng tài là một phiên Claude CLI MỚI (không session_id),
   model = `mutis.debate_judge_model` hoặc model của Claude, trả JSON phán quyết. Số vòng `mutis.debate_rounds` (1–3, mặc định 2).
 - `GET /api/debates`, `GET /api/debates/{id}` (kèm `plan_request` để đưa sang Chia việc). Lưu ở `<data>/debates/<id>.json`.
+- Debate có `plan_id: Option<String>` và `chat_id: Option<String>`, serde default `None` cho dữ liệu cũ.
+  `chat_id` lưu khi bắt đầu từ chat. `POST /api/debates/{id}/plan` `{plan_id}` kiểm tra hai UUID (sai → 400),
+  tranh luận/kế hoạch tồn tại (thiếu → 404), tranh luận đã `done` và có verdict (chưa đạt → 400), rồi lưu liên kết và trả Debate.
+- Sau phán quyết, thẻ chung cho chat/lịch sử có “✦ Chia việc & thực hiện” và “▶ Thực hiện với…”.
+  Chia việc dùng `planFromRequest(request, {stay:true})`, hiển thị danh sách việc ngay trong thẻ và xác nhận duyệt/chạy một lần.
+  `runWholePlan(plan,onProgress)` dùng runner từng task, tuần tự theo phụ thuộc, bỏ việc xong, dừng khi lỗi, hỗ trợ dừng/chạy tiếp.
+  Thẻ tải `GET /api/plans/{plan_id}` khi mở lại; tiến trình Chia việc dựa trên liên kết, Thực hiện dựa trên trạng thái công việc.
+  Chạy với một nguồn dùng các điều khiển composer hiện có và `sendMessage({text,direct:true})`, bỏ qua MutiS tự chia việc/tranh luận.
+  Từ lịch sử mở `chat_id` đã lưu; dữ liệu không có chat_id tạo chat mới trong thư mục tranh luận.
 
 ### Tiện ích
 - `GET /api/extensions`

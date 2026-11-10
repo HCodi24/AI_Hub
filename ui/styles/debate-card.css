@@ -9,6 +9,14 @@
 .dc-progress { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; font-size: 12px; }
 .dc-step { padding: 6px 8px; border-radius: 8px; background: var(--panel-2); color: var(--muted); }
 .dc-step.done { color: var(--accent); }
+.dc-step.failed { color: var(--danger, #e66); }
+.dc-plan { margin-block: 12px; }
+.dc-task-list { padding-left: 20px; font-size: .9em; line-height: 1.6; overflow-wrap: anywhere; }
+.dc-confirm, .dc-execute { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 10px; }
+.dc-execute:empty { display: none; }
+.dc-execute select { min-width: 120px; max-width: 100%; }
+.dc-execute p { flex-basis: 100%; }
+.dc-plan a { display: inline-block; margin: 8px 12px 8px 0; }
 .dc-step.running, .dc-activity { color: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
 .dc-step.skipped { opacity: .55; }
 .dc-verdict { padding: 14px; margin-bottom: 16px; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 10px; }

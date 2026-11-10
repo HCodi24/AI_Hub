@@ -427,6 +427,7 @@ function renderRunningStatus() {
 
 export function setStreaming(value) {
   state.streaming = value;
+  window.dispatchEvent(new Event("debate-busy"));
   $("#send-button").disabled = value;
   $("#attachment-button").disabled = value;
   $("#stop-button").hidden = !value;
@@ -493,11 +494,11 @@ function debateSummary(record) {
   return Array.from(`⚖ Phán quyết\n\n${record.verdict.decision}\n${(record.verdict.plan_steps || [])
     .map((step, index) => `${index + 1}. ${step}`).join("\n")}`).slice(0, 1500).join("");
 }
-export async function sendMessage() {
-  const text = messageInput.value.trim();
+export async function sendMessage(options = {}) {
+  const text = (options.text ?? messageInput.value).trim();
   if ((!text && !pendingAttachments.length) || state.streaming) return;
   if (!state.chatId) newChat();
-  if (state.selectedSource === "mutis") {
+  if (!options.direct && state.selectedSource === "mutis") {
     await testAllProviders();
     const lead = resolveConnectedRole("lead");
     if (!state.mutis?.enabled) {

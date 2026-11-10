@@ -170,6 +170,10 @@ pub fn router(state: AppState) -> Router {
             get(crate::api::debate::list_debates).post(crate::api::debate::start_debate),
         )
         .route("/api/debates/{id}", get(crate::api::debate::get_debate))
+        .route(
+            "/api/debates/{id}/plan",
+            post(crate::api::debate::link_plan),
+        )
         // Plan management and generation routes.
         .route(
             "/api/plans",

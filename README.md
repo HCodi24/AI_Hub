@@ -121,7 +121,15 @@ Claude đề xuất, Codex đọc và phản biện; các vòng sau tiếp tục
 Một phiên Claude mới làm trọng tài. Phán quyết nằm trên cùng, kèm các chip mở rộng ý đồng ý, tranh cãi, rủi ro và các bước.
 Biên bản chia theo tab vòng, hai cột Codex/Claude; màn hình nhỏ có nút chuyển bên. Nội dung dài thu gọn, khi chạy hiện đuôi nội dung,
 hoạt động, token, thời gian và nút Dừng. Thẻ được lưu cùng chat, mở lại hoặc tải lại trang vẫn xem được; lịch sử dùng cùng thẻ.
-Bấm "✦ Chia việc từ phán quyết" để lập kế hoạch trong đúng thư mục tranh luận. Kết luận ngắn được lưu để chat tiếp và bộ nhớ có ngữ cảnh.
+Sau phán quyết có hai nút, dùng được cả trong chat và lịch sử:
+
+- **✦ Chia việc & thực hiện** lập kế hoạch trong thư mục tranh luận, giữ nguyên màn hình và hiện danh sách việc gọn.
+  Xác nhận “Duyệt và chạy N công việc?” để chạy lần lượt theo phụ thuộc, gồm kiểm tra/review/sửa tự động đã cấu hình.
+  Có “Mở kế hoạch”, “Để tôi xem trước”, “Dừng” và “Chạy tiếp” khi lỗi hoặc dừng; công việc đã xong được bỏ qua.
+- **▶ Thực hiện với…** chọn một nguồn đang kết nối, model, mức suy luận và quyền sửa file (mặc định được sửa).
+  Phán quyết được gửi thành một tin chat thường, bỏ qua tự chia việc và công tắc tranh luận; nguồn chỉ chat có ghi chú rõ.
+
+Liên kết kế hoạch được lưu trong bản tranh luận; mở lại thẻ tải trạng thái từ kế hoạch. Kết luận ngắn được lưu để chat tiếp và bộ nhớ có ngữ cảnh.
 Không AI nào sửa file trong lúc tranh luận. Cài đặt › MutiS cho chỉnh số vòng (1–3) và model trọng tài.
 
 Trong lúc lập kế hoạch, giao diện hiện log trực tiếp, thời gian đã trôi qua và nút "Huỷ". Chỉ những nguồn đã kết nối mới được giao việc; nếu phải thay nguồn, dòng cảnh báo "⚠ đã đổi từ …" xuất hiện.

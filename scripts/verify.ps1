@@ -15,7 +15,7 @@ function Invoke-LoggedCheck([string]$Name, [scriptblock]$Action, [bool]$ReportOn
     $ErrorActionPreference = 'Continue'
     $global:LASTEXITCODE = 0
     $output = & $Action 2>&1
-    $output | Out-File -LiteralPath $log -Encoding utf8
+    [IO.File]::WriteAllText($log, (($output | ForEach-Object { "$_" }) -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
     $code = $LASTEXITCODE
     if ($null -eq $code) { $code = 0 }
     if ($code -ne 0) { throw "exit $code" }
@@ -40,6 +40,8 @@ $null = Invoke-LoggedCheck 'node' {
   $files = @(Get-ChildItem -LiteralPath (Join-Path $repo 'ui') -Filter '*.js' -File -Recurse)
   foreach ($file in $files) { node --check $file.FullName; if ($LASTEXITCODE -ne 0) { throw "node --check failed: $($file.FullName)" } }
 }
+$null = Invoke-LoggedCheck 'plan-order' { node scripts/test-plan-order.mjs }
+$null = Invoke-LoggedCheck 'plan-run' { node scripts/test-plan-run.mjs }
 $null = Invoke-LoggedCheck 'encoding' {
   $bad = [System.Collections.Generic.List[string]]::new()
   foreach ($folder in @('src','ui','scripts')) {
