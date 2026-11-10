@@ -69,7 +69,7 @@ impl AppState {
             active_jobs: Arc::new(AtomicUsize::new(0)),
         };
         if let Some(repo) = dev_repo {
-            crate::server::spawn_dev_watcher(state.clone(), repo);
+            crate::api::dev::spawn_dev_watcher(state.clone(), repo);
         }
         state
     }

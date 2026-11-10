@@ -24,10 +24,9 @@ use std::{
     ffi::OsString,
     path::PathBuf,
     process::Stdio,
-    sync::atomic::Ordering,
     time::{Duration, Instant},
 };
-use tokio::{io::AsyncBufReadExt, sync::broadcast, sync::mpsc, time::timeout};
+use tokio::{io::AsyncBufReadExt, sync::mpsc, time::timeout};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
@@ -94,20 +93,26 @@ struct CliInfo {
 
 pub fn router(state: AppState, port: u16) -> Router {
     Router::new()
-        .route("/", get(index))
-        .route("/app.js", get(app_js))
-        .route("/style.css", get(style_css))
-        .route("/api/dev/status", get(dev_status))
-        .route("/api/dev/repo", get(dev_repo_info))
-        .route("/api/dev/git/diff", get(dev_git_diff))
-        .route("/api/dev/git/checkpoint", post(dev_git_checkpoint))
-        .route("/api/dev/git/reset", post(dev_git_reset))
-        .route("/api/dev/git/commit", post(dev_git_commit))
-        .route("/api/dev/test", post(dev_test))
-        .route("/api/dev/release", post(dev_release))
-        .route("/api/dev/settings", get(dev_settings).put(put_dev_settings))
-        .route("/api/dev/events", get(dev_events))
-        .route("/api/dev/rebuild", post(dev_rebuild))
+        .route("/", get(crate::api::static_ui::index))
+        .route("/app.js", get(crate::api::static_ui::app_js))
+        .route("/style.css", get(crate::api::static_ui::style_css))
+        .route("/api/dev/status", get(crate::api::dev::dev_status))
+        .route("/api/dev/repo", get(crate::api::dev::dev_repo_info))
+        .route("/api/dev/git/diff", get(crate::api::dev::dev_git_diff))
+        .route(
+            "/api/dev/git/checkpoint",
+            post(crate::api::dev::dev_git_checkpoint),
+        )
+        .route("/api/dev/git/reset", post(crate::api::dev::dev_git_reset))
+        .route("/api/dev/git/commit", post(crate::api::dev::dev_git_commit))
+        .route("/api/dev/test", post(crate::api::dev::dev_test))
+        .route("/api/dev/release", post(crate::api::dev::dev_release))
+        .route(
+            "/api/dev/settings",
+            get(crate::api::dev::dev_settings).put(crate::api::dev::put_dev_settings),
+        )
+        .route("/api/dev/events", get(crate::api::dev::dev_events))
+        .route("/api/dev/rebuild", post(crate::api::dev::dev_rebuild))
         .route("/api/config", get(get_config).put(put_config))
         .route("/api/mutis", get(get_orchestration).put(put_orchestration))
         .route("/api/mutis/roles/resolve", get(resolve_mutis_roles))
@@ -756,522 +761,6 @@ async fn enforce_local_host(State(port): State<u16>, request: Request, next: Nex
     next.run(request).await
 }
 
-async fn index(State(state): State<AppState>) -> Response {
-    if let Some(repo) = state.dev_repo.as_ref() {
-        return asset_response(&repo.join("ui/index.html"), "text/html; charset=utf-8").await;
-    }
-    (
-        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        include_str!("../ui/index.html"),
-    )
-        .into_response()
-}
-
-async fn app_js(State(state): State<AppState>) -> Response {
-    if let Some(repo) = state.dev_repo.as_ref() {
-        return asset_response(&repo.join("ui/app.js"), "text/javascript; charset=utf-8").await;
-    }
-    (
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "text/javascript; charset=utf-8",
-        )],
-        include_str!("../ui/app.js"),
-    )
-        .into_response()
-}
-
-async fn style_css(State(state): State<AppState>) -> Response {
-    if let Some(repo) = state.dev_repo.as_ref() {
-        return asset_response(&repo.join("ui/style.css"), "text/css; charset=utf-8").await;
-    }
-    (
-        [(axum::http::header::CONTENT_TYPE, "text/css; charset=utf-8")],
-        include_str!("../ui/style.css"),
-    )
-        .into_response()
-}
-
-async fn asset_response(path: &std::path::Path, content_type: &'static str) -> Response {
-    match tokio::fs::read(path).await {
-        Ok(body) => (
-            [
-                (axum::http::header::CONTENT_TYPE, content_type),
-                (axum::http::header::CACHE_CONTROL, "no-store"),
-            ],
-            body,
-        )
-            .into_response(),
-        Err(_) => (StatusCode::NOT_FOUND, "Dev UI file not found").into_response(),
-    }
-}
-
-async fn dev_status(State(state): State<AppState>) -> Json<Value> {
-    Json(json!({"dev":state.dev_repo.is_some()}))
-}
-
-async fn dev_repo_info(State(state): State<AppState>) -> ApiResult<Json<Value>> {
-    let repo = dev_repo_path(&state)?;
-    let output = git_output(&repo, &["status", "--porcelain"]).await?;
-    let changed = String::from_utf8_lossy(&output.stdout).lines().count();
-    let branch = git_text(&repo, &["branch", "--show-current"]).await?;
-    let commit = git_text(&repo, &["log", "-1", "--format=%h%x1f%s%x1f%an"]).await?;
-    let mut fields = commit.split('\u{1f}');
-    Ok(Json(
-        json!({"path":repo.to_string_lossy(),"branch":branch,"changed_files":changed,"last_commit":{"hash":fields.next().unwrap_or(""),"subject":fields.next().unwrap_or(""),"author":fields.next().unwrap_or("")}}),
-    ))
-}
-
-fn dev_repo_path(state: &AppState) -> ApiResult<PathBuf> {
-    state
-        .dev_repo
-        .clone()
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"))
-}
-
-fn effective_chat_folder(
-    dev_mode: bool,
-    dev_chat: bool,
-    client_folder: &str,
-    repo: &str,
-) -> String {
-    if dev_mode && dev_chat {
-        repo.to_owned()
-    } else {
-        client_folder.to_owned()
-    }
-}
-
-fn dev_chat_preamble(repo: &str) -> String {
-    format!("Bạn đang sửa chính ứng dụng AI Hub (repo: {repo}) đang chạy ở chế độ dev.\n- Giao diện ở ui/ tự tải lại khi lưu; code Rust ở src/ cần người dùng bấm 'Build & khởi động lại'.\n- Không chạy `cargo build --release`, không tắt tiến trình ai-hub, không sửa target/.\n- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy `cargo test` với CARGO_TARGET_DIR=target\\dev-check nếu cần.\n- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.")
-}
-
-async fn git_output(repo: &std::path::Path, args: &[&str]) -> ApiResult<std::process::Output> {
-    crate::core::process::git_output(repo, args)
-        .await
-        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không chạy được Git"))
-}
-
-async fn git_text(repo: &std::path::Path, args: &[&str]) -> ApiResult<String> {
-    let output = crate::core::process::git_output(repo, args)
-        .await
-        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không chạy được Git"))?;
-    if !output.status.success() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            String::from_utf8_lossy(&output.stderr).to_string(),
-        ));
-    }
-    // Only trim the end: `git status --porcelain` lines start with a significant space (" M path").
-    Ok(String::from_utf8_lossy(&output.stdout)
-        .trim_end()
-        .to_owned())
-}
-
-async fn dev_git_diff(State(state): State<AppState>) -> ApiResult<Json<Value>> {
-    let repo = dev_repo_path(&state)?;
-    let stat = git_text(&repo, &["diff", "HEAD", "--stat"]).await?;
-    let diff_output = git_output(&repo, &["diff", "--no-color", "HEAD"]).await?;
-    let truncated = diff_output.stdout.len() > 200 * 1024;
-    let diff =
-        String::from_utf8_lossy(&diff_output.stdout[..diff_output.stdout.len().min(200 * 1024)])
-            .into_owned();
-    let status = git_text(&repo, &["status", "--porcelain", "--untracked-files=all"]).await?;
-    let untracked = status
-        .lines()
-        .filter(|line| line.starts_with("??"))
-        .map(|line| line[3..].to_owned())
-        .collect::<Vec<_>>();
-    let files = status
-        .lines()
-        .map(|line| line.get(3..).unwrap_or(line).to_owned())
-        .collect::<Vec<_>>();
-    Ok(Json(
-        json!({"stat":stat,"diff":diff,"untracked":untracked,"files":files,"truncated":truncated}),
-    ))
-}
-
-async fn dev_git_checkpoint(State(state): State<AppState>) -> ApiResult<Json<Value>> {
-    let repo = dev_repo_path(&state)?;
-    ensure_no_jobs(&state)?;
-    let status = git_text(&repo, &["status", "--porcelain"]).await?;
-    if status.is_empty() {
-        return Ok(Json(
-            json!({"ok":true,"skipped":true,"message":"Không có thay đổi"}),
-        ));
-    }
-    let ts = crate::dev::iso_now();
-    for args in crate::dev::git_checkpoint_args(&ts) {
-        let output = tokio::process::Command::new("git")
-            .args(args)
-            .current_dir(&repo)
-            .output()
-            .await
-            .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không chạy được Git"))?;
-        if !output.status.success() {
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                String::from_utf8_lossy(&output.stderr).to_string(),
-            ));
-        }
-    }
-    Ok(Json(
-        json!({"ok":true,"hash":git_text(&repo,&["rev-parse","--short","HEAD"]).await?}),
-    ))
-}
-
-fn ensure_no_jobs(state: &AppState) -> ApiResult<()> {
-    let jobs = state.active_jobs.load(Ordering::SeqCst);
-    if jobs > 0 {
-        Err(ApiError::new(
-            StatusCode::CONFLICT,
-            format!("Đang có {jobs} việc AI chạy — chờ xong hoặc dừng"),
-        ))
-    } else {
-        Ok(())
-    }
-}
-
-async fn dev_git_reset(State(state): State<AppState>) -> ApiResult<Json<Value>> {
-    let repo = dev_repo_path(&state)?;
-    ensure_no_jobs(&state)?;
-    let files = git_text(&repo, &["status", "--porcelain", "--untracked-files=all"])
-        .await?
-        .lines()
-        // Report only what reset/clean really discards: tracked changes anywhere, untracked files only under src/ and ui/.
-        .filter(|line| {
-            let path = line.get(3..).unwrap_or_default();
-            !line.starts_with("??") || path.starts_with("src/") || path.starts_with("ui/")
-        })
-        .map(|line| line.get(3..).unwrap_or(line).to_owned())
-        .collect::<Vec<_>>();
-    for args in crate::dev::git_reset_args() {
-        let argv = args.iter().map(String::as_str).collect::<Vec<_>>();
-        let output = git_output(&repo, &argv).await?;
-        if !output.status.success() {
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                String::from_utf8_lossy(&output.stderr).to_string(),
-            ));
-        }
-    }
-    Ok(Json(json!({"ok":true,"files":files})))
-}
-
-#[derive(Deserialize)]
-struct DevCommitInput {
-    message: String,
-}
-async fn dev_git_commit(
-    State(state): State<AppState>,
-    Json(input): Json<DevCommitInput>,
-) -> ApiResult<Json<Value>> {
-    let repo = dev_repo_path(&state)?;
-    ensure_no_jobs(&state)?;
-    let message = input.message.trim();
-    if message.is_empty() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Nhập nội dung commit",
-        ));
-    }
-    for args in crate::dev::git_commit_args(message) {
-        let output = tokio::process::Command::new("git")
-            .args(args)
-            .current_dir(&repo)
-            .output()
-            .await
-            .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không chạy được Git"))?;
-        if !output.status.success() {
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                String::from_utf8_lossy(&output.stderr).to_string(),
-            ));
-        }
-    }
-    Ok(Json(
-        json!({"ok":true,"hash":git_text(&repo,&["rev-parse","--short","HEAD"]).await?}),
-    ))
-}
-
-async fn dev_test(State(state): State<AppState>) -> ApiResult<Response> {
-    let repo = dev_repo_path(&state)?;
-    let cfg = state.config.read().await.clone();
-    let verify = cfg.mutis.verify_gate;
-    let command = cfg.mutis.verify_command.clone();
-    let ignore = cfg.mutis.verify_ignore.clone();
-    let (tx, rx) = mpsc::channel::<String>(64);
-    tokio::spawn(async move {
-        let mut cmd = tokio::process::Command::new("cargo");
-        cmd.args(["test"])
-            .current_dir(&repo)
-            .env("CARGO_TARGET_DIR", repo.join("target/dev-check"))
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let result = stream_process(cmd, tx.clone()).await;
-        let _ = tx
-            .send(json!({"event":"summary","data":{"cargo_ok":result}}).to_string())
-            .await;
-        if verify {
-            let report = crate::verify::run(&repo, &command, &ignore, tx.clone()).await;
-            let _ = tx
-                .send(json!({"event":"verify","data":report}).to_string())
-                .await;
-        }
-    });
-    Ok(sse_channel(rx))
-}
-
-async fn dev_release(State(state): State<AppState>) -> ApiResult<Response> {
-    let repo = dev_repo_path(&state)?;
-    let (tx, rx) = mpsc::channel::<String>(64);
-    let target = std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .map(|path| {
-            if path.is_absolute() {
-                path
-            } else {
-                repo.join(path)
-            }
-        })
-        .unwrap_or_else(|| repo.join("target"));
-    let out = target.join("release/ai-hub.exe");
-    tokio::spawn(async move {
-        let mut cmd = tokio::process::Command::new("cargo");
-        cmd.args(["build", "--release"])
-            .current_dir(&repo)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let ok = stream_process(cmd, tx.clone()).await;
-        let _=tx.send(json!({"event":"summary","data":{"ok":ok,"exe":out.to_string_lossy(),"note":"Nếu báo Access is denied, hãy đóng exe release đang chạy trước."}}).to_string()).await;
-    });
-    Ok(sse_channel(rx))
-}
-
-async fn stream_process(mut command: tokio::process::Command, tx: mpsc::Sender<String>) -> bool {
-    let Ok(mut child) = command.spawn() else {
-        return false;
-    };
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-    let mut tasks = Vec::new();
-    if let Some(stream) = stdout {
-        tasks.push(tokio::spawn(forward_process_lines(stream, tx.clone())));
-    }
-    if let Some(stream) = stderr {
-        tasks.push(tokio::spawn(forward_process_lines(stream, tx.clone())));
-    }
-    for task in tasks {
-        let _ = task.await;
-    }
-    child.wait().await.is_ok_and(|status| status.success())
-}
-
-async fn forward_process_lines<R>(stream: R, tx: mpsc::Sender<String>)
-where
-    R: tokio::io::AsyncRead + Unpin + Send + 'static,
-{
-    let mut lines = tokio::io::BufReader::new(stream).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        let _ = tx
-            .send(json!({"event":"log","data":{"text":line}}).to_string())
-            .await;
-    }
-}
-
-fn sse_channel(rx: mpsc::Receiver<String>) -> Response {
-    let stream = async_stream::stream! {let mut rx=ReceiverStream::new(rx);while let Some(line)=rx.next().await{if let Ok(value)=serde_json::from_str::<Value>(&line){yield Ok::<_,Infallible>(axum::response::sse::Event::default().event(value["event"].as_str().unwrap_or("log")).data(value["data"].to_string()));}else{yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").json_data(json!({"text":line})).unwrap());}}};
-    Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response()
-}
-async fn dev_settings(State(state): State<AppState>) -> Json<Value> {
-    Json(json!({"auto_rebuild":state.config.read().await.self_dev.auto_rebuild}))
-}
-async fn put_dev_settings(
-    State(state): State<AppState>,
-    Json(value): Json<config::SelfDevConfig>,
-) -> ApiResult<Json<config::SelfDevConfig>> {
-    if state.dev_repo.is_none() {
-        return Err(ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"));
-    }
-    let mut cfg = state.config.write().await;
-    cfg.self_dev = value.clone();
-    config::save(&state.config_path, &cfg)
-        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cài đặt"))?;
-    Ok(Json(value))
-}
-
-async fn dev_events(State(state): State<AppState>) -> Response {
-    let mut rx = state.dev_events.subscribe();
-    let stream = async_stream::stream! { loop { match rx.recv().await { Ok(message) => { let parsed: Value = serde_json::from_str(&message).unwrap_or(Value::Null); let name=parsed.get("event").and_then(Value::as_str).unwrap_or("message"); yield Ok::<_,Infallible>(axum::response::sse::Event::default().event(name).data(parsed.get("data").cloned().unwrap_or(Value::Null).to_string())); }, Err(broadcast::error::RecvError::Lagged(_)) => continue, Err(_) => break } } };
-    Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response()
-}
-
-pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
-    tokio::spawn(async move {
-        let (mut old_ui, mut old_rust) = crate::dev::snapshot(&repo);
-        let mut pending: Option<Instant> = None;
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            let (ui, rust) = crate::dev::snapshot(&repo);
-            let ui_changes = crate::dev::changed_files(&old_ui, &ui);
-            let rust_changes = crate::dev::changed_files(&old_rust, &rust);
-            if !ui_changes.is_empty() {
-                let _ = state
-                    .dev_events
-                    .send(json!({"event":"ui_changed","data":{}}).to_string());
-            }
-            if !rust_changes.is_empty() {
-                let files = rust_changes
-                    .iter()
-                    .map(|p| {
-                        p.strip_prefix(&repo)
-                            .unwrap_or(p)
-                            .to_string_lossy()
-                            .to_string()
-                    })
-                    .collect::<Vec<_>>();
-                let _ = state
-                    .dev_events
-                    .send(json!({"event":"rust_changed","data":{"files":files}}).to_string());
-                pending = Some(Instant::now() + Duration::from_secs(3));
-            }
-            old_ui = ui;
-            old_rust = rust;
-            if pending.is_some_and(|at| Instant::now() >= at) {
-                pending = None;
-                if state.config.read().await.self_dev.auto_rebuild
-                    && state.active_jobs.load(Ordering::SeqCst) == 0
-                {
-                    let _ = run_dev_build(&state, &repo).await;
-                }
-            }
-        }
-    });
-}
-
-async fn dev_rebuild(State(state): State<AppState>) -> ApiResult<Response> {
-    let repo = state
-        .dev_repo
-        .clone()
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"))?;
-    let jobs = state.active_jobs.load(Ordering::SeqCst);
-    if jobs > 0 {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            format!("Đang có {jobs} việc AI chạy — chờ xong hoặc dừng"),
-        ));
-    }
-    let (tx, rx) = mpsc::channel::<String>(64);
-    let state2 = state.clone();
-    tokio::spawn(async move {
-        let result = run_dev_build(&state2, &repo).await;
-        let _ = tx.send(result.to_string()).await;
-    });
-    let stream = async_stream::stream! { let mut rx=ReceiverStream::new(rx); while let Some(line)=rx.next().await { if let Ok(value)=serde_json::from_str::<Value>(&line) { let name=value["event"].as_str().unwrap_or("log"); yield Ok::<_,Infallible>(axum::response::sse::Event::default().event(name).data(value["data"].to_string())); } else { yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").data(line)); } } };
-    Ok(Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response())
-}
-
-async fn run_dev_build(state: &AppState, repo: &std::path::Path) -> Value {
-    let start = Instant::now();
-    let spawned = tokio::process::Command::new("cargo")
-        .args(["build"])
-        .current_dir(repo)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
-    let (ok, logs) = match spawned {
-        Ok(mut child) => {
-            let stdout = child.stdout.take();
-            let stderr = child.stderr.take();
-            let (tx, mut rx) = mpsc::channel::<String>(128);
-            let tx1 = tx.clone();
-            let tx2 = tx.clone();
-            let out_task = tokio::spawn(async move {
-                let mut text = String::new();
-                if let Some(stream) = stdout {
-                    let mut reader = tokio::io::BufReader::new(stream);
-                    let mut line = String::new();
-                    loop {
-                        line.clear();
-                        if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
-                            break;
-                        }
-                        let clean = crate::core::text::strip_ansi(&line);
-                        text.push_str(&clean);
-                        let _ = tx1.send(clean).await;
-                    }
-                }
-                text
-            });
-            let err_task = tokio::spawn(async move {
-                let mut text = String::new();
-                if let Some(stream) = stderr {
-                    let mut reader = tokio::io::BufReader::new(stream);
-                    let mut line = String::new();
-                    loop {
-                        line.clear();
-                        if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
-                            break;
-                        }
-                        let clean = crate::core::text::strip_ansi(&line);
-                        text.push_str(&clean);
-                        let _ = tx2.send(clean).await;
-                    }
-                }
-                text
-            });
-            drop(tx);
-            let state_events = state.dev_events.clone();
-            let logs_task = tokio::spawn(async move {
-                let mut all = String::new();
-                while let Some(line) = rx.recv().await {
-                    all.push_str(&line);
-                    let _ = state_events
-                        .send(json!({"event":"build_log","data":{"text":line}}).to_string());
-                }
-                all
-            });
-            let status = child.wait().await;
-            let out = out_task.await.unwrap_or_default();
-            let err = err_task.await.unwrap_or_default();
-            let all = logs_task.await.unwrap_or_default();
-            (
-                status.is_ok_and(|value| value.success()),
-                if all.is_empty() {
-                    format!("{out}{err}")
-                } else {
-                    all
-                },
-            )
-        }
-        Err(e) => (false, e.to_string()),
-    };
-    let clean = crate::core::text::strip_ansi(&logs);
-    let tail = clean
-        .lines()
-        .rev()
-        .take(40)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>()
-        .join("\n");
-    let result = json!({"ok":ok,"duration_ms":start.elapsed().as_millis(),"errors_tail":if ok {""} else {&tail}});
-    let event = json!({"event":"rebuild","data":result});
-    let _ = state.dev_events.send(event.to_string());
-    if ok {
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        std::process::exit(75);
-    }
-    result
-}
-
 async fn get_config(State(state): State<AppState>) -> Json<Config> {
     let mut config = state.config.read().await.clone();
     for provider in &mut config.providers {
@@ -1337,11 +826,11 @@ async fn generate_plan(
     Json(input): Json<PlanRequest>,
 ) -> ApiResult<Response> {
     let requested_folder = if input.dev_chat && state.dev_repo.is_some() {
-        PathBuf::from(effective_chat_folder(
+        PathBuf::from(crate::api::dev::effective_chat_folder(
             true,
             true,
             &input.folder,
-            &dev_repo_path(&state)?.to_string_lossy(),
+            &crate::api::dev::dev_repo_path(&state)?.to_string_lossy(),
         ))
     } else {
         PathBuf::from(input.folder.trim())
@@ -1449,7 +938,10 @@ async fn generate_plan(
         String::new()
     };
     let request_context = if input.dev_chat {
-        format!("{}\n\n", dev_chat_preamble(&folder.to_string_lossy()))
+        format!(
+            "{}\n\n",
+            crate::api::dev::dev_chat_preamble(&folder.to_string_lossy())
+        )
     } else {
         String::new()
     };
@@ -1637,7 +1129,6 @@ async fn generate_plan(
 }
 #[cfg(test)]
 mod plan_tests {
-    use super::effective_chat_folder;
     use serde_json::Value;
 
     #[test]
@@ -1648,26 +1139,6 @@ mod plan_tests {
         let value: Value = serde_json::from_str(extracted).expect("extracted JSON should parse");
         assert_eq!(value["title"], "Ship it");
         assert_eq!(value["tasks"][0]["id"], 1);
-    }
-
-    #[test]
-    fn dev_chat_folder_uses_repo_only_when_dev_mode_is_on() {
-        assert_eq!(
-            effective_chat_folder(true, true, "C:/client", "C:/repo"),
-            "C:/repo"
-        );
-        assert_eq!(
-            effective_chat_folder(true, false, "C:/client", "C:/repo"),
-            "C:/client"
-        );
-        assert_eq!(
-            effective_chat_folder(false, true, "C:/saved", "C:/repo"),
-            "C:/saved"
-        );
-        assert_eq!(
-            effective_chat_folder(false, false, "C:/client", "C:/repo"),
-            "C:/client"
-        );
     }
 }
 fn file_tree(root: &std::path::Path) -> String {
@@ -2516,14 +1987,14 @@ async fn chat_handler(
     })?;
     let dev_chat = request.dev_chat || existing.as_ref().is_some_and(|chat| chat.dev_chat);
     let requested_folder = if dev_chat && state.dev_repo.is_some() {
-        PathBuf::from(effective_chat_folder(
+        PathBuf::from(crate::api::dev::effective_chat_folder(
             true,
             true,
             request.folder.trim(),
-            &dev_repo_path(&state)?.to_string_lossy(),
+            &crate::api::dev::dev_repo_path(&state)?.to_string_lossy(),
         ))
     } else {
-        PathBuf::from(effective_chat_folder(
+        PathBuf::from(crate::api::dev::effective_chat_folder(
             false,
             dev_chat,
             request.folder.trim(),
@@ -2596,7 +2067,7 @@ async fn chat_handler(
     record.effort = effort;
     record.messages = request.messages.clone();
     if dev_chat {
-        let preamble = dev_chat_preamble(&folder);
+        let preamble = crate::api::dev::dev_chat_preamble(&folder);
         if let Some(first) = record
             .messages
             .iter_mut()

@@ -37,3 +37,5 @@ docs/{SPEC.md,CODEX_RULES.md,design/*,history/tasks/*}
 - 2026-11-10: xoá target-codex/target-test (1,5 GB, không ảnh hưởng). R1a xong.
 - 2026-11-10: R1b complete. Watcher continues to monitor ui/, src/, Cargo.toml and Cargo.lock only; docs/ and scripts/ are ignored.
 - 2026-11-10: R2a in progress. Moved config, AppState, shared text/path/process foundations, and API error types. Handler extraction and router ownership remain for completion; gates are being run against this intermediate state.
+
+- 2026-11-10: R2b complete. Moved `/api/dev/*` handlers and `/`, `/app.js`, `/style.css` serving (including dev disk serving) from `src/server.rs` into `src/api/dev.rs` and `src/api/static_ui.rs`; moved the dev chat-folder unit test. No intended behavior changes.
