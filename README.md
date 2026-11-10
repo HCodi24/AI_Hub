@@ -114,6 +114,8 @@ Effort áp dụng cho Codex CLI, Claude Code CLI (`--effort low|medium|high|xhig
 
 Nút "✦ Gợi ý chia việc" nằm cạnh nút Gửi (và tự gợi ý khi yêu cầu có vẻ lớn). Người lập kế hoạch là vai trò lead của MutiS hoặc planner đã cấu hình; nó đề xuất các task gồm người phụ trách, phụ thuộc, loại việc (plan/code/test/docs/review/small_edit) và model/effort riêng cho từng task.
 
+**Tự động chia việc** (Cài đặt › MutiS hoặc công tắc trong popover MutiS): khi bật, mỗi tin gửi ở nguồn MutiS được chia việc ngay như bấm ✦ Gợi ý chia việc, không trả lời kiểu chat thường. Mặc định tắt.
+
 **⚖ Tranh luận**: nút cạnh "✦ Gợi ý chia việc". Codex và Claude cùng đọc thư mục, đề xuất hướng giải quyết song song, rồi phản biện nhau (mặc định 2 vòng, dừng sớm khi đã thống nhất). Một phiên Claude thứ hai, không biết gì về cuộc tranh luận ngoài biên bản, làm trọng tài và ra phán quyết. Bấm "Dùng kết quả này để chia việc" để lập kế hoạch từ phán quyết. Không AI nào sửa file trong lúc tranh luận. Cài đặt › MutiS cho chỉnh số vòng (1–3) và model trọng tài.
 
 Trong lúc lập kế hoạch, giao diện hiện log trực tiếp, thời gian đã trôi qua và nút "Huỷ". Chỉ những nguồn đã kết nối mới được giao việc; nếu phải thay nguồn, dòng cảnh báo "⚠ đã đổi từ …" xuất hiện.

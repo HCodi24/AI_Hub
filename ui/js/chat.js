@@ -4,6 +4,7 @@ import { hideDevPage, refreshDevRepo } from "./dev.js";
 import { EFFORTS, currentProvider, renderModePicker, saveLastMode, setupProviderControls, updateModels, updatePermissionControl } from "./mode-chip.js";
 import { api, readSse } from "./api.js";
 import { resolveConnectedRole, testAllProviders } from "./settings.js";
+import { planFromRequest } from "./plans.js";
 
 export const providerSelect = $("#provider-select");
 export const modelInput = $("#model-input");
@@ -482,6 +483,12 @@ export async function sendMessage() {
     $("#planner-provider").value = lead.provider_id;
     $("#planner-model").value = lead.model;
     saveLastMode();
+    // "Tự động chia việc": the message becomes a plan request right away (no normal chat answer).
+    if (state.mutis.auto_plan && text && !state.devChat) {
+      messageInput.value = "";
+      planFromRequest(text);
+      return;
+    }
   }
   if (!currentProvider()) {
     showToast("Hãy thêm hoặc chọn một nguồn AI trong Cài đặt.");

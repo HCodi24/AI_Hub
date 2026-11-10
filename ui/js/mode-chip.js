@@ -221,7 +221,7 @@ export function renderMutisSwitches(containerId) {
   const root = $(`#${containerId}`);
   if (!root) return;
   root.replaceChildren();
-  const switches = [["verify_gate", "Kiểm tra tự động"], ["auto_review", "Claude review"], ["auto_fix", "Tự sửa lỗi"]];
+  const switches = [["auto_plan", "Tự động chia việc"], ["verify_gate", "Kiểm tra tự động"], ["auto_review", "Claude review"], ["auto_fix", "Tự sửa lỗi"]];
   for (const [key, label] of switches) {
     const input = el("input", {
       type: "checkbox",

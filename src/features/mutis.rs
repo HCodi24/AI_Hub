@@ -165,6 +165,7 @@ pub fn apply_setting_change(
         "mutis.auto_fix" => boolean!(auto_fix),
         "mutis.fix_rounds_max" => bounded!(fix_rounds_max, 0, 5),
         "mutis.event_log" => boolean!(event_log),
+        "mutis.auto_plan" => boolean!(auto_plan),
         _ if path.starts_with("mutis.roles.") => {
             let mut parts = path.split('.');
             let _ = parts.next();

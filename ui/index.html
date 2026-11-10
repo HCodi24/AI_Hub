@@ -286,6 +286,10 @@
             <small>Giới hạn số vòng sửa tự động.</small>
             <input type="number" min="0" max="5" data-orch="fix_rounds_max">
           </label>
+        <label>
+          <span><input type="checkbox" data-orch="auto_plan"> Tự động chia việc</span>
+          <small>Ở nguồn MutiS, mỗi tin gửi đi được chia việc ngay (như bấm ✦ Gợi ý chia việc) thay vì chat thường.</small>
+        </label>
         <label><span><input type="checkbox" data-orch="event_log"> Ghi nhật ký sự kiện</span><small>Lưu thời gian, token và trạng thái của task plan.</small></label>
         <label>Quy tắc cho worker<textarea data-orch="worker_rules" rows="5" aria-label="Quy tắc worker"></textarea></label>
         <div><strong>Định tuyến mặc định</strong><div id="mutis-routing"></div></div>

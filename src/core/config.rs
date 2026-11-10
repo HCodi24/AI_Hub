@@ -103,6 +103,9 @@ pub struct MutisConfig {
     pub fix_rounds_max: u32,
     #[serde(default = "default_event_log")]
     pub event_log: bool,
+    /// Sending a message at the MutiS source goes straight to "Chia việc" instead of a normal chat.
+    #[serde(default)]
+    pub auto_plan: bool,
     #[serde(default = "default_routing")]
     pub routing: Vec<RoutingRule>,
     #[serde(default)]
@@ -162,6 +165,7 @@ impl Default for MutisConfig {
             auto_fix: false,
             fix_rounds_max: 2,
             event_log: true,
+            auto_plan: false,
             routing: default_routing(),
             roles: MutisRoles::default(),
         }
