@@ -4,6 +4,113 @@ use std::{
     time::SystemTime,
 };
 
+pub fn git_checkpoint_args(timestamp: &str) -> Vec<Vec<String>> {
+    vec![
+        vec!["add".into(), "-A".into()],
+        vec![
+            "commit".into(),
+            "-m".into(),
+            format!("checkpoint: {timestamp}"),
+        ],
+    ]
+}
+
+pub fn git_commit_args(message: &str) -> Vec<Vec<String>> {
+    vec![
+        vec!["add".into(), "-A".into()],
+        vec!["commit".into(), "-m".into(), message.into()],
+    ]
+}
+
+pub fn clean_paths() -> [&'static str; 2] {
+    ["src", "ui"]
+}
+
+pub fn git_reset_args() -> Vec<Vec<String>> {
+    let mut args = vec![vec!["reset".into(), "--hard".into(), "HEAD".into()]];
+    args.extend(
+        clean_paths()
+            .into_iter()
+            .map(|path| vec!["clean".into(), "-fd".into(), "--".into(), path.into()]),
+    );
+    args
+}
+
+pub fn iso_now() -> String {
+    let seconds = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let days = (seconds / 86_400) as i64;
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let mut year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    year += i64::from(month <= 2);
+    let rem = seconds % 86_400;
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        rem / 60 % 60,
+        rem % 60
+    )
+}
+
+#[cfg(test)]
+mod command_tests {
+    use super::*;
+
+    #[test]
+    fn git_command_builders_use_fixed_arguments() {
+        assert_eq!(
+            git_checkpoint_args("2026-11-10T12:30:00+07:00"),
+            vec![
+                vec!["add".to_owned(), "-A".to_owned()],
+                vec![
+                    "commit".to_owned(),
+                    "-m".to_owned(),
+                    "checkpoint: 2026-11-10T12:30:00+07:00".to_owned()
+                ]
+            ]
+        );
+        assert_eq!(
+            git_commit_args("ship it"),
+            vec![
+                vec!["add".to_owned(), "-A".to_owned()],
+                vec!["commit".to_owned(), "-m".to_owned(), "ship it".to_owned()]
+            ]
+        );
+    }
+
+    #[test]
+    fn clean_whitelist_is_only_src_and_ui() {
+        assert_eq!(clean_paths(), ["src", "ui"]);
+        assert_eq!(
+            git_reset_args(),
+            vec![
+                vec!["reset".to_owned(), "--hard".to_owned(), "HEAD".to_owned()],
+                vec![
+                    "clean".to_owned(),
+                    "-fd".to_owned(),
+                    "--".to_owned(),
+                    "src".to_owned()
+                ],
+                vec![
+                    "clean".to_owned(),
+                    "-fd".to_owned(),
+                    "--".to_owned(),
+                    "ui".to_owned()
+                ]
+            ]
+        );
+    }
+}
+
 pub type Snapshot = BTreeMap<PathBuf, Option<SystemTime>>;
 
 pub fn discover_repo_root(start: &Path) -> Option<PathBuf> {

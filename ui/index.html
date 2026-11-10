@@ -12,6 +12,7 @@
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">✦</span><span>AI Hub</span></div>
       <span id="dev-badge" class="dev-badge" hidden>DEV</span>
+      <button id="self-dev-open" class="settings-open" type="button" hidden>🛠 Tự phát triển</button>
       <button id="new-chat" class="new-chat"><span aria-hidden="true">＋</span> Chat mới</button>
       <div class="section-label">LỊCH SỬ</div>
       <nav id="chat-list" class="chat-list" aria-label="Danh sách chat"></nav>
@@ -90,6 +91,14 @@
       <section><h2>Lịch sử chẩn đoán</h2><div id="mutis-diagnoses"></div></section>
     </main>
     <main id="plans-view" class="extensions-view" hidden><header class="extensions-header"><div><p class="eyebrow">AI HUB</p><h1>Chia việc</h1><p class="muted">Lập kế hoạch, chỉnh sửa và duyệt trước khi chạy từng công việc.</p></div><button id="plans-back" class="subtle-button">Quay lại chat</button></header><section id="plans-list"></section><section id="plan-editor" hidden></section></main>
+    <main id="self-dev-view" class="extensions-view" hidden>
+      <header class="extensions-header"><div><p class="eyebrow">AI HUB · DEV</p><h1>Tự phát triển</h1><p class="muted">Sửa AI Hub ngay trong repo đang chạy.</p></div><button id="self-dev-back" class="subtle-button">Quay lại chat</button></header>
+      <section><h2>Repo</h2><div id="dev-repo-info" class="dev-repo-info">Đang tải…</div></section>
+      <section><h2>Sửa app bằng AI</h2><div class="dev-actions"><button id="dev-open-chat" class="send-button">Mở chat sửa app</button><button id="dev-open-plan" class="subtle-button">Chia việc cho app</button></div><p class="muted">Giao diện tự tải lại; code Rust cần bấm Build & khởi động lại</p></section>
+      <section><h2>Git</h2><div class="dev-actions"><button id="dev-checkpoint" class="subtle-button">Tạo checkpoint</button><button id="dev-show-diff" class="subtle-button">Xem thay đổi</button><button id="dev-reset" class="subtle-button">Bỏ thay đổi</button></div><div class="dev-actions"><input id="dev-commit-message" placeholder="Nội dung commit"><button id="dev-commit" class="subtle-button">Commit</button></div><div id="dev-git-result"></div></section>
+      <section><h2>Kiểm tra</h2><button id="dev-test" class="subtle-button">Chạy test</button><pre id="dev-test-log" class="task-log" hidden></pre></section>
+      <section><h2>Build exe release</h2><button id="dev-release" class="subtle-button">Build exe release</button><pre id="dev-release-log" class="task-log" hidden></pre></section>
+    </main>
     <main id="extensions-view" class="extensions-view" hidden>
       <header class="extensions-header"><div><p class="eyebrow">AI HUB</p><h1>Tiện ích</h1><p class="muted">Quản lý tiện ích cho các công cụ AI của bạn.</p></div><button id="extensions-back" class="subtle-button">Quay lại chat</button></header>
       <section id="extension-cards" class="extension-cards"></section>

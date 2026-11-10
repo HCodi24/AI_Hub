@@ -39,8 +39,9 @@ Trạng thái: đang làm · Bắt đầu: 2026-11-10 · Giám sát: Claude · C
 ## Các bước
 - [x] 11a — `--dev`: UI từ đĩa + tự tải lại; theo dõi Rust; endpoint build & restart (mã 75) có khoá khi đang chạy việc;
   `dev.ps1`/`dev.cmd`; huy hiệu DEV.
-- [ ] 11b — trang Tự phát triển: repo/git status, mở chat sửa app, checkpoint/diff/bỏ/commit, chạy test, build release.
+- [x] 11b — trang Tự phát triển: repo/git status, mở chat sửa app, checkpoint/diff/bỏ/commit, chạy test, build release.
 
 ## Nhật ký tiến độ
 - 2026-11-10: bỏ thiết kế cũ (exe thử + thay exe) theo yêu cầu; viết lại thiết kế chế độ dev.
 - 2026-11-10: Hoàn tất 11a: `--dev`/`AI_HUB_DEV`, repo discovery/`AI_HUB_REPO`, UI disk + no-store, watcher/SSE, build/restart code 75, guard việc đang chạy, auto rebuild, badge/banner, launcher scripts, README và unit tests. Offline release build, clippy, 39 tests, JS syntax và diff check đạt.
+- 2026-11-10: Hoàn tất 11b: trang dev chỉ hiện trong dev mode; repo refresh 10 giây; mở chat/plan trên repo; API Git cố định cho checkpoint/diff/reset/commit (reset chỉ clean `src` và `ui`, commit/reset bị chặn khi AI jobs chạy); test qua `target/dev-check` kèm MutiS verify khi bật; build release theo nút, SSE logs và đường dẫn exe. Thêm test argv Git và whitelist. Đã cập nhật README. Xác minh: `CARGO_TARGET_DIR=target-codex cargo build --release --offline`, clippy `-D warnings`, 41 tests offline, JS syntax, UTF-8/mojibake scan đều đạt; `git -c core.whitespace=cr-at-eol diff --check` sạch do repo giữ CRLF.

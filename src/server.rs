@@ -187,6 +187,13 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/app.js", get(app_js))
         .route("/style.css", get(style_css))
         .route("/api/dev/status", get(dev_status))
+        .route("/api/dev/repo", get(dev_repo_info))
+        .route("/api/dev/git/diff", get(dev_git_diff))
+        .route("/api/dev/git/checkpoint", post(dev_git_checkpoint))
+        .route("/api/dev/git/reset", post(dev_git_reset))
+        .route("/api/dev/git/commit", post(dev_git_commit))
+        .route("/api/dev/test", post(dev_test))
+        .route("/api/dev/release", post(dev_release))
         .route("/api/dev/settings", get(dev_settings).put(put_dev_settings))
         .route("/api/dev/events", get(dev_events))
         .route("/api/dev/rebuild", post(dev_rebuild))
@@ -888,6 +895,258 @@ async fn asset_response(path: &std::path::Path, content_type: &'static str) -> R
 
 async fn dev_status(State(state): State<AppState>) -> Json<Value> {
     Json(json!({"dev":state.dev_repo.is_some()}))
+}
+
+async fn dev_repo_info(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    let repo = dev_repo_path(&state)?;
+    let output = git_output(&repo, &["status", "--porcelain"]).await?;
+    let changed = String::from_utf8_lossy(&output.stdout).lines().count();
+    let branch = git_text(&repo, &["branch", "--show-current"]).await?;
+    let commit = git_text(&repo, &["log", "-1", "--format=%h%x1f%s%x1f%an"]).await?;
+    let mut fields = commit.split('\u{1f}');
+    Ok(Json(
+        json!({"path":repo.to_string_lossy(),"branch":branch,"changed_files":changed,"last_commit":{"hash":fields.next().unwrap_or(""),"subject":fields.next().unwrap_or(""),"author":fields.next().unwrap_or("")}}),
+    ))
+}
+
+fn dev_repo_path(state: &AppState) -> ApiResult<PathBuf> {
+    state
+        .dev_repo
+        .clone()
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"))
+}
+
+async fn git_output(repo: &std::path::Path, args: &[&str]) -> ApiResult<std::process::Output> {
+    tokio::process::Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .await
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không chạy được Git"))
+}
+
+async fn git_text(repo: &std::path::Path, args: &[&str]) -> ApiResult<String> {
+    let output = git_output(repo, args).await?;
+    if !output.status.success() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+async fn dev_git_diff(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    let repo = dev_repo_path(&state)?;
+    let stat = git_text(&repo, &["diff", "HEAD", "--stat"]).await?;
+    let diff_output = git_output(&repo, &["diff", "--no-color", "HEAD"]).await?;
+    let truncated = diff_output.stdout.len() > 200 * 1024;
+    let diff =
+        String::from_utf8_lossy(&diff_output.stdout[..diff_output.stdout.len().min(200 * 1024)])
+            .into_owned();
+    let status = git_text(&repo, &["status", "--porcelain", "--untracked-files=all"]).await?;
+    let untracked = status
+        .lines()
+        .filter(|line| line.starts_with("??"))
+        .map(|line| line[3..].to_owned())
+        .collect::<Vec<_>>();
+    let files = status
+        .lines()
+        .map(|line| line.get(3..).unwrap_or(line).to_owned())
+        .collect::<Vec<_>>();
+    Ok(Json(
+        json!({"stat":stat,"diff":diff,"untracked":untracked,"files":files,"truncated":truncated}),
+    ))
+}
+
+async fn dev_git_checkpoint(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    let repo = dev_repo_path(&state)?;
+    ensure_no_jobs(&state)?;
+    let status = git_text(&repo, &["status", "--porcelain"]).await?;
+    if status.is_empty() {
+        return Ok(Json(
+            json!({"ok":true,"skipped":true,"message":"Không có thay đổi"}),
+        ));
+    }
+    let ts = crate::dev::iso_now();
+    for args in crate::dev::git_checkpoint_args(&ts) {
+        let output = tokio::process::Command::new("git")
+            .args(args)
+            .current_dir(&repo)
+            .output()
+            .await
+            .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không chạy được Git"))?;
+        if !output.status.success() {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+    }
+    Ok(Json(
+        json!({"ok":true,"hash":git_text(&repo,&["rev-parse","--short","HEAD"]).await?}),
+    ))
+}
+
+fn ensure_no_jobs(state: &AppState) -> ApiResult<()> {
+    let jobs = state.active_jobs.load(Ordering::SeqCst);
+    if jobs > 0 {
+        Err(ApiError::new(
+            StatusCode::CONFLICT,
+            format!("Đang có {jobs} việc AI chạy — chờ xong hoặc dừng"),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+async fn dev_git_reset(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+    let repo = dev_repo_path(&state)?;
+    ensure_no_jobs(&state)?;
+    let files = git_text(&repo, &["status", "--porcelain", "--untracked-files=all"])
+        .await?
+        .lines()
+        .map(|line| line.get(3..).unwrap_or(line).to_owned())
+        .collect::<Vec<_>>();
+    for args in crate::dev::git_reset_args() {
+        let argv = args.iter().map(String::as_str).collect::<Vec<_>>();
+        let output = git_output(&repo, &argv).await?;
+        if !output.status.success() {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+    }
+    Ok(Json(json!({"ok":true,"files":files})))
+}
+
+#[derive(Deserialize)]
+struct DevCommitInput {
+    message: String,
+}
+async fn dev_git_commit(
+    State(state): State<AppState>,
+    Json(input): Json<DevCommitInput>,
+) -> ApiResult<Json<Value>> {
+    let repo = dev_repo_path(&state)?;
+    ensure_no_jobs(&state)?;
+    let message = input.message.trim();
+    if message.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Nhập nội dung commit",
+        ));
+    }
+    for args in crate::dev::git_commit_args(message) {
+        let output = tokio::process::Command::new("git")
+            .args(args)
+            .current_dir(&repo)
+            .output()
+            .await
+            .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không chạy được Git"))?;
+        if !output.status.success() {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+    }
+    Ok(Json(
+        json!({"ok":true,"hash":git_text(&repo,&["rev-parse","--short","HEAD"]).await?}),
+    ))
+}
+
+async fn dev_test(State(state): State<AppState>) -> ApiResult<Response> {
+    let repo = dev_repo_path(&state)?;
+    let cfg = state.config.read().await.clone();
+    let verify = cfg.mutis.verify_gate;
+    let command = cfg.mutis.verify_command.clone();
+    let ignore = cfg.mutis.verify_ignore.clone();
+    let (tx, rx) = mpsc::channel::<String>(64);
+    tokio::spawn(async move {
+        let mut cmd = tokio::process::Command::new("cargo");
+        cmd.args(["test"])
+            .current_dir(&repo)
+            .env("CARGO_TARGET_DIR", repo.join("target/dev-check"))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let result = stream_process(cmd, tx.clone()).await;
+        let _ = tx
+            .send(json!({"event":"summary","data":{"cargo_ok":result}}).to_string())
+            .await;
+        if verify {
+            let report = crate::verify::run(&repo, &command, &ignore, tx.clone()).await;
+            let _ = tx
+                .send(json!({"event":"verify","data":report}).to_string())
+                .await;
+        }
+    });
+    Ok(sse_channel(rx))
+}
+
+async fn dev_release(State(state): State<AppState>) -> ApiResult<Response> {
+    let repo = dev_repo_path(&state)?;
+    let (tx, rx) = mpsc::channel::<String>(64);
+    let target = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .map(|path| {
+            if path.is_absolute() {
+                path
+            } else {
+                repo.join(path)
+            }
+        })
+        .unwrap_or_else(|| repo.join("target"));
+    let out = target.join("release/ai-hub.exe");
+    tokio::spawn(async move {
+        let mut cmd = tokio::process::Command::new("cargo");
+        cmd.args(["build", "--release"])
+            .current_dir(&repo)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let ok = stream_process(cmd, tx.clone()).await;
+        let _=tx.send(json!({"event":"summary","data":{"ok":ok,"exe":out.to_string_lossy(),"note":"Nếu báo Access is denied, hãy đóng exe release đang chạy trước."}}).to_string()).await;
+    });
+    Ok(sse_channel(rx))
+}
+
+async fn stream_process(mut command: tokio::process::Command, tx: mpsc::Sender<String>) -> bool {
+    let Ok(mut child) = command.spawn() else {
+        return false;
+    };
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let mut tasks = Vec::new();
+    if let Some(stream) = stdout {
+        tasks.push(tokio::spawn(forward_process_lines(stream, tx.clone())));
+    }
+    if let Some(stream) = stderr {
+        tasks.push(tokio::spawn(forward_process_lines(stream, tx.clone())));
+    }
+    for task in tasks {
+        let _ = task.await;
+    }
+    child.wait().await.is_ok_and(|status| status.success())
+}
+
+async fn forward_process_lines<R>(stream: R, tx: mpsc::Sender<String>)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    let mut lines = tokio::io::BufReader::new(stream).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        let _ = tx
+            .send(json!({"event":"log","data":{"text":line}}).to_string())
+            .await;
+    }
+}
+
+fn sse_channel(rx: mpsc::Receiver<String>) -> Response {
+    let stream = async_stream::stream! {let mut rx=ReceiverStream::new(rx);while let Some(line)=rx.next().await{if let Ok(value)=serde_json::from_str::<Value>(&line){yield Ok::<_,Infallible>(axum::response::sse::Event::default().event(value["event"].as_str().unwrap_or("log")).data(value["data"].to_string()));}else{yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").json_data(json!({"text":line})).unwrap());}}};
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }
 async fn dev_settings(State(state): State<AppState>) -> Json<Value> {
     Json(json!({"auto_rebuild":state.config.read().await.self_dev.auto_rebuild}))

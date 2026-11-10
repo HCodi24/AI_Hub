@@ -16,7 +16,7 @@ const state = {
   providerChecking: new Set(),
   plans: [], currentPlan: null, planRunning: false,
   selectedSource: "provider",
-  dev: false, devAutoRebuild: false,
+  dev: false, devAutoRebuild: false, devRepoTimer: null, devRepo: null,
 };
 
 function showDevBanner(message, action) {
@@ -32,6 +32,30 @@ function connectDevEvents() {
   source.addEventListener("rebuild", event => { const result=JSON.parse(event.data||"{}"); showDevBanner(result.ok?"Đang khởi động lại…":"Build lỗi:\n"+(result.errors_tail||"Không có chi tiết lỗi"), false); });
   source.addEventListener("build_log", event => { const data=JSON.parse(event.data||"{}"); const root=$("#dev-banner"); root.hidden=false; let log=root.querySelector("pre"); if(!log){log=el("pre",{className:"dev-build-log"});root.append(log);} log.textContent=(log.textContent+data.text).slice(-12000); });
   source.onerror = async () => { source.close(); showDevBanner("Đang khởi động lại…",false); while(true){await new Promise(resolve=>setTimeout(resolve,1000));try{const status=await api("/api/dev/status");if(status.dev){location.reload();return;}}catch(_){}} };
+}
+async function refreshDevRepo() {
+  try { state.devRepo=await api("/api/dev/repo"); const r=state.devRepo, root=$("#dev-repo-info"); root.replaceChildren();
+    for (const [label,value] of [["Đường dẫn",r.path],["Nhánh",r.branch||"(detached)"],["File thay đổi",r.changed_files],["Commit cuối",`${r.last_commit.hash} · ${r.last_commit.subject} · ${r.last_commit.author}`]]) root.append(el("p",{},[el("strong",{textContent:`${label}: `}),document.createTextNode(String(value))]));
+  } catch(error) { $("#dev-repo-info").textContent=error.message; }
+}
+function showDevPage() { $(".main-panel").hidden=true; $("#extensions-view").hidden=true; $("#mutis-view").hidden=true; $("#plans-view").hidden=true; $("#self-dev-view").hidden=false; refreshDevRepo(); clearInterval(state.devRepoTimer); state.devRepoTimer=setInterval(refreshDevRepo,10000); }
+function hideDevPage() { $("#self-dev-view").hidden=true; $(".main-panel").hidden=false; clearInterval(state.devRepoTimer); }
+async function devAction(path, body) { return api(path,{method:body?"POST":"GET",...(body?{body:JSON.stringify(body)}:{})}); }
+function renderDevDiff(data) { const root=$("#dev-git-result"); root.replaceChildren(el("p",{textContent:data.stat||"Không có diff được theo dõi."})); if(data.untracked?.length) root.append(el("p",{textContent:`File chưa theo dõi:\n${data.untracked.join("\n")}`})); const pre=el("pre",{className:"dev-diff"}); for(const line of data.diff.split("\n")){const span=el("span",{className:line.startsWith("+")&&!line.startsWith("+++")?"diff-add":line.startsWith("-")&&!line.startsWith("---")?"diff-remove":"",textContent:line+"\n"});pre.append(span);} root.append(pre);if(data.truncated)root.append(el("p",{textContent:"Diff đã giới hạn ở 200 KB."})); }
+async function streamDevRun(url, target) {
+  target.hidden = false;
+  target.textContent = "";
+  try {
+    const response = await fetch(url, { method: "POST" });
+    if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
+    await readSse(response.body, (event, data) => {
+      if (event === "log") target.textContent += `${data.text || ""}\n`;
+      if (event === "summary" && Object.hasOwn(data, "cargo_ok")) target.textContent += `${data.cargo_ok ? "✓" : "✗"} cargo test ${data.cargo_ok ? "đạt" : "thất bại"}\n`;
+      if (event === "verify") target.textContent += `${data.ok ? "✓" : "✗"} MutiS verify: ${(data.summary_lines || []).join(" · ")}\n`;
+      if (event === "summary" && Object.hasOwn(data, "exe")) target.textContent += `${data.ok ? "✓ Build thành công" : "✗ Build thất bại"}${data.ok ? `\nExe: ${data.exe}\n${data.note}` : ""}\n`;
+      target.scrollTop = target.scrollHeight;
+    });
+  } catch (error) { target.textContent += `${error.message}\n`; }
 }
 async function startDevBuild() {
   showDevBanner("Đang build…",false);
@@ -936,6 +960,7 @@ async function planFromRequest(text) {
   const buttons = [$("#plan-button"), $("#hint-plan")];
   buttons.forEach(button => { if (button) button.disabled = true; });
   $(".main-panel").hidden = true;
+  $("#self-dev-view").hidden = true;
   $("#extensions-view").hidden = true;
   $("#plans-view").hidden = false;
   const provider = state.config.providers.find(item => item.id === $("#planner-provider").value);
@@ -977,6 +1002,7 @@ async function planFromRequest(text) {
 function openPlan(plan) {
   state.currentPlan = structuredClone(plan);
   $(".main-panel").hidden = true;
+  $("#self-dev-view").hidden = true;
   $("#extensions-view").hidden = true;
   $("#plans-view").hidden = false;
   renderPlanEditor();
@@ -1565,6 +1591,16 @@ async function runExtensionAction(card,action){
     await readSse(response.body,(event,data)=>{if(event==="log")log.textContent+=`${data}\n`;if(event==="error"){showToast(`✗ ${data.message||"Lệnh thất bại"}`);log.textContent+=`${data.message||"Lệnh thất bại"}\n`}if(event==="done"&&data.ok)showToast("✓ Hoàn tất")});
   }catch(error){showToast(`✗ ${error.message}`);log.textContent+=`${error.message}\n`}finally{$("#extension-stop").hidden=true;await loadExtensions()}
 }
+$("#self-dev-open").addEventListener("click",showDevPage);
+$("#self-dev-back").addEventListener("click",hideDevPage);
+$("#dev-open-chat").addEventListener("click",()=>{hideDevPage();newChat();folderInput.value=state.devRepo?.path||"";const mutis=state.orchestration?.enabled;const provider=state.config.providers.find(p=>p.kind==="codex_cli");if(mutis){state.selectedSource="mutis";}else if(provider){providerSelect.value=provider.id;state.selectedSource="provider";updateModels();updatePermissionControl();}permissionSelect.value="write";messageInput.value="Sửa AI Hub: ";messageInput.focus();rememberCurrentChat();renderModePicker();});
+$("#dev-open-plan").addEventListener("click",()=>{hideDevPage();folderInput.value=state.devRepo?.path||"";planFromRequest("Sửa AI Hub: ");});
+$("#dev-checkpoint").addEventListener("click",async()=>{try{const r=await devAction("/api/dev/git/checkpoint",{});$("#dev-git-result").textContent=r.skipped?r.message:"Đã tạo checkpoint "+r.hash;await refreshDevRepo();}catch(e){showToast(e.message)}});
+$("#dev-show-diff").addEventListener("click",async()=>{try{renderDevDiff(await devAction("/api/dev/git/diff"));}catch(e){showToast(e.message)}});
+$("#dev-reset").addEventListener("click",async()=>{try{const before=await devAction("/api/dev/git/diff");if(!window.confirm("Bỏ thay đổi các file này?\n\n"+before.files.join("\n")))return;const r=await devAction("/api/dev/git/reset",{});$("#dev-git-result").textContent="Đã bỏ thay đổi:\n"+r.files.join("\n");await refreshDevRepo();}catch(e){showToast(e.message)}});
+$("#dev-commit").addEventListener("click",async()=>{const message=$("#dev-commit-message").value.trim();if(!message){showToast("Nhập nội dung commit");return;}try{const r=await devAction("/api/dev/git/commit",{message});$("#dev-git-result").textContent="Đã commit "+r.hash;$("#dev-commit-message").value="";await refreshDevRepo();}catch(e){showToast(e.message)}});
+$("#dev-test").addEventListener("click",()=>streamDevRun("/api/dev/test",$("#dev-test-log")));
+$("#dev-release").addEventListener("click",()=>streamDevRun("/api/dev/release",$("#dev-release-log")));
 $("#extensions-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=false;try{await loadExtensions()}catch(e){showToast(e.message)}});
 $("#mutis-open").addEventListener("click",async()=>{$(".main-panel").hidden=true;$("#extensions-view").hidden=true;$("#plans-view").hidden=true;$("#mutis-view").hidden=false;try{await loadMutisPage()}catch(e){showToast(e.message)}});
 $("#mutis-back").addEventListener("click",()=>{$("#mutis-view").hidden=true;$(".main-panel").hidden=false});
@@ -1694,7 +1730,7 @@ $('[data-orch="reviewer_provider_id"]').addEventListener("change", () => {
 
 (async function init() {
   try {
-    try { const dev=await api("/api/dev/status"); state.dev=dev.dev; $("#dev-badge").hidden=!state.dev; $("#self-dev-settings").hidden=!state.dev; if(state.dev){const settings=await api("/api/dev/settings");state.devAutoRebuild=settings.auto_rebuild;$("#dev-auto-rebuild").checked=state.devAutoRebuild;connectDevEvents();} } catch (_) {}
+    try { const dev=await api("/api/dev/status"); state.dev=dev.dev; $("#dev-badge").hidden=!state.dev; $("#self-dev-open").hidden=!state.dev; $("#self-dev-settings").hidden=!state.dev; if(state.dev){const settings=await api("/api/dev/settings");state.devAutoRebuild=settings.auto_rebuild;$("#dev-auto-rebuild").checked=state.devAutoRebuild;connectDevEvents();} } catch (_) {}
     await loadConfig();
     renderModePicker();
     await refreshChats();
