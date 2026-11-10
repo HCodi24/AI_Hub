@@ -157,6 +157,7 @@ pub(crate) async fn chat_handler(
     }
     record.messages.push(ChatMessage {
         debate_id: None,
+        plan_id: None,
         role: "assistant".to_owned(),
         content: String::new(),
         reasoning: String::new(),
@@ -208,6 +209,17 @@ pub(crate) async fn chat_handler(
             // Failed/empty assistant turns would be rejected by chat APIs.
             .filter(|message| message.role != "assistant" || !message.content.trim().is_empty())
             .cloned()
+            .map(|mut message| {
+                if message.plan_id.is_some() || message.debate_id.is_some() {
+                    message.plan_id = None;
+                    message.debate_id = None;
+                    message.logs.clear();
+                    message.reasoning.clear();
+                    message.diff.clear();
+                    message.attachments.clear();
+                }
+                message
+            })
             .collect(),
         session_id: record.session_id.clone(),
         mutis: mutis_config.clone(),

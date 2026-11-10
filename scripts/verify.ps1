@@ -42,6 +42,8 @@ $null = Invoke-LoggedCheck 'node' {
 }
 $null = Invoke-LoggedCheck 'plan-order' { node scripts/test-plan-order.mjs }
 $null = Invoke-LoggedCheck 'plan-run' { node scripts/test-plan-run.mjs }
+$null = Invoke-LoggedCheck 'plan-summary' { node scripts/test-plan-summary.mjs }
+$null = Invoke-LoggedCheck 'plan-card' { node --experimental-vm-modules scripts/test-plan-card.mjs }
 $null = Invoke-LoggedCheck 'encoding' {
   $bad = [System.Collections.Generic.List[string]]::new()
   foreach ($folder in @('src','ui','scripts')) {

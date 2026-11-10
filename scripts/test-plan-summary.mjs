@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+const source = await readFile(new URL("../ui/js/plan-summary.js", import.meta.url), "utf8");
+const { planSummary } = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+const plan = { title: "Giữ tiếng Việt", tasks: [{ title: "Sửa giao diện", assignee: "Codex", status: "chờ" }] };
+assert.equal(planSummary(plan), "✦ Chia việc · Giữ tiếng Việt\n- [chờ] Sửa giao diện · Codex");
+plan.tasks[0].status = "xong";
+assert.match(planSummary(plan), /\[xong\]/);
+plan.title = "😀".repeat(1600);
+assert.equal(Array.from(planSummary(plan)).length, 1500);
+assert.ok(!planSummary(plan).includes("\uFFFD"));
+console.log("planSummary: Vietnamese, assignees, progress and Unicode length passed");

@@ -128,6 +128,7 @@ async fn run_turn(
         effort: debater.effort,
         messages: vec![ChatMessage {
             debate_id: None,
+            plan_id: None,
             role: "user".into(),
             content: prompt,
             attachments: Vec::new(),
@@ -478,6 +479,51 @@ pub(crate) async fn get_debate(
     let mut value = json!(debate);
     value["plan_request"] = json!(plan_request);
     Ok(Json(value))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct ChatLink {
+    chat_id: String,
+}
+
+/// Adopt a legacy record once, without starting another debate or provider run.
+pub(crate) async fn attach_chat(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<ChatLink>,
+) -> ApiResult<Json<Debate>> {
+    if !chat::valid_id(&id) || !chat::valid_id(&input.chat_id) {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "id không hợp lệ"));
+    }
+    let operation = || -> anyhow::Result<Debate> {
+        let mut record = state
+            .debates
+            .get(&id)?
+            .ok_or_else(|| anyhow::anyhow!("Không tìm thấy tranh luận"))?;
+        if record.chat_id.is_none() {
+            record.chat_id = Some(input.chat_id.clone());
+            record.save_chat(&state.chats, &input.chat_id, true)?;
+            record.save_chat(&state.chats, &input.chat_id, false)?;
+            state.debates.save(&record)?;
+            if let Some(mut plan) = record
+                .plan_id
+                .as_deref()
+                .map(|id| state.plans.get(id))
+                .transpose()?
+                .flatten()
+            {
+                if plan.chat_id.is_none() {
+                    plan.chat_id = record.chat_id.clone();
+                    state.plans.save(&plan)?;
+                    plan.save_chat(&state.chats, false, false)?;
+                }
+            }
+        }
+        Ok(record)
+    };
+    operation()
+        .map(Json)
+        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 #[derive(Deserialize)]

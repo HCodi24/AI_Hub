@@ -1,3 +1,4 @@
+import { storedPlanCard } from "./plan-card.js";
 import { createDebateCard, storedDebateCard, debateCards, setDebateMarkdown } from "./debate-card.js";
 import { hideMemory, memoryEvent } from "./memory.js";
 import { $, showToast } from "./util.js";
@@ -65,7 +66,13 @@ function imageUrl(chatId, attachment) {
   const extension = imageExtensions[attachment.mime];
   return extension ? `/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(attachment.id)}.${extension}` : "";
 }
+export function showChatPanel() {
+  $("#self-dev-view").hidden = true;
+  $("#mutis-view").hidden = true;
+  $(".main-panel").hidden = false;
+}
 export function newChat() {
+  showChatPanel();
   if (state.streaming) return;
   clearPendingAttachments();
   state.chatId = crypto.randomUUID();
@@ -90,6 +97,7 @@ export function newChat() {
   messageInput.focus();
 }
 export async function loadChat(id) {
+  showChatPanel();
   if (state.streaming) return;
   clearPendingAttachments();
   const saved = state.chats.some((chat) => chat.id === id);
@@ -118,6 +126,7 @@ export async function loadChat(id) {
     state.chatId = chat.id;
     state.devChat = Boolean(chat.dev_chat);
     state.messages = chat.messages || [];
+    for (const message of state.messages) if (message.plan_id) storedPlanCard(message.plan_id).refresh();
     let mode = null;
     try { mode = JSON.parse(localStorage.getItem(`ai-hub-last-mode-${id}`) || "null"); } catch (_) { /* Ignore invalid mode cache. */ }
     state.selectedSource = mode?.source === "mutis" ? "mutis" : "provider";
@@ -167,10 +176,13 @@ export function devChatPreamble(repo) {
     `- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.`,
   ].join("");
 }
-export async function openDevChat() {
+export async function openDevChat({ reuse = false } = {}) {
+  if (state.streaming || state.planRunning) return;
   if (!state.devRepo) await refreshDevRepo();
   if (!state.devRepo?.path) { showToast("Không lấy được đường dẫn repo"); return; }
-  hideDevPage(); newChat(); state.devChat = true;
+  hideDevPage();
+  if (!reuse || !state.chatId) newChat();
+  state.devChat = true;
   folderInput.value = state.devRepo.path;
   const mutis = state.mutis?.enabled;
   const provider = state.config.providers.find(item => item.kind === "codex_cli");
@@ -192,6 +204,13 @@ export function renderMessages() {
     row.className = `message ${message.role === "user" ? "user" : "assistant"}`;
     const body = document.createElement("div");
     body.className = "message-body";
+    if (message.plan_id || message._planCard) {
+      const card = message._planCard || storedPlanCard(message.plan_id);
+      body.append(card.el);
+      row.classList.add("plan-message");
+      row.append(body); messagesRoot.append(row);
+      continue;
+    }
     if (message.debate_id || message._debateCard) {
       const card = message._debateCard || storedDebateCard(message.debate_id);
       body.append(card.el);
@@ -450,7 +469,9 @@ export function setStreaming(value) {
 }
 let debateAbort = null;
 /** One persistent assistant card per debate; SSE updates its DOM in place. */
-async function debateInChat(text) {
+export async function debateInChat(text) {
+  if (!state.chatId) newChat();
+  showChatPanel();
   const folder = folderInput.value.trim();
   if (!folder) { showToast("Hãy nhập thư mục làm việc."); return; }
   const chatId = state.chatId;
@@ -573,7 +594,9 @@ export async function sendMessage(options = {}) {
         file_tools: activeFileTools(),
         effort: state.effort,
         messages: state.messages.filter((message) => message !== assistant)
-          .map(({ role, content, attachments, debate_id }) => ({ role, content, debate_id, attachments: attachments || [] })),
+          .map(({ role, content, attachments, debate_id, plan_id }) => ({
+            role, content, debate_id, plan_id, attachments: attachments || [],
+          })),
       }),
     });
     if (!response.body) throw new Error("Trình duyệt không hỗ trợ đọc luồng phản hồi");

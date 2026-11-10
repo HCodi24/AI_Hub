@@ -44,10 +44,11 @@ globalThis.planRunTest = {
   hideMemory: text => text, memoryEvent() {}, EFFORTS: [], findProvider: () => provider,
   folderInput: { value: "project" }, devChatPreamble: () => "",
 };
+const helpers = await readFile(new URL("../ui/js/plan-helpers.js", import.meta.url), "utf8");
 const order = await readFile(new URL("../ui/js/plan-order.js", import.meta.url), "utf8");
 let source = await readFile(new URL("../ui/js/plans.js", import.meta.url), "utf8");
-source = source.replace(/^import .*;\r?\n/gm, "").replace(/^export \{ planRunOrder \}.*;\r?\n/gm, "");
-source = `const {state,api,readSse,$,el,showToast,hideMemory,memoryEvent,EFFORTS,findProvider,folderInput,devChatPreamble} = globalThis.planRunTest;\n${order}\n${source}`;
+source = source.replace(/^import .*;\r?\n/gm, "").replace(/^export \{ (?:planRunOrder|hasCycle) \}.*;\r?\n/gm, "");
+source = `const {state,api,readSse,$,el,showToast,hideMemory,memoryEvent,EFFORTS,findProvider,folderInput,devChatPreamble} = globalThis.planRunTest;\n${helpers}\n${order}\n${source}`;
 runner = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 const task = (id, depends_on = [], status = "chờ") => ({
   id, depends_on, status, title: `Task ${id}`, detail: "", assignee: "fake", kind: "code", log: [],

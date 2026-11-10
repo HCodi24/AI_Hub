@@ -468,6 +468,7 @@ mod resume_tests {
         fs::write(&outside, b"image").unwrap();
         let message = ChatMessage {
             debate_id: None,
+            plan_id: None,
             role: "user".into(),
             content: String::new(),
             attachments: vec![ChatAttachment {

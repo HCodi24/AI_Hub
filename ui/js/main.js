@@ -43,14 +43,18 @@ import {
   updateProviderFormKind,
 } from "./settings.js";
 import { loadMutisPage, renderDiagnosis } from "./mutis-page.js";
-import { loadPlans, planFromRequest, renderPlanList } from "./plans.js";
-import { debateFromRequest, renderDebateList } from "./debate.js";
+import { planFromRequest } from "./plans.js";
 import { loadExtensions } from "./extensions.js";
 import { applyDevVisibility, initSidebar } from "/components/sidebar/sidebar.js";
 
 $("#self-dev-back").addEventListener("click",hideDevPage);
 $("#dev-open-chat").addEventListener("click",openDevChat);
-$("#dev-open-plan").addEventListener("click",async()=>{await openDevChat();messageInput.value="Sửa AI Hub: ";planFromRequest(messageInput.value);});
+$("#dev-open-plan").addEventListener("click", async () => {
+  if (state.streaming || state.planRunning) return;
+  const request = messageInput.value.trim() || "Sửa AI Hub: ";
+  await openDevChat({ reuse: true });
+  if (state.devChat) await planFromRequest(request);
+});
 $("#dev-checkpoint").addEventListener("click", async () => {
   try {
     const r = await devAction("/api/dev/git/checkpoint", {});
@@ -105,7 +109,6 @@ $("#mutis-diagnose").addEventListener("click", async () => {
   } catch (error) { showToast(error.message); log.textContent += `${error.message}\n`; }
   finally { button.disabled = false; progress.hidden = true; }
 });
-$("#plans-back").addEventListener("click",()=>{$("#plans-view").hidden=true;$(".main-panel").hidden=false});
 $("#plan-button").addEventListener("click",()=>planFromRequest(messageInput.value));
 {
   const debateButton = $("#debate-button");

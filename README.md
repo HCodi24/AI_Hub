@@ -112,6 +112,20 @@ Effort áp dụng cho Codex CLI, Claude Code CLI (`--effort low|medium|high|xhig
 
 ## Chia việc
 
+Chia việc và Tranh luận hiển thị ngay trong cuộc trò chuyện hiện tại, không có trang riêng.
+Mỗi kế hoạch là một thẻ: nhật ký planner thu gọn, đồng hồ và Hủy khi đang lập; sau đó là danh sách
+task có thể mở để sửa chi tiết, người làm/nhóm MutiS, model, effort, quyền và phụ thuộc.
+Duyệt kế hoạch rồi chạy từng task hoặc Chạy tất cả với xác nhận ngay trên thẻ. Output, nhật ký,
+diff, verify và review nằm trong từng task; Dừng/Chạy tiếp dùng lại runner theo phụ thuộc.
+Mở lại chat sẽ tải thẻ và trạng thái hiện tại. Chọn nguồn/model planner trong Cài đặt › Chia việc.
+Thanh bên chỉ có mục “Kế hoạch & tranh luận cũ” khi còn bản ghi chưa gắn chat; mở một bản ghi sẽ
+tạo chat theo tên và thư mục của nó, rồi lưu liên kết để lần sau mở từ lịch sử chat.
+
+API `POST /api/plans` nhận `chat_id` UUID tùy chọn và `append_request` (mặc định true cho composer).
+Server lưu tin user cùng assistant có `plan_id`, ban đầu rỗng, sau đó là tóm tắt tối đa 1.500 ký tự.
+`PUT /api/plans/{id}` cập nhật tóm tắt khi task đổi trạng thái. Chat tiếp và Bộ nhớ dự án dùng
+tóm tắt này; các thẻ rỗng đang lập được bỏ khỏi lịch sử gửi provider.
+
 Nút "✦ Gợi ý chia việc" nằm cạnh nút Gửi (và tự gợi ý khi yêu cầu có vẻ lớn). Người lập kế hoạch là vai trò lead của MutiS hoặc planner đã cấu hình; nó đề xuất các task gồm người phụ trách, phụ thuộc, loại việc (plan/code/test/docs/review/small_edit) và model/effort riêng cho từng task.
 
 **Tự động chia việc** (Cài đặt › MutiS hoặc công tắc trong popover MutiS): khi bật, mỗi tin gửi ở nguồn MutiS được chia việc ngay như bấm ✦ Gợi ý chia việc, không trả lời kiểu chat thường. Mặc định tắt.
@@ -123,9 +137,9 @@ Biên bản chia theo tab vòng, hai cột Codex/Claude; màn hình nhỏ có n�
 hoạt động, token, thời gian và nút Dừng. Thẻ được lưu cùng chat, mở lại hoặc tải lại trang vẫn xem được; lịch sử dùng cùng thẻ.
 Sau phán quyết có hai nút, dùng được cả trong chat và lịch sử:
 
-- **✦ Chia việc & thực hiện** lập kế hoạch trong thư mục tranh luận, giữ nguyên màn hình và hiện danh sách việc gọn.
-  Xác nhận “Duyệt và chạy N công việc?” để chạy lần lượt theo phụ thuộc, gồm kiểm tra/review/sửa tự động đã cấu hình.
-  Có “Mở kế hoạch”, “Để tôi xem trước”, “Dừng” và “Chạy tiếp” khi lỗi hoặc dừng; công việc đã xong được bỏ qua.
+- **✦ Chia việc & thực hiện** tạo thẻ kế hoạch đầy đủ ngay sau thẻ tranh luận trong chat,
+  dùng thư mục của tranh luận. Duyệt và chạy có xác nhận trên thẻ kế hoạch; có Dừng, Chạy tiếp
+  khi lỗi hoặc dừng và bỏ qua task đã xong. Không có danh sách task rút gọn riêng trong thẻ tranh luận.
 - **▶ Thực hiện với…** chọn một nguồn đang kết nối, model, mức suy luận và quyền sửa file (mặc định được sửa).
   Phán quyết được gửi thành một tin chat thường, bỏ qua tự chia việc và công tắc tranh luận; nguồn chỉ chat có ghi chú rõ.
 

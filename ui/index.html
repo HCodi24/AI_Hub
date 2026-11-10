@@ -17,7 +17,10 @@
       <button id="dev-chat-new" class="new-chat" type="button" hidden>⚒ Chat phát triển</button>
       <div class="section-label">LỊCH SỬ</div>
       <nav id="chat-list" class="chat-list" aria-label="Danh sách chat"></nav>
-      <button id="plans-open" class="new-chat" type="button">✦ Chia việc</button>
+      <details id="legacy-records" hidden>
+        <summary>Kế hoạch &amp; tranh luận cũ</summary>
+        <div id="legacy-plans"></div><div id="legacy-debates"></div>
+      </details>
       <div class="sidebar-bottom">
         <div class="local-note"><span class="status-dot"></span> Chỉ chạy trên máy này</div>
         <div id="mutis-badge" class="local-note">MutiS: TẮT</div>
@@ -152,20 +155,6 @@
       </section>
       <section><h2>Kết quả chẩn đoán</h2><div id="mutis-diagnosis-current"></div></section>
       <section><h2>Lịch sử chẩn đoán</h2><div id="mutis-diagnoses"></div></section>
-    </main>
-    <main id="plans-view" class="extensions-view" hidden>
-      <header class="extensions-header">
-        <div>
-          <p class="eyebrow">AI HUB</p>
-          <h1>Chia việc</h1>
-          <p class="muted">Lập kế hoạch, chỉnh sửa và duyệt trước khi chạy từng công việc.</p>
-        </div>
-        <button id="plans-back" class="subtle-button">Quay lại chat</button>
-      </header>
-      <h3 class="debate-list-title">⚖ Tranh luận</h3>
-      <section id="debates-list"></section>
-      <section id="plans-list"></section>
-      <section id="plan-editor" hidden></section>
     </main>
     <main id="self-dev-view" class="extensions-view" hidden>
       <header class="extensions-header">

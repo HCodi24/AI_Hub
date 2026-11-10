@@ -6,7 +6,6 @@ import { newChat, loadChat, openDevChat, refreshChats } from "/js/chat.js";
 import { showDevPage } from "/js/dev.js";
 import { loadMutisPage } from "/js/mutis-page.js";
 import { loadPlans } from "/js/plans.js";
-import { renderDebateList } from "/js/debate.js";
 import { loadExtensions } from "/js/extensions.js";
 import { clearProviderForm, editProvider, refreshCliStatus, renderPlannerSettings, testAllProviders } from "/js/settings.js";
 
@@ -56,26 +55,15 @@ export function applyDevVisibility() {
 }
 
 export function initSidebar() {
+  loadPlans().catch(error => showToast(error.message));
   $("#new-chat").addEventListener("click", newChat);
   $("#dev-chat-new").addEventListener("click", openDevChat);
   $("#self-dev-open").addEventListener("click", showDevPage);
   $("#mutis-open").addEventListener("click", async () => {
     $(".main-panel").hidden = true;
-    $("#plans-view").hidden = true;
     $("#mutis-view").hidden = false;
     try {
       await loadMutisPage();
-    } catch (e) {
-      showToast(e.message);
-    }
-  });
-  $("#plans-open").addEventListener("click", async () => {
-    $(".main-panel").hidden = true;
-    $("#plans-view").hidden = false;
-    $("#plan-editor").hidden = true;
-    try {
-      await loadPlans();
-      renderDebateList();
     } catch (e) {
       showToast(e.message);
     }

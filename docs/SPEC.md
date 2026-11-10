@@ -46,6 +46,32 @@ Composer hỗ trợ dán, kéo thả và chọn ảnh PNG/JPEG/WebP/GIF, tối �
 - `GET, POST /api/plans`; `GET, PUT /api/plans/{id}`
 - `POST /api/verify`, `/api/plan-diff`
 
+Chia việc và Tranh luận chỉ có thẻ trong chat, không có `#plans-view` hay nút trang Chia việc.
+Mọi điểm vào (composer, gợi ý yêu cầu lớn, MutiS auto_plan, nút dev) dùng chat hiện tại,
+tạo chat nếu cần. Planner provider/model giữ trong Cài đặt › Chia việc; MutiS ưu tiên lead.
+
+`POST /api/plans` nhận `chat_id: Option<String>` (UUID; sai trả 400 trước khi dò nguồn),
+`append_request: bool` mặc định true và `after_debate_id` tùy chọn để đặt thẻ sau tranh luận.
+Khi có chat_id hợp lệ, tạo chat nếu chưa có; thêm user nếu append_request và assistant có
+`plan_id`, content rỗng. SSE `planning` trả kế hoạch có ID sớm; `log`, `plan`, `error` giữ nguyên.
+Plan lưu `chat_id`, `planning`, `error` với serde defaults cho dữ liệu cũ. ChatMessage có
+`plan_id: Option<String>` (default None, bỏ khi serialize None), tương tự debate_id.
+Khi planner kết thúc và mỗi lần PUT kế hoạch, assistant được cập nhật bằng markdown tên kế hoạch,
+task + assignee + trạng thái (tối đa 1.500 ký tự Unicode). Đọc lại chat trước khi cập nhật để giữ
+các tin khác. Lịch sử provider chỉ dùng content tóm tắt, bỏ metadata/output của thẻ và assistant rỗng.
+Các lượt chat sau cung cấp tiến độ này cho Bộ nhớ dự án mà không có lượt gọi AI bổ sung.
+
+`ui/js/plan-card.js` và `ui/styles/plan-card.css` dùng chung cho live/lịch sử, cache theo plan_id.
+GET kế hoạch tải trạng thái khi mở lại chat; thẻ live giữ nguyên object mà runner đang cập nhật.
+Task mở rộng có sửa chi tiết, source/vai trò MutiS, model, effort, quyền, loại, phụ thuộc, thứ tự,
+xóa/thêm; kiểm tra chu trình và lưu qua persistPlan. Output/summary/log/diff/verify/review
+hiển thị thu gọn trong task. Duyệt, Chạy tất cả (xác nhận inline), Dừng, Chạy tiếp, xác minh,
+review lại và tự chạy tiếp dùng runner hiện có; task vẫn dùng chat_id riêng, không điều hướng.
+Sidebar chỉ liệt kê plan/debate chưa có chat_id. Mở legacy plan dùng PUT gắn chat mới;
+`POST /api/debates/{id}/chat` `{chat_id}` nhận legacy debate, tạo chat theo title/folder,
+lưu thẻ và kế hoạch liên kết nếu có; không chạy AI. Bản ghi đã có chat_id không nằm trong mục cũ.
+
+
 ### Tranh luận (`/api/debates`)
 - `POST /api/debates` nhận thêm `chat_id` tùy chọn (UUID; sai trả 400). Khi có, tạo chat nếu thiếu và lưu một tin user cùng một tin assistant có `debate_id`, nội dung ban đầu rỗng. Khi kết thúc, cập nhật nội dung bằng tóm tắt phán quyết và các bước (tối đa 1.500 ký tự), hoặc lỗi/dừng; các lượt chat sau dùng nội dung tóm tắt này, bỏ qua assistant rỗng.
 - Chat và lịch sử dùng chung `ui/js/debate-card.js`: một thẻ, phán quyết trên biên bản, tab vòng, hai cột (chuyển bên trên màn hình nhỏ), thời gian và hoạt động trực tiếp. Bản ghi và từng lượt có `elapsed_s` mặc định 0 để đọc dữ liệu cũ. Tin nhắn có `debate_id` tải lại thẻ từ `GET /api/debates/{id}`; thẻ đang chạy được dùng lại trong bộ nhớ. Chia việc dùng thư mục của bản tranh luận.
@@ -59,7 +85,8 @@ Composer hỗ trợ dán, kéo thả và chọn ảnh PNG/JPEG/WebP/GIF, tối �
   `chat_id` lưu khi bắt đầu từ chat. `POST /api/debates/{id}/plan` `{plan_id}` kiểm tra hai UUID (sai → 400),
   tranh luận/kế hoạch tồn tại (thiếu → 404), tranh luận đã `done` và có verdict (chưa đạt → 400), rồi lưu liên kết và trả Debate.
 - Sau phán quyết, thẻ chung cho chat/lịch sử có “✦ Chia việc & thực hiện” và “▶ Thực hiện với…”.
-  Chia việc dùng `planFromRequest(request, {stay:true})`, hiển thị danh sách việc ngay trong thẻ và xác nhận duyệt/chạy một lần.
+  Chia việc dùng `planFromRequest(request, {appendRequest:false, afterDebateId})`,
+  hiển thị một thẻ kế hoạch riêng ngay sau thẻ tranh luận, dùng chung editor và xác nhận chạy inline.
   `runWholePlan(plan,onProgress)` dùng runner từng task, tuần tự theo phụ thuộc, bỏ việc xong, dừng khi lỗi, hỗ trợ dừng/chạy tiếp.
   Thẻ tải `GET /api/plans/{plan_id}` khi mở lại; tiến trình Chia việc dựa trên liên kết, Thực hiện dựa trên trạng thái công việc.
   Chạy với một nguồn dùng các điều khiển composer hiện có và `sendMessage({text,direct:true})`, bỏ qua MutiS tự chia việc/tranh luận.

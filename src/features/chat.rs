@@ -52,6 +52,8 @@ pub struct ChatMessage {
     pub content: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debate_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<ChatAttachment>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -83,6 +85,9 @@ pub struct ChatRecord {
     #[serde(default)]
     pub session_id: Option<String>,
     pub updated_at: u64,
+    /// Set for the hidden chat a plan task runs in: its output is shown in the plan card, not in the chat history list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_task_of: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -153,6 +158,9 @@ impl ChatStore {
                 Err(_) => continue,
             };
             if let Ok(chat) = serde_json::from_str::<ChatRecord>(&content) {
+                if chat.plan_task_of.is_some() {
+                    continue;
+                }
                 chats.push(ChatSummary {
                     id: chat.id,
                     title: chat.title,
@@ -230,6 +238,7 @@ pub fn new_record(request: &ChatRequest) -> ChatRecord {
         messages: request.messages.clone(),
         session_id: None,
         updated_at: unix_time(),
+        plan_task_of: request.task_id.as_ref().and(request.plan_id.clone()),
     }
 }
 
@@ -350,5 +359,40 @@ mod file_tools_tests {
         let tools: FileTools = serde_json::from_str("\"read\"").unwrap();
         assert_eq!(tools, FileTools::Read);
         assert_eq!(FileTools::default(), FileTools::None);
+    }
+}
+
+#[cfg(test)]
+mod plan_task_chat_tests {
+    use super::*;
+
+    #[test]
+    fn plan_task_chats_are_hidden_from_the_history_list() {
+        let directory = std::env::temp_dir().join(format!("ai-hub-chat-{}", uuid::Uuid::new_v4()));
+        let store = ChatStore::new(directory.clone());
+        let request = |plan: Option<&str>, task: Option<&str>| -> ChatRequest {
+            serde_json::from_value(serde_json::json!({
+                "chat_id": uuid::Uuid::new_v4().to_string(),
+                "provider_id": "p",
+                "model": "m",
+                "folder": "C:/x",
+                "messages": [{"role": "user", "content": "hi"}],
+                "plan_id": plan,
+                "task_id": task,
+            }))
+            .unwrap()
+        };
+        let normal = new_record(&request(None, None));
+        let task = new_record(&request(Some("plan-1"), Some("t1")));
+        let plan_only = new_record(&request(Some("plan-1"), None));
+        assert_eq!(task.plan_task_of.as_deref(), Some("plan-1"));
+        assert!(plan_only.plan_task_of.is_none());
+        for chat in [&normal, &task, &plan_only] {
+            store.save(chat).unwrap();
+        }
+        let ids: Vec<String> = store.list().unwrap().into_iter().map(|c| c.id).collect();
+        assert!(ids.contains(&normal.id) && ids.contains(&plan_only.id));
+        assert!(!ids.contains(&task.id));
+        let _ = std::fs::remove_dir_all(directory);
     }
 }

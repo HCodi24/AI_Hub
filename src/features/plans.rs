@@ -9,12 +9,18 @@ use uuid::Uuid;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Plan {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_id: Option<String>,
     pub title: String,
     pub folder: String,
     #[serde(default)]
     pub dev_chat: bool,
     pub request: String,
     pub approved: bool,
+    #[serde(default)]
+    pub planning: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     pub tasks: Vec<PlanTask>,
     pub updated_at: u64,
     #[serde(default)]
@@ -27,6 +33,8 @@ pub struct PlanTask {
     pub title: String,
     pub detail: String,
     pub assignee: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
     #[serde(default = "default_effort")]
@@ -200,16 +208,96 @@ impl Plan {
     pub fn new(title: String, folder: String, request: String, tasks: Vec<PlanTask>) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
+            chat_id: None,
             title,
             folder,
             dev_chat: false,
             request,
             approved: false,
+            planning: false,
+            error: None,
             tasks,
             updated_at: now(),
             auto_continue: false,
         }
     }
+    pub fn chat_summary(&self) -> String {
+        let mut text = format!("✦ Chia việc · {}", self.title);
+        for task in &self.tasks {
+            text.push_str(&format!(
+                "\n- [{}] {} · {}",
+                task.status, task.title, task.assignee
+            ));
+        }
+        if let Some(error) = &self.error {
+            text.push_str(&format!("\nLỗi: {error}"));
+        }
+        text.chars().take(1500).collect()
+    }
+
+    /// Re-read the chat so other turns survive task progress updates.
+    pub fn save_chat(
+        &self,
+        store: &crate::chat::ChatStore,
+        append_request: bool,
+        planning: bool,
+    ) -> Result<()> {
+        use crate::chat::{self, ChatRequest};
+        let Some(id) = self.chat_id.as_deref() else {
+            return Ok(());
+        };
+        anyhow::ensure!(chat::valid_id(id), "chat_id không hợp lệ");
+        let mut record = store.get(id)?.unwrap_or_else(|| {
+            chat::new_record(&ChatRequest {
+                chat_id: id.into(),
+                provider_id: String::new(),
+                model: String::new(),
+                folder: self.folder.clone(),
+                dev_chat: self.dev_chat,
+                permission: Default::default(),
+                file_tools: Default::default(),
+                effort: None,
+                messages: Vec::new(),
+                plan_id: None,
+                task_id: None,
+                task_kind: None,
+            })
+        });
+        if record.messages.is_empty() {
+            record.title = self.title.clone();
+        }
+        if planning {
+            record.folder = self.folder.clone();
+            record.dev_chat = self.dev_chat;
+        }
+        let content = if planning {
+            String::new()
+        } else {
+            self.chat_summary()
+        };
+        if let Some(message) = record
+            .messages
+            .iter_mut()
+            .find(|m| m.plan_id.as_deref() == Some(&self.id))
+        {
+            message.content = content;
+        } else {
+            if append_request {
+                record
+                    .messages
+                    .push(serde_json::from_value(serde_json::json!({
+                        "role": "user", "content": self.request
+                    }))?);
+            }
+            record
+                .messages
+                .push(serde_json::from_value(serde_json::json!({
+                    "role": "assistant", "content": content, "plan_id": self.id
+                }))?);
+        }
+        chat::save_record(store, &mut record)
+    }
+
     pub fn touch(&mut self) {
         self.updated_at = now();
     }
@@ -234,6 +322,7 @@ mod tests {
             title: "task".into(),
             detail: "detail".into(),
             assignee: "worker".into(),
+            permission: None,
             model: None,
             effort: "default".into(),
             reassigned_from: None,

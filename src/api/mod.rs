@@ -171,6 +171,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/debates/{id}", get(crate::api::debate::get_debate))
         .route(
+            "/api/debates/{id}/chat",
+            post(crate::api::debate::attach_chat),
+        )
+        .route(
             "/api/debates/{id}/plan",
             post(crate::api::debate::link_plan),
         )

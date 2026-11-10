@@ -82,7 +82,6 @@ export async function refreshDevRepo() {
 export function showDevPage() {
   $(".main-panel").hidden = true;
   $("#mutis-view").hidden = true;
-  $("#plans-view").hidden = true;
   $("#self-dev-view").hidden = false;
   refreshDevRepo();
   clearInterval(state.devRepoTimer);

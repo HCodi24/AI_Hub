@@ -1,9 +1,11 @@
+import { taskCanWrite } from "./plan-helpers.js";
+export { hasCycle } from "./plan-helpers.js";
 import { planRunOrder } from "./plan-order.js";
 export { planRunOrder } from "./plan-order.js";
 import { hideMemory, memoryEvent } from "./memory.js";
 import { $, el, showToast } from "./util.js";
 import { state } from "./state.js";
-import { EFFORTS, findProvider } from "./mode-chip.js";
+import { findProvider } from "./mode-chip.js";
 import { devChatPreamble, folderInput } from "./chat.js";
 import { api, readSse } from "./api.js";
 
@@ -60,274 +62,84 @@ export async function runWholePlan(plan, onProgress = () => {}) {
       planProgress(plan);
       onProgress(plan);
       window.dispatchEvent(new Event("debate-busy"));
-      if (state.currentPlan?.id === plan.id) renderPlanEditor();
     }
   }
   return plan;
 }
 
-export function renderPlanList() {
-  const root = $("#plans-list");
-  root.replaceChildren();
-  if (!state.plans.length) { root.textContent = "Chưa có kế hoạch."; return; }
-  for (const plan of state.plans) {
-    root.append(el("button", { className: "plan-list-item",
-      textContent: `${plan.title} · ${plan.tasks.length} công việc${plan.approved ? " · đã duyệt" : " · bản nháp"}`,
-      onclick: () => openPlan(plan) }));
-  }
-}
-export async function planFromRequest(text, { stay = false, container = null } = {}) {
+export async function planFromRequest(text = "", { appendRequest = true, afterDebateId = null } = {}) {
+  appendRequest = appendRequest && Boolean(text.trim());
   const request = text.trim() || [...state.messages].reverse().find(message => message.role === "user")?.content || "";
-  if (!request) { showToast("Nhập yêu cầu hoặc mở chat có yêu cầu trước."); return; }
-  const buttons = [$("#plan-button"), $("#hint-plan")];
-  buttons.forEach(button => { if (button) button.disabled = true; });
-  if (!stay) {
-    $(".main-panel").hidden = true;
-    $("#self-dev-view").hidden = true;
-    $("#plans-view").hidden = false;
+  if (!request || state.streaming || state.planRunning || state.activeDebates?.size) {
+    showToast("Nhập yêu cầu và chờ công việc hiện tại hoàn tất."); return;
   }
-  const provider = state.config.providers.find(item => item.id === $("#planner-provider").value);
-  const root = container || $("#plans-list");
-  root.replaceChildren();
-  const card = el("section", { className: "plan-progress" });
-  const label = el("p", { textContent: `Đang lập kế hoạch bằng ${provider?.name || "provider"} · 00:00` });
-  const spinner = el("span", { className: "spinner", ariaLabel: "Đang lập kế hoạch" });
-  const logs = el("pre", { className: "task-log" });
-  const cancel = el("button", { className: "subtle-button", textContent: "Hủy" });
+  const chat = await import("./chat.js");
+  const { createPlanCard, planSummary } = await import("./plan-card.js");
+  const folder = folderInput.value.trim();
+  if (!folder) { showToast("Chọn thư mục làm việc trước."); return; }
+  if (!state.chatId) { chat.newChat(); folderInput.value = folder; }
+  chat.showChatPanel();
+  const chatId = state.chatId;
+  const memory = state.memoryChats.get(chatId) || { id: chatId };
+  if (!memory.title || memory.title === "Chat mới") memory.title = request.slice(0, 72);
+  memory.updated_at = Date.now() / 1000;
+  state.memoryChats.set(chatId, memory);
+  const card = createPlanCard();
+  const assistant = { role: "assistant", content: "", _planCard: card };
+  if (appendRequest) state.messages.push({ role: "user", content: request });
+  const debateIndex = afterDebateId ? state.messages.findIndex(m => m.debate_id === afterDebateId) : -1;
+  if (debateIndex >= 0) state.messages.splice(debateIndex + 1, 0, assistant);
+  else state.messages.push(assistant);
+  chat.messageInput.value = "";
+  chat.renderMessages();
   const controller = new AbortController();
-  cancel.onclick = () => controller.abort();
-  card.append(label, spinner, logs, cancel);
-  root.append(card);
-  const started = Date.now();
-  const timer = setInterval(() => {
-    const seconds = Math.floor((Date.now() - started) / 1000);
-    label.textContent = `Đang lập kế hoạch bằng ${provider?.name || "provider"} · ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-  }, 1000);
+  card.el.addEventListener("plan-cancel", () => controller.abort());
+  state.streaming = true;
+  window.dispatchEvent(new Event("debate-busy"));
+  let receivedPlan = null;
   try {
     if (state.mutis?.enabled) await api("/api/mutis/roles/resolve");
     const response = await fetch("/api/plans", { method: "POST", signal: controller.signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        request,
-        folder: folderInput.value.trim(),
-        dev_chat: state.devChat,
-        provider_id: state.mutis?.roles?.lead?.provider_id
-          || $("#planner-provider").value
-          || state.config.planner_provider_id,
-        model: state.mutis?.roles?.lead?.model
-          || $("#planner-model").value
-          || state.config.planner_model,
-      }),
-    });
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request, folder,
+        chat_id: chatId, append_request: appendRequest, after_debate_id: afterDebateId, dev_chat: state.devChat,
+        provider_id: state.mutis?.roles?.lead?.provider_id || $("#planner-provider").value || state.config.planner_provider_id,
+        model: state.mutis?.roles?.lead?.model || $("#planner-model").value || state.config.planner_model,
+      }) });
     if (!response.ok) throw new Error((await response.json()).error || `HTTP ${response.status}`);
-    if (!response.body) throw new Error("Browser does not support response streaming");
-    let receivedPlan = null;
     await readSse(response.body, (event, data) => {
-      if (event === "log") logs.textContent += `${data.text || ""}\n`;
-      if (event === "error") throw new Error(data.message || data.text || "Planning failed");
-      if (event === "plan") receivedPlan = data;
+      if (event === "log") card.log(data.text || "");
+      if (event === "error") throw new Error(data.message || data.text || "Lập kế hoạch thất bại");
+      if (event === "planning") { assistant.plan_id = data.id; card.load(data, true); }
+      if (event === "plan") { receivedPlan = data; assistant.plan_id = data.id; assistant.content = planSummary(data); card.load(data); }
     });
-    if (receivedPlan) { await loadPlans({ preserveDebate: stay }); if (!stay) openPlan(receivedPlan); return receivedPlan; }
+    if (!receivedPlan) throw new Error("Mất kết nối khi lập kế hoạch");
+    return receivedPlan;
   } catch (error) {
-    if (error.name === "AbortError") {
-      logs.textContent += "\u0110\u00e3 hu\u1ef7\n";
-      label.textContent = "\u0110\u00e3 hu\u1ef7";
-    }
-    else { logs.textContent += `${error.message}\n`; }
-  } finally { clearInterval(timer); buttons.forEach(button => { if (button) button.disabled = false; }); }
-}
-export function openPlan(plan) {
-  state.currentPlan = activePlanRun?.plan.id === plan.id ? activePlanRun.plan : structuredClone(plan);
-  $(".main-panel").hidden = true;
-  $("#self-dev-view").hidden = true;
-  $("#plans-view").hidden = false;
-  renderPlanEditor();
-}
-export function renderPlanEditor() {
-  const root = $("#plan-editor"), plan = state.currentPlan;
-  if (!plan) return;
-  root.hidden = false;
-  root.replaceChildren();
-  const title = el("input", { className: "plan-title", value: plan.title, oninput: event => plan.title = event.target.value });
-  root.append(title);
-  const table = el("table", { className: "plan-table" });
-  table.innerHTML = "<thead><tr><th>#</th><th>Công việc</th><th>Giao cho</th><th>Model / effort</th><th>Phụ thuộc</th><th>Loại</th><th>Trạng thái</th><th></th></tr></thead>";
-  const body = el("tbody");
-  for (const [index, task] of plan.tasks.entries()) {
-    const row = el("tr"), cell = child => row.append(el("td", {}, [child]));
-    cell(el("span", { textContent: task.id }));
-    const editor = el("div");
-    editor.append(
-      el("input", {
-        value: task.title,
-        placeholder: "Tên việc",
-        oninput: event => task.title = event.target.value,
-      }),
-      el("textarea", {
-        value: task.detail,
-        placeholder: "Tệp cần sửa và kết quả mong đợi",
-        oninput: event => task.detail = event.target.value,
-      }),
-    );
-    cell(editor);
-    const assignee = el("select");
-    for (const provider of state.config.providers) assignee.append(el("option", { value: provider.id, textContent: provider.name }));
-    assignee.value = findProvider(task.assignee)?.id ?? task.assignee;
-    assignee.onchange = () => {
-      task.assignee = assignee.value;
-      task.model = state.config.providers.find(p => p.id === task.assignee)?.models[0] || "";
-      renderPlanEditor();
-    };
-    const assigneeCell = el("div");
-    assigneeCell.append(assignee);
-    if (task.reassigned_from) assigneeCell.append(el("small", {
-      textContent: `⚠ đã đổi từ ${task.reassigned_from} (chưa kết nối)`,
-    }));
-    cell(assigneeCell);
-    const provider = findProvider(task.assignee);
-    const settings = el("div"), model = el("select");
-    for (const item of provider?.models || []) model.append(el("option", { value: item, textContent: item }));
-    model.value = task.model || provider?.models[0] || ""; model.onchange = () => task.model = model.value;
-    const effort = el("select");
-    for (const item of EFFORTS) effort.append(el("option", { value: item, textContent: item }));
-    effort.value = task.effort || "default"; effort.onchange = () => task.effort = effort.value;
-    settings.append(model, effort); cell(settings);
-    const deps = el("input", { value: (task.depends_on || []).join(",") });
-    const depError = el("small", { className: "dependency-error" });
-    const validateDeps = () => {
-      task.depends_on = deps.value.split(",").map(value => value.trim()).filter(Boolean).map(Number);
-      const invalid = task.depends_on.some(id => !plan.tasks.some(item => item.id === id));
-      depError.textContent = invalid ? "Mã phụ thuộc không tồn tại." : "";
-      approve.disabled = invalid || hasCycle(plan.tasks);
-    };
-    deps.oninput = validateDeps; const depwrap = el("div"); depwrap.append(deps, depError); cell(depwrap);
-    const kind = el("select");
-    for (const value of ["plan", "small_edit", "code", "test", "docs", "review"]) {
-      kind.append(el("option", { value, textContent: value }));
-    }
-    kind.value = task.kind;
-    kind.onchange = () => task.kind = kind.value;
-    cell(kind);
-    const status = el("div", { dataset: { taskStatus: String(task.id) } });
-    status.append(el("span", { textContent: `${task.status === "waiting" ? "chờ" : task.status}${task.tokens ? ` · ${task.tokens} tokens` : ""}${task.log?.length ? ` · ${task.log.at(-1)}` : ""}` }));
-    if (task.verify) status.append(el("span", { className: "gate-chip", textContent: `Kiểm tra: ${task.verify.ok ? "ĐẠT" : "LỖI"}` }));
-    if (task.review) {
-      status.append(el("span", {
-        className: "gate-chip",
-        textContent: task.review.verdict === "SKIPPED"
-          ? "Review: bỏ qua"
-          : `Review: ${task.review.verdict || "FAIL"} (${task.review.issues?.length || 0} vấn đề)`,
-      }));
-    }
-    if (task.verify) status.append(el("details", {}, [el("summary", { textContent: "Tóm tắt kiểm tra" }), el("pre", { textContent: (task.verify.summary_lines || []).join("\n") })]));
-    if (task.review) status.append(el("details", {}, [el("summary", { textContent: "Vấn đề review" }), el("pre", { textContent: JSON.stringify(task.review.issues || [], null, 2) })]));
-    cell(status);
-    const actions = el("div");
-    const moveUp = () => {
-      [plan.tasks[index - 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index - 1]];
-      renderPlanEditor();
-    };
-    const moveDown = () => {
-      [plan.tasks[index + 1], plan.tasks[index]] = [plan.tasks[index], plan.tasks[index + 1]];
-      renderPlanEditor();
-    };
-    const removeTask = () => {
-      plan.tasks.splice(index, 1);
-      renderPlanEditor();
-    };
-    actions.append(
-      el("button", { textContent: "↑", title: "Lên", disabled: index === 0, onclick: moveUp }),
-      el("button", { textContent: "↓", title: "Xuống", disabled: index === plan.tasks.length - 1, onclick: moveDown }),
-      el("button", { textContent: "×", title: "Xoá", onclick: removeTask }),
-    );
-    if (plan.approved) {
-      const isRunning = task.status === "đang chạy";
-      const depsDone = task.depends_on.every(id => plan.tasks.find(item => item.id === id)?.status === "xong");
-      const finished = ["xong", "lỗi", "đã dừng"].includes(task.status);
-      actions.append(el("button", {
-        textContent: finished ? "Chạy lại" : "Chạy",
-        title: depsDone ? "" : "Chờ các công việc phụ thuộc xong",
-        disabled: isRunning || !!activePlanRun || !depsDone,
-        onclick: () => runPlanTask(task),
-      }));
-      if (isRunning) {
-        actions.append(el("button", {
-          textContent: "Dừng",
-          onclick: async () => {
-            await stopPlanTask(task, plan);
-          },
-        }));
-      }
-      if (task.status !== "xong" && !isRunning) {
-        actions.append(el("button", {
-          textContent: "Đánh dấu xong",
-          onclick: async () => { task.status = "xong"; await persistPlan(plan); renderPlanEditor(); },
-        }));
-      }
-      actions.append(el("button", { textContent: "Review lại", disabled: isRunning, onclick: () => runTaskGates(task) }));
-    }
-    cell(actions); body.append(row);
-  }
-  table.append(body); root.append(table);
-  const approve = el("button", {
-    textContent: plan.approved ? "Đã duyệt" : "Duyệt kế hoạch",
-    disabled: plan.approved || hasCycle(plan.tasks),
-    onclick: async () => {
-      plan.approved = true;
-      await persistPlan(plan);
-      renderPlanEditor();
-    },
-  });
-  const add = el("button", {
-    textContent: "+ Thêm công việc",
-    onclick: () => {
-      plan.tasks.push({
-        id: Math.max(0, ...plan.tasks.map(task => task.id)) + 1,
-        title: "Công việc mới", detail: "", assignee: state.config.providers[0]?.id || "",
-        model: "", effort: "default", depends_on: [], kind: "code", status: "chờ",
-        summary: "", log: [], tokens: 0,
-      });
-      renderPlanEditor();
-    },
-  });
-  const regen = el("button", { textContent: "Lập lại kế hoạch", onclick: () => planFromRequest(plan.request) });
-  const gates = el("div", { className: "plan-gates" });
-  gates.append(el("button", { textContent: "Chạy kiểm tra", disabled: !state.mutis?.enabled || !state.mutis?.verify_gate, onclick: () => verifyPlan(plan) }));
-  if (state.mutis?.enabled) gates.append(el("label", {}, [
-    el("input", {
-      type: "checkbox",
-      checked: !!plan.auto_continue,
-      onchange: event => {
-        plan.auto_continue = event.target.checked;
-        persistPlan(plan);
-      },
-    }),
-    " Tự chạy tiếp",
-  ]));
-  root.append(el("p", { className: "token-usage", textContent: `Tổng token kế hoạch: ${plan.tasks.reduce((sum, task) => sum + (task.tokens || 0), 0)}` }), gates, add, regen, approve);
-  for (const task of plan.tasks) if (task.log?.length) root.append(el("pre", { className: "task-log", textContent: task.log.join("\n") }));
-  if (activePlanRun) {
-    for (const control of root.querySelectorAll("input, select, textarea, button")) {
-      control.disabled = control.textContent !== "Dừng";
-    }
-    if (activePlanRun.plan === plan) root.append(el("button", { textContent: "Dừng kế hoạch", onclick: stopWholePlan }));
+    assistant.content = error.name === "AbortError" ? "Đã hủy lập kế hoạch" : error.message;
+    card.fail(assistant.content);
+  } finally {
+    state.streaming = false;
+    window.dispatchEvent(new Event("debate-busy"));
+    chat.rememberCurrentChat();
+    await chat.refreshChats();
+    await loadPlans();
   }
 }
-export function hasCycle(tasks) {
-  const byId = new Map(tasks.map(task => [task.id, task]));
-  const visiting = new Set(), done = new Set();
-  const visit = id => {
-    if (done.has(id)) return false;
-    if (visiting.has(id)) return true;
-    visiting.add(id);
-    for (const dep of byId.get(id)?.depends_on || []) {
-      if (byId.has(dep) && visit(dep)) return true;
-    }
-    visiting.delete(id);
-    done.add(id);
-    return false;
-  };
-  return tasks.some(task => visit(task.id));
+export async function openPlan(plan) {
+  const chat = await import("./chat.js");
+  if (state.streaming) return;
+  if (plan.chat_id) await chat.loadChat(plan.chat_id);
+  else {
+    chat.newChat();
+    chat.folderInput.value = plan.folder;
+    plan.chat_id = state.chatId;
+    await persistPlan(plan);
+    await chat.refreshChats();
+    await chat.loadChat(plan.chat_id);
+  }
+  state.currentPlan = plan;
+  chat.showChatPanel();
+  await loadPlans();
 }
 export async function persistPlan(plan = state.currentPlan) {
   // Keep the local plan object as the source of truth: running tasks hold references into it,
@@ -335,14 +147,10 @@ export async function persistPlan(plan = state.currentPlan) {
   const body = JSON.stringify(plan, (key, value) => (key.startsWith("_") ? undefined : value));
   await api(`/api/plans/${plan.id}`, { method: "PUT", body });
   planProgress(plan);
-  await loadPlans({ preserveDebate: true });
+  state.plans = await api("/api/plans");
 }
-// Task kinds that may change files (small_edit used to be treated as read-only by mistake).
-function taskCanWrite(task) {
-  return ["code", "test", "docs", "small_edit"].includes(task.kind);
-}
-
 export async function runPlanTask(task, plan = state.currentPlan) {
+  if (!plan?.approved) throw new Error("Kế hoạch chưa được duyệt");
   state.planRunning = (state.planRunning || 0) + 1;
   window.dispatchEvent(new Event("debate-busy"));
   try { return await runPlanTaskImpl(task, plan); }
@@ -365,7 +173,7 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
   if (activePlanRun?.plan === plan) activePlanRun.task = task;
   const chatId = task.chat_id || crypto.randomUUID(); task.chat_id = chatId; task.status = "đang chạy"; task.log = [];
   planProgress(plan);
-  await persistPlan(plan); renderPlanEditor();
+  await persistPlan(plan);
   let hadError = false;
   try {
     const response = await api("/api/chat", {
@@ -393,15 +201,13 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
         if (usage) task.tokens = (task.tokens || 0) + Number(usage[1]) + Number(usage[2]);
       }
       planProgress(plan);
-      const node = $(`[data-task-status="${task.id}"]`);
-      if (node) node.textContent = `${task.status} · ${task.log.at(-1) || ""}`;
+
     });
     task.status = task._stopped ? "đã dừng" : hadError ? "lỗi" : "xong";
   } catch (error) { hadError = true; task.status = task._stopped ? "đã dừng" : "lỗi"; task.log.push(error.message); }
   task.summary = hideMemory(task.summary);
   await persistPlan(plan);
   if (!hadError && !task._stopped) await runTaskGates(task, plan);
-  renderPlanEditor();
   if (!activePlanRun && plan.auto_continue && task.status === "xong") {
     const next = plan.tasks.find(item => item.status !== "xong" && item.status !== "lỗi" && item.depends_on.every(id => plan.tasks.find(dep => dep.id === id)?.status === "xong"));
     if (next) await runPlanTask(next, plan);
@@ -593,7 +399,14 @@ export function nextReviewAction(task, review, roundsUsed, maxRounds) {
   return hasBlockingIssue && roundsUsed < maxRounds ? "create_fix" : "fail";
 }
 
-export async function loadPlans({ preserveDebate = false } = {}) {
+export async function loadPlans() {
   state.plans = await api("/api/plans");
-  if (!preserveDebate || !$("#plans-list").querySelector(".debate-card")) renderPlanList();
+  const root = $("#legacy-plans");
+  if (!root) return;
+  root.replaceChildren();
+  for (const plan of state.plans.filter(item => !item.chat_id)) {
+    root.append(el("button", { className: "plan-list-item", textContent: `✦ ${plan.title}`, onclick: () => openPlan(plan) }));
+  }
+  const { renderDebateList } = await import("./debate.js");
+  await renderDebateList();
 }

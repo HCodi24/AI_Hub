@@ -170,6 +170,7 @@ mod image_builder_tests {
         fs::write(&path, b"pixels").unwrap();
         let message = ChatMessage {
             debate_id: None,
+            plan_id: None,
             role: "user".into(),
             content: "Look".into(),
             attachments: vec![ChatAttachment {
