@@ -3,7 +3,7 @@ import { state } from "./state.js";
 import { modelInput, modelOptions, providerSelect } from "./chat.js";
 import { api } from "./api.js";
 
-export const EFFORT_KINDS = new Set(["codex_cli", "openai_compat", "anthropic"]);
+export const EFFORT_KINDS = new Set(["codex_cli", "claude_cli", "openai_compat", "anthropic"]);
 export const EFFORT_LABELS = { default: "Mặc định", low: "Thấp", medium: "Vừa", high: "Cao", xhigh: "Rất cao", max: "Max" };
 export const EFFORTS = ["default", "low", "medium", "high", "xhigh", "max"];
 export function currentProvider() {

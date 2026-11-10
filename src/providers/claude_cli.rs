@@ -38,6 +38,17 @@ impl Provider for ClaudeCliProvider {
         if !request.model.is_empty() {
             args.extend([OsString::from("--model"), OsString::from(&request.model)]);
         }
+        let effort = match request.effort {
+            super::Effort::Default => None,
+            super::Effort::Low => Some("low"),
+            super::Effort::Medium => Some("medium"),
+            super::Effort::High => Some("high"),
+            super::Effort::Xhigh => Some("xhigh"),
+            super::Effort::Max => Some("max"),
+        };
+        if let Some(effort) = effort {
+            args.extend([OsString::from("--effort"), OsString::from(effort)]);
+        }
         if let Some(session_id) = request.session_id.as_deref() {
             if !cli_support::safe_session_id(session_id) {
                 bail!("Claude session id không hợp lệ");
@@ -109,9 +120,23 @@ struct ClaudeParser {
     result_seen: bool,
     partial_seen: bool,
     delta_seen: bool,
+    /// True when the next text belongs to a NEW assistant message / text block, so it must be separated from
+    /// the text already shown (otherwise "...câu cuối.Câu đầu..." glue together across tool calls).
+    new_text_segment: bool,
 }
 
 impl ClaudeParser {
+    fn text_delta(&mut self, text: &str) -> ProviderEvent {
+        let separator = if self.delta_seen && self.new_text_segment {
+            "\n\n"
+        } else {
+            ""
+        };
+        self.new_text_segment = false;
+        self.delta_seen = true;
+        ProviderEvent::text("delta", format!("{separator}{text}"))
+    }
+
     fn parse(&mut self, line: &str) -> Vec<ProviderEvent> {
         if line.trim().is_empty() {
             return Vec::new();
@@ -143,8 +168,7 @@ impl ClaudeParser {
                                 if let Some(text) =
                                     block["text"].as_str().filter(|text| !text.is_empty())
                                 {
-                                    self.delta_seen = true;
-                                    events.push(ProviderEvent::text("delta", text.to_owned()));
+                                    events.push(self.text_delta(text));
                                 }
                             }
                             "tool_use" => {
@@ -155,8 +179,16 @@ impl ClaudeParser {
                     }
                 }
                 self.partial_seen = false;
+                // The message is complete: whatever text comes next starts a new message.
+                self.new_text_segment = true;
             }
             "stream_event" => {
+                let inner = value["event"]["type"].as_str().unwrap_or("");
+                let starts_text_block = inner == "content_block_start"
+                    && value["event"]["content_block"]["type"].as_str() == Some("text");
+                if inner == "message_start" || starts_text_block {
+                    self.new_text_segment = true;
+                }
                 if value["event"]["type"].as_str() == Some("content_block_delta")
                     && value["event"]["delta"]["type"].as_str() == Some("text_delta")
                 {
@@ -165,8 +197,7 @@ impl ClaudeParser {
                         .filter(|text| !text.is_empty())
                     {
                         self.partial_seen = true;
-                        self.delta_seen = true;
-                        events.push(ProviderEvent::text("delta", text.to_owned()));
+                        events.push(self.text_delta(text));
                     }
                 }
             }
@@ -298,5 +329,50 @@ mod tests {
         let mut parser = ClaudeParser::default();
         parser.parse(r#"{"type":"result","subtype":"success","result":"ok"}"#);
         assert!(parser.result_seen);
+    }
+}
+
+#[cfg(test)]
+mod separator_tests {
+    use super::ClaudeParser;
+
+    fn deltas(events: Vec<crate::providers::ProviderEvent>) -> String {
+        events
+            .iter()
+            .filter(|event| event.name == "delta")
+            .map(|event| event.data["text"].as_str().unwrap_or_default())
+            .collect()
+    }
+
+    #[test]
+    fn text_from_separate_assistant_messages_is_not_glued_together() {
+        let mut parser = ClaudeParser::default();
+        let mut shown = String::new();
+        // First assistant message (streamed), then a tool call, then a second message with more text.
+        for line in [
+            r#"{"type":"stream_event","event":{"type":"message_start"}}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Câu đầu."}}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Câu đầu."}]}}"#,
+            r#"{"type":"stream_event","event":{"type":"message_start"}}"#,
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Câu sau."}}}"#,
+        ] {
+            shown.push_str(&deltas(parser.parse(line)));
+        }
+        assert_eq!(shown, "Câu đầu.\n\nCâu sau.");
+    }
+
+    #[test]
+    fn a_message_without_text_adds_no_blank_gap() {
+        let mut parser = ClaudeParser::default();
+        let mut shown = String::new();
+        for line in [
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"A"}}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"A"},{"type":"tool_use","name":"Read","input":{}}]}}"#,
+            r#"{"type":"stream_event","event":{"type":"message_start"}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{}}]}}"#,
+        ] {
+            shown.push_str(&deltas(parser.parse(line)));
+        }
+        assert_eq!(shown, "A");
     }
 }

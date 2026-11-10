@@ -71,7 +71,9 @@ async fn main() -> Result<()> {
             path
         } else {
             let exe = std::env::current_exe().context("Could not locate the running executable")?;
-            dev::discover_repo_root(exe.parent().unwrap_or(std::path::Path::new("."))).context("Dev mode could not find the ai-hub repository. Set AI_HUB_REPO to its root directory.")?
+            dev::discover_repo_root(exe.parent().unwrap_or(std::path::Path::new(".")))
+                .map(crate::core::text::strip_verbatim)
+                .context("Dev mode could not find the ai-hub repository. Set AI_HUB_REPO to its root directory.")?
         };
         Some(path)
     } else {

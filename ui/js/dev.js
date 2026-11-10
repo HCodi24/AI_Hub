@@ -8,9 +8,23 @@ export function showDevBanner(message, action) {
   root.append(el("span", { textContent: message }));
   if (action) { const button = el("button", { className: "subtle-button", textContent: "Build & khởi động lại" }); button.onclick = startDevBuild; root.append(button); }
 }
+let reloadTimer = null;
+// Reloading the page drops the running chat request, and the server then cancels the AI run. When the AI edits
+// ui/ files itself that would kill its own session, so wait until no chat is streaming before reloading.
+function reloadWhenIdle() {
+  if (!state.streaming) { location.reload(); return; }
+  showDevBanner("Giao diện đã đổi · sẽ tự tải lại khi AI chạy xong", false);
+  if (reloadTimer) return;
+  reloadTimer = setInterval(() => {
+    if (state.streaming) return;
+    clearInterval(reloadTimer);
+    reloadTimer = null;
+    setTimeout(() => location.reload(), 800);
+  }, 1000);
+}
 export function connectDevEvents() {
   const source = new EventSource("/api/dev/events");
-  source.addEventListener("ui_changed", () => location.reload());
+  source.addEventListener("ui_changed", reloadWhenIdle);
   source.addEventListener("rust_changed", event => { const files=JSON.parse(event.data||"{}").files||[]; showDevBanner("Code Rust đã thay đổi ("+files.length+" tệp) · ", true); });
   source.addEventListener("rebuild", event => {
     const result = JSON.parse(event.data || "{}");
@@ -38,7 +52,7 @@ export function connectDevEvents() {
       try {
         const status = await api("/api/dev/status");
         if (status.dev) {
-          location.reload();
+          reloadWhenIdle();
           return;
         }
       } catch (_) {}
