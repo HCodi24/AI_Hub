@@ -10,7 +10,6 @@ mod extensions;
 mod mutis;
 mod plans;
 mod providers;
-mod server;
 mod verify;
 
 use anyhow::{Context, Result};
@@ -82,13 +81,12 @@ async fn main() -> Result<()> {
     } else {
         None
     };
-    let state = app::AppState::new(config, config_path, chat_dir, repo);
-
     let address = SocketAddr::from(([127, 0, 0, 1], options.port));
     let listener = tokio::net::TcpListener::bind(address)
         .await
         .with_context(|| format!("Could not bind to {address}"))?;
     let actual_port = listener.local_addr()?.port();
+    let state = app::AppState::new(config, config_path, chat_dir, repo, actual_port);
     let url = format!("http://127.0.0.1:{actual_port}/");
     println!("AI Hub is running at {url}");
     if options.open_browser {
@@ -97,7 +95,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    axum::serve(listener, api::router(state, actual_port))
+    axum::serve(listener, api::router(state))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })

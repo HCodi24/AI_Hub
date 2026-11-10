@@ -189,8 +189,14 @@ Về bảo mật, ứng dụng chỉ bind trên 127.0.0.1; từ chối các head
 | Tệp / thư mục | Vai trò |
 | --- | --- |
 | `src/main.rs` | Khởi động, xử lý cổng, mở trình duyệt |
-| `src/server.rs` | HTTP API và SSE |
-| `src/config.rs` | Cấu hình, che API key |
+| `src/api/mod.rs` | Router HTTP, nhóm route theo tính năng, kiểm tra Host/Origin |
+| `src/api/plans.rs` | API kế hoạch, tạo kế hoạch và SSE planner |
+| `src/api/chat.rs`, `src/api/config.rs`, `src/api/providers.rs` | API chat, cấu hình và provider |
+| `src/api/mutis.rs`, `src/api/verify.rs`, `src/api/extensions.rs` | API MutiS, kiểm tra và tiện ích |
+| `src/api/dev.rs`, `src/api/static_ui.rs` | API tự phát triển và phục vụ giao diện |
+| `src/app.rs` | AppState và trạng thái dùng chung |
+| `src/core/` | Cấu hình, đường dẫn, tiến trình và xử lý văn bản dùng chung |
+| `src/core/config.rs` | Cấu hình, che API key |
 | `src/chat.rs` | Lịch sử chat |
 | `src/plans.rs` | Kế hoạch của tính năng Chia việc |
 | `src/mutis.rs` | Cấu hình MutiS, nhật ký sự kiện, thống kê |

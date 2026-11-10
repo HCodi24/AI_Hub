@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub(crate) port: u16,
     pub(crate) config: Arc<RwLock<Config>>,
     pub(crate) config_path: PathBuf,
     pub(crate) chats: ChatStore,
@@ -51,11 +52,13 @@ impl AppState {
         config_path: PathBuf,
         chat_dir: PathBuf,
         dev_repo: Option<PathBuf>,
+        port: u16,
     ) -> Self {
         let plans = PlanStore::new(&config_path).expect("config path has a parent");
         let event_log = EventLog::new(&config_path).expect("config path has a parent");
         let (dev_events, _) = broadcast::channel(64);
         let state = Self {
+            port,
             config: Arc::new(RwLock::new(config)),
             config_path,
             chats: ChatStore::new(chat_dir),

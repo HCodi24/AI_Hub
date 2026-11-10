@@ -6,12 +6,10 @@ use crate::{
     providers::{self, ProviderEvent, ProviderRequest},
 };
 use axum::{
-    extract::{Path, Request, State},
+    extract::{Path, State},
     http::StatusCode,
-    middleware::{self, Next},
     response::{sse::KeepAlive, sse::Sse, IntoResponse, Response},
-    routing::{get, post, put},
-    Json, Router,
+    Json,
 };
 use futures_util::{future::join_all, StreamExt};
 use serde::Deserialize;
@@ -22,7 +20,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Deserialize)]
-struct PlanRequest {
+pub(super) struct PlanRequest {
     request: String,
     folder: String,
     #[serde(default)]
@@ -33,133 +31,6 @@ struct PlanRequest {
     model: String,
 }
 
-pub fn router(state: AppState, port: u16) -> Router {
-    Router::new()
-        .route("/", get(crate::api::static_ui::index))
-        .route("/app.js", get(crate::api::static_ui::app_js))
-        .route("/style.css", get(crate::api::static_ui::style_css))
-        .route("/api/dev/status", get(crate::api::dev::dev_status))
-        .route("/api/dev/repo", get(crate::api::dev::dev_repo_info))
-        .route("/api/dev/git/diff", get(crate::api::dev::dev_git_diff))
-        .route(
-            "/api/dev/git/checkpoint",
-            post(crate::api::dev::dev_git_checkpoint),
-        )
-        .route("/api/dev/git/reset", post(crate::api::dev::dev_git_reset))
-        .route("/api/dev/git/commit", post(crate::api::dev::dev_git_commit))
-        .route("/api/dev/test", post(crate::api::dev::dev_test))
-        .route("/api/dev/release", post(crate::api::dev::dev_release))
-        .route(
-            "/api/dev/settings",
-            get(crate::api::dev::dev_settings).put(crate::api::dev::put_dev_settings),
-        )
-        .route("/api/dev/events", get(crate::api::dev::dev_events))
-        .route("/api/dev/rebuild", post(crate::api::dev::dev_rebuild))
-        .route(
-            "/api/config",
-            get(crate::api::config::get_config).put(crate::api::config::put_config),
-        )
-        .route(
-            "/api/mutis",
-            get(crate::api::mutis::get_orchestration).put(crate::api::mutis::put_orchestration),
-        )
-        .route(
-            "/api/mutis/roles/resolve",
-            get(crate::api::mutis::resolve_mutis_roles),
-        )
-        .route("/api/mutis/stats", get(crate::api::mutis::mutis_stats))
-        .route(
-            "/api/mutis/diagnose",
-            post(crate::api::mutis::mutis_diagnose),
-        )
-        .route(
-            "/api/mutis/apply",
-            post(crate::api::mutis::mutis_setting_change),
-        )
-        .route(
-            "/api/mutis/setting-change",
-            post(crate::api::mutis::mutis_setting_change),
-        )
-        .route(
-            "/api/mutis/diagnoses",
-            get(crate::api::mutis::mutis_diagnoses),
-        )
-        .route(
-            "/api/mutis/events",
-            get(crate::api::mutis::orchestration_events)
-                .post(crate::api::mutis::record_orchestration_event),
-        )
-        .route(
-            "/api/orchestration",
-            get(crate::api::mutis::get_orchestration).put(crate::api::mutis::put_orchestration),
-        )
-        .route(
-            "/api/orchestration/events",
-            get(crate::api::mutis::orchestration_events),
-        )
-        .route(
-            "/api/providers",
-            post(crate::api::providers::create_provider),
-        )
-        .route(
-            "/api/providers/{id}",
-            put(crate::api::providers::update_provider)
-                .delete(crate::api::providers::remove_provider),
-        )
-        .route(
-            "/api/providers/{id}/models",
-            get(crate::api::providers::provider_models),
-        )
-        .route(
-            "/api/providers/{id}/test",
-            post(crate::api::providers::test_provider),
-        )
-        .route(
-            "/api/providers/{id}/use-deploy-key",
-            post(crate::api::providers::use_deploy_key),
-        )
-        .route(
-            "/api/providers/{id}/login",
-            post(crate::api::providers::login_provider),
-        )
-        .route(
-            "/api/cli-discover/{name}",
-            get(crate::api::providers::discover_cli),
-        )
-        .route("/api/chat", post(crate::api::chat::chat_handler))
-        .route(
-            "/api/chat/{chat_id}/stop",
-            post(crate::api::chat::stop_chat),
-        )
-        .route("/api/chats", get(crate::api::chat::list_chats))
-        .route(
-            "/api/chats/{chat_id}",
-            get(crate::api::chat::get_chat).delete(crate::api::chat::delete_chat),
-        )
-        .route("/api/plans", get(list_plans).post(generate_plan))
-        .route("/api/plans/{id}", get(get_plan).put(save_plan))
-        .route("/api/verify", post(crate::api::verify::verify_handler))
-        .route(
-            "/api/plan-diff",
-            post(crate::api::verify::plan_diff_handler),
-        )
-        .route("/api/cli-status", get(crate::api::providers::cli_status))
-        .route(
-            "/api/extensions",
-            get(crate::api::extensions::extension_list),
-        )
-        .route(
-            "/api/extensions/{id}/actions/{action}",
-            post(crate::api::extensions::extension_action),
-        )
-        .route(
-            "/api/extensions/{id}/stop",
-            post(crate::api::extensions::extension_stop),
-        )
-        .layer(middleware::from_fn_with_state(port, enforce_local_host))
-        .with_state(state)
-}
-
 struct CancelOnDrop(CancellationToken);
 
 impl Drop for CancelOnDrop {
@@ -168,39 +39,17 @@ impl Drop for CancelOnDrop {
     }
 }
 
-async fn enforce_local_host(State(port): State<u16>, request: Request, next: Next) -> Response {
-    let ipv4 = format!("127.0.0.1:{port}");
-    let localhost = format!("localhost:{port}");
-    let host = request
-        .headers()
-        .get("host")
-        .and_then(|value| value.to_str().ok());
-    if !host.is_some_and(|host| host == ipv4 || host.eq_ignore_ascii_case(&localhost)) {
-        return (StatusCode::FORBIDDEN, "Forbidden").into_response();
-    }
-    if request.method() != axum::http::Method::GET {
-        if let Some(origin) = request.headers().get("origin") {
-            let origin = origin.to_str().unwrap_or_default();
-            let ipv4_origin = format!("http://{ipv4}");
-            let localhost_origin = format!("http://localhost:{port}");
-            if !origin.eq_ignore_ascii_case(&ipv4_origin)
-                && !origin.eq_ignore_ascii_case(&localhost_origin)
-            {
-                return (StatusCode::FORBIDDEN, "Forbidden").into_response();
-            }
-        }
-    }
-    next.run(request).await
-}
-
-async fn list_plans(State(state): State<AppState>) -> ApiResult<Json<Vec<Plan>>> {
+pub(super) async fn list_plans(State(state): State<AppState>) -> ApiResult<Json<Vec<Plan>>> {
     state
         .plans
         .list()
         .map(Json)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không đọc được kế hoạch"))
 }
-async fn get_plan(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Plan>> {
+pub(super) async fn get_plan(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Plan>> {
     state
         .plans
         .get(&id)
@@ -208,7 +57,7 @@ async fn get_plan(State(state): State<AppState>, Path(id): Path<String>) -> ApiR
         .map(Json)
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy kế hoạch"))
 }
-async fn save_plan(
+pub(super) async fn save_plan(
     State(state): State<AppState>,
     Path(id): Path<String>,
     Json(mut plan): Json<Plan>,
@@ -245,7 +94,7 @@ async fn save_plan(
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được kế hoạch"))?;
     Ok(Json(plan))
 }
-async fn generate_plan(
+pub(super) async fn generate_plan(
     State(state): State<AppState>,
     Json(input): Json<PlanRequest>,
 ) -> ApiResult<Response> {
