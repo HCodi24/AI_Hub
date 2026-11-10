@@ -933,7 +933,8 @@ async fn git_text(repo: &std::path::Path, args: &[&str]) -> ApiResult<String> {
             String::from_utf8_lossy(&output.stderr).to_string(),
         ));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    // Only trim the end: `git status --porcelain` lines start with a significant space (" M path").
+    Ok(String::from_utf8_lossy(&output.stdout).trim_end().to_owned())
 }
 
 async fn dev_git_diff(State(state): State<AppState>) -> ApiResult<Json<Value>> {
@@ -1006,6 +1007,11 @@ async fn dev_git_reset(State(state): State<AppState>) -> ApiResult<Json<Value>> 
     let files = git_text(&repo, &["status", "--porcelain", "--untracked-files=all"])
         .await?
         .lines()
+        // Report only what reset/clean really discards: tracked changes anywhere, untracked files only under src/ and ui/.
+        .filter(|line| {
+            let path = line.get(3..).unwrap_or_default();
+            !line.starts_with("??") || path.starts_with("src/") || path.starts_with("ui/")
+        })
         .map(|line| line.get(3..).unwrap_or(line).to_owned())
         .collect::<Vec<_>>();
     for args in crate::dev::git_reset_args() {
