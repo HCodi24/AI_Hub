@@ -233,17 +233,61 @@ pub(crate) async fn chat_handler(
                 event = provider_receiver.recv() => {
                     let Some(event) = event else { break };
                     if event_logging_enabled && event.name == "watchdog_kill" {
-                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"watchdog_kill".into(),task_kind:None,ok:false,duration_ms:None,tokens:None,detail:Some("Codex watchdog".into())});
+                        let _ = task_state.event_log.append(&Event {
+                            ts: mutis::now(),
+                            plan_id: plan_id.clone(),
+                            task_id: task_id.clone(),
+                            provider_id: event_provider_id.clone(),
+                            kind: "watchdog_kill".into(),
+                            task_kind: None,
+                            ok: false,
+                            duration_ms: None,
+                            tokens: None,
+                            detail: Some("Codex watchdog".into()),
+                        });
                     }
                     if event_logging_enabled && event.name == "retry" {
-                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"retry".into(),task_kind:None,ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
+                        let _ = task_state.event_log.append(&Event {
+                            ts: mutis::now(),
+                            plan_id: plan_id.clone(),
+                            task_id: task_id.clone(),
+                            provider_id: event_provider_id.clone(),
+                            kind: "retry".into(),
+                            task_kind: None,
+                            ok: true,
+                            duration_ms: None,
+                            tokens: None,
+                            detail: event.data["text"].as_str().map(str::to_owned),
+                        });
                     }
                     if event_logging_enabled && event.name == "error" {
                         let detail = event.data["text"].as_str().unwrap_or("Unknown provider error").to_owned();
-                        let _ = task_state.event_log.append(&Event { ts: mutis::now(), plan_id: plan_id.clone(), task_id: task_id.clone(), provider_id: event_provider_id.clone(), kind: "error".into(), task_kind: task_kind.clone(), ok: false, duration_ms: None, tokens: None, detail: Some(detail) });
+                        let _ = task_state.event_log.append(&Event {
+                            ts: mutis::now(),
+                            plan_id: plan_id.clone(),
+                            task_id: task_id.clone(),
+                            provider_id: event_provider_id.clone(),
+                            kind: "error".into(),
+                            task_kind: task_kind.clone(),
+                            ok: false,
+                            duration_ms: None,
+                            tokens: None,
+                            detail: Some(detail),
+                        });
                     }
                     if event_logging_enabled && event.data["text"].as_str().is_some_and(|text|text.starts_with("Tự tiếp tục lần ")) {
-                        let _=task_state.event_log.append(&Event{ts:mutis::now(),plan_id:plan_id.clone(),task_id:task_id.clone(),provider_id:event_provider_id.clone(),kind:"resume".into(),task_kind:None,ok:true,duration_ms:None,tokens:None,detail:event.data["text"].as_str().map(str::to_owned)});
+                        let _ = task_state.event_log.append(&Event {
+                            ts: mutis::now(),
+                            plan_id: plan_id.clone(),
+                            task_id: task_id.clone(),
+                            provider_id: event_provider_id.clone(),
+                            kind: "resume".into(),
+                            task_kind: None,
+                            ok: true,
+                            duration_ms: None,
+                            tokens: None,
+                            detail: event.data["text"].as_str().map(str::to_owned),
+                        });
                     }
                     persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
                     if sse_sender.send(chat::sse_event(event.name, &event.data)).await.is_err() {

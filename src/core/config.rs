@@ -150,7 +150,13 @@ impl Default for MutisConfig {
     }
 }
 fn default_worker_rules() -> String {
-    "- Ghi mọi file bằng UTF-8 (không dùng PowerShell Set-Content/Out-File/>); dùng công cụ sửa file hoặc [System.IO.File]::WriteAllText với UTF8.\n- Không xoá tính năng có sẵn khi viết lại code.\n- Báo cáo rõ phần chưa làm.".into()
+    concat!(
+        "- Ghi mọi file bằng UTF-8 (không dùng PowerShell Set-Content/Out-File/>); ",
+        "dùng công cụ sửa file hoặc [System.IO.File]::WriteAllText với UTF8.\n",
+        "- Không xoá tính năng có sẵn khi viết lại code.\n",
+        "- Báo cáo rõ phần chưa làm."
+    )
+    .into()
 }
 impl MutisConfig {
     pub fn effective(&self, flag: bool) -> bool {

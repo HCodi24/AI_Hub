@@ -1,16 +1,12 @@
-mod chat;
 mod core;
 mod config {
     pub use crate::core::config::*;
 }
 mod api;
 mod app;
-mod dev;
-mod extensions;
-mod mutis;
-mod plans;
+mod features;
+pub(crate) use features::{chat, dev, extensions, mutis, plans, verify};
 mod providers;
-mod verify;
 
 use anyhow::{Context, Result};
 use std::net::SocketAddr;

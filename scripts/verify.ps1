@@ -59,16 +59,32 @@ $null = Invoke-LoggedCheck 'encoding' {
   if ($bad.Count) { $bad | ForEach-Object { Write-Output $_ }; throw 'encoding scan failed' }
 }
 $null = Invoke-LoggedCheck 'line-length' {
-  $long = [System.Collections.Generic.List[string]]::new()
+  $longSrc = [System.Collections.Generic.List[string]]::new()
+  $longUi = [System.Collections.Generic.List[string]]::new()
   foreach ($folder in @('ui','src')) {
     foreach ($file in Get-ChildItem (Join-Path $repo $folder) -File -Recurse) {
       if (($folder -eq 'ui' -and $file.Extension -notin @('.js','.css','.html')) -or ($folder -eq 'src' -and $file.Extension -ne '.rs')) { continue }
       $lineNo = 0
-      foreach ($line in [IO.File]::ReadAllLines($file.FullName)) { $lineNo++; if ($line.Length -gt 200) { $long.Add("$($file.FullName):$lineNo ($($line.Length))") } }
+      foreach ($line in [IO.File]::ReadAllLines($file.FullName)) {
+        $lineNo++
+        if ($line.Length -gt 200) {
+          $entry = "$($file.FullName):$lineNo ($($line.Length))"
+          if ($folder -eq 'src') { $longSrc.Add($entry) } else { $longUi.Add($entry) }
+        }
+      }
     }
   }
-  if ($long.Count) { Write-Output "WARNING: $($long.Count) lines exceed 200 characters (report only)"; $long }
-} $true
+  if ($longUi.Count) {
+    Write-Host "⚠ UI line length: $($longUi.Count) lines exceed 200 characters (report only)"
+    Write-Output "WARNING: $($longUi.Count) UI lines exceed 200 characters (report only)"
+    $longUi
+  }
+  if ($longSrc.Count) {
+    Write-Output "ERROR: $($longSrc.Count) Rust source lines exceed 200 characters"
+    $longSrc
+    throw 'Rust source line-length check failed'
+  }
+}
 
 if ($failures.Count) { Write-Host 'LỖI'; exit 1 }
 Write-Host 'ĐẠT'

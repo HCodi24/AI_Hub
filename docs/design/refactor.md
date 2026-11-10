@@ -29,7 +29,7 @@ docs/{SPEC.md,CODEX_RULES.md,design/*,history/tasks/*}
 - [x] R1a (Claude) — chuyển file: docs/, scripts/, lịch sử .tasks → docs/history/tasks, RULES → docs/CODEX_RULES.md;
   sửa đường dẫn trong dev.ps1 (repo = thư mục cha của scripts/), README, docs.
 - [x] R1b (Codex) — verify/smoke scripts, verify_ignore default, MutiS auto-detect, README updated.
-- [ ] R2 — tách backend.
+- [x] R2 — tách backend.
 - [ ] R3 — tách frontend + nhúng nhiều file UI.
 - [ ] R4 — dọn tàn dư, thông báo lỗi tiếng Việt thống nhất, README/SPEC.
 
@@ -45,3 +45,5 @@ docs/{SPEC.md,CODEX_RULES.md,design/*,history/tasks/*}
 - 2026-11-10: R2d complete. Moved `/api/chat`, `/api/chat/{id}/stop`, `/api/chats*` handlers, chat streaming/provider orchestration, event persistence, and job counter to `src/api/chat.rs`; moved `/api/config` GET/PUT to `src/api/config.rs`. Router references the new modules; behavior unchanged. `src/server.rs`: 1,999 to 1,556 lines. Verification: build, `scripts/verify.ps1`, and `scripts/smoke.ps1` passed.
 - 2026-11-10: R2e complete. Moved all /api/providers*, /api/cli-status, and /api/cli-discover/{name} handlers, the provider test cache, CLI status/discovery helpers, and the CLI discovery unit test into src/api/providers.rs. Updated the router, AppState cache result type, plan generation, and MutiS cache consumers. Behavior unchanged. src/server.rs: 1,520 to 616 lines; src/api/providers.rs: 936 lines; no src/providers/discovery.rs created. Verification: CARGO_TARGET_DIR=target/codex cargo build, scripts/verify.ps1, and scripts/smoke.ps1 passed (PowerShell invoked with process-scoped ExecutionPolicy Bypass).
 - 2026-11-10: R2f complete. Moved plan API endpoints, planner prompt/SSE generation, reassignment logic, plan events and helpers into src/api/plans.rs. Moved router assembly and Host/Origin middleware into src/api/mod.rs; AppState carries the actual bound port so the middleware retains its checks with the new router(state) API. Removed src/server.rs and mod server. Updated README source map. Behavior unchanged. Verification: `CARGO_TARGET_DIR=target/codex cargo build --release --offline`, `scripts/verify.ps1`, and `scripts/smoke.ps1` passed.
+
+- 2026-11-10: R2g complete. Moved business-logic modules into src/features; centralized executable resolution and CLI candidate/version discovery in src/providers/discovery.rs; made Rust source line lengths over 200 characters a verification error. README source map updated. Verification passed: `CARGO_TARGET_DIR=target/codex cargo build --release --offline`, `scripts/verify.ps1`, and `scripts/smoke.ps1`.

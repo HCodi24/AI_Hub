@@ -251,21 +251,61 @@ pub(crate) async fn mutis_stats(
             .push(event.clone());
     }
     let summarize = |groups: HashMap<String, Vec<Event>>| -> Value {
-        Value::Object(groups.into_iter().map(|(key, group)| {
-            let starts = group.iter().filter(|e| e.kind == "task_start").count();
-            let ends = group.iter().filter(|e| e.kind == "task_end").collect::<Vec<_>>();
-            let ok = ends.iter().filter(|e| e.ok).count();
-            let duration = ends.iter().filter_map(|e| e.duration_ms).sum::<u64>();
-            let tokens = ends.iter().filter_map(|e| e.tokens).sum::<u64>();
-            let mut errors: HashMap<String, usize> = HashMap::new();
-            for event in group.iter().filter(|e| !e.ok || e.kind == "error") {
-                if let Some(detail) = &event.detail { *errors.entry(mutis::normalize_error(detail)).or_default() += 1; }
-            }
-            let mut errors = errors.into_iter().collect::<Vec<_>>();
-            errors.sort_by(|a,b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-            let top_errors = errors.into_iter().take(5).map(|(message,count)| json!({"message":message,"count":count})).collect::<Vec<_>>();
-            (key, json!({"tasks_run": starts, "success_rate": if ends.is_empty() {0.0} else {ok as f64 / ends.len() as f64}, "avg_duration_ms": if ends.is_empty() {0} else {duration / ends.len() as u64}, "total_tokens": tokens, "retries": group.iter().filter(|e| e.kind == "retry").count(), "watchdog_kills": group.iter().filter(|e| e.kind == "watchdog_kill").count(), "resumes": group.iter().filter(|e| e.kind == "resume").count(), "verify_fail_rate": rate(&group, "verify", false), "review_fail_rate": rate(&group, "review", false), "fix_rounds": group.iter().filter(|e| e.kind == "fix_task").count(), "top_errors": top_errors}))
-        }).collect())
+        Value::Object(
+            groups
+                .into_iter()
+                .map(|(key, group)| {
+                    let starts = group.iter().filter(|e| e.kind == "task_start").count();
+                    let ends = group
+                        .iter()
+                        .filter(|e| e.kind == "task_end")
+                        .collect::<Vec<_>>();
+                    let ok = ends.iter().filter(|e| e.ok).count();
+                    let duration = ends.iter().filter_map(|e| e.duration_ms).sum::<u64>();
+                    let tokens = ends.iter().filter_map(|e| e.tokens).sum::<u64>();
+                    let mut errors: HashMap<String, usize> = HashMap::new();
+                    for event in group.iter().filter(|e| !e.ok || e.kind == "error") {
+                        if let Some(detail) = &event.detail {
+                            *errors.entry(mutis::normalize_error(detail)).or_default() += 1;
+                        }
+                    }
+                    let mut errors = errors.into_iter().collect::<Vec<_>>();
+                    errors.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+                    let top_errors = errors
+                        .into_iter()
+                        .take(5)
+                        .map(|(message, count)| json!({"message":message,"count":count}))
+                        .collect::<Vec<_>>();
+                    (
+                        key,
+                        json!({
+                            "tasks_run": starts,
+                            "success_rate": if ends.is_empty() {
+                                0.0
+                            } else {
+                                ok as f64 / ends.len() as f64
+                            },
+                            "avg_duration_ms": if ends.is_empty() {
+                                0
+                            } else {
+                                duration / ends.len() as u64
+                            },
+                            "total_tokens": tokens,
+                            "retries": group.iter().filter(|e| e.kind == "retry").count(),
+                            "watchdog_kills": group
+                                .iter()
+                                .filter(|e| e.kind == "watchdog_kill")
+                                .count(),
+                            "resumes": group.iter().filter(|e| e.kind == "resume").count(),
+                            "verify_fail_rate": rate(&group, "verify", false),
+                            "review_fail_rate": rate(&group, "review", false),
+                            "fix_rounds": group.iter().filter(|e| e.kind == "fix_task").count(),
+                            "top_errors": top_errors
+                        }),
+                    )
+                })
+                .collect(),
+        )
     };
     Ok(Json(
         json!({"days": days, "providers": summarize(providers), "task_kinds": summarize(kinds), "events": events.into_iter().rev().take(50).collect::<Vec<_>>()}),
@@ -375,7 +415,25 @@ pub(crate) async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<R
     let provider = providers::for_kind(&provider_config.kind)
         .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
     let settings = serde_json::to_value(&config_snapshot.mutis).unwrap_or(Value::Null);
-    let prompt = format!("You are the read-only MutiS reviewer. Analyze the provided settings, stats and recent failure events. Return ONLY JSON matching this contract exactly: {{\"health\":\"tốt|trung bình|kém\",\"findings\":[{{\"problem\":\"\",\"evidence\":\"\",\"cause\":\"\",\"severity\":\"high|medium|low\",\"suggestion\":\"\",\"setting_change\":{{\"path\":\"mutis.<field> or mutis.roles.<lead|big|small>.<provider_id|model|effort> or mutis.routing[i].role\",\"value\":null}} or null}}],\"summary\":\"\"}}. Do not include unknown fields or propose secrets, provider keys, paths, verify commands or worker rules.\nSETTINGS (no provider keys):\n{}\nSTATS:\n{}\nLAST FAILURE EVENTS (max 150, each detail max 300 chars):\n{}", settings, stats, serde_json::to_string(&failure_events).unwrap_or_default());
+    let prompt = format!(
+        concat!(
+            "You are the read-only MutiS reviewer. Analyze the provided settings, stats ",
+            "and recent failure events. Return ONLY JSON matching this contract exactly: ",
+            "{{\"health\":\"tốt|trung bình|kém\",\"findings\":[",
+            "{{\"problem\":\"\",\"evidence\":\"\",\"cause\":\"\",",
+            "\"severity\":\"high|medium|low\",\"suggestion\":\"\",",
+            "\"setting_change\":{{\"path\":\"mutis.<field> or ",
+            "mutis.roles.<lead|big|small>.<provider_id|model|effort> or ",
+            "mutis.routing[i].role\",\"value\":null}} or null}}],",
+            "\"summary\":\"\"}}. Do not include unknown fields or propose secrets, ",
+            "provider keys, paths, verify commands or worker rules.\n",
+            "SETTINGS (no provider keys):\n{}\nSTATS:\n{}\n",
+            "LAST FAILURE EVENTS (max 150, each detail max 300 chars):\n{}"
+        ),
+        settings,
+        stats,
+        serde_json::to_string(&failure_events).unwrap_or_default()
+    );
     let request = ProviderRequest {
         provider: provider_config.clone(),
         model,
@@ -420,9 +478,30 @@ pub(crate) async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<R
             match crate::core::text::extract_json(&raw).and_then(|text| serde_json::from_str::<Value>(text).ok()).and_then(|value| mutis::validate_diagnosis(value).ok()) {
                 Some(value) => {
                     let diagnosis = json!({"ts":ts,"health":value["health"],"findings":value["findings"],"summary":value["summary"]});
-                    if let Err(error) = save_diagnosis(&stream_state, &diagnosis) { yield Ok(axum::response::sse::Event::default().event("error").json_data(json!({"message":error.message})).unwrap()); }
+                    if let Err(error) = save_diagnosis(&stream_state, &diagnosis) {
+                        yield Ok(axum::response::sse::Event::default()
+                            .event("error")
+                            .json_data(json!({"message": error.message}))
+                            .unwrap());
+                    }
                     else {
-                        let _ = stream_state.event_log.append(&Event { ts, plan_id:None, task_id:None, provider_id:provider_config.id.clone(), kind:"diagnosis".into(), task_kind:None, ok:true, duration_ms:None, tokens:None, detail:Some(diagnosis["summary"].as_str().unwrap_or_default().into()) });
+                        let _ = stream_state.event_log.append(&Event {
+                            ts,
+                            plan_id: None,
+                            task_id: None,
+                            provider_id: provider_config.id.clone(),
+                            kind: "diagnosis".into(),
+                            task_kind: None,
+                            ok: true,
+                            duration_ms: None,
+                            tokens: None,
+                            detail: Some(
+                                diagnosis["summary"]
+                                    .as_str()
+                                    .unwrap_or_default()
+                                    .into(),
+                            ),
+                        });
                         yield Ok(axum::response::sse::Event::default().event("diagnosis").json_data(diagnosis).unwrap());
                     }
                 }

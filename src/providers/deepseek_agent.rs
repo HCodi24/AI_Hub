@@ -265,10 +265,61 @@ pub struct DeepSeekAgentProvider;
 fn tool_definitions() -> Value {
     let s = json!({"type":"string"});
     json!([
-      {"type":"function","function":{"name":"list_dir","description":"List up to 300 entries in a relative directory.","parameters":{"type":"object","properties":{"path":s},"required":["path"]}}},
-      {"type":"function","function":{"name":"read_file","description":"Read numbered lines from a text file. At most 400 lines; use ranges for long files.","parameters":{"type":"object","properties":{"path":s,"start_line":{"type":"integer"},"end_line":{"type":"integer"}},"required":["path"]}}},
-      {"type":"function","function":{"name":"edit_file","description":"Replace one exact unique occurrence.","parameters":{"type":"object","properties":{"path":s,"old_text":s,"new_text":s},"required":["path","old_text","new_text"]}}},
-      {"type":"function","function":{"name":"write_file","description":"Create or overwrite a UTF-8 file.","parameters":{"type":"object","properties":{"path":s,"content":s},"required":["path","content"]}}}
+        {
+            "type": "function",
+            "function": {
+                "name": "list_dir",
+                "description": "List up to 300 entries in a relative directory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": s},
+                    "required": ["path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": concat!(
+                    "Read numbered lines from a text file. At most 400 lines; ",
+                    "use ranges for long files."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": s,
+                        "start_line": {"type": "integer"},
+                        "end_line": {"type": "integer"}
+                    },
+                    "required": ["path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "edit_file",
+                "description": "Replace one exact unique occurrence.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": s, "old_text": s, "new_text": s},
+                    "required": ["path", "old_text", "new_text"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "description": "Create or overwrite a UTF-8 file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": s, "content": s},
+                    "required": ["path", "content"]
+                }
+            }
+        }
     ])
 }
 

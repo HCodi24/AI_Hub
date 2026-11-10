@@ -197,17 +197,20 @@ Về bảo mật, ứng dụng chỉ bind trên 127.0.0.1; từ chối các head
 | `src/app.rs` | AppState và trạng thái dùng chung |
 | `src/core/` | Cấu hình, đường dẫn, tiến trình và xử lý văn bản dùng chung |
 | `src/core/config.rs` | Cấu hình, che API key |
-| `src/chat.rs` | Lịch sử chat |
-| `src/plans.rs` | Kế hoạch của tính năng Chia việc |
-| `src/mutis.rs` | Cấu hình MutiS, nhật ký sự kiện, thống kê |
-| `src/verify.rs` | Cổng kiểm tra |
-| `src/extensions.rs` | Danh mục tiện ích |
+| `src/features/chat.rs` | Lịch sử chat |
+| `src/features/plans.rs` | Kế hoạch của tính năng Chia việc |
+| `src/features/mutis.rs` | Cấu hình MutiS, nhật ký sự kiện, thống kê |
+| `src/features/verify.rs` | Cổng kiểm tra |
+| `src/features/extensions.rs` | Danh mục tiện ích |
+| `src/features/dev.rs` | Development-mode business logic |
+| `src/features/` | Business logic for chat, plans, MutiS, verify, extensions and dev |
 | `src/providers/openai_compat.rs` | Nguồn OpenAI-compatible |
 | `src/providers/anthropic.rs` | Nguồn Anthropic API |
 | `src/providers/codex_cli.rs` | Nguồn Codex CLI |
 | `src/providers/claude_cli.rs` | Nguồn Claude Code CLI |
 | `src/providers/deepseek_agent.rs` | DeepSeek làm việc (Deploy) |
 | `src/providers/cli_support.rs` | Phần dùng chung cho các nguồn CLI |
+| `src/providers/discovery.rs` | CLI resolution, candidate discovery and version probing |
 | `ui/index.html`, `ui/app.js`, `ui/style.css` | Giao diện web nhúng trong exe |
 | `docs/design/` | Thiết kế MutiS và Tự phát triển, tiến độ, bài học |
 | `docs/SPEC.md` | Đặc tả kỹ thuật |

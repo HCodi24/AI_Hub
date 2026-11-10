@@ -206,7 +206,19 @@ pub(super) async fn generate_plan(
         .collect::<Vec<_>>()
         .join("\n");
     let routes = if cfg.mutis.enabled {
-        format!("\nMutiS routing table (kind -> role):\n{}\nRoles: lead={}, big={}, small={}. Use deepseek_agent only for small tasks; never run commands.", cfg.mutis.routing.iter().map(|r|format!("{} -> {}",r.kind,r.role)).collect::<Vec<_>>().join("\n"), cfg.mutis.roles.lead.provider_id, cfg.mutis.roles.big.provider_id, cfg.mutis.roles.small.provider_id)
+        format!(
+            "\nMutiS routing table (kind -> role):\n{}\nRoles: lead={}, big={}, small={}. \
+             Use deepseek_agent only for small tasks; never run commands.",
+            cfg.mutis
+                .routing
+                .iter()
+                .map(|route| format!("{} -> {}", route.kind, route.role))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            cfg.mutis.roles.lead.provider_id,
+            cfg.mutis.roles.big.provider_id,
+            cfg.mutis.roles.small.provider_id
+        )
     } else {
         String::new()
     };
@@ -218,7 +230,23 @@ pub(super) async fn generate_plan(
     } else {
         String::new()
     };
-    let prompt = format!("Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[{{\"id\":1,\"title\":\"...\",\"detail\":\"files + expected result\",\"assignee\":\"provider id\",\"depends_on\":[ids],\"kind\":\"plan|small_edit|code|test|docs|review\"}}]}}. Keep tasks small and avoid editing same file in parallel.\nRequest:\n{}{}\nWorking folder: {}\nFiles:\n{}\nConnected workers (id, name, kind, models):\n{}{}",request_context,input.request,folder.display(),file_tree(&folder),workers,routes);
+    let prompt = format!(
+        concat!(
+            "Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[",
+            "{{\"id\":1,\"title\":\"...\",\"detail\":\"files + expected result\",",
+            "\"assignee\":\"provider id\",\"depends_on\":[ids],",
+            "\"kind\":\"plan|small_edit|code|test|docs|review\"}}]}}. ",
+            "Keep tasks small and avoid editing same file in parallel.\n",
+            "Request:\n{}{}\nWorking folder: {}\nFiles:\n{}\n",
+            "Connected workers (id, name, kind, models):\n{}{}"
+        ),
+        request_context,
+        input.request,
+        folder.display(),
+        file_tree(&folder),
+        workers,
+        routes
+    );
     let provider = providers::for_kind(&planner.kind)
         .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
     let cancel = CancellationToken::new();

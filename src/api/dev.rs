@@ -33,9 +33,16 @@ pub(crate) async fn dev_repo_info(State(state): State<AppState>) -> ApiResult<Js
     let branch = git_text(&repo, &["branch", "--show-current"]).await?;
     let commit = git_text(&repo, &["log", "-1", "--format=%h%x1f%s%x1f%an"]).await?;
     let mut fields = commit.split('\u{1f}');
-    Ok(Json(
-        json!({"path":repo.to_string_lossy(),"branch":branch,"changed_files":changed,"last_commit":{"hash":fields.next().unwrap_or(""),"subject":fields.next().unwrap_or(""),"author":fields.next().unwrap_or("")}}),
-    ))
+    Ok(Json(json!({
+        "path": repo.to_string_lossy(),
+        "branch": branch,
+        "changed_files": changed,
+        "last_commit": {
+            "hash": fields.next().unwrap_or(""),
+            "subject": fields.next().unwrap_or(""),
+            "author": fields.next().unwrap_or(""),
+        }
+    })))
 }
 
 pub(crate) fn dev_repo_path(state: &AppState) -> ApiResult<PathBuf> {
@@ -59,7 +66,19 @@ pub(crate) fn effective_chat_folder(
 }
 
 pub(crate) fn dev_chat_preamble(repo: &str) -> String {
-    format!("Bạn đang sửa chính ứng dụng AI Hub (repo: {repo}) đang chạy ở chế độ dev.\n- Giao diện ở ui/ tự tải lại khi lưu; code Rust ở src/ cần người dùng bấm 'Build & khởi động lại'.\n- Không chạy `cargo build --release`, không tắt tiến trình ai-hub, không sửa target/.\n- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy `cargo test` với CARGO_TARGET_DIR=target\\dev-check nếu cần.\n- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.")
+    format!(
+        concat!(
+            "Bạn đang sửa chính ứng dụng AI Hub (repo: {repo}) đang chạy ở chế độ dev.\n",
+            "- Giao diện ở ui/ tự tải lại khi lưu; code Rust ở src/ cần người dùng bấm ",
+            "'Build & khởi động lại'.\n",
+            "- Không chạy `cargo build --release`, không tắt tiến trình ai-hub, ",
+            "không sửa target/.\n",
+            "- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy `cargo test` ",
+            "với CARGO_TARGET_DIR=target\\dev-check nếu cần.\n",
+            "- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không."
+        ),
+        repo = repo
+    )
 }
 
 async fn git_output(repo: &std::path::Path, args: &[&str]) -> ApiResult<std::process::Output> {
@@ -296,7 +315,25 @@ where
 }
 
 fn sse_channel(rx: mpsc::Receiver<String>) -> Response {
-    let stream = async_stream::stream! {let mut rx=ReceiverStream::new(rx);while let Some(line)=rx.next().await{if let Ok(value)=serde_json::from_str::<Value>(&line){yield Ok::<_,Infallible>(axum::response::sse::Event::default().event(value["event"].as_str().unwrap_or("log")).data(value["data"].to_string()));}else{yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").json_data(json!({"text":line})).unwrap());}}};
+    let stream = async_stream::stream! {
+        let mut rx = ReceiverStream::new(rx);
+        while let Some(line) = rx.next().await {
+            if let Ok(value) = serde_json::from_str::<Value>(&line) {
+                yield Ok::<_, Infallible>(
+                    axum::response::sse::Event::default()
+                        .event(value["event"].as_str().unwrap_or("log"))
+                        .data(value["data"].to_string()),
+                );
+            } else {
+                yield Ok::<_, Infallible>(
+                    axum::response::sse::Event::default()
+                        .event("log")
+                        .json_data(json!({"text": line}))
+                        .unwrap(),
+                );
+            }
+        }
+    };
     Sse::new(stream)
         .keep_alive(KeepAlive::default())
         .into_response()
@@ -320,7 +357,23 @@ pub(crate) async fn put_dev_settings(
 
 pub(crate) async fn dev_events(State(state): State<AppState>) -> Response {
     let mut rx = state.dev_events.subscribe();
-    let stream = async_stream::stream! { loop { match rx.recv().await { Ok(message) => { let parsed: Value = serde_json::from_str(&message).unwrap_or(Value::Null); let name=parsed.get("event").and_then(Value::as_str).unwrap_or("message"); yield Ok::<_,Infallible>(axum::response::sse::Event::default().event(name).data(parsed.get("data").cloned().unwrap_or(Value::Null).to_string())); }, Err(broadcast::error::RecvError::Lagged(_)) => continue, Err(_) => break } } };
+    let stream = async_stream::stream! {
+        loop {
+            match rx.recv().await {
+                Ok(message) => {
+                    let parsed: Value = serde_json::from_str(&message).unwrap_or(Value::Null);
+                    let name = parsed.get("event").and_then(Value::as_str).unwrap_or("message");
+                    yield Ok::<_, Infallible>(
+                        axum::response::sse::Event::default()
+                            .event(name)
+                            .data(parsed.get("data").cloned().unwrap_or(Value::Null).to_string()),
+                    );
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(_) => break,
+            }
+        }
+    };
     Sse::new(stream)
         .keep_alive(KeepAlive::default())
         .into_response()
@@ -387,7 +440,23 @@ pub(crate) async fn dev_rebuild(State(state): State<AppState>) -> ApiResult<Resp
         let result = run_dev_build(&state2, &repo).await;
         let _ = tx.send(result.to_string()).await;
     });
-    let stream = async_stream::stream! { let mut rx=ReceiverStream::new(rx); while let Some(line)=rx.next().await { if let Ok(value)=serde_json::from_str::<Value>(&line) { let name=value["event"].as_str().unwrap_or("log"); yield Ok::<_,Infallible>(axum::response::sse::Event::default().event(name).data(value["data"].to_string())); } else { yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").data(line)); } } };
+    let stream = async_stream::stream! {
+        let mut rx = ReceiverStream::new(rx);
+        while let Some(line) = rx.next().await {
+            if let Ok(value) = serde_json::from_str::<Value>(&line) {
+                let name = value["event"].as_str().unwrap_or("log");
+                yield Ok::<_, Infallible>(
+                    axum::response::sse::Event::default()
+                        .event(name)
+                        .data(value["data"].to_string()),
+                );
+            } else {
+                yield Ok::<_, Infallible>(
+                    axum::response::sse::Event::default().event("log").data(line),
+                );
+            }
+        }
+    };
     Ok(Sse::new(stream)
         .keep_alive(KeepAlive::default())
         .into_response())

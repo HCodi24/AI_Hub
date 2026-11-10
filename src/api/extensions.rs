@@ -108,16 +108,111 @@ pub(crate) async fn extension_action(
     let job_guard = JobGuard::new(state.active_jobs.clone());
     tokio::spawn(async move {
         let _job_guard = job_guard;
-        let result=async {
-            if let Some(file)=backup.as_deref(){if let Some(home)=dirs::home_dir(){let source=home.join(file);if source.exists(){let dir=configured_backups.clone().unwrap_or_else(||dirs::config_dir().unwrap_or_else(||home.clone()).join("ai-hub").join("backups"));tokio::fs::create_dir_all(&dir).await.map_err(|e|e.to_string())?;let stamp=backup_timestamp();let target=dir.join(format!("{}.{}.bak",source.file_name().unwrap_or_default().to_string_lossy(),stamp));tokio::fs::copy(&source,&target).await.map_err(|e|e.to_string())?;let _=tx.send(Ok(format!("Backup: {}",target.display()))).await;}}}
-            let path=exe.ok_or_else(||format!("Không tìm thấy executable: {}",action.command))?;
-            let _=tx.send(Ok(format!("{} {} | có thể sửa: {}",path.display(),args.iter().map(|x|x.to_string_lossy()).collect::<Vec<_>>().join(" "),modify))).await;
-            let mut cmd=providers::cli_support::command_for(&path,&args);if let Some(cwd)=folder.as_ref(){cmd.current_dir(cwd);}cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
-            let mut child=cmd.spawn().map_err(|e|e.to_string())?;let stdout=child.stdout.take().ok_or_else(||"Không đọc được output".to_string())?;let stderr=child.stderr.take();if let Some(stderr)=stderr{let tx_err=tx.clone();tokio::spawn(async move{let mut reader=tokio::io::BufReader::new(stderr);let mut line=String::new();loop{line.clear();if reader.read_line(&mut line).await.unwrap_or(0)==0{break}let _=tx_err.send(Ok(crate::core::text::strip_ansi(&line))).await;}});}
-            let mut reader=tokio::io::BufReader::new(stdout);let mut line=String::new();
-            let wait=async{let deadline=tokio::time::sleep(Duration::from_secs(600));tokio::pin!(deadline);loop{line.clear();tokio::select!{_ = token.cancelled()=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Đã dừng".to_string())},_ = &mut deadline=>{providers::cli_support::terminate_child_tree(&mut child).await;return Err("Quá thời gian chờ 10 phút".to_string())},read=reader.read_line(&mut line)=>{let n=read.map_err(|e|e.to_string())?;if n==0{break}let _=tx.send(Ok(crate::core::text::strip_ansi(&line))).await;}}}let status=child.wait().await.map_err(|e|e.to_string())?;if status.success(){Ok(())}else{Err(format!("Lệnh kết thúc với {status}"))}}.await;
+        let result = async {
+            if let Some(file) = backup.as_deref() {
+                if let Some(home) = dirs::home_dir() {
+                    let source = home.join(file);
+                    if source.exists() {
+                        let dir = configured_backups.clone().unwrap_or_else(|| {
+                            dirs::config_dir()
+                                .unwrap_or_else(|| home.clone())
+                                .join("ai-hub")
+                                .join("backups")
+                        });
+                        tokio::fs::create_dir_all(&dir)
+                            .await
+                            .map_err(|error| error.to_string())?;
+                        let stamp = backup_timestamp();
+                        let target = dir.join(format!(
+                            "{}.{}.bak",
+                            source.file_name().unwrap_or_default().to_string_lossy(),
+                            stamp
+                        ));
+                        tokio::fs::copy(&source, &target)
+                            .await
+                            .map_err(|error| error.to_string())?;
+                        let _ = tx.send(Ok(format!("Backup: {}", target.display()))).await;
+                    }
+                }
+            }
+            let path =
+                exe.ok_or_else(|| format!("Kh\u{00f4}ng t\u{00ec}m th\u{1ea5}y executable: {}", action.command))?;
+            let _ = tx
+                .send(Ok(format!(
+                    "{} {} | c\u{00f3} th\u{1ec3} s\u{1eeda}: {}",
+                    path.display(),
+                    args.iter()
+                        .map(|argument| argument.to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    modify
+                )))
+                .await;
+            let mut cmd = providers::cli_support::command_for(&path, &args);
+            if let Some(cwd) = folder.as_ref() {
+                cmd.current_dir(cwd);
+            }
+            cmd.stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true);
+            let mut child = cmd.spawn().map_err(|error| error.to_string())?;
+            let stdout = child
+                .stdout
+                .take()
+                .ok_or_else(|| "Kh\u{00f4}ng \u{0111}\u{1ecdc} \u{0111}\u{01b0}\u{1ee3}c output".to_string())?;
+            let stderr = child.stderr.take();
+            if let Some(stderr) = stderr {
+                let tx_err = tx.clone();
+                tokio::spawn(async move {
+                    let mut reader = tokio::io::BufReader::new(stderr);
+                    let mut line = String::new();
+                    loop {
+                        line.clear();
+                        if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
+                            break;
+                        }
+                        let _ = tx_err.send(Ok(crate::core::text::strip_ansi(&line))).await;
+                    }
+                });
+            }
+            let mut reader = tokio::io::BufReader::new(stdout);
+            let mut line = String::new();
+            let wait = async {
+                let deadline = tokio::time::sleep(Duration::from_secs(600));
+                tokio::pin!(deadline);
+                loop {
+                    line.clear();
+                    tokio::select! {
+                        _ = token.cancelled() => {
+                            providers::cli_support::terminate_child_tree(&mut child).await;
+                            return Err("\u{0110}\u{00e3} d\u{1eeb}ng".to_string());
+                        }
+                        _ = &mut deadline => {
+                            providers::cli_support::terminate_child_tree(&mut child).await;
+                            return Err("Qu\u{00e1} th\u{1edd}i gian ch\u{1edd} 10 ph\u{00fa}t".to_string());
+                        }
+                        read = reader.read_line(&mut line) => {
+                            let n = read.map_err(|error| error.to_string())?;
+                            if n == 0 {
+                                break;
+                            }
+                            let _ = tx
+                                .send(Ok(crate::core::text::strip_ansi(&line)))
+                                .await;
+                        }
+                    }
+                }
+                let status = child.wait().await.map_err(|error| error.to_string())?;
+                if status.success() {
+                    Ok(())
+                } else {
+                    Err(format!("L\u{1ec7}nh k\u{1ebf}t th\u{00fa}c v\u{1edb}i {status}"))
+                }
+            }
+            .await;
             wait
-        }.await;
+        }
+        .await;
         let _ = tx.send(Err(result.err().unwrap_or_default())).await;
         state2.extension_running.lock().await.remove(&id2);
     });

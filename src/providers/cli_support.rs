@@ -1,14 +1,7 @@
 use super::ProviderEvent;
 use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
-use std::{
-    collections::VecDeque,
-    env,
-    ffi::OsString,
-    path::{Path, PathBuf},
-    process::{Command as StdCommand, Stdio},
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{collections::VecDeque, env, ffi::OsString, path::Path, process::Stdio, time::Duration};
 
 pub use crate::core::text::one_line;
 use tokio::{
@@ -19,92 +12,9 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-pub fn resolve_executable(name: &str, explicit_path: Option<&str>) -> Option<PathBuf> {
-    if let Some(path) = explicit_path.map(str::trim).filter(|path| !path.is_empty()) {
-        let path = PathBuf::from(path);
-        if path.is_file() && safe_cli_executable(&path) {
-            return Some(path);
-        }
-    }
-
-    let names = [
-        format!("{name}.exe"),
-        format!("{name}.cmd"),
-        name.to_owned(),
-    ];
-    let process_path = env::var_os("PATH").into_iter().flat_map(|value| {
-        env::split_paths(&value)
-            .filter(|path| valid_path_entry(path))
-            .collect::<Vec<_>>()
-    });
-    if let Some(path) = find_in_directories(&names, process_path) {
-        return Some(path);
-    }
-
-    #[cfg(windows)]
-    {
-        if let Some(path) = find_in_directories(&names, registry_path_directories()) {
-            return Some(path);
-        }
-
-        let directories = well_known_directories();
-        if let Some(path) = find_in_directories(&names, directories) {
-            return Some(path);
-        }
-
-        if name.eq_ignore_ascii_case("codex") {
-            if let Some(path) = newest_codex_install() {
-                return Some(path);
-            }
-        }
-        if name.eq_ignore_ascii_case("claude") {
-            if let Some(path) = newest_claude_app_install() {
-                return Some(path);
-            }
-        }
-    }
-
-    None
-}
-
-#[cfg(windows)]
-fn newest_claude_app_install() -> Option<PathBuf> {
-    let root = PathBuf::from(env::var_os("LOCALAPPDATA")?).join("Claude-Data");
-    let mut candidates = std::fs::read_dir(root)
-        .ok()?
-        .filter_map(Result::ok)
-        .filter_map(|install| {
-            if !install.file_type().ok()?.is_dir() {
-                return None;
-            }
-            let versions = install.path().join("claude-code");
-            Some(
-                std::fs::read_dir(versions)
-                    .ok()?
-                    .filter_map(Result::ok)
-                    .filter_map(|version| {
-                        if !version.file_type().ok()?.is_dir() {
-                            return None;
-                        }
-                        let version_name = version.file_name().to_string_lossy().into_owned();
-                        let parsed = version_dir_key(&version_name)?;
-                        let hashes = std::fs::read_dir(version.path()).ok()?;
-                        hashes.filter_map(Result::ok).find_map(|hash| {
-                            let executable = hash.path().join("claude.exe");
-                            (hash.file_type().ok()?.is_dir()
-                                && executable.is_file()
-                                && safe_cli_executable(&executable))
-                            .then_some((parsed.clone(), executable))
-                        })
-                    })
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .flatten()
-        .collect::<Vec<_>>();
-    candidates.sort_by(|(left, _), (right, _)| right.cmp(left));
-    candidates.into_iter().next().map(|(_, path)| path)
-}
+pub use super::discovery::resolve_executable;
+#[cfg(test)]
+pub use super::discovery::version_dir_key;
 
 pub fn environment_names_to_remove(names: &[String]) -> Vec<String> {
     names
@@ -115,18 +25,6 @@ pub fn environment_names_to_remove(names: &[String]) -> Vec<String> {
         })
         .cloned()
         .collect()
-}
-
-pub fn version_dir_key(version: &str) -> Option<(Vec<u64>, bool, String)> {
-    let (release, prerelease) = version.split_once('-').unwrap_or((version, ""));
-    let mut numbers = Vec::new();
-    for part in release.split('.') {
-        numbers.push(part.parse::<u64>().ok()?);
-    }
-    if numbers.len() != 3 || version.contains('+') || prerelease.contains('+') {
-        return None;
-    }
-    Some((numbers, prerelease.is_empty(), prerelease.to_owned()))
 }
 
 pub fn parse_auth_logged_in(output: &[u8]) -> Option<bool> {
@@ -160,151 +58,6 @@ pub fn searched_locations(name: &str, explicit_path_was_set: bool) -> String {
     #[cfg(not(windows))]
     let _ = name;
     locations.join(", ")
-}
-
-fn valid_path_entry(path: &Path) -> bool {
-    let path = path.to_string_lossy();
-    !path.trim().is_empty() && !path.contains('$') && !path.contains('%')
-}
-
-fn find_in_directories(
-    names: &[String],
-    directories: impl IntoIterator<Item = PathBuf>,
-) -> Option<PathBuf> {
-    let directories = directories
-        .into_iter()
-        .filter(|directory| valid_path_entry(directory))
-        .collect::<Vec<_>>();
-    for name in names {
-        for directory in &directories {
-            let candidate = directory.join(name);
-            if candidate.is_file() && safe_cli_executable(&candidate) {
-                return Some(candidate);
-            }
-        }
-    }
-    None
-}
-
-fn safe_cli_executable(path: &Path) -> bool {
-    let lower = path.to_string_lossy().to_lowercase();
-    if lower.contains("\\program files\\windowsapps\\") {
-        return false;
-    }
-    if path
-        .file_name()
-        .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("Claude.exe"))
-    {
-        return !path
-            .parent()
-            .is_some_and(|parent| parent.join("resources").join("app.asar").exists());
-    }
-    true
-}
-
-#[cfg(windows)]
-fn registry_path_directories() -> Vec<PathBuf> {
-    [
-        r"HKCU\Environment",
-        r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
-    ]
-    .into_iter()
-    .filter_map(read_registry_path)
-    .flat_map(|path| env::split_paths(std::ffi::OsStr::new(&path)).collect::<Vec<_>>())
-    .filter(|path| valid_path_entry(path))
-    .collect()
-}
-
-#[cfg(windows)]
-fn read_registry_path(key: &str) -> Option<String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-    let output = StdCommand::new("reg")
-        .args(["query", key, "/v", "Path"])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let output = String::from_utf8_lossy(&output.stdout);
-    output.lines().find_map(|line| {
-        let mut fields = line.split_whitespace();
-        let name = fields.next()?;
-        let value_type = fields.next()?;
-        if !name.eq_ignore_ascii_case("Path") || !matches!(value_type, "REG_SZ" | "REG_EXPAND_SZ") {
-            return None;
-        }
-        let value_start = line.find(value_type)? + value_type.len();
-        let value = line[value_start..].trim();
-        Some(expand_windows_variables(value))
-    })
-}
-
-#[cfg(windows)]
-fn expand_windows_variables(value: &str) -> String {
-    let mut expanded = String::with_capacity(value.len());
-    let mut rest = value;
-    while let Some(start) = rest.find('%') {
-        expanded.push_str(&rest[..start]);
-        let after_start = &rest[start + 1..];
-        let Some(end) = after_start.find('%') else {
-            expanded.push_str(&rest[start..]);
-            return expanded;
-        };
-        let variable = &after_start[..end];
-        if let Some(value) = env::var_os(variable) {
-            expanded.push_str(&value.to_string_lossy());
-        } else {
-            expanded.push('%');
-            expanded.push_str(variable);
-            expanded.push('%');
-        }
-        rest = &after_start[end + 1..];
-    }
-    expanded.push_str(rest);
-    expanded
-}
-
-#[cfg(windows)]
-fn well_known_directories() -> Vec<PathBuf> {
-    [
-        env::var_os("APPDATA").map(|path| PathBuf::from(path).join("npm")),
-        env::var_os("LOCALAPPDATA").map(|path| PathBuf::from(path).join("Programs").join("nodejs")),
-        env::var_os("USERPROFILE").map(|path| PathBuf::from(path).join(".local").join("bin")),
-    ]
-    .into_iter()
-    .flatten()
-    .collect()
-}
-
-#[cfg(windows)]
-fn newest_codex_install() -> Option<PathBuf> {
-    let root = PathBuf::from(env::var_os("LOCALAPPDATA")?)
-        .join("OpenAI")
-        .join("Codex")
-        .join("bin");
-    let mut candidates = std::fs::read_dir(root)
-        .ok()?
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            if !entry.file_type().ok()?.is_dir() {
-                return None;
-            }
-            let executable = entry.path().join("codex.exe");
-            if !executable.is_file() || !safe_cli_executable(&executable) {
-                return None;
-            }
-            let modified = executable
-                .metadata()
-                .and_then(|metadata| metadata.modified())
-                .unwrap_or(UNIX_EPOCH);
-            Some((modified, executable))
-        })
-        .collect::<Vec<(SystemTime, PathBuf)>>();
-    candidates.sort_by(|(left, _), (right, _)| right.cmp(left));
-    candidates.into_iter().next().map(|(_, path)| path)
 }
 
 pub fn command_for(path: &Path, args: &[OsString]) -> Command {
@@ -473,7 +226,17 @@ pub async fn run_jsonl(
                 was_cancelled = true;
                 break 'read;
             }
-            result = async { if let Some(duration)=watchdog { timeout(duration, read_line).await.map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "watchdog"))? } else { read_line.await } } => match result {
+            result = async {
+                if let Some(duration) = watchdog {
+                    timeout(duration, read_line)
+                        .await
+                        .map_err(|_| {
+                            std::io::Error::new(std::io::ErrorKind::TimedOut, "watchdog")
+                        })?
+                } else {
+                    read_line.await
+                }
+            } => match result {
                 Err(error) if error.kind() == std::io::ErrorKind::TimedOut => {
                     terminate_child_tree(&mut child).await;
                     let message=format!("Codex không phản hồi sau {} phút — đã dừng", command_spec.watchdog_minutes.unwrap_or_default());

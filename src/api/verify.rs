@@ -57,7 +57,23 @@ pub(crate) async fn verify_handler(
             ))
             .await;
     });
-    let stream = async_stream::stream! { let mut rx=ReceiverStream::new(rx); while let Some(line)=rx.next().await { if let Some(json)=line.strip_prefix("__VERIFY__") { yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("verify").data(json)); } else { yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").json_data(json!({"text":line})).unwrap()); } } };
+    let stream = async_stream::stream! {
+        let mut rx = ReceiverStream::new(rx);
+        while let Some(line) = rx.next().await {
+            if let Some(json) = line.strip_prefix("__VERIFY__") {
+                yield Ok::<_, Infallible>(
+                    axum::response::sse::Event::default().event("verify").data(json),
+                );
+            } else {
+                yield Ok::<_, Infallible>(
+                    axum::response::sse::Event::default()
+                        .event("log")
+                        .json_data(json!({"text": line}))
+                        .unwrap(),
+                );
+            }
+        }
+    };
     Ok(Sse::new(stream)
         .keep_alive(KeepAlive::default())
         .into_response())

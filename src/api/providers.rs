@@ -2,7 +2,7 @@ use crate::{
     api::{ApiError, ApiResult},
     app::AppState,
     config::{self, Config, ProviderConfig},
-    providers,
+    providers::{self, discovery},
 };
 use axum::{
     extract::{Path, State},
@@ -11,12 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{
-    ffi::OsString,
-    path::PathBuf,
-    process::Stdio,
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 use tokio::time::timeout;
 use uuid::Uuid;
 #[derive(Clone, Debug, Deserialize)]
@@ -354,10 +349,13 @@ async fn test_provider_uncached(
             } else {
                 "claude"
             };
-            match cli_probe(name, &provider.executable, Duration::from_secs(10)).await {
+            match discovery::cli_probe(name, &provider.executable, Duration::from_secs(10)).await {
                 Some((version, path)) if name == "claude" => {
-                    match run_cli_auth_status(std::path::Path::new(&path), Duration::from_secs(10))
-                        .await
+                    match discovery::run_cli_auth_status(
+                        std::path::Path::new(&path),
+                        Duration::from_secs(10),
+                    )
+                    .await
                     {
                         Some(true) => {
                             connection(true, "connected", &format!("Đã kết nối · {version}"), &path)
@@ -501,291 +499,16 @@ fn connection(ok: bool, status: &'static str, message: &str, detail: &str) -> Co
         detail: detail.into(),
     }
 }
-async fn cli_probe(name: &str, explicit: &str, limit: Duration) -> Option<(String, String)> {
-    let path = providers::cli_support::resolve_executable(name, Some(explicit))?;
-    if unsafe_cli_path(&path) {
-        return None;
-    }
-    let text = run_cli_version(&path, limit).await?;
-    let valid = if name == "codex" {
-        text.to_lowercase().contains("codex")
-    } else {
-        text.contains("Claude Code")
-    };
-    valid.then(|| (text, path.to_string_lossy().into_owned()))
-}
-fn unsafe_cli_path(path: &std::path::Path) -> bool {
-    let text = path.to_string_lossy().to_lowercase();
-    if text.contains("\\program files\\windowsapps\\") {
-        return true;
-    }
-    if path
-        .file_name()
-        .is_some_and(|f| f.to_string_lossy().eq_ignore_ascii_case("Claude.exe"))
-    {
-        return path
-            .parent()
-            .is_some_and(|p| p.join("resources").join("app.asar").exists());
-    }
-    false
-}
-async fn run_cli_version(path: &std::path::Path, limit: Duration) -> Option<String> {
-    let mut command = providers::cli_support::command_for(path, &[OsString::from("--version")]);
-    if path
-        .file_name()
-        .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("claude.exe"))
-        || path.to_string_lossy().to_lowercase().contains("claude")
-    {
-        providers::cli_support::clean_claude_environment(&mut command);
-    }
-    command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let output = timeout(limit, command.output()).await.ok()?.ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let value = if stdout.trim().is_empty() {
-        stderr.trim()
-    } else {
-        stdout.trim()
-    };
-    (!value.is_empty()).then(|| value.chars().take(240).collect())
-}
-
-async fn run_cli_auth_status(path: &std::path::Path, limit: Duration) -> Option<bool> {
-    let mut command = providers::cli_support::command_for(
-        path,
-        &[OsString::from("auth"), OsString::from("status")],
-    );
-    providers::cli_support::clean_claude_environment(&mut command);
-    command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let output = timeout(limit, command.output()).await.ok()?.ok()?;
-    // `claude auth status` exits with code 1 when logged out but still prints the JSON,
-    // so parse stdout regardless of the exit status.
-    providers::cli_support::parse_auth_logged_in(&output.stdout)
-}
-
-#[derive(Serialize)]
-pub(crate) struct CliCandidate {
-    path: String,
-    version: String,
-    source: String,
-}
-pub(crate) async fn discover_cli(Path(name): Path<String>) -> ApiResult<Json<Vec<CliCandidate>>> {
+pub(crate) async fn discover_cli(
+    Path(name): Path<String>,
+) -> ApiResult<Json<Vec<discovery::CliCandidate>>> {
     if !["codex", "claude"].contains(&name.as_str()) {
-        return Err(ApiError::new(StatusCode::BAD_REQUEST, "CLI không hợp lệ"));
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "CLI kh\u{00f4}ng h\u{1ee3}p l\u{1ec7}",
+        ));
     }
-    let deadline = Instant::now() + Duration::from_secs(20);
-    let search_name = name.clone();
-    let found = timeout(
-        deadline.saturating_duration_since(Instant::now()),
-        tokio::task::spawn_blocking(move || discovery_paths(&search_name)),
-    )
-    .await
-    .ok()
-    .and_then(Result::ok)
-    .unwrap_or_default();
-    let mut results = Vec::new();
-    for (path, source) in found.into_iter().take(200) {
-        if Instant::now() >= deadline {
-            break;
-        }
-        if unsafe_cli_path(&path) {
-            continue;
-        }
-        if let Some(version) = run_cli_version(
-            &path,
-            (deadline - Instant::now()).min(Duration::from_secs(10)),
-        )
-        .await
-        {
-            let matches = if name == "codex" {
-                version.to_lowercase().contains("codex")
-            } else {
-                version.contains("Claude Code")
-            };
-            if matches
-                && !results.iter().any(|c: &CliCandidate| {
-                    c.version == version
-                        && canonical_install(PathBuf::from(&c.path))
-                            == canonical_install(path.clone())
-                })
-            {
-                let path_text = path.to_string_lossy().replace('/', "\\");
-                results.push(CliCandidate {
-                    path: path_text,
-                    version,
-                    source,
-                });
-            }
-        }
-    }
-    Ok(Json(drop_bundled_cli_duplicates(results)))
-}
-fn drop_bundled_cli_duplicates(candidates: Vec<CliCandidate>) -> Vec<CliCandidate> {
-    let command_candidates = candidates
-        .iter()
-        .filter(|candidate| {
-            PathBuf::from(&candidate.path)
-                .extension()
-                .is_some_and(|extension| extension.to_string_lossy().eq_ignore_ascii_case("cmd"))
-        })
-        .map(|candidate| {
-            (
-                candidate.version.clone(),
-                PathBuf::from(&candidate.path)
-                    .parent()
-                    .unwrap_or_else(|| std::path::Path::new(""))
-                    .join("node_modules"),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    candidates
-        .into_iter()
-        .filter(|candidate| {
-            let path = PathBuf::from(&candidate.path);
-            !command_candidates.iter().any(|(version, node_modules)| {
-                if candidate.version != *version {
-                    return false;
-                }
-                let path = path.to_string_lossy().replace('/', "\\").to_lowercase();
-                let node_modules = node_modules
-                    .to_string_lossy()
-                    .replace('/', "\\")
-                    .trim_end_matches('\\')
-                    .to_lowercase();
-                path.starts_with(&format!("{node_modules}\\"))
-            })
-        })
-        .collect()
-}
-fn canonical_install(path: PathBuf) -> PathBuf {
-    path.canonicalize()
-        .map(crate::core::text::strip_verbatim)
-        .unwrap_or(path)
-}
-fn discovery_paths(name: &str) -> Vec<(PathBuf, String)> {
-    let mut out = Vec::new();
-    let mut add = |p: PathBuf, s: &str| {
-        if p.is_file() && !out.iter().any(|(x, _)| x == &p) {
-            out.push((p, s.into()));
-        }
-    };
-    for dir in std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()) {
-        for n in [format!("{name}.cmd"), format!("{name}.exe"), name.into()] {
-            add(dir.join(n), "PATH");
-        }
-    }
-    if let Some(path) = providers::cli_support::resolve_executable(name, None) {
-        add(path, "resolved executable");
-    }
-    #[cfg(windows)]
-    {
-        let app = std::env::var_os("APPDATA").map(PathBuf::from);
-        let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from);
-        let user = std::env::var_os("USERPROFILE").map(PathBuf::from);
-        if let Some(a) = app.as_ref() {
-            add(a.join("npm").join(format!("{name}.cmd")), "npm");
-            if name == "codex" {
-                let vendor = a
-                    .join("npm")
-                    .join("node_modules")
-                    .join("@openai")
-                    .join("codex")
-                    .join("node_modules")
-                    .join("@openai")
-                    .join("codex-win32-x64")
-                    .join("vendor");
-                if let Ok(entries) = std::fs::read_dir(vendor) {
-                    for e in entries.flatten().take(200) {
-                        add(e.path().join("bin/codex.exe"), "npm bundled");
-                    }
-                }
-            }
-        }
-        if let Some(u) = user {
-            if name == "claude" {
-                add(
-                    u.join(".local").join("bin").join("claude.exe"),
-                    "user local bin",
-                );
-                add(
-                    u.join(".claude").join("local").join("claude"),
-                    "Claude Code",
-                );
-                add(
-                    u.join(".claude").join("local").join("claude.exe"),
-                    "Claude Code",
-                );
-                add(
-                    u.join(".claude").join("local").join("claude.cmd"),
-                    "Claude Code",
-                );
-            }
-        }
-        if let Some(l) = local.as_ref() {
-            if name == "claude" {
-                let root = l.join("Claude-Data");
-                let mut app_candidates = Vec::new();
-                if let Ok(installs) = std::fs::read_dir(root) {
-                    for install in installs.flatten().take(200) {
-                        let versions = install.path().join("claude-code");
-                        if let Ok(entries) = std::fs::read_dir(versions) {
-                            for version in entries.flatten().take(200) {
-                                let Some(parsed) = providers::cli_support::version_dir_key(
-                                    &version.file_name().to_string_lossy(),
-                                ) else {
-                                    continue;
-                                };
-                                if let Ok(hashes) = std::fs::read_dir(version.path()) {
-                                    for hash in hashes.flatten().take(200) {
-                                        let executable = hash.path().join("claude.exe");
-                                        if executable.is_file() {
-                                            app_candidates.push((parsed.clone(), executable));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                app_candidates.sort_by(|(left, _), (right, _)| right.cmp(left));
-                for (_, path) in app_candidates {
-                    add(path, "Claude app");
-                }
-            }
-            if name == "codex" {
-                let root = l.join("OpenAI/Codex/bin");
-                if let Ok(entries) = std::fs::read_dir(root) {
-                    for e in entries.flatten().take(200) {
-                        add(e.path().join("codex.exe"), "Codex app");
-                    }
-                }
-            }
-        }
-        if let Some(l) = local {
-            let root = l.join("Packages");
-            if let Ok(packages) = std::fs::read_dir(root) {
-                for package in packages.flatten().take(200) {
-                    add(
-                        package
-                            .path()
-                            .join(format!("LocalCache/Roaming/npm/{name}.cmd")),
-                        "package npm",
-                    );
-                }
-            }
-        }
-    }
-    out
+    Ok(Json(discovery::discover_candidates(&name).await))
 }
 
 pub(crate) async fn cli_status(State(state): State<AppState>) -> Json<CliStatus> {
@@ -814,51 +537,11 @@ pub(crate) async fn cli_status(State(state): State<AppState>) -> Json<CliStatus>
 }
 
 async fn cli_info(name: &str, explicit_path: String) -> CliInfo {
-    let explicit_path = explicit_path.trim();
-    let Some(path) = providers::cli_support::resolve_executable(name, Some(explicit_path)) else {
-        return CliInfo {
-            installed: false,
-            version: None,
-            path: None,
-        };
-    };
-    let path_text = path.to_string_lossy().into_owned();
-    let mut command = providers::cli_support::command_for(&path, &[OsString::from("--version")]);
-    if name == "claude" {
-        providers::cli_support::clean_claude_environment(&mut command);
-    }
-    command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let version = match timeout(Duration::from_secs(5), command.output()).await {
-        Ok(Ok(output)) => {
-            if !output.status.success() {
-                return CliInfo {
-                    installed: true,
-                    version: None,
-                    path: Some(path_text),
-                };
-            }
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let value = if stdout.trim().is_empty() {
-                stderr.trim()
-            } else {
-                stdout.trim()
-            };
-            if value.is_empty() {
-                None
-            } else {
-                Some(value.chars().take(240).collect())
-            }
-        }
-        _ => None,
-    };
+    let (installed, version, path) = discovery::probe_cli_info(name, &explicit_path).await;
     CliInfo {
-        installed: true,
+        installed,
         version,
-        path: Some(path_text),
+        path,
     }
 }
 
@@ -922,41 +605,4 @@ fn masked_config(config: &Config) -> Config {
 fn persist_config(state: &AppState, config: &Config) -> ApiResult<()> {
     config::save(&state.config_path, config)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))
-}
-
-#[cfg(test)]
-mod cli_discovery_tests {
-    use super::{drop_bundled_cli_duplicates, CliCandidate};
-
-    #[test]
-    fn drops_same_version_binary_inside_cmd_node_modules() {
-        let candidates = vec![
-            CliCandidate {
-                path: r"C:\Users\test\npm\codex.cmd".into(),
-                version: "codex-cli 0.167.0".into(),
-                source: "PATH".into(),
-            },
-            CliCandidate {
-                path: r"C:\Users\test\npm\node_modules\@openai\codex\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe".into(),
-                version: "codex-cli 0.167.0".into(),
-                source: "npm bundled".into(),
-            },
-            CliCandidate {
-                path: r"C:\Other\codex.exe".into(),
-                version: "codex-cli 0.167.0".into(),
-                source: "other".into(),
-            },
-            CliCandidate {
-                path: r"C:\Users\test\npm\node_modules\codex-next\bin\codex.exe".into(),
-                version: "codex-cli 0.168.0".into(),
-                source: "npm bundled".into(),
-            },
-        ];
-
-        let retained = drop_bundled_cli_duplicates(candidates);
-        assert_eq!(retained.len(), 3);
-        assert!(retained
-            .iter()
-            .all(|candidate| !candidate.path.contains("codex-win32-x64")));
-    }
 }

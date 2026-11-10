@@ -3,6 +3,7 @@ pub mod claude_cli;
 pub(crate) mod cli_support;
 pub mod codex_cli;
 pub mod deepseek_agent;
+pub(crate) mod discovery;
 pub mod openai_compat;
 
 use crate::{
