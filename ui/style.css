@@ -218,3 +218,5 @@ button { cursor: pointer; }
   .cli-status { grid-template-columns: 1fr; }
 }
 @media (max-width: 639px) { .composer-hint { display: none; } }
+.dev-badge{display:inline-flex;align-self:flex-start;margin:-8px 0 10px 38px;padding:2px 7px;border-radius:9px;background:#b45309;color:#fff;font-size:10px;font-weight:800;letter-spacing:.08em}.dev-banner{position:sticky;top:0;z-index:20;padding:10px 16px;background:#7c2d12;color:#fff;white-space:pre-wrap;display:flex;align-items:center;justify-content:space-between;gap:12px}.dev-banner[hidden]{display:none}
+.dev-banner-restarting:before{content:"";width:14px;height:14px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;animation:dev-spin .8s linear infinite;flex:none}@keyframes dev-spin{to{transform:rotate(360deg)}}.dev-build-log{max-height:220px;overflow:auto;margin:8px 0 0;flex-basis:100%;white-space:pre-wrap}

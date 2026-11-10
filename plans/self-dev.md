@@ -37,9 +37,10 @@ Trạng thái: đang làm · Bắt đầu: 2026-11-10 · Giám sát: Claude · C
 - "Build exe release" — chỉ khi người dùng bấm (`cargo build --release`), báo đường dẫn exe.
 
 ## Các bước
-- [ ] 11a — `--dev`: UI từ đĩa + tự tải lại; theo dõi Rust; endpoint build & restart (mã 75) có khoá khi đang chạy việc;
+- [x] 11a — `--dev`: UI từ đĩa + tự tải lại; theo dõi Rust; endpoint build & restart (mã 75) có khoá khi đang chạy việc;
   `dev.ps1`/`dev.cmd`; huy hiệu DEV.
 - [ ] 11b — trang Tự phát triển: repo/git status, mở chat sửa app, checkpoint/diff/bỏ/commit, chạy test, build release.
 
 ## Nhật ký tiến độ
 - 2026-11-10: bỏ thiết kế cũ (exe thử + thay exe) theo yêu cầu; viết lại thiết kế chế độ dev.
+- 2026-11-10: Hoàn tất 11a: `--dev`/`AI_HUB_DEV`, repo discovery/`AI_HUB_REPO`, UI disk + no-store, watcher/SSE, build/restart code 75, guard việc đang chạy, auto rebuild, badge/banner, launcher scripts, README và unit tests. Offline release build, clippy, 39 tests, JS syntax và diff check đạt.

@@ -22,11 +22,13 @@ use std::{
     ffi::OsString,
     path::PathBuf,
     process::Stdio,
+    sync::atomic::{AtomicUsize, Ordering},
     sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::{
     io::AsyncBufReadExt,
+    sync::broadcast,
     sync::{mpsc, Mutex, RwLock},
     time::timeout,
 };
@@ -44,6 +46,9 @@ pub struct AppState {
     extension_running: Arc<Mutex<HashMap<String, CancellationToken>>>,
     provider_status: Arc<Mutex<HashMap<String, (Instant, ConnectionTest)>>>,
     event_log: EventLog,
+    dev_repo: Option<PathBuf>,
+    dev_events: broadcast::Sender<String>,
+    active_jobs: Arc<AtomicUsize>,
 }
 
 #[derive(Clone)]
@@ -52,11 +57,30 @@ struct RunningChat {
     cancel: CancellationToken,
 }
 
+struct JobGuard(Arc<AtomicUsize>);
+impl JobGuard {
+    fn new(counter: Arc<AtomicUsize>) -> Self {
+        counter.fetch_add(1, Ordering::SeqCst);
+        Self(counter)
+    }
+}
+impl Drop for JobGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 impl AppState {
-    pub fn new(config: Config, config_path: PathBuf, chat_dir: PathBuf) -> Self {
+    pub fn new(
+        config: Config,
+        config_path: PathBuf,
+        chat_dir: PathBuf,
+        dev_repo: Option<PathBuf>,
+    ) -> Self {
         let plans = PlanStore::new(&config_path).expect("config path has a parent");
         let event_log = EventLog::new(&config_path).expect("config path has a parent");
-        Self {
+        let (dev_events, _) = broadcast::channel(64);
+        let state = Self {
             config: Arc::new(RwLock::new(config)),
             config_path,
             chats: ChatStore::new(chat_dir),
@@ -65,7 +89,14 @@ impl AppState {
             extension_running: Arc::new(Mutex::new(HashMap::new())),
             provider_status: Arc::new(Mutex::new(HashMap::new())),
             event_log,
+            dev_repo: dev_repo.clone(),
+            dev_events,
+            active_jobs: Arc::new(AtomicUsize::new(0)),
+        };
+        if let Some(repo) = dev_repo {
+            spawn_dev_watcher(state.clone(), repo);
         }
+        state
     }
 }
 
@@ -155,6 +186,10 @@ pub fn router(state: AppState, port: u16) -> Router {
         .route("/", get(index))
         .route("/app.js", get(app_js))
         .route("/style.css", get(style_css))
+        .route("/api/dev/status", get(dev_status))
+        .route("/api/dev/settings", get(dev_settings).put(put_dev_settings))
+        .route("/api/dev/events", get(dev_events))
+        .route("/api/dev/rebuild", post(dev_rebuild))
         .route("/api/config", get(get_config).put(put_config))
         .route("/api/mutis", get(get_orchestration).put(put_orchestration))
         .route("/api/mutis/roles/resolve", get(resolve_mutis_roles))
@@ -257,6 +292,7 @@ async fn verify_handler(
     State(state): State<AppState>,
     Json(input): Json<VerifyRequest>,
 ) -> ApiResult<Response> {
+    let _job_guard = JobGuard::new(state.active_jobs.clone());
     let config = state.config.read().await.clone();
     if !config.mutis.effective(config.mutis.verify_gate) {
         return Err(ApiError::new(
@@ -564,6 +600,7 @@ async fn mutis_setting_change(
 }
 
 async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<Response> {
+    let _job_guard = JobGuard::new(state.active_jobs.clone());
     let all_events = state
         .event_log
         .recent(2000)
@@ -799,14 +836,21 @@ async fn enforce_local_host(State(port): State<u16>, request: Request, next: Nex
     next.run(request).await
 }
 
-async fn index() -> impl IntoResponse {
+async fn index(State(state): State<AppState>) -> Response {
+    if let Some(repo) = state.dev_repo.as_ref() {
+        return asset_response(&repo.join("ui/index.html"), "text/html; charset=utf-8").await;
+    }
     (
         [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
         include_str!("../ui/index.html"),
     )
+        .into_response()
 }
 
-async fn app_js() -> impl IntoResponse {
+async fn app_js(State(state): State<AppState>) -> Response {
+    if let Some(repo) = state.dev_repo.as_ref() {
+        return asset_response(&repo.join("ui/app.js"), "text/javascript; charset=utf-8").await;
+    }
     (
         [(
             axum::http::header::CONTENT_TYPE,
@@ -814,13 +858,222 @@ async fn app_js() -> impl IntoResponse {
         )],
         include_str!("../ui/app.js"),
     )
+        .into_response()
 }
 
-async fn style_css() -> impl IntoResponse {
+async fn style_css(State(state): State<AppState>) -> Response {
+    if let Some(repo) = state.dev_repo.as_ref() {
+        return asset_response(&repo.join("ui/style.css"), "text/css; charset=utf-8").await;
+    }
     (
         [(axum::http::header::CONTENT_TYPE, "text/css; charset=utf-8")],
         include_str!("../ui/style.css"),
     )
+        .into_response()
+}
+
+async fn asset_response(path: &std::path::Path, content_type: &'static str) -> Response {
+    match tokio::fs::read(path).await {
+        Ok(body) => (
+            [
+                (axum::http::header::CONTENT_TYPE, content_type),
+                (axum::http::header::CACHE_CONTROL, "no-store"),
+            ],
+            body,
+        )
+            .into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "Dev UI file not found").into_response(),
+    }
+}
+
+async fn dev_status(State(state): State<AppState>) -> Json<Value> {
+    Json(json!({"dev":state.dev_repo.is_some()}))
+}
+async fn dev_settings(State(state): State<AppState>) -> Json<Value> {
+    Json(json!({"auto_rebuild":state.config.read().await.self_dev.auto_rebuild}))
+}
+async fn put_dev_settings(
+    State(state): State<AppState>,
+    Json(value): Json<config::SelfDevConfig>,
+) -> ApiResult<Json<config::SelfDevConfig>> {
+    if state.dev_repo.is_none() {
+        return Err(ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"));
+    }
+    let mut cfg = state.config.write().await;
+    cfg.self_dev = value.clone();
+    config::save(&state.config_path, &cfg)
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cài đặt"))?;
+    Ok(Json(value))
+}
+
+async fn dev_events(State(state): State<AppState>) -> Response {
+    let mut rx = state.dev_events.subscribe();
+    let stream = async_stream::stream! { loop { match rx.recv().await { Ok(message) => { let parsed: Value = serde_json::from_str(&message).unwrap_or(Value::Null); let name=parsed.get("event").and_then(Value::as_str).unwrap_or("message"); yield Ok::<_,Infallible>(axum::response::sse::Event::default().event(name).data(parsed.get("data").cloned().unwrap_or(Value::Null).to_string())); }, Err(broadcast::error::RecvError::Lagged(_)) => continue, Err(_) => break } } };
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
+}
+
+fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
+    tokio::spawn(async move {
+        let (mut old_ui, mut old_rust) = crate::dev::snapshot(&repo);
+        let mut pending: Option<Instant> = None;
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let (ui, rust) = crate::dev::snapshot(&repo);
+            let ui_changes = crate::dev::changed_files(&old_ui, &ui);
+            let rust_changes = crate::dev::changed_files(&old_rust, &rust);
+            if !ui_changes.is_empty() {
+                let _ = state
+                    .dev_events
+                    .send(json!({"event":"ui_changed","data":{}}).to_string());
+            }
+            if !rust_changes.is_empty() {
+                let files = rust_changes
+                    .iter()
+                    .map(|p| {
+                        p.strip_prefix(&repo)
+                            .unwrap_or(p)
+                            .to_string_lossy()
+                            .to_string()
+                    })
+                    .collect::<Vec<_>>();
+                let _ = state
+                    .dev_events
+                    .send(json!({"event":"rust_changed","data":{"files":files}}).to_string());
+                pending = Some(Instant::now() + Duration::from_secs(3));
+            }
+            old_ui = ui;
+            old_rust = rust;
+            if pending.is_some_and(|at| Instant::now() >= at) {
+                pending = None;
+                if state.config.read().await.self_dev.auto_rebuild
+                    && state.active_jobs.load(Ordering::SeqCst) == 0
+                {
+                    let _ = run_dev_build(&state, &repo).await;
+                }
+            }
+        }
+    });
+}
+
+async fn dev_rebuild(State(state): State<AppState>) -> ApiResult<Response> {
+    let repo = state
+        .dev_repo
+        .clone()
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Dev mode is disabled"))?;
+    let jobs = state.active_jobs.load(Ordering::SeqCst);
+    if jobs > 0 {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            format!("Đang có {jobs} việc AI chạy — chờ xong hoặc dừng"),
+        ));
+    }
+    let (tx, rx) = mpsc::channel::<String>(64);
+    let state2 = state.clone();
+    tokio::spawn(async move {
+        let result = run_dev_build(&state2, &repo).await;
+        let _ = tx.send(result.to_string()).await;
+    });
+    let stream = async_stream::stream! { let mut rx=ReceiverStream::new(rx); while let Some(line)=rx.next().await { if let Ok(value)=serde_json::from_str::<Value>(&line) { let name=value["event"].as_str().unwrap_or("log"); yield Ok::<_,Infallible>(axum::response::sse::Event::default().event(name).data(value["data"].to_string())); } else { yield Ok::<_,Infallible>(axum::response::sse::Event::default().event("log").data(line)); } } };
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
+}
+
+async fn run_dev_build(state: &AppState, repo: &std::path::Path) -> Value {
+    let start = Instant::now();
+    let spawned = tokio::process::Command::new("cargo")
+        .args(["build"])
+        .current_dir(repo)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let (ok, logs) = match spawned {
+        Ok(mut child) => {
+            let stdout = child.stdout.take();
+            let stderr = child.stderr.take();
+            let (tx, mut rx) = mpsc::channel::<String>(128);
+            let tx1 = tx.clone();
+            let tx2 = tx.clone();
+            let out_task = tokio::spawn(async move {
+                let mut text = String::new();
+                if let Some(stream) = stdout {
+                    let mut reader = tokio::io::BufReader::new(stream);
+                    let mut line = String::new();
+                    loop {
+                        line.clear();
+                        if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
+                            break;
+                        }
+                        let clean = strip_ansi(&line);
+                        text.push_str(&clean);
+                        let _ = tx1.send(clean).await;
+                    }
+                }
+                text
+            });
+            let err_task = tokio::spawn(async move {
+                let mut text = String::new();
+                if let Some(stream) = stderr {
+                    let mut reader = tokio::io::BufReader::new(stream);
+                    let mut line = String::new();
+                    loop {
+                        line.clear();
+                        if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
+                            break;
+                        }
+                        let clean = strip_ansi(&line);
+                        text.push_str(&clean);
+                        let _ = tx2.send(clean).await;
+                    }
+                }
+                text
+            });
+            drop(tx);
+            let state_events = state.dev_events.clone();
+            let logs_task = tokio::spawn(async move {
+                let mut all = String::new();
+                while let Some(line) = rx.recv().await {
+                    all.push_str(&line);
+                    let _ = state_events
+                        .send(json!({"event":"build_log","data":{"text":line}}).to_string());
+                }
+                all
+            });
+            let status = child.wait().await;
+            let out = out_task.await.unwrap_or_default();
+            let err = err_task.await.unwrap_or_default();
+            let all = logs_task.await.unwrap_or_default();
+            (
+                status.is_ok_and(|value| value.success()),
+                if all.is_empty() {
+                    format!("{out}{err}")
+                } else {
+                    all
+                },
+            )
+        }
+        Err(e) => (false, e.to_string()),
+    };
+    let clean = strip_ansi(&logs);
+    let tail = clean
+        .lines()
+        .rev()
+        .take(40)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let result = json!({"ok":ok,"duration_ms":start.elapsed().as_millis(),"errors_tail":if ok {""} else {&tail}});
+    let event = json!({"event":"rebuild","data":result});
+    let _ = state.dev_events.send(event.to_string());
+    if ok {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        std::process::exit(75);
+    }
+    result
 }
 
 async fn get_config(State(state): State<AppState>) -> Json<Config> {
@@ -1012,11 +1265,13 @@ async fn generate_plan(
         mutis: cfg.mutis.clone(),
     };
     let task_cancel = cancel.clone();
+    let job_guard = JobGuard::new(state.active_jobs.clone());
     let task_state = state.clone();
     let planner_id = request.provider.id.clone();
     let request_text = input.request.clone();
     let folder_text = folder.to_string_lossy().into_owned();
     tokio::spawn(async move {
+        let _job_guard = job_guard;
         let run_cancel = task_cancel.clone();
         let tx = event_tx.clone();
         tokio::spawn(async move {
@@ -2196,7 +2451,9 @@ async fn chat_handler(
         });
     }
     let task_cancel = cancel.clone();
+    let job_guard = JobGuard::new(state.active_jobs.clone());
     tokio::spawn(async move {
+        let _job_guard = job_guard;
         let mut record = record;
         let mut last_persist = Instant::now();
         loop {
@@ -2573,7 +2830,9 @@ async fn extension_action(
         .collect::<Vec<_>>();
     let backup = action.backup.map(str::to_owned);
     let modify = action.modifies.to_owned();
+    let job_guard = JobGuard::new(state.active_jobs.clone());
     tokio::spawn(async move {
+        let _job_guard = job_guard;
         let result=async {
             if let Some(file)=backup.as_deref(){if let Some(home)=dirs::home_dir(){let source=home.join(file);if source.exists(){let dir=dirs::config_dir().unwrap_or_else(||home.clone()).join("ai-hub").join("backups");tokio::fs::create_dir_all(&dir).await.map_err(|e|e.to_string())?;let stamp=backup_timestamp();let target=dir.join(format!("{}.{}.bak",source.file_name().unwrap_or_default().to_string_lossy(),stamp));tokio::fs::copy(&source,&target).await.map_err(|e|e.to_string())?;let _=tx.send(Ok(format!("Backup: {}",target.display()))).await;}}}
             let path=exe.ok_or_else(||format!("Không tìm thấy executable: {}",action.command))?;

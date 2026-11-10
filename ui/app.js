@@ -16,7 +16,30 @@ const state = {
   providerChecking: new Set(),
   plans: [], currentPlan: null, planRunning: false,
   selectedSource: "provider",
+  dev: false, devAutoRebuild: false,
 };
+
+function showDevBanner(message, action) {
+  const root = $("#dev-banner"); root.replaceChildren(); root.hidden = false;
+  root.classList.toggle("dev-banner-restarting", message.includes("khởi động lại"));
+  root.append(el("span", { textContent: message }));
+  if (action) { const button = el("button", { className: "subtle-button", textContent: "Build & khởi động lại" }); button.onclick = startDevBuild; root.append(button); }
+}
+function connectDevEvents() {
+  const source = new EventSource("/api/dev/events");
+  source.addEventListener("ui_changed", () => location.reload());
+  source.addEventListener("rust_changed", event => { const files=JSON.parse(event.data||"{}").files||[]; showDevBanner("Code Rust đã thay đổi ("+files.length+" tệp) · ", true); });
+  source.addEventListener("rebuild", event => { const result=JSON.parse(event.data||"{}"); showDevBanner(result.ok?"Đang khởi động lại…":"Build lỗi:\n"+(result.errors_tail||"Không có chi tiết lỗi"), false); });
+  source.addEventListener("build_log", event => { const data=JSON.parse(event.data||"{}"); const root=$("#dev-banner"); root.hidden=false; let log=root.querySelector("pre"); if(!log){log=el("pre",{className:"dev-build-log"});root.append(log);} log.textContent=(log.textContent+data.text).slice(-12000); });
+  source.onerror = async () => { source.close(); showDevBanner("Đang khởi động lại…",false); while(true){await new Promise(resolve=>setTimeout(resolve,1000));try{const status=await api("/api/dev/status");if(status.dev){location.reload();return;}}catch(_){}} };
+}
+async function startDevBuild() {
+  showDevBanner("Đang build…",false);
+  try { const response=await fetch("/api/dev/rebuild",{method:"POST"}); if(!response.ok){const error=await response.json();showDevBanner(error.error||"Không thể build",false);return;}
+    const reader=response.body.getReader(), decoder=new TextDecoder(); let buffer="";
+    while(true){const item=await reader.read();if(item.done)break;buffer+=decoder.decode(item.value,{stream:true});const chunks=buffer.split("\n\n");buffer=chunks.pop();for(const chunk of chunks){const event=chunk.match(/^event: (.+)$/m)?.[1], data=chunk.match(/^data: (.+)$/m)?.[1];if(event==="rebuild"&&data){const result=JSON.parse(data);showDevBanner(result.ok?"Đang khởi động lại…":"Build lỗi:\n"+result.errors_tail,false);}}}
+  } catch(error) { showDevBanner(error.message,false); }
+}
 
 const EFFORT_KINDS = new Set(["codex_cli", "openai_compat", "anthropic"]);
 const EFFORT_LABELS = { default: "Mặc định", low: "Thấp", medium: "Vừa", high: "Cao", xhigh: "Rất cao", max: "Max" };
@@ -1580,6 +1603,10 @@ $("#settings-open").addEventListener("click", async () => {
   testAllProviders();
   await refreshCliStatus();
 });
+$("#dev-auto-rebuild").addEventListener("change", async () => {
+  try { const result=await api("/api/dev/settings",{method:"PUT",body:JSON.stringify({auto_rebuild:$("#dev-auto-rebuild").checked})}); state.devAutoRebuild=result.auto_rebuild; }
+  catch(error) { showToast(error.message); }
+});
 $("#provider-select").addEventListener("change", () => { state.selectedSource="provider";messageInput.placeholder="Nhắn tin với AI…";updateModels(); updatePermissionControl(); rememberCurrentChat(); saveLastMode(); });
 $("#model-input").addEventListener("input", () => { renderModePicker(); rememberCurrentChat(); saveLastMode(); });
 $("#mode-chip").addEventListener("click", () => {
@@ -1667,6 +1694,7 @@ $('[data-orch="reviewer_provider_id"]').addEventListener("change", () => {
 
 (async function init() {
   try {
+    try { const dev=await api("/api/dev/status"); state.dev=dev.dev; $("#dev-badge").hidden=!state.dev; $("#self-dev-settings").hidden=!state.dev; if(state.dev){const settings=await api("/api/dev/settings");state.devAutoRebuild=settings.auto_rebuild;$("#dev-auto-rebuild").checked=state.devAutoRebuild;connectDevEvents();} } catch (_) {}
     await loadConfig();
     renderModePicker();
     await refreshChats();

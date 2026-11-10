@@ -1,5 +1,6 @@
 mod chat;
 mod config;
+mod dev;
 mod extensions;
 mod mutis;
 mod plans;
@@ -14,6 +15,7 @@ use std::net::SocketAddr;
 struct Options {
     port: u16,
     open_browser: bool,
+    dev: bool,
 }
 
 fn parse_options() -> Result<Options> {
@@ -27,6 +29,7 @@ fn parse_options() -> Result<Options> {
         .transpose()?
         .unwrap_or(7878);
     let mut open_browser = true;
+    let mut dev = std::env::var("AI_HUB_DEV").is_ok_and(|value| value == "1");
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -35,14 +38,19 @@ fn parse_options() -> Result<Options> {
                 port = value.parse().context("--port must be a valid port")?;
             }
             "--no-open" => open_browser = false,
+            "--dev" => dev = true,
             "--help" | "-h" => {
-                println!("AI Hub\n\nUsage: ai-hub [--port PORT] [--no-open]\n\nAI_HUB_PORT sets the default port (7878).");
+                println!("AI Hub\n\nUsage: ai-hub [--dev] [--port PORT] [--no-open]\n\nAI_HUB_PORT sets the default port (7878); AI_HUB_DEV=1 enables dev mode.");
                 std::process::exit(0);
             }
             unknown => anyhow::bail!("Unknown argument: {unknown}"),
         }
     }
-    Ok(Options { port, open_browser })
+    Ok(Options {
+        port,
+        open_browser,
+        dev,
+    })
 }
 
 #[tokio::main]
@@ -51,7 +59,24 @@ async fn main() -> Result<()> {
     let config_path = config::config_file_path()?;
     let config = config::load_or_seed(&config_path)?;
     let chat_dir = chat::config_chat_dir(&config_path)?;
-    let state = server::AppState::new(config, config_path, chat_dir);
+    let repo = if options.dev {
+        let path = if let Some(value) = std::env::var_os("AI_HUB_REPO") {
+            let path = std::path::PathBuf::from(value)
+                .canonicalize()
+                .context("AI_HUB_REPO is not a valid directory")?;
+            if dev::discover_repo_root(&path).as_deref() != Some(path.as_path()) {
+                anyhow::bail!("AI_HUB_REPO must point to the ai-hub repository root (Cargo.toml name = ai-hub)");
+            }
+            path
+        } else {
+            let exe = std::env::current_exe().context("Could not locate the running executable")?;
+            dev::discover_repo_root(exe.parent().unwrap_or(std::path::Path::new("."))).context("Dev mode could not find the ai-hub repository. Set AI_HUB_REPO to its root directory.")?
+        };
+        Some(path)
+    } else {
+        None
+    };
+    let state = server::AppState::new(config, config_path, chat_dir, repo);
 
     let address = SocketAddr::from(([127, 0, 0, 1], options.port));
     let listener = tokio::net::TcpListener::bind(address)

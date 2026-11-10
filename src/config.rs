@@ -33,6 +33,14 @@ pub struct Config {
     #[serde(default)]
     #[serde(alias = "orchestration")]
     pub mutis: MutisConfig,
+    #[serde(default)]
+    pub self_dev: SelfDevConfig,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SelfDevConfig {
+    #[serde(default)]
+    pub auto_rebuild: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -262,6 +270,7 @@ impl Config {
             planner_provider_id: String::new(),
             planner_model: String::new(),
             mutis: MutisConfig::default(),
+            self_dev: SelfDevConfig::default(),
         }
     }
 }

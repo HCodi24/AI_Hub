@@ -212,3 +212,7 @@ Chạy bộ kiểm thử bằng:
 ```powershell
 cargo test
 ```
+
+## Chế độ dev (tự phát triển)
+
+Chạy `.\dev.ps1` từ thư mục gốc repo (hoặc `dev.cmd`). App chạy từ bản sao `target\dev-run\ai-hub.exe`, dùng dữ liệu AI Hub thật của bạn. UI được đọc từ `ui\` mỗi request và tự tải lại khi thay đổi. Khi Rust hoặc Cargo manifest đổi, banner cho phép build và khởi động lại; có thể bật tự build trong Cài đặt › Tự phát triển. Build thành công khởi động lại app qua launcher. Build exe release vẫn là bước thủ công riêng (`cargo build --release`).
