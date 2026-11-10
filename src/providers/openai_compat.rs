@@ -26,11 +26,19 @@ impl Provider for OpenAiCompatibleProvider {
         if base_url.is_empty() {
             bail!("URL cơ sở chưa được cấu hình cho nhà cung cấp này");
         }
-        let messages: Vec<Value> = request
-            .messages
+        let mut source_messages = request.messages.clone();
+        if super::api_images_with_limit(&mut source_messages) {
+            emit_text(
+                &events,
+                "log",
+                "Bỏ ảnh cũ vì tổng dung lượng ảnh vượt 15 MB".to_owned(),
+            )
+            .await?;
+        }
+        let messages: Vec<Value> = source_messages
             .iter()
-            .map(|message| json!({"role": message.role, "content": message.content}))
-            .collect();
+            .map(openai_message)
+            .collect::<Result<Vec<_>>>()?;
         let mut body = json!({
             "model": request.model,
             "messages": messages,
@@ -68,6 +76,18 @@ impl Provider for OpenAiCompatibleProvider {
             && body.get("reasoning_effort").is_some()
         {
             let response_body = response.text().await.unwrap_or_default();
+            if !source_messages
+                .iter()
+                .all(|message| message.attachments.is_empty())
+            {
+                let detail = response_body.to_ascii_lowercase();
+                if ["image", "vision", "content"]
+                    .iter()
+                    .any(|word| detail.contains(word))
+                {
+                    bail!("Model này không hỗ trợ ảnh");
+                }
+            }
             if response_body
                 .to_ascii_lowercase()
                 .contains("reasoning_effort")
@@ -104,6 +124,17 @@ impl Provider for OpenAiCompatibleProvider {
         if !response.status().is_success() {
             let status = response.status();
             let response_body = response.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::BAD_REQUEST
+                && !source_messages.iter().all(|m| m.attachments.is_empty())
+            {
+                let detail = response_body.to_ascii_lowercase();
+                if ["image", "vision", "content"]
+                    .iter()
+                    .any(|word| detail.contains(word))
+                {
+                    bail!("Model này không hỗ trợ ảnh");
+                }
+            }
             bail!(
                 "API tương thích OpenAI trả về HTTP {status}: {}",
                 safe_error_body(&response_body, &secret)
@@ -130,6 +161,18 @@ impl Provider for OpenAiCompatibleProvider {
         }
         Ok(())
     }
+}
+
+fn openai_message(message: &crate::chat::ChatMessage) -> Result<Value> {
+    if message.attachments.is_empty() {
+        return Ok(json!({"role":message.role,"content":message.content}));
+    }
+    let mut content = vec![json!({"type":"text","text":message.content})];
+    for attachment in &message.attachments {
+        let bytes = std::fs::read(&attachment.path).context("Không thể đọc ảnh đính kèm")?;
+        content.push(json!({"type":"image_url","image_url":{"url":format!("data:{};base64,{}", attachment.mime, crate::api::attachments::encode_base64(&bytes))}}));
+    }
+    Ok(json!({"role":message.role,"content":content}))
 }
 
 async fn process_line(
@@ -163,4 +206,37 @@ async fn process_line(
         emit_text(events, "reasoning", reasoning.to_owned()).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod image_builder_tests {
+    use super::openai_message;
+    use crate::chat::{ChatAttachment, ChatMessage};
+    use std::fs;
+    use uuid::Uuid;
+    #[test]
+    fn openai_builder_adds_data_image_after_text() {
+        let path = std::env::temp_dir().join(format!("{}.png", Uuid::new_v4()));
+        fs::write(&path, b"pixels").unwrap();
+        let message = ChatMessage {
+            role: "user".into(),
+            content: "Look".into(),
+            attachments: vec![ChatAttachment {
+                id: "id".into(),
+                mime: "image/png".into(),
+                path: path.to_string_lossy().into_owned(),
+            }],
+            reasoning: String::new(),
+            logs: vec![],
+            diff: String::new(),
+            error: None,
+        };
+        let value = openai_message(&message).unwrap();
+        assert_eq!(value["content"][0]["type"], "text");
+        assert_eq!(
+            value["content"][1]["image_url"]["url"],
+            "data:image/png;base64,cGl4ZWxz"
+        );
+        let _ = fs::remove_file(path);
+    }
 }

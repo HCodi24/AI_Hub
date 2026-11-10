@@ -124,7 +124,19 @@ pub(crate) async fn chat_handler(
     record.dev_chat = dev_chat;
     record.permission = request.permission;
     record.effort = effort;
-    record.messages = request.messages.clone();
+    record.messages = request
+        .messages
+        .iter()
+        .map(|message| {
+            let mut saved = message.clone();
+            saved.attachments = crate::api::attachments::resolve_message_attachments(
+                &state,
+                &request.chat_id,
+                &message.attachments,
+            )?;
+            Ok(saved)
+        })
+        .collect::<ApiResult<Vec<_>>>()?;
     if dev_chat {
         let preamble = crate::api::dev::dev_chat_preamble(&folder);
         if let Some(first) = record
@@ -144,6 +156,7 @@ pub(crate) async fn chat_handler(
         logs: Vec::new(),
         diff: String::new(),
         error: None,
+        attachments: Vec::new(),
     });
     chat::save_record(&state.chats, &mut record).map_err(|_| {
         ApiError::new(

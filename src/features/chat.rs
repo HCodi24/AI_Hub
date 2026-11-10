@@ -29,9 +29,19 @@ pub enum Effort {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ChatAttachment {
+    pub id: String,
+    pub mime: String,
+    #[serde(default)]
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<ChatAttachment>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reasoning: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

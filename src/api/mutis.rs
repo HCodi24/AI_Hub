@@ -443,6 +443,7 @@ pub(crate) async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<R
         messages: vec![ChatMessage {
             role: "user".into(),
             content: prompt,
+            attachments: Vec::new(),
             reasoning: String::new(),
             logs: Vec::new(),
             diff: String::new(),

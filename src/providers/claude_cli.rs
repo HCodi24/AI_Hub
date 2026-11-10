@@ -43,7 +43,22 @@ impl Provider for ClaudeCliProvider {
             }
             args.extend([OsString::from("--resume"), OsString::from(session_id)]);
         }
-        let prompt = cli_support::compose_prompt(&request.messages, request.session_id.is_some());
+        let mut prompt =
+            cli_support::compose_prompt(&request.messages, request.session_id.is_some());
+        if let Some(directory) = super::latest_chat_attachment_dir(&request.messages) {
+            let paths = super::latest_image_paths(&request.messages, &directory)?;
+            args.extend([
+                OsString::from("--add-dir"),
+                directory.as_os_str().to_owned(),
+            ]);
+            if !paths.is_empty() {
+                prompt.push_str("\n\n");
+                for path in paths {
+                    prompt.push_str(&format!("Ảnh đính kèm: {}\n", path.display()));
+                }
+                prompt.push_str("Hãy dùng công cụ đọc tệp để xem ảnh trên.");
+            }
+        }
         cli_support::run_jsonl(
             cli_support::JsonlCommand {
                 cli_name: "Claude Code CLI",

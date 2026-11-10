@@ -4,6 +4,7 @@ import { connectDevEvents, devAction, hideDevPage, refreshDevRepo, renderDevDiff
 import { renderModePicker, renderMutisRoleRows, saveLastMode, saveMutisRoles, updateModels, updatePermissionControl } from "./mode-chip.js";
 import {
   stopChat,
+  addImageFiles,
   messageInput,
   modelInput,
   newChat,
@@ -237,6 +238,17 @@ document.addEventListener("keydown", (event) => {
 $("#composer").addEventListener("submit", (event) => { event.preventDefault(); sendMessage(); });
 $("#stop-button").addEventListener("click", stopChat);
 $("#message-input").addEventListener("input", resizeComposer);
+$("#attachment-button").addEventListener("click", () => $("#attachment-input").click());
+$("#attachment-input").addEventListener("change", event => addImageFiles(event.target.files));
+$("#message-input").addEventListener("paste", event => {
+  const files = [...(event.clipboardData?.items || [])].filter(item => item.kind === "file").map(item => item.getAsFile()).filter(Boolean);
+  if (files.length) { event.preventDefault(); addImageFiles(files); }
+});
+$("#composer").addEventListener("dragover", event => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; });
+$("#composer").addEventListener("drop", event => {
+  event.preventDefault();
+  if (event.dataTransfer.files.length) addImageFiles(event.dataTransfer.files);
+});
 $("#message-input").addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();

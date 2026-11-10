@@ -265,6 +265,7 @@ pub(super) async fn generate_plan(
         messages: vec![ChatMessage {
             role: "user".into(),
             content: prompt,
+            attachments: Vec::new(),
             reasoning: String::new(),
             logs: Vec::new(),
             diff: String::new(),

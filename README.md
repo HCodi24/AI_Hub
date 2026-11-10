@@ -93,7 +93,9 @@ AI Hub cho Claude Code CLI dùng **thư mục cấu hình riêng** `%APPDATA%\ai
 
 ## Chat và thanh chế độ
 
-Cột bên trái là danh sách các cuộc trò chuyện đã lưu; chọn một chat để tiếp tục hoặc tạo chat mới. Câu trả lời hiện dần theo kiểu streaming, có nút Dừng để ngắt giữa chừng. Nhấn Enter để gửi, Shift+Enter để xuống dòng.
+Cột bên trái là danh sách các cuộc trò chuyện đã lưu; chọn một chat để tiếp tục hoặc tạo chat mới. Câu trả lời hiện dần theo kiểu streaming, có nút Dừng để ngắt giữa chừng. Nhấn Enter để gửi, Shift+Enter để xuống dòng. Dùng nút 📎, dán ảnh (Ctrl+V) hoặc kéo ảnh vào khung nhập. Mỗi tin nhắn nhận tối đa 5 ảnh PNG/JPEG/WebP/GIF, mỗi ảnh tối đa 10 MB; có thể gửi chỉ ảnh. Bấm thumbnail trong chat để mở ảnh đầy đủ ở tab mới.
+
+Ảnh được lưu cục bộ trong `attachments/<chat_id>/`. Anthropic và OpenAI-compatible gửi ảnh cho model qua API; Claude CLI nhận đường dẫn ảnh trong prompt; Codex CLI nhận từng ảnh bằng `-i`. DeepSeek agent chưa hỗ trợ ảnh. Các provider API chỉ giữ ảnh lịch sử khi tổng dung lượng dưới 15 MB; Claude/Codex CLI chỉ nhận ảnh ở tin nhắn người dùng mới nhất.
 
 Dưới mỗi câu trả lời có các khối có thể gấp mở:
 
@@ -178,6 +180,7 @@ Trên Windows, dữ liệu nằm trong `%APPDATA%\ai-hub\`:
 | --- | --- |
 | `%APPDATA%\ai-hub\config.json` | Cấu hình, gồm API key lưu cục bộ |
 | `%APPDATA%\ai-hub\chats\` | Lịch sử các cuộc trò chuyện |
+| `%APPDATA%\ai-hub\attachments\` | Ảnh đính kèm, chia theo UUID chat |
 | `%APPDATA%\ai-hub\plans\` | Kế hoạch của tính năng Chia việc |
 | `%APPDATA%\ai-hub\mutis\` | Sự kiện và kết quả chẩn đoán của MutiS |
 | `%APPDATA%\ai-hub\backups\` | Bản sao lưu tệp cấu hình trước khi tiện ích sửa |

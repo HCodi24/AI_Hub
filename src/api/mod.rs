@@ -1,6 +1,6 @@
 use crate::app::AppState;
 use axum::{
-    extract::{Request, State},
+    extract::{DefaultBodyLimit, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -9,6 +9,7 @@ use axum::{
 };
 use serde_json::json;
 
+pub mod attachments;
 pub mod chat;
 pub mod config;
 pub mod dev;
@@ -141,6 +142,14 @@ pub fn router(state: AppState) -> Router {
         )
         // Chat and saved conversation routes.
         .route("/api/chat", post(crate::api::chat::chat_handler))
+        .route(
+            "/api/attachments",
+            post(crate::api::attachments::upload).layer(DefaultBodyLimit::max(14 * 1024 * 1024)),
+        )
+        .route(
+            "/api/attachments/{chat}/{file}",
+            get(crate::api::attachments::serve),
+        )
         .route(
             "/api/chat/{chat_id}/stop",
             post(crate::api::chat::stop_chat),

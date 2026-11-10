@@ -20,6 +20,13 @@ impl Provider for DeepSeekAgentProvider {
         events: mpsc::Sender<ProviderEvent>,
         cancel: CancellationToken,
     ) -> Result<()> {
+        if request
+            .messages
+            .iter()
+            .any(|message| !message.attachments.is_empty())
+        {
+            bail!("DeepSeek làm việc chưa hỗ trợ ảnh — hãy dùng nguồn khác");
+        }
         if !request.mutis.effective(request.mutis.deepseek_agent) {
             bail!("Bật MutiS › DeepSeek làm việc trên file để dùng nguồn này");
         }

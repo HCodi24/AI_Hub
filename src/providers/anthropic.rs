@@ -22,21 +22,28 @@ impl Provider for AnthropicProvider {
         if request.provider.api_key.trim().is_empty() {
             bail!("API key chưa được cấu hình cho nhà cung cấp này");
         }
-        let (system, messages): (Vec<String>, Vec<Value>) = request
-            .messages
+        let mut source_messages = request.messages.clone();
+        if super::api_images_with_limit(&mut source_messages) {
+            emit_text(
+                &events,
+                "log",
+                "Bỏ ảnh cũ vì tổng dung lượng ảnh vượt 15 MB".to_owned(),
+            )
+            .await?;
+        }
+        let mut system = Vec::new();
+        let mut messages = Vec::new();
+        for message in source_messages
             .iter()
-            .filter(|message| !message.content.is_empty())
-            .fold(
-                (Vec::new(), Vec::new()),
-                |(mut system, mut messages), message| {
-                    if message.role == "system" {
-                        system.push(message.content.clone());
-                    } else {
-                        messages.push(json!({"role": message.role, "content": message.content}));
-                    }
-                    (system, messages)
-                },
-            );
+            .filter(|message| !message.content.is_empty() || !message.attachments.is_empty())
+        {
+            if message.role == "system" {
+                system.push(message.content.clone());
+                continue;
+            }
+            let blocks = anthropic_content(message)?;
+            messages.push(json!({"role": message.role, "content": blocks}));
+        }
         let mut body = json!({
             "model": request.model,
             "messages": messages,
@@ -108,6 +115,17 @@ impl Provider for AnthropicProvider {
     }
 }
 
+fn anthropic_content(message: &crate::chat::ChatMessage) -> Result<Vec<Value>> {
+    let mut blocks = Vec::new();
+    for attachment in &message.attachments {
+        blocks.push(super::image_block(attachment)?);
+    }
+    if !message.content.is_empty() {
+        blocks.push(json!({"type":"text","text":message.content}));
+    }
+    Ok(blocks)
+}
+
 async fn process_line(
     line: &[u8],
     events: &mpsc::Sender<ProviderEvent>,
@@ -138,4 +156,35 @@ async fn process_line(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod image_builder_tests {
+    use super::anthropic_content;
+    use crate::chat::{ChatAttachment, ChatMessage};
+    use std::fs;
+    use uuid::Uuid;
+    #[test]
+    fn anthropic_builder_places_image_before_text() {
+        let path = std::env::temp_dir().join(format!("{}.png", Uuid::new_v4()));
+        fs::write(&path, b"pixels").unwrap();
+        let message = ChatMessage {
+            role: "user".into(),
+            content: "Look".into(),
+            attachments: vec![ChatAttachment {
+                id: "id".into(),
+                mime: "image/png".into(),
+                path: path.to_string_lossy().into_owned(),
+            }],
+            reasoning: String::new(),
+            logs: vec![],
+            diff: String::new(),
+            error: None,
+        };
+        let blocks = anthropic_content(&message).unwrap();
+        assert_eq!(blocks[0]["type"], "image");
+        assert_eq!(blocks[0]["source"]["media_type"], "image/png");
+        assert_eq!(blocks[1]["type"], "text");
+        let _ = fs::remove_file(path);
+    }
 }

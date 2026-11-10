@@ -27,7 +27,8 @@ try {
   $base = 'http://127.0.0.1:7911'
   Add-Type -AssemblyName System.Net.Http
   $client = [System.Net.Http.HttpClient]::new()
-  $client.Timeout = [TimeSpan]::FromSeconds(5)
+  # Role resolution probes local CLI binaries, which can take up to 10 seconds.
+  $client.Timeout = [TimeSpan]::FromSeconds(20)
   function Get-Status([string]$Url) {
     $response = $client.GetAsync($Url,[System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
     try { return [int]$response.StatusCode } finally { $response.Dispose() }

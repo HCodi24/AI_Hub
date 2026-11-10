@@ -38,6 +38,9 @@ AI Hub là ứng dụng desktop cục bộ dạng một binary Rust, phục vụ
 ### Chat và lịch sử
 - `POST /api/chat`, `/api/chat/{chat_id}/stop`
 - `GET /api/chats`, `GET, DELETE /api/chats/{chat_id}`
+- `POST /api/attachments` nhận JSON base64; `GET /api/attachments/{chat}/{file}` phục vụ ảnh đã kiểm tra.
+
+Composer hỗ trợ dán, kéo thả và chọn ảnh PNG/JPEG/WebP/GIF, tối đa 5 ảnh mỗi tin nhắn và 10 MB mỗi ảnh. Chat message có trường `attachments: [{id, mime, path}]`; đường dẫn do máy chủ tạo trong `attachments/<chat_id>/`. Claude CLI và Codex CLI chỉ nhận ảnh của tin nhắn người dùng mới nhất; Anthropic và OpenAI-compatible gửi lại ảnh lịch sử nếu tổng dung lượng dưới 15 MB. DeepSeek agent từ chối tin nhắn có ảnh.
 
 ### Kế hoạch và xác minh
 - `GET, POST /api/plans`; `GET, PUT /api/plans/{id}`
@@ -54,7 +57,7 @@ Chat, planner và thao tác tiện ích có thể trả SSE để cập nhật t
 Dữ liệu nằm trong thư mục cấu hình hệ điều hành, dưới `ai-hub/` (Windows thường là `%APPDATA%\ai-hub`):
 
 - `config.json`: cấu hình và khóa API đã lưu cục bộ. Trường cấu hình MutiS là `mutis`; bộ giải mã vẫn chấp nhận bí danh `orchestration` để đọc cấu hình cũ.
-- `chats/`, `plans/`: lịch sử chat và kế hoạch.
+- `chats/`, `attachments/`, `plans/`: lịch sử chat, ảnh theo chat và kế hoạch.
 - `mutis/events.jsonl`, `mutis/diagnoses/`: sự kiện và kết quả chẩn đoán. Lần khởi động đầu có thể chuyển `orchestration/events.jsonl` cũ sang thư mục MutiS; thiếu thư mục cũ là bình thường.
 - `backups/`: bản sao cấu hình được tạo bởi các thao tác tiện ích cần sao lưu.
 

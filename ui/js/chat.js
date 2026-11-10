@@ -13,8 +13,56 @@ export const permissionSelect = $("#permission-select");
 export const messagesRoot = $("#messages");
 export const welcome = $("#welcome");
 export const messageInput = $("#message-input");
+const attachmentInput = $("#attachment-input");
+const attachmentTray = $("#composer-attachments");
+let pendingAttachments = [];
+const imageExtensions = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
+
+export async function addImageFiles(files) {
+  const selected = [...files];
+  if (!selected.length) return;
+  if (!state.chatId) newChat();
+  for (const file of selected) {
+    if (pendingAttachments.length >= 5) { showToast("Mỗi tin nhắn tối đa 5 ảnh"); break; }
+    if (file.size > 10 * 1024 * 1024) { showToast(`${file.name}: ảnh vượt quá 10 MB`); continue; }
+    if (file.type && !Object.hasOwn(imageExtensions, file.type)) { showToast(`${file.name}: chỉ hỗ trợ PNG, JPEG, WebP và GIF`); continue; }
+    try {
+      const dataUrl = await readFileDataUrl(file);
+      const result = await api("/api/attachments", { method: "POST", body: JSON.stringify({ chat_id: state.chatId, data: dataUrl.split(",")[1] }) });
+      pendingAttachments.push({ ...result, preview: URL.createObjectURL(file) });
+      renderAttachmentTray();
+    } catch (error) { showToast(error.message); }
+  }
+  attachmentInput.value = "";
+}
+
+function readFileDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Không thể đọc ảnh"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderAttachmentTray() {
+  attachmentTray.replaceChildren();
+  for (const [index, attachment] of pendingAttachments.entries()) {
+    const thumb = document.createElement("div"); thumb.className = "attachment-thumb";
+    const image = document.createElement("img"); image.src = attachment.preview; image.alt = "Ảnh đính kèm";
+    const remove = document.createElement("button"); remove.type = "button"; remove.className = "attachment-remove"; remove.textContent = "×"; remove.setAttribute("aria-label", "Xóa ảnh đính kèm");
+    remove.addEventListener("click", () => { URL.revokeObjectURL(attachment.preview); pendingAttachments.splice(index, 1); renderAttachmentTray(); });
+    thumb.append(image, remove); attachmentTray.append(thumb);
+  }
+}
+
+function imageUrl(chatId, attachment) {
+  const extension = imageExtensions[attachment.mime];
+  return extension ? `/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(attachment.id)}.${extension}` : "";
+}
 export function newChat() {
   if (state.streaming) return;
+  clearPendingAttachments();
   state.chatId = crypto.randomUUID();
   state.devChat = false;
   state.messages = [];
@@ -37,6 +85,7 @@ export function newChat() {
 }
 export async function loadChat(id) {
   if (state.streaming) return;
+  clearPendingAttachments();
   const saved = state.chats.some((chat) => chat.id === id);
   const cached = state.memoryData.get(id);
   if (!saved && cached) {
@@ -78,6 +127,11 @@ export async function loadChat(id) {
   } catch (error) {
     showToast(error.message);
   }
+}
+function clearPendingAttachments() {
+  for (const attachment of pendingAttachments) URL.revokeObjectURL(attachment.preview);
+  pendingAttachments = [];
+  renderAttachmentTray();
 }
 export async function refreshChats() {
   try {
@@ -177,6 +231,16 @@ export function renderMessages() {
         error.textContent = message.error;
         body.append(error);
       }
+    }
+    if (message.role === "user" && message.attachments?.length) {
+      const thumbs = document.createElement("div"); thumbs.className = "message-attachments";
+      for (const attachment of message.attachments) {
+        const url = imageUrl(state.chatId, attachment);
+        if (!url) continue;
+        const link = document.createElement("a"); link.href = url; link.target = "_blank"; link.rel = "noopener"; link.title = "Mở ảnh kích thước đầy đủ";
+        const image = document.createElement("img"); image.src = url; image.alt = "Ảnh đã gửi"; link.append(image); thumbs.append(link);
+      }
+      body.append(thumbs);
     }
     renderMarkdown(body, message.content || "");
     if (tokenLog) {
@@ -309,6 +373,7 @@ export function appendInline(parent, text) {
 export function setStreaming(value) {
   state.streaming = value;
   $("#send-button").disabled = value;
+  $("#attachment-button").disabled = value;
   $("#stop-button").hidden = !value;
   messageInput.disabled = value;
   providerSelect.disabled = value;
@@ -321,7 +386,7 @@ export function setStreaming(value) {
 }
 export async function sendMessage() {
   const text = messageInput.value.trim();
-  if (!text || state.streaming) return;
+  if ((!text && !pendingAttachments.length) || state.streaming) return;
   if (!state.chatId) newChat();
   if (state.selectedSource === "mutis") {
     await testAllProviders();
@@ -358,7 +423,9 @@ export async function sendMessage() {
     return;
   }
   const chatId = state.chatId;
-  state.messages.push({ role: "user", content: text });
+  const sentAttachments = pendingAttachments.map(({ id, mime }) => ({ id, mime }));
+  state.messages.push({ role: "user", content: text, attachments: sentAttachments });
+  clearPendingAttachments();
   const assistant = { role: "assistant", content: "", reasoning: "", logs: [], diff: "" };
   state.messages.push(assistant);
   const existing = [...state.messages].reverse().find((message) => message.role === "user");
@@ -382,7 +449,7 @@ export async function sendMessage() {
         folder: folderInput.value.trim(),
         permission: permissionSelect.value || "write",
         effort: state.effort,
-        messages: state.messages.filter((message) => message !== assistant).map(({ role, content }) => ({ role, content })),
+        messages: state.messages.filter((message) => message !== assistant).map(({ role, content, attachments }) => ({ role, content, attachments: attachments || [] })),
       }),
     });
     if (!response.body) throw new Error("Trình duyệt không hỗ trợ đọc luồng phản hồi");

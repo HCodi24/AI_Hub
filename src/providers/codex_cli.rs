@@ -47,11 +47,18 @@ impl Provider for CodexCliProvider {
                 bail!("Codex session id không hợp lệ");
             }
         }
-        let mut args = codex_args(
+        let image_dir = super::latest_chat_attachment_dir(&request.messages);
+        let image_paths = image_dir
+            .as_deref()
+            .map(|dir| super::latest_image_paths(&request.messages, dir))
+            .transpose()?
+            .unwrap_or_default();
+        let mut args = codex_args_with_images(
             request.session_id.as_deref(),
             &request.model,
             request.effort,
             request.permission,
+            &image_paths,
         );
         let mut prompt =
             cli_support::compose_prompt(&request.messages, request.session_id.is_some());
@@ -128,11 +135,12 @@ impl Provider for CodexCliProvider {
             final_message.clear();
             turn_completed = false;
             let id = thread_id.clone().unwrap_or_default();
-            args = codex_args(
+            args = codex_args_with_images(
                 Some(&id),
                 &request.model,
                 request.effort,
                 request.permission,
+                &image_paths,
             );
             prompt =
                 "Tiếp tục và hoàn thành phần còn lại của nhiệm vụ. Báo cáo rõ những gì chưa xong."
@@ -142,11 +150,22 @@ impl Provider for CodexCliProvider {
     }
 }
 
-pub fn codex_args(
+#[cfg(test)]
+fn codex_args(
     session_id: Option<&str>,
     model: &str,
     effort: Effort,
     permission: Permission,
+) -> Vec<OsString> {
+    codex_args_with_images(session_id, model, effort, permission, &[])
+}
+
+pub fn codex_args_with_images(
+    session_id: Option<&str>,
+    model: &str,
+    effort: Effort,
+    permission: Permission,
+    images: &[std::path::PathBuf],
 ) -> Vec<OsString> {
     let mut args = vec![OsString::from("exec")];
     if session_id.is_some() {
@@ -178,6 +197,13 @@ pub fn codex_args(
             OsString::from("-c"),
             OsString::from(format!("model_reasoning_effort=\"{value}\"")),
         ]);
+    }
+    // Use the single-token `--image=<path>` form: `-i <FILE>...` takes MANY values in clap, so it would
+    // swallow the following session id and the `-` (read prompt from stdin) marker.
+    for image in images {
+        let mut arg = OsString::from("--image=");
+        arg.push(image.as_os_str());
+        args.push(arg);
     }
     if let Some(id) = session_id {
         args.push(OsString::from(id));
@@ -427,5 +453,48 @@ mod resume_tests {
             assert!(indicates_early_stop(&phrase.to_uppercase()));
         }
         assert!(!indicates_early_stop("Task completed successfully."));
+    }
+
+    #[test]
+    fn codex_image_paths_are_fenced_to_the_chat_attachment_directory() {
+        use crate::chat::{ChatAttachment, ChatMessage};
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("codex-image-{}", uuid::Uuid::new_v4()));
+        let inside = root.join("chat");
+        fs::create_dir_all(&inside).unwrap();
+        let image = inside.join("image.png");
+        fs::write(&image, b"image").unwrap();
+        let outside = root.join("other.png");
+        fs::write(&outside, b"image").unwrap();
+        let message = ChatMessage {
+            role: "user".into(),
+            content: String::new(),
+            attachments: vec![ChatAttachment {
+                id: "id".into(),
+                mime: "image/png".into(),
+                path: outside.to_string_lossy().into_owned(),
+            }],
+            reasoning: String::new(),
+            logs: vec![],
+            diff: String::new(),
+            error: None,
+        };
+        assert!(super::super::latest_image_paths(&[message], &inside).is_err());
+        let args = super::codex_args_with_images(
+            None,
+            "model",
+            Effort::Default,
+            Permission::Read,
+            std::slice::from_ref(&image),
+        );
+        let values = args
+            .iter()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        let expected = format!("--image={}", image.to_string_lossy());
+        assert!(values.contains(&expected));
+        // The stdin marker must stay the last, separate argument (not swallowed by the image option).
+        assert_eq!(values.last().map(String::as_str), Some("-"));
+        let _ = fs::remove_dir_all(root);
     }
 }
