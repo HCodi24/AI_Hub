@@ -1,73 +1,214 @@
 # AI Hub
 
-AI Hub là ứng dụng Rust chạy cục bộ, cung cấp giao diện tiếng Việt để trò chuyện với API và công cụ lập trình AI.
+AI Hub là ứng dụng chạy cục bộ trên máy, dùng qua trình duyệt: toàn bộ máy chủ là một tệp thực thi Rust duy nhất (axum + tokio + reqwest), còn giao diện web viết bằng HTML/CSS/JS thuần và được nhúng sẵn trong tệp exe. Ứng dụng chỉ lắng nghe trên 127.0.0.1 (mặc định cổng 7878), tự mở trình duyệt và hiển thị giao diện tiếng Việt theo chủ đề tối.
 
-## Nhà cung cấp
+## Tính năng chính
 
-- **OpenAI-compatible:** kết nối các API tương thích với giao thức OpenAI bằng URL, API key và model do bạn cấu hình.
-- **Anthropic:** kết nối trực tiếp với Anthropic API bằng API key.
-- **Codex CLI:** gửi yêu cầu tới Codex CLI trong thư mục làm việc đã chọn và tiếp tục cuộc trò chuyện qua session.
-- **Claude Code CLI:** gửi yêu cầu tới Claude Code CLI trong thư mục làm việc đã chọn và tiếp tục cuộc trò chuyện qua session.
-- **DeepSeek agent:** khi bật MutiS, chỉnh sửa file bằng công cụ giới hạn trong thư mục chat; agent không chạy lệnh và luôn gửi diff.
+- Nhiều nguồn AI trong cùng một giao diện: OpenAI-compatible API, Anthropic API, Codex CLI, Claude Code CLI và DeepSeek làm việc (Deploy).
+- Chat có lưu lịch sử, trả lời dạng streaming, nút Dừng và các khối gấp mở "Đang suy nghĩ", "Hoạt động", "Thay đổi".
+- Thanh chế độ ngay cạnh khung nhập: đổi nguồn, model và mức suy luận (effort) chỉ trong vài cú nhấp.
+- Kiểm tra kết nối từng nguồn bằng chấm trạng thái xanh/đỏ/xám và thông báo lỗi rõ ràng.
+- "Tự tìm trên máy" giúp dò Codex CLI và Claude Code CLI đã cài sẵn, kèm nút đăng nhập Claude ngay trong ứng dụng.
+- Chia việc: AI đề xuất kế hoạch thành các task có phụ thuộc, người dùng duyệt rồi chạy từng task.
+- MutiS: điều phối Claude ↔ Codex ↔ DeepSeek theo ba vai trò, có cổng kiểm tra, review tự động, tự sửa lỗi và thống kê.
+- Tự chẩn đoán MutiS: vai trò lead đọc cấu hình và số liệu để chỉ ra vấn đề, kèm đề xuất thay đổi cấu hình an toàn.
+- Tiện ích mở rộng (hiện có CodeGraph) với xác nhận trước mỗi thao tác và sao lưu tệp cấu hình.
+- Dữ liệu lưu cục bộ trên máy, API key luôn được che khi hiển thị và không xuất hiện trong URL hay log.
 
-Hai nhà cung cấp HTTP cần API key. Hai nhà cung cấp CLI dùng chương trình CLI đã cài và đăng nhập trên máy này.
+## Cài đặt và chạy
 
-### Cài Claude Code CLI
+Yêu cầu: Rust đã cài và PowerShell trên Windows. Mở PowerShell tại thư mục dự án và biên dịch bản release:
 
-Cài Node.js và npm, sau đó chạy trong PowerShell:
+```powershell
+cd C:\TOOL\ai-hub
+cargo build --release
+```
+
+Sau khi biên dịch xong, chạy trực tiếp tệp thực thi:
+
+```powershell
+.\target\release\ai-hub.exe
+```
+
+Ứng dụng khởi động máy chủ cục bộ, mở trình duyệt tới giao diện và giữ nguyên cửa sổ terminal. Giữ terminal mở trong suốt thời gian dùng; nhấn Ctrl+C để dừng ứng dụng.
+
+Tùy chọn dòng lệnh và biến môi trường:
+
+| Tùy chọn | Ý nghĩa |
+| --- | --- |
+| `--port PORT` | Đổi cổng lắng nghe của lần chạy hiện tại |
+| `--no-open` | Không tự mở trình duyệt |
+| `AI_HUB_PORT` | Đặt cổng mặc định khi không truyền `--port` |
+| `AI_HUB_CONFIG_PATH` | Trỏ tới một tệp cấu hình khác; plans/chats/dữ liệu MutiS được lưu cạnh tệp đó |
+
+Nếu lúc build báo "Access is denied", nghĩa là một tiến trình ai-hub.exe cũ vẫn đang chạy và giữ tệp. Dừng nó rồi build lại:
+
+```powershell
+Stop-Process -Name ai-hub -Force
+```
+
+## Nguồn AI và kết nối
+
+Tất cả nguồn được cấu hình trong mục **Cài đặt** của giao diện.
+
+| Nguồn | Cách hoạt động |
+| --- | --- |
+| OpenAI-compatible API | Nhập Base URL, API key và danh sách model. Dùng được với Deploy/DeepSeek, OpenAI, … |
+| Anthropic API | Kết nối trực tiếp bằng API key |
+| Codex CLI | Chạy CLI trên máy trong thư mục đã chọn, quyền "Chỉ đọc" hoặc "Được sửa file" |
+| Claude Code CLI | Chạy CLI trên máy trong thư mục đã chọn, quyền "Chỉ đọc" hoặc "Được sửa file" |
+| DeepSeek làm việc (Deploy) | DeepSeek sửa tệp trong thư mục (chỉ list/read/edit/write, không chạy lệnh, luôn trả diff) |
+
+Với nguồn OpenAI-compatible, nút "Tải danh sách model" sẽ gọi `/models` của Base URL để lấy danh sách model khả dụng. Cấu hình mẫu cho Deploy: Base URL `https://api.deploy.com/api/v1`, model `deepseek-ai/deepseek-v4.1-flash-1017`.
+
+Hai nguồn CLI tiếp tục cuộc trò chuyện qua cơ chế resume, nên ngữ cảnh được giữ giữa các lượt hỏi đáp.
+
+"DeepSeek làm việc (Deploy)" chỉ dùng được khi MutiS đang bật và tùy chọn "DeepSeek làm việc trên file" đang mở. Nút "Dùng key của Deploy" sao chép API key từ nguồn Deploy ở phía máy chủ.
+
+Mỗi nguồn hiển thị một chấm trạng thái:
+
+| Chấm | Ý nghĩa |
+| --- | --- |
+| Xanh | Đã kết nối |
+| Đỏ | Lỗi |
+| Xám | Chưa cấu hình hoặc đang kiểm tra |
+
+Nút "Kiểm tra kết nối" chạy lại phép thử cho nguồn tương ứng; ứng dụng hiện toast khi kết nối thành công hoặc thất bại, kèm thông điệp rõ ràng như "Sai API key", "Sai Base URL", "Chưa nhập API key", "Chưa cài …".
+
+### Tìm CLI trên máy
+
+Nút "Tự tìm trên máy" (cho Codex/Claude CLI) dò các vị trí: PATH, PATH trong registry, `%APPDATA%\npm`, thư mục ứng dụng Codex, và bản Claude Code đi kèm ứng dụng Claude desktop (`%LOCALAPPDATA%\Claude-Data\…\claude-code\<version>\…\claude.exe`). Kết quả có thể gồm nhiều phiên bản để bạn chọn. Ứng dụng không bao giờ tự chạy ứng dụng Claude desktop. Ô "Đường dẫn file chạy" cho phép đặt đường dẫn thủ công.
+
+### Đăng nhập Claude Code CLI
+
+Bản Claude Code đi kèm cần đăng nhập riêng. Vào **Cài đặt › Claude Code CLI › "Đăng nhập Claude"**: ứng dụng mở một cửa sổ chạy `claude auth login`, bạn hoàn tất trong trình duyệt, sau đó ứng dụng kiểm tra lại và hiện ✓. Nếu chưa đăng nhập, trạng thái là "Claude Code chưa đăng nhập".
+
+Cách khác, cài qua npm:
 
 ```powershell
 npm i -g @anthropic-ai/claude-code
-claude
 ```
 
-Lệnh `claude` mở bước đăng nhập. Đăng nhập một lần trước khi chọn Claude Code CLI trong AI Hub.
+## Chat và thanh chế độ
 
-## Biên dịch và chạy
+Cột bên trái là danh sách các cuộc trò chuyện đã lưu; chọn một chat để tiếp tục hoặc tạo chat mới. Câu trả lời hiện dần theo kiểu streaming, có nút Dừng để ngắt giữa chừng. Nhấn Enter để gửi, Shift+Enter để xuống dòng.
 
-Cài Rust, mở PowerShell tại thư mục dự án rồi chạy:
+Dưới mỗi câu trả lời có các khối có thể gấp mở:
 
-```powershell
-cargo build --release
-cargo run --release
-```
+| Khối | Nội dung |
+| --- | --- |
+| Đang suy nghĩ | Phần suy luận (reasoning) của model |
+| Hoạt động | Lệnh CLI đã chạy, tệp đã đọc/sửa, dòng token "Token: vào X (cache Y), ra Z" |
+| Thay đổi | Diff của các tệp bị chỉnh sửa |
 
-Ứng dụng lắng nghe tại `127.0.0.1:7878` và tự mở trình duyệt. Dùng `--no-open` để bỏ qua việc mở trình duyệt, hoặc `--port 9000` để đổi cổng. Có thể đặt cổng mặc định bằng `$env:AI_HUB_PORT=9000` trong PowerShell.
+Chip chế độ nằm ngay cạnh khung nhập và hiển thị nguồn · model · effort hiện tại. Nhấp vào chip để mở popover, tại đó có thể đổi nguồn, đổi model (mục "Model khác…" để nhập tay) và chọn effort: Mặc định / Thấp / Vừa / Cao / Rất cao / Max.
 
-## Quyền truy cập CLI
+Effort áp dụng cho Codex CLI, OpenAI-compatible và Anthropic (extended thinking); Claude CLI không dùng effort. Khi MutiS đang bật, popover có thêm nguồn "✦ MutiS (3 AI)" hiển thị ba model theo vai trò kèm ba chấm trạng thái, cùng một mục "Đội MutiS".
 
-Với Codex CLI và Claude Code CLI, chọn **Quyền** cho từng chat:
+## Chia việc
 
-- **Chỉ đọc**: Codex dùng chế độ `read-only`; Claude Code dùng chế độ `plan`.
-- **Được sửa file**: Codex dùng chế độ `workspace-write`; Claude Code dùng chế độ `acceptEdits`. Đây là lựa chọn mặc định.
+Nút "✦ Gợi ý chia việc" nằm cạnh nút Gửi (và tự gợi ý khi yêu cầu có vẻ lớn). Người lập kế hoạch là vai trò lead của MutiS hoặc planner đã cấu hình; nó đề xuất các task gồm người phụ trách, phụ thuộc, loại việc (plan/code/test/docs/review/small_edit) và model/effort riêng cho từng task.
 
-Thiết lập quyền được lưu cùng chat. Các nhà cung cấp HTTP không dùng tùy chọn này.
+Trong lúc lập kế hoạch, giao diện hiện log trực tiếp, thời gian đã trôi qua và nút "Huỷ". Chỉ những nguồn đã kết nối mới được giao việc; nếu phải thay nguồn, dòng cảnh báo "⚠ đã đổi từ …" xuất hiện.
 
-## Cấu hình và lịch sử chat
+Sau khi đề xuất xong, bạn sửa nội dung, sắp xếp lại thứ tự rồi bấm "Duyệt kế hoạch". Kế hoạch có vòng phụ thuộc sẽ bị chặn. Sau khi duyệt, mỗi task có các nút:
 
-Cấu hình nằm tại `<config_dir>/ai-hub/config.json`; trên Windows, đường dẫn thường là `%APPDATA%\ai-hub\config.json`. Các cuộc trò chuyện được lưu thành tệp JSON trong `<config_dir>/ai-hub/chats/`; trên Windows là `%APPDATA%\ai-hub\chats\`.
+| Nút | Khi nào dùng |
+| --- | --- |
+| Chạy | Bật khi các phụ thuộc của task đã xong |
+| Dừng | Ngắt task đang chạy |
+| Chạy lại | Chạy lại task |
+| Đánh dấu xong | Đánh dấu hoàn tất thủ công |
 
-API key được che trong phản hồi cài đặt và không được ghi vào log.
-
-
-## Thanh chế độ
-
-Nút chế độ cạnh khung nhập tin cho biết nguồn AI, model và mức suy luận hiện tại. Mở nút để đổi nguồn, chọn hoặc nhập model, và chọn mức suy luận khi nguồn hỗ trợ. Lựa chọn mức suy luận được lưu theo từng chat; nguồn, model và mức dùng gần nhất được ghi nhớ cho chat mới trong trình duyệt.
-
-## Tiện ích
-
-Mở **Tiện ích** ở thanh bên để xem trạng thái và quản lý extension. CodeGraph là tiện ích đầu tiên; trang hiển thị trạng thái cài đặt, kết nối Codex/Claude và chỉ mục của thư mục chat đang hoạt động. Mỗi thao tác yêu cầu xác nhận trước khi chạy, ghi đầu ra vào Nhật ký và cho phép dừng tiến trình. Cài đặt CodeGraph cần Node.js và npm.
-
-## Chia việc (phase 1)
-
-AI Hub có thể đề xuất kế hoạch công việc từ nội dung đang soạn hoặc tin nhắn người dùng gần nhất. Mở **Chia việc** ở thanh bên để chỉnh sửa, sắp xếp, thêm hoặc xóa việc và duyệt kế hoạch trước khi thực thi. Kế hoạch được lưu tại `<config_dir>/ai-hub/plans/`. Người lập kế hoạch chọn trong phần Cài đặt; mỗi công việc chỉ chạy khi người dùng bấm **Chạy**, và chỉ bật khi các phụ thuộc đã hoàn tất. Công việc dùng chat riêng theo nhà cung cấp được giao và quyền đọc/ghi theo loại công việc. Không có tự động chạy nối tiếp.
+Giao diện hiển thị tổng token theo từng task và theo cả kế hoạch. Tùy chọn "Tự chạy tiếp" sẽ chạy task sẵn sàng kế tiếp sau khi một task vượt qua cổng kiểm tra, và dừng ngay ở lần lỗi đầu tiên.
 
 ## MutiS
 
-MutiS là tính năng điều phối có thể bật hoặc tắt trong **Cài đặt → MutiS**. Có thể cấu hình vai trò lead, big và small (nguồn, model, mức suy luận), cùng bảng định tuyến theo loại việc. DeepSeek làm việc (Deploy) chỉnh sửa file bằng công cụ giới hạn trong thư mục, không chạy lệnh và trả diff. Các tùy chọn gồm retry/backoff API, watchdog và resume Codex, cổng verify tự nhận diện lệnh hoặc dùng lệnh riêng, review tự động và số vòng auto-fix tối đa. Quy tắc worker nhiều dòng được thêm vào prompt các task kế hoạch khi MutiS bật.
+MutiS là tính năng điều phối của riêng AI Hub, kết nối Claude ↔ Codex ↔ DeepSeek. Công tắc tổng "Bật MutiS" nằm trong **Cài đặt › MutiS**; khi tắt, ứng dụng hoạt động như trước đây.
 
-Nhật ký sự kiện JSONL được lưu tại `<config_dir>/ai-hub/mutis/events.jsonl`; `GET /api/mutis/stats?days=30` tổng hợp số liệu trong phạm vi nhật ký hiện có. Verify kiểm tra dự án và UTF-8/mojibake, review dùng vai trò lead với quyền chỉ đọc. Review hoặc verify FAIL có thể tạo task sửa tự động nếu còn vòng. Vai trò và API key được che khi trả về qua API.
+Ba vai trò, mỗi vai trò có nguồn/model/effort riêng:
 
-### MutiS trạng thái 10d
+| Vai trò | Nhiệm vụ | Mặc định |
+| --- | --- | --- |
+| Lập kế hoạch & review (lead) | Lập kế hoạch, review kết quả, tự chẩn đoán | Nguồn đầu tiên đang kết nối trong: Claude Code CLI → Anthropic → Codex CLI (chỉ đọc) |
+| Làm việc lớn (big) | code/test | Codex CLI |
+| Làm việc nhỏ (small) | small_edit/docs | DeepSeek làm việc |
 
-Trang MutiS có thẻ tổng quan, bảng thống kê theo provider và task kind, cùng bộ lọc 50 sự kiện gần nhất. `/api/mutis/stats?days=N` tính số liệu từ JSONL còn được giữ; lỗi được chuẩn hóa và xếp top 5. `task_kind` là trường tùy chọn nên sự kiện cũ có thể hiện là không rõ. Tự chẩn đoán gửi settings đã bỏ khóa, thống kê và tối đa 150 sự kiện lỗi gần đây tới lead đang kết nối theo luồng SSE; CLI được gọi ở chế độ chỉ đọc. Kết quả JSON được kiểm tra, lưu và hiển thị thành thẻ finding. Chỉ các đường dẫn trong allowlist, giá trị hợp lệ và provider đã có mới được áp dụng qua `/api/mutis/apply`; ứng dụng yêu cầu người dùng xác nhận. Dưới 5 sự kiện, hệ thống lưu câu trả lời “Chưa đủ dữ liệu để chẩn đoán” mà không gọi AI. Lịch sử cho phép mở lại kết quả cũ.
+Nếu nguồn của một vai trò không sẵn sàng, vai trò tự chuyển sang một nguồn đã kết nối. Bảng định tuyến (loại việc → vai trò) có thể sửa trong Cài đặt.
+
+Các tùy chọn của MutiS, mỗi tùy chọn bật/tắt kèm tham số:
+
+| Tùy chọn | Mô tả |
+| --- | --- |
+| Retry API | Thử lại khi gặp 429/5xx/lỗi kết nối, backoff 2s/4s/8s, tối đa 3 lần |
+| Codex watchdog | Dừng Codex nếu không có phản hồi trong N phút (mặc định 5) |
+| Codex tự tiếp tục | Khi Codex báo dừng sớm ("incomplete", "chưa xong"…), tự chạy tiếp phiên đó (tối đa 2 vòng) |
+| DeepSeek làm việc trên file | Cho phép DeepSeek sửa tệp, có giới hạn số bước, cảnh báo với tệp dài hơn 400 dòng |
+| Cổng kiểm tra | Tự nhận diện `scripts/verify/verify.sh` → Cargo → npm, hoặc dùng lệnh tùy chỉnh; luôn kiểm tra UTF-8 và lỗi "mojibake" trong tệp đã sửa và tệp mới; danh sách bỏ qua mặc định `.tasks/**`, `plans/**`, `**/*.md` |
+| Review tự động | Vai trò lead đọc diff và kết quả kiểm tra, trả lời PASS/FAIL kèm vấn đề; bỏ qua khi chưa có reviewer kết nối |
+| Tự sửa lỗi | Kiểm tra hoặc review thất bại sẽ tạo task "Sửa lỗi …: <task> (vòng n)" cho chính worker đó, kèm ngữ cảnh task gốc; mặc định tối đa 2 vòng |
+| Quy tắc cho AI làm việc | Đoạn văn bản ghép vào đầu mọi prompt của worker; mặc định: ghi tệp bằng UTF-8, không xoá tính năng sẵn có, báo cáo phần chưa làm |
+| Nhật ký & thống kê | Ghi sự kiện và tổng hợp số liệu phục vụ trang MutiS |
+
+### Trang MutiS
+
+Trang MutiS trong thanh bên gồm các thẻ tổng quan, bảng thống kê theo từng nguồn và theo từng loại việc (số task, tỉ lệ thành công, thời gian trung bình, token, số lần retry, số lần watchdog kill, số lần resume, tỉ lệ kiểm tra/review thất bại, số vòng sửa lỗi, top 5 lỗi), và danh sách 50 sự kiện gần nhất kèm bộ lọc.
+
+### Tự chẩn đoán
+
+"Tự chẩn đoán" (Claude tự đánh giá MutiS) cho vai trò lead đọc cấu hình MutiS (không có key), số liệu thống kê và tối đa 150 sự kiện lỗi gần nhất, rồi trả về mức sức khoẻ (tốt/trung bình/kém) cùng các finding (vấn đề, bằng chứng, nguyên nhân, mức nghiêm trọng, đề xuất).
+
+Finding có thay đổi cấu hình an toàn sẽ có nút "Áp dụng" kèm xác nhận "Đổi …: cũ → mới?". Chỉ các thiết lập MutiS trong danh sách cho phép và nằm trong khoảng hợp lệ mới được đổi (không bao giờ đổi API key, provider, lệnh kiểm tra hay quy tắc worker). Dưới 5 sự kiện, ứng dụng trả "Chưa đủ dữ liệu để chẩn đoán" mà không gọi AI. Các lần chẩn đoán được lưu lại và có thể mở lại. Ví dụ: hệ thống từng phát hiện kết quả kiểm tra không được ghi log (nay đã sửa).
+
+## Tiện ích
+
+Mục **Tiện ích** ở thanh bên hiển thị các thẻ extension. Thẻ đầu tiên là CodeGraph (đồ thị tri thức mã nguồn cho công cụ AI, https://github.com/colbymchenry/codegraph), với trạng thái: đã cài/phiên bản, đã kết nối Codex, đã kết nối Claude, thư mục hiện tại đã được lập chỉ mục hay chưa.
+
+Các thao tác có sẵn: Cài đặt, Kết nối Codex, Kết nối Claude, Lập chỉ mục thư mục, Nâng cấp, Gỡ. Mỗi thao tác đều hiển thị chính xác lệnh sẽ chạy và những tệp sẽ bị thay đổi, sau đó hỏi xác nhận. Trước khi sửa, `~/.codex/config.toml` và `~/.claude.json` được sao lưu vào `%APPDATA%\ai-hub\backups\`. Trong lúc chạy có "Nhật ký" trực tiếp và nút Dừng.
+
+Danh sách lệnh được cố định trong ứng dụng; trình duyệt không thể gửi lệnh tùy ý xuống máy chủ.
+
+## Dữ liệu và bảo mật
+
+Trên Windows, dữ liệu nằm trong `%APPDATA%\ai-hub\`:
+
+| Đường dẫn | Nội dung |
+| --- | --- |
+| `%APPDATA%\ai-hub\config.json` | Cấu hình, gồm API key lưu cục bộ |
+| `%APPDATA%\ai-hub\chats\` | Lịch sử các cuộc trò chuyện |
+| `%APPDATA%\ai-hub\plans\` | Kế hoạch của tính năng Chia việc |
+| `%APPDATA%\ai-hub\mutis\` | Sự kiện và kết quả chẩn đoán của MutiS |
+| `%APPDATA%\ai-hub\backups\` | Bản sao lưu tệp cấu hình trước khi tiện ích sửa |
+
+API key được che mỗi khi hiển thị và không bao giờ xuất hiện trong URL hay trong log.
+
+Về bảo mật, ứng dụng chỉ bind trên 127.0.0.1; từ chối các header Host/Origin lạ (chống DNS rebinding); prompt của CLI được truyền qua stdin thay vì dòng lệnh; và các biến môi trường Claude của máy chủ được xoá trước khi khởi chạy Claude CLI.
+
+## Cấu trúc mã nguồn
+
+| Tệp / thư mục | Vai trò |
+| --- | --- |
+| `src/main.rs` | Khởi động, xử lý cổng, mở trình duyệt |
+| `src/server.rs` | HTTP API và SSE |
+| `src/config.rs` | Cấu hình, che API key |
+| `src/chat.rs` | Lịch sử chat |
+| `src/plans.rs` | Kế hoạch của tính năng Chia việc |
+| `src/mutis.rs` | Cấu hình MutiS, nhật ký sự kiện, thống kê |
+| `src/verify.rs` | Cổng kiểm tra |
+| `src/extensions.rs` | Danh mục tiện ích |
+| `src/providers/openai_compat.rs` | Nguồn OpenAI-compatible |
+| `src/providers/anthropic.rs` | Nguồn Anthropic API |
+| `src/providers/codex_cli.rs` | Nguồn Codex CLI |
+| `src/providers/claude_cli.rs` | Nguồn Claude Code CLI |
+| `src/providers/deepseek_agent.rs` | DeepSeek làm việc (Deploy) |
+| `src/providers/cli_support.rs` | Phần dùng chung cho các nguồn CLI |
+| `ui/index.html`, `ui/app.js`, `ui/style.css` | Giao diện web nhúng trong exe |
+| `SPEC.md` | Đặc tả kỹ thuật |
+| `plans/mutis.md` | Thiết kế MutiS, tiến độ và bài học |
+| `.tasks/` | Đề bài task giao cho Codex |
+
+Chạy bộ kiểm thử bằng:
+
+```powershell
+cargo test
+```
