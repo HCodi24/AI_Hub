@@ -1,11 +1,11 @@
 use crate::{
+    api::providers::{cached_provider_test, ConnectionTest},
     api::{ApiError, ApiResult},
     app::{AppState, JobGuard},
     chat::{self, ChatMessage},
     config::{self, Config, ProviderConfig},
     mutis::{self, Event},
     providers::{self, ProviderEvent, ProviderRequest},
-    server::{cached_provider_test, ConnectionTest},
 };
 use axum::{
     extract::State,

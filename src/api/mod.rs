@@ -11,6 +11,7 @@ pub mod config;
 pub mod dev;
 pub mod extensions;
 pub mod mutis;
+pub mod providers;
 pub mod static_ui;
 pub mod verify;
 

@@ -19,7 +19,7 @@ pub struct AppState {
     pub(crate) running: Arc<Mutex<HashMap<String, RunningChat>>>,
     pub(crate) extension_running: Arc<Mutex<HashMap<String, CancellationToken>>>,
     pub(crate) provider_status:
-        Arc<Mutex<HashMap<String, (Instant, crate::server::ConnectionTest)>>>,
+        Arc<Mutex<HashMap<String, (Instant, crate::api::providers::ConnectionTest)>>>,
     pub(crate) event_log: EventLog,
     pub(crate) dev_repo: Option<PathBuf>,
     pub(crate) dev_events: broadcast::Sender<String>,
