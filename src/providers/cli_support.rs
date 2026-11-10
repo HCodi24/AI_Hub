@@ -37,6 +37,21 @@ pub fn clean_claude_environment(command: &mut Command) {
     for name in environment_names_to_remove(&names) {
         command.env_remove(name);
     }
+    // AI Hub's Claude Code CLI gets its own config dir (login, settings, history), separate from the user's
+    // `~/.claude` used by the Claude desktop app, so the two can be signed in to different accounts.
+    if let Some(dir) = ai_hub_claude_config_dir() {
+        command.env("CLAUDE_CONFIG_DIR", dir);
+    }
+}
+
+/// `<AI Hub data dir>\claude-config` (created on demand), e.g. `%APPDATA%\ai-hub\claude-config`.
+pub fn ai_hub_claude_config_dir() -> Option<std::path::PathBuf> {
+    let config_path = crate::core::config::config_file_path().ok()?;
+    let dir = crate::core::paths::data_dir(&config_path)
+        .ok()?
+        .join("claude-config");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
 }
 
 pub fn searched_locations(name: &str, explicit_path_was_set: bool) -> String {

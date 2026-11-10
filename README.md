@@ -89,6 +89,8 @@ Cách khác, cài qua npm:
 npm i -g @anthropic-ai/claude-code
 ```
 
+AI Hub cho Claude Code CLI dùng **thư mục cấu hình riêng** `%APPDATA%i-hub\claude-config\` (biến `CLAUDE_CONFIG_DIR`): đăng nhập, cài đặt và lịch sử của Claude trong AI Hub tách khỏi `~\.claude` của app Claude desktop, nên hai bên có thể dùng hai tài khoản khác nhau và đăng xuất bên này không ảnh hưởng bên kia.
+
 ## Chat và thanh chế độ
 
 Cột bên trái là danh sách các cuộc trò chuyện đã lưu; chọn một chat để tiếp tục hoặc tạo chat mới. Câu trả lời hiện dần theo kiểu streaming, có nút Dừng để ngắt giữa chừng. Nhấn Enter để gửi, Shift+Enter để xuống dòng.
