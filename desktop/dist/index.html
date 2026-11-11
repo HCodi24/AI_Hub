@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Hub</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { display: grid; place-items: center; background: #0f172a; color: #f8fafc; font: 15px/1.5 system-ui, "Segoe UI", sans-serif; }
+    main { text-align: center; }
+    .spinner { width: 28px; height: 28px; margin: 0 auto 16px; border: 3px solid #334155; border-top-color: #22c55e; border-radius: 50%; animation: spin 1s linear infinite; }
+    p { margin: 4px 0; color: #a8b5c8; }
+    #error { color: #ff9aab; white-space: pre-wrap; max-width: 560px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="spinner" id="spinner" aria-hidden="true"></div>
+    <h1 style="font-size:20px;margin:0 0 4px">AI Hub</h1>
+    <p id="status" role="status">Đang khởi động…</p>
+    <p id="error" role="alert"></p>
+  </main>
+  <script>
+    // The desktop shell calls this when the server could not be started.
+    window.showStartError = function (message) {
+      document.getElementById("spinner").style.display = "none";
+      document.getElementById("status").textContent = "Không khởi động được AI Hub";
+      document.getElementById("error").textContent = message;
+    };
+  </script>
+</body>
+</html>

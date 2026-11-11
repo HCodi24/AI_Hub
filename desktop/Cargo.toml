@@ -1,0 +1,21 @@
+[package]
+name = "ai-hub-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "AI Hub desktop window (Tauri): starts the ai-hub server in the background and shows its UI"
+
+# Separate from the main crate on purpose: the server keeps building offline and unchanged; this crate adds the window.
+[workspace]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2"
+open = "5"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

@@ -276,6 +276,17 @@ Với Codex/Claude CLI, ngữ cảnh bộ nhớ chỉ được đưa vào phiên
 với nguồn HTTP, nó đi cùng lịch sử mỗi lượt. Planner và Tranh luận cũng đọc bộ nhớ.
 Ghi chú AI có thể cũ hoặc sai: AI được nhắc kiểm chứng với code/git trước khi tin.
 
+## App desktop (desktop/)
+
+AI Hub chạy như một ứng dụng desktop có cửa sổ riêng (Tauri 2 + WebView2 có sẵn trong Windows 11), không cần mở trình duyệt.
+
+- `desktop/` là crate riêng (không thuộc crate server): cửa sổ **AI Hub** tự khởi chạy `ai-hub.exe --no-open --port <cổng trống>` ở chế độ ngầm, mở giao diện bên trong, tự bật lại server nếu nó dừng, và tắt server (kèm các tiến trình Codex/Claude đang chạy) khi thoát.
+- Mỗi lúc chỉ chạy một bản: mở lần hai sẽ đưa cửa sổ đang có lên trước. Có biểu tượng ở khay hệ thống (Mở AI Hub / Thoát). Link ra ngoài (trang đăng nhập, tài liệu) mở bằng trình duyệt mặc định.
+- Dữ liệu vẫn ở `%APPDATA%\ai-hub` như bản chạy bằng trình duyệt, nên chat, cấu hình, bộ nhớ dùng chung.
+- Build bản chạy được: `powershell -ExecutionPolicy Bypass -File scripts/build-desktop.ps1` → thư mục `dist/AI Hub/` gồm `AI Hub.exe` (cửa sổ) và `ai-hub.exe` (server, đã nhúng giao diện). Chạy `AI Hub.exe`.
+- Tìm server theo thứ tự: biến `AI_HUB_SERVER`, cùng thư mục với `AI Hub.exe`, rồi `target/release` hoặc `target/debug` ở thư mục cha. Tham số sau `--` được chuyển cho server (ví dụ `"AI Hub.exe" -- --dev`).
+- Chưa có bộ cài (.msi/.exe setup): cần cài thêm `tauri-cli` và NSIS.
+
 ## Giao diện mới (web/)
 
 R1 bổ sung React 19 / Next.js 16 Pages Router tại `/app/`, dùng API chat hiện có. Giao diện cũ tiếp tục ở `/` và có liên kết “Giao diện mới (beta)” dưới sidebar.
