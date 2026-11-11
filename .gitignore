@@ -11,3 +11,4 @@ web/*.tsbuildinfo
 desktop/target/
 desktop/gen/
 /dist/
+desktop/node_modules/

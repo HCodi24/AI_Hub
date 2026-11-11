@@ -283,9 +283,9 @@ AI Hub chạy như một ứng dụng desktop có cửa sổ riêng (Tauri 2 + W
 - `desktop/` là crate riêng (không thuộc crate server): cửa sổ **AI Hub** tự khởi chạy `ai-hub.exe --no-open --port <cổng trống>` ở chế độ ngầm, mở giao diện bên trong, tự bật lại server nếu nó dừng, và tắt server (kèm các tiến trình Codex/Claude đang chạy) khi thoát.
 - Mỗi lúc chỉ chạy một bản: mở lần hai sẽ đưa cửa sổ đang có lên trước. Có biểu tượng ở khay hệ thống (Mở AI Hub / Thoát). Link ra ngoài (trang đăng nhập, tài liệu) mở bằng trình duyệt mặc định.
 - Dữ liệu vẫn ở `%APPDATA%\ai-hub` như bản chạy bằng trình duyệt, nên chat, cấu hình, bộ nhớ dùng chung.
-- Build bản chạy được: `powershell -ExecutionPolicy Bypass -File scripts/build-desktop.ps1` → thư mục `dist/AI Hub/` gồm `AI Hub.exe` (cửa sổ) và `ai-hub.exe` (server, đã nhúng giao diện). Chạy `AI Hub.exe`.
+- Build: `powershell -ExecutionPolicy Bypass -File scripts/build-desktop.ps1` tạo trong `dist/`: thư mục `AI Hub/` (bản chạy ngay: `AI Hub.exe` là cửa sổ, `ai-hub.exe` là server đã nhúng giao diện) và bộ cài `AI Hub_<phiên bản>_x64-setup.exe`. Lần đầu cần mạng để tải Tauri CLI (npm), crate Rust và NSIS.
 - Tìm server theo thứ tự: biến `AI_HUB_SERVER`, cùng thư mục với `AI Hub.exe`, rồi `target/release` hoặc `target/debug` ở thư mục cha. Tham số sau `--` được chuyển cho server (ví dụ `"AI Hub.exe" -- --dev`).
-- Chưa có bộ cài (.msi/.exe setup): cần cài thêm `tauri-cli` và NSIS.
+- Bộ cài (NSIS) cài cho người dùng hiện tại, không cần quyền admin, tạo shortcut Start Menu và mục gỡ cài đặt; nếu máy thiếu WebView2 thì bộ cài tự tải. Bộ cài chưa được ký số nên Windows SmartScreen có thể cảnh báo lần đầu.
 
 ## Giao diện mới (web/)
 
