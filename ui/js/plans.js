@@ -183,7 +183,7 @@ ${task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || 
         chat_id: chatId, dev_chat: Boolean(plan.dev_chat), plan_id: plan.id, task_id: String(task.id), task_kind: task.kind, provider_id: provider.id,
         model: task.model || provider.models[0] || "", effort: task.effort || "default",
         folder: plan.folder,
-        permission: taskCanWrite(task) ? "write" : "read",
+        permission: task.permission || (taskCanWrite(task) ? "write" : "read"),
         // Sources with agent mode read/edit files through file tools; other sources ignore this field.
         file_tools: provider.agent_capable ? (taskCanWrite(task) ? "write" : "read") : "none",
         messages: [{ role: "user", content: prompt }],

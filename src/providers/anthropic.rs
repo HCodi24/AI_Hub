@@ -11,6 +11,8 @@ use tokio_util::sync::CancellationToken;
 
 pub struct AnthropicProvider;
 
+// Write and Full behave identically here: this HTTP provider has no command tools.
+
 #[async_trait]
 impl Provider for AnthropicProvider {
     async fn run(

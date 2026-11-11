@@ -8,6 +8,7 @@ let failId = 2;
 let stopId = null;
 let verifyFailures = 0;
 const started = [];
+const requests = [];
 const saved = [];
 const progress = [];
 const provider = { id: "fake", models: ["fake"], kind: "openai_compat", agent_capable: true };
@@ -20,8 +21,9 @@ const api = async (url, options = {}) => {
   if (url === "/api/verify") return { body: { verify: true } };
   if (url === "/api/chat") {
     const body = JSON.parse(options.body);
+    requests.push(body);
     started.push(Number(body.task_id));
-    assert.equal(body.file_tools, "write");
+    assert.equal(body.file_tools, provider.agent_capable ? "write" : "none");
     return { body };
   }
   throw new Error(`Unexpected mock request ${url}`);
@@ -88,3 +90,15 @@ await runner.runWholePlan(failedGate);
 assert.equal(failedGate.tasks[0].status, "lỗi");
 assert.equal(failedGate.tasks[1].status, "chờ");
 console.log("runWholePlan: order, failure, resume, progress, persistence, cancellation, verify gate and auto-fix passed (local fakes)");
+state.mutis = { enabled: false };
+const fullPlan = { ...plan, tasks: [{ ...task(30), permission: "full" }] };
+await runner.runWholePlan(fullPlan);
+assert.equal(requests.at(-1).permission, "full");
+assert.equal(requests.at(-1).file_tools, "write", "HTTP agents keep file tools and never gain commands");
+provider.kind = "claude_cli";
+provider.agent_capable = false;
+const cliPlan = { ...plan, tasks: [{ ...task(31), permission: "full" }] };
+await runner.runWholePlan(cliPlan);
+assert.equal(requests.at(-1).permission, "full");
+assert.equal(requests.at(-1).file_tools, "none");
+assert.equal(cliPlan.tasks[0].status, "xong");

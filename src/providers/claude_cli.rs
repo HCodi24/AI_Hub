@@ -27,14 +27,7 @@ impl Provider for ClaudeCliProvider {
             OsString::from("--verbose"),
             OsString::from("--include-partial-messages"),
         ];
-        let permission_mode = match request.permission {
-            Permission::Read => "plan",
-            Permission::Write => "acceptEdits",
-        };
-        args.extend([
-            OsString::from("--permission-mode"),
-            OsString::from(permission_mode),
-        ]);
+        args.extend(permission_args(request.permission));
         if !request.model.is_empty() {
             args.extend([OsString::from("--model"), OsString::from(&request.model)]);
         }
@@ -71,7 +64,10 @@ impl Provider for ClaudeCliProvider {
                 prompt.push_str("Hãy dùng công cụ đọc tệp để xem ảnh trên.");
             }
         }
-        let parser = std::sync::Mutex::new(ClaudeParser::default());
+        let parser = std::sync::Mutex::new(ClaudeParser {
+            permission: request.permission,
+            ..Default::default()
+        });
         let result = cli_support::run_jsonl(
             cli_support::JsonlCommand {
                 cli_name: "Claude Code CLI",
@@ -111,12 +107,27 @@ impl Provider for ClaudeCliProvider {
     }
 }
 
+fn permission_args(permission: Permission) -> Vec<OsString> {
+    let mode = match permission {
+        Permission::Read => "plan",
+        Permission::Write | Permission::Full => "acceptEdits",
+    };
+    let mut args = vec!["--permission-mode".into(), mode.into()];
+    if permission == Permission::Full {
+        // --allowedTools <tools...> accepts separate tool names.
+        args.extend(["--allowedTools".into(), "Bash".into(), "PowerShell".into()]);
+    }
+    args
+}
+
 fn missing_result_event(result_seen: bool, cancelled: bool) -> bool {
     !result_seen && !cancelled
 }
 
 #[derive(Default)]
 struct ClaudeParser {
+    permission: Permission,
+    denial_hint_seen: bool,
     result_seen: bool,
     partial_seen: bool,
     delta_seen: bool,
@@ -159,7 +170,30 @@ impl ClaudeParser {
             });
         }
         match event_type {
-            "system" | "user" => {}
+            "system" => {}
+            "user" => {
+                if self.permission != Permission::Full && !self.denial_hint_seen {
+                    let denied = value["message"]["content"]
+                        .as_array()
+                        .is_some_and(|blocks| {
+                            blocks.iter().any(|block| {
+                                if block["type"] != "tool_result" || block["is_error"] != true {
+                                    return false;
+                                }
+                                let content = block["content"].to_string().to_lowercase();
+                                content.contains("requires approval")
+                                    || content.contains("haven't granted")
+                            })
+                        });
+                    if denied {
+                        self.denial_hint_seen = true;
+                        events.push(ProviderEvent::text(
+                            "log",
+                            "Lệnh bị chặn: chọn Quyền › Toàn quyền (chạy lệnh) để cho phép AI chạy lệnh.",
+                        ));
+                    }
+                }
+            }
             "assistant" => {
                 if let Some(blocks) = value["message"]["content"].as_array() {
                     for block in blocks {
@@ -290,6 +324,66 @@ fn parse_claude_line(line: &str) -> Vec<ProviderEvent> {
 #[cfg(test)]
 mod tests {
     use super::{parse_claude_line, ClaudeParser};
+    use crate::chat::Permission;
+
+    #[test]
+    fn permission_arguments_only_allow_commands_for_full() {
+        for (permission, mode) in [
+            (Permission::Read, "plan"),
+            (Permission::Write, "acceptEdits"),
+            (Permission::Full, "acceptEdits"),
+        ] {
+            let args = super::permission_args(permission);
+            let args: Vec<_> = args.iter().map(|arg| arg.to_str().unwrap()).collect();
+            assert_eq!(&args[..2], &["--permission-mode", mode]);
+            if permission == Permission::Full {
+                assert_eq!(&args[2..], &["--allowedTools", "Bash", "PowerShell"]);
+            } else {
+                assert_eq!(args.len(), 2);
+            }
+            assert!(!args.iter().any(|arg| arg.contains("bypassPermissions")));
+        }
+    }
+
+    #[test]
+    fn command_denial_hint_is_emitted_once_per_run_except_full() {
+        for permission in [Permission::Read, Permission::Write, Permission::Full] {
+            for content in [
+                serde_json::json!("Bash requires approval"),
+                serde_json::json!([{"type": "text", "text": "You haven't granted PowerShell"}]),
+            ] {
+                let mut parser = ClaudeParser {
+                    permission,
+                    ..Default::default()
+                };
+                let line = serde_json::json!({"type":"user","message":{"content":[{
+                    "type":"tool_result", "is_error":true, "content":content
+                }]}})
+                .to_string();
+                let first = parser.parse(&line);
+                assert_eq!(first.len(), usize::from(permission != Permission::Full));
+                if permission != Permission::Full {
+                    assert_eq!(first[0].name, "log");
+                    assert_eq!(first[0].data["text"],
+                        "Lệnh bị chặn: chọn Quyền › Toàn quyền (chạy lệnh) để cho phép AI chạy lệnh.");
+                }
+                assert!(parser.parse(&line).is_empty());
+            }
+        }
+        let mut parser = ClaudeParser::default();
+        for (kind, error, content) in [
+            ("tool_result", false, "requires approval"),
+            ("text", true, "requires approval"),
+            ("tool_result", true, "file missing"),
+        ] {
+            let line = serde_json::json!({"type":"user","message":{"content":[{
+                "type":kind,"is_error":error,"content":content
+            }]}})
+            .to_string();
+            assert!(parser.parse(&line).is_empty());
+        }
+    }
+
     #[test]
     fn maps_claude_result_subtypes_and_returns_success_text() {
         let max_turns =

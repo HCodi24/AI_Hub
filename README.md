@@ -55,8 +55,17 @@ Tất cả nguồn được cấu hình trong mục **Cài đặt** của giao d
 | --- | --- |
 | OpenAI-compatible API | Nhập Base URL, API key và danh sách model. Dùng được với Deploy/DeepSeek, OpenAI, … |
 | Anthropic API | Kết nối trực tiếp bằng API key |
-| Codex CLI | Chạy CLI trên máy trong thư mục đã chọn, quyền "Chỉ đọc" hoặc "Được sửa file" |
-| Claude Code CLI | Chạy CLI trên máy trong thư mục đã chọn, quyền "Chỉ đọc" hoặc "Được sửa file" |
+| Codex CLI | Chạy CLI trên máy trong thư mục đã chọn, quyền Chỉ đọc / Được sửa file / Toàn quyền |
+| Claude Code CLI | Chạy CLI trên máy trong thư mục đã chọn, quyền Chỉ đọc / Được sửa file / Toàn quyền |
+
+Quyền: **Chỉ đọc / Được sửa file / Toàn quyền**. Mặc định là **Được sửa file**.
+**Toàn quyền (chạy lệnh)** cho phép AI sửa file và chạy lệnh (python, git, cargo…) trong thư mục làm việc;
+chỉ dùng với thư mục bạn tin tưởng. Claude dùng `acceptEdits` và cho phép công cụ `Bash`, `PowerShell`,
+không bỏ qua toàn bộ cơ chế quyền. Với **Được sửa file**, Claude chỉ tự duyệt sửa file; lệnh cần duyệt
+bị chặn trong chế độ không tương tác và nhật ký hướng dẫn chuyển sang Toàn quyền.
+Codex dùng sandbox `workspace-write` cho cả Được sửa file và Toàn quyền, vốn đã cho chạy lệnh trong workspace.
+Nguồn HTTP/agent chỉ có các công cụ file đã bật, không chạy lệnh; Toàn quyền có tác dụng như Được sửa file.
+Quyền cũng được chọn riêng cho từng task Chia việc/MutiS và ở “Thực hiện với…” sau tranh luận.
 
 Với nguồn OpenAI-compatible, nút "Tải danh sách model" sẽ gọi `/models` của Base URL để lấy danh sách model khả dụng. Cấu hình mẫu cho Deploy: Base URL `https://api.deploy.com/api/v1`, model `deepseek-ai/deepseek-v4.1-flash-1017`.
 

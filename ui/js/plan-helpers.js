@@ -16,6 +16,6 @@ export function hasCycle(tasks) {
 }
 // Task kinds that may change files (small_edit used to be treated as read-only by mistake).
 export function taskCanWrite(task) {
-  return task.permission ? task.permission === "write" : ["code", "test", "docs", "small_edit"].includes(task.kind);
+  return task.permission ? ["write", "full"].includes(task.permission) : ["code", "test", "docs", "small_edit"].includes(task.kind);
 }
 

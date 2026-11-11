@@ -56,7 +56,11 @@ impl Provider for DeepSeekAgentProvider {
             .find(|m| m.role == "user")
             .map(|m| m.content.as_str())
             .unwrap_or_default();
-        let can_write = request.permission == super::Permission::Write;
+        // Full grants the same file tools as Write; agent mode never runs commands.
+        let can_write = matches!(
+            request.permission,
+            super::Permission::Write | super::Permission::Full
+        );
         let excerpts = parse_edit_only(task);
         let edits_requested = can_write && task_asks_edits(task);
         let system = if can_write { SYSTEM_WRITE } else { SYSTEM_READ };

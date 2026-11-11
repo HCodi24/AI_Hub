@@ -56,6 +56,7 @@ assert.ok(hasCycle([{ id: 1, depends_on: [2] }, { id: 2, depends_on: [1] }]));
 assert.ok(!hasCycle([{ id: 1, depends_on: [] }, { id: 2, depends_on: [1] }]));
 assert.equal(taskCanWrite({ kind: "code", permission: "read" }), false);
 assert.equal(taskCanWrite({ kind: "small_edit" }), true);
+assert.equal(taskCanWrite({ kind: "review", permission: "full" }), true);
 globalThis.cardTest = {
   el, state, planSummary, EFFORTS: ["default", "high"], findProvider: () => provider,
   api: async () => { throw new Error("Unexpected API request"); },
@@ -81,9 +82,15 @@ const button = text => buttons().find(node => node.textContent === text);
 const click = async text => { const node = button(text); assert.ok(node && !node.disabled, `Enabled button ${text}`); await node.onclick(); };
 assert.ok(card.el.textContent.includes("Bản nháp"));
 assert.ok(button("▶ Chạy task này").disabled);
+const permission = card.el.querySelectorAll("select").find(node => node.children.some(child => child.value === "full"));
+assert.ok(permission, "Task permission offers Full");
+permission.value = "full";
+await permission.onchange();
+assert.equal(plan.tasks[0].permission, "full");
+assert.ok(card.el.textContent.includes("Nguồn này không chạy lệnh"));
 await click("Duyệt kế hoạch");
 assert.equal(plan.approved, true);
-assert.equal(saves, 1);
+assert.equal(saves, 2);
 await click("▶ Chạy tất cả");
 assert.equal(runs, 0, "Whole plan requires inline confirmation");
 await click("Chạy");

@@ -38,6 +38,8 @@ export function setupProviderControls(providerId, preferredModel = "") {
 }
 export function updatePermissionControl() {
   const provider = currentProvider();
+  const full = $("#permission-select").querySelector('option[value="full"]');
+  full.disabled = !["codex_cli", "claude_cli"].includes(provider?.kind);
   $("#permission-control").hidden = !["codex_cli", "claude_cli"].includes(provider?.kind);
   // OpenAI-compatible sources with agent mode enabled can read/edit files in the chat folder.
   $("#file-tools-control").hidden = !(provider?.kind === "openai_compat" && provider.agent_capable);
@@ -113,6 +115,9 @@ export function renderModePicker() {
   }
   const supported = EFFORT_KINDS.has(provider?.kind);
   $("#mode-chip-effort").textContent = supported ? ` ${EFFORT_LABELS[state.effort] || EFFORT_LABELS.default}` : "";
+  if (!isMutis && ["codex_cli", "claude_cli"].includes(provider?.kind) && $("#permission-select").value === "full") {
+    $("#mode-chip-effort").textContent += " · Toàn quyền";
+  }
   const providers = $("#mode-providers");
   providers.replaceChildren();
   const mutisRow = document.createElement("button");

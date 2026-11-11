@@ -316,6 +316,15 @@ fn now() -> u64 {
 mod tests {
     use super::*;
 
+    #[test]
+    fn task_full_permission_roundtrips() {
+        let mut task = task(1, vec![]);
+        task.permission = Some("full".into());
+        let encoded = serde_json::to_value(&task).unwrap();
+        let decoded: PlanTask = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded.permission.as_deref(), Some("full"));
+    }
+
     fn task(id: u32, depends_on: Vec<u32>) -> PlanTask {
         PlanTask {
             id,

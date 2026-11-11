@@ -173,7 +173,8 @@ pub fn codex_args_with_images(
     }
     let sandbox_mode = match permission {
         Permission::Read => "read-only",
-        Permission::Write => "workspace-write",
+        // Codex already permits commands within the workspace-write sandbox.
+        Permission::Write | Permission::Full => "workspace-write",
     };
     args.extend([
         OsString::from("--json"),
@@ -407,6 +408,18 @@ fn file_change_summary(item: &Value) -> String {
 mod resume_tests {
     use super::{codex_args, indicates_early_stop, EARLY_STOP_PHRASES};
     use crate::chat::{Effort, Permission};
+
+    #[test]
+    fn full_uses_workspace_sandbox_for_new_and_resumed_sessions() {
+        for session in [None, Some("safe-session")] {
+            let full = codex_args(session, "model", Effort::Default, Permission::Full);
+            let write = codex_args(session, "model", Effort::Default, Permission::Write);
+            assert_eq!(full, write);
+            assert!(full
+                .iter()
+                .any(|arg| arg == "sandbox_mode=\"workspace-write\""));
+        }
+    }
     #[test]
     fn round_one_and_two_resume_args_are_fresh_and_valid() {
         let first = codex_args(

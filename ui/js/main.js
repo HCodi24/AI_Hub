@@ -248,7 +248,7 @@ $("#message-input").addEventListener("keydown", (event) => {
   }
 });
 $("#folder-input").addEventListener("input", () => { renderDevChatControls(); rememberCurrentChat(); });
-permissionSelect.addEventListener("change", rememberCurrentChat);
+permissionSelect.addEventListener("change", () => { rememberCurrentChat(); renderModePicker(); });
 fileToolsSelect.addEventListener("change", rememberCurrentChat);
 $("#folder-input").addEventListener("change", saveDefaultFolder);
 $("#provider-add").addEventListener("click", clearProviderForm);

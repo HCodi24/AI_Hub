@@ -57,7 +57,8 @@ export function createPlanCard() {
   function field(label, control) { return el("label", {}, [el("span", { textContent: label }), control]); }
   function select(values, value, change) {
     const node = el("select");
-    for (const [id, name] of values) node.append(el("option", { value: id, textContent: name }));
+    for (const [id, name] of values) node.append(el("option", { value: id, textContent: name,
+      title: id === "full" ? "AI được sửa file và chạy lệnh (python, git, cargo…) trong thư mục làm việc. Chỉ dùng với thư mục bạn tin tưởng." : "" }));
     node.value = value;
     node.onchange = async () => { change(node.value); await save(); render(); };
     return node;
@@ -100,8 +101,11 @@ export function createPlanCard() {
       field("Effort", select(EFFORTS.map(value => [value, value]), task.effort || "default", value => task.effort = value)),
       field("Phụ thuộc (mã, phân cách bằng dấu phẩy)", deps),
       field("Loại", select(["plan", "small_edit", "code", "test", "docs", "review"].map(v => [v, v]), task.kind, value => task.kind = value)),
-      field("Quyền", select([["read", "Chỉ đọc"], ["write", "Được sửa file"]], task.permission ||
+      field("Quyền", select([["read", "Chỉ đọc"], ["write", "Được sửa file"], ["full", "Toàn quyền (chạy lệnh)"]], task.permission ||
         (taskCanWrite(task) ? "write" : "read"), value => task.permission = value)));
+    if (!["codex_cli", "claude_cli"].includes(provider?.kind)) {
+      detail.append(el("small", { textContent: "Nguồn này không chạy lệnh" }));
+    }
     if (task.reassigned_from) detail.append(el("small", { textContent: `⚠ đã đổi từ ${task.reassigned_from} (chưa kết nối)` }));
     const ready = (task.depends_on || []).every(id => plan.tasks.find(t => t.id === id)?.status === "xong");
     detail.append(button("▶ Chạy task này", () => runPlanTask(task, plan), !plan.approved || busy() || !ready));

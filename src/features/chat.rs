@@ -14,6 +14,8 @@ pub enum Permission {
     Read,
     #[default]
     Write,
+    /// Edit files and run commands in the working directory (CLI providers only).
+    Full,
 }
 
 /// File tools an OpenAI-compatible source may use in agent mode (never commands).
@@ -313,6 +315,14 @@ pub fn agent_permission(
 mod file_tools_tests {
     use super::*;
     use crate::config::ProviderConfig;
+
+    #[test]
+    fn full_permission_roundtrips_and_write_stays_default() {
+        let full: Permission = serde_json::from_str("\"full\"").unwrap();
+        assert_eq!(full, Permission::Full);
+        assert_eq!(serde_json::to_string(&full).unwrap(), "\"full\"");
+        assert_eq!(Permission::default(), Permission::Write);
+    }
 
     fn source(kind: &str, agent_capable: bool) -> ProviderConfig {
         ProviderConfig {

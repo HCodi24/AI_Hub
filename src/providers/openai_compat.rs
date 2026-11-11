@@ -11,6 +11,8 @@ use tokio_util::sync::CancellationToken;
 
 pub struct OpenAiCompatibleProvider;
 
+// Write and Full behave identically here; command execution is only provided by CLI sources.
+
 #[async_trait]
 impl Provider for OpenAiCompatibleProvider {
     async fn run(

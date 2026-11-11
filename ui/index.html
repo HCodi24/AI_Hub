@@ -50,6 +50,8 @@
           <select id="permission-select" aria-label="Quyền">
             <option value="read">Chỉ đọc</option>
             <option value="write">Được sửa file</option>
+            <option value="full"
+              title="AI được sửa file và chạy lệnh (python, git, cargo…) trong thư mục làm việc. Chỉ dùng với thư mục bạn tin tưởng.">Toàn quyền (chạy lệnh)</option>
           </select>
         </label>
         <label id="file-tools-control" class="control-group permission-control" hidden>
@@ -58,7 +60,10 @@
             <option value="none">Không (chỉ chat)</option>
             <option value="read">Chỉ đọc file</option>
             <option value="write">Được sửa file</option>
+            <option value="full" disabled
+              title="AI được sửa file và chạy lệnh (python, git, cargo…) trong thư mục làm việc. Chỉ dùng với thư mục bạn tin tưởng.">Toàn quyền (chạy lệnh)</option>
           </select>
+          <small>Nguồn này không chạy lệnh</small>
         </label>
       </header>
       <div id="dev-chat-strip" class="dev-chat-strip" hidden></div>

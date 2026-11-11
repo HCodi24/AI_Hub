@@ -346,13 +346,50 @@ pub fn token_usage_log(usage: &Value, total_cost_usd: Option<&Value>) -> Option<
         line.push_str(&format!(" (suy luận {reasoning_tokens})"));
     }
     if let Some(cost) = total_cost_usd.filter(|value| !value.is_null()) {
-        let cost = cost
-            .as_str()
-            .map(str::to_owned)
-            .unwrap_or_else(|| cost.to_string());
+        let cost = format_cost(cost);
         line.push_str(&format!(", chi phí ${cost}"));
     }
     Some(line)
+}
+
+#[cfg(test)]
+mod cost_tests {
+    use super::token_usage_log;
+    use serde_json::json;
+
+    #[test]
+    fn costs_round_to_four_decimals_and_trim_trailing_zeros() {
+        for (value, expected) in [
+            (json!(0.5748474000000001), "$0.5748"),
+            (json!("0.5748474000000001"), "$0.5748"),
+            (json!(1.2300), "$1.23"),
+            (json!("2.00000"), "$2"),
+            (json!(0), "$0"),
+            (json!(0.00001), "$0"),
+            (json!("0.99999"), "$1"),
+        ] {
+            let usage = json!({"input_tokens": 12, "output_tokens": 3});
+            let line = token_usage_log(&usage, Some(&value)).unwrap();
+            assert_eq!(
+                line,
+                format!("Token: vào 12 (cache 0), ra 3, chi phí {expected}")
+            );
+        }
+    }
+}
+
+fn format_cost(cost: &Value) -> String {
+    let number = cost.as_f64().or_else(|| cost.as_str()?.parse::<f64>().ok());
+    if let Some(number) = number.filter(|number| number.is_finite()) {
+        let rounded = format!("{number:.4}");
+        return rounded
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_owned();
+    }
+    cost.as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| cost.to_string())
 }
 
 pub fn compose_prompt(messages: &[crate::chat::ChatMessage], has_session: bool) -> String {

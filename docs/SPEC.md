@@ -111,6 +111,18 @@ Dữ liệu nằm trong thư mục cấu hình hệ điều hành, dưới `ai-h
 
 ## Bảo mật
 
+- Quyền chat/task: `read` (Chỉ đọc), `write` (Được sửa file, mặc định), `full` (Toàn quyền: sửa file và chạy lệnh trong thư mục).
+  `Permission::Full` serialize thành `"full"`; task kế hoạch lưu và truyền nguyên giá trị này tới worker.
+- Claude CLI: `read` → `--permission-mode plan`; `write` → `--permission-mode acceptEdits`;
+  `full` → `--permission-mode acceptEdits --allowedTools Bash PowerShell` (mỗi tool là một đối số riêng).
+  Không dùng `bypassPermissions`. Parser nhận lỗi `tool_result` chứa `requires approval` hoặc `haven't granted`;
+  khi quyền khác `full`, ghi một lần mỗi lượt: “Lệnh bị chặn: chọn Quyền › Toàn quyền (chạy lệnh) để cho phép AI chạy lệnh.”
+- Codex CLI: `read` dùng `read-only`; `write` và `full` cùng dùng `workspace-write`, đã cho phép chạy lệnh trong workspace.
+  OpenAI-compatible agent coi `full` như `write` cho công cụ file; Anthropic và HTTP chat không có công cụ chạy lệnh.
+  UI ghi “Nguồn này không chạy lệnh” hoặc vô hiệu hóa lựa chọn Toàn quyền với nguồn không phải CLI.
+- Nhật ký token định dạng chi phí USD tối đa 4 chữ số thập phân, bỏ số 0 cuối, cho cả JSON number và numeric string
+  (ví dụ `0.5748474000000001` → `$0.5748`).
+
 - Máy chủ chỉ bind `127.0.0.1`; middleware chỉ chấp nhận Host loopback cùng cổng và kiểm tra Origin cho yêu cầu không phải GET.
 - API key không được đưa vào URL hoặc log. `GET /api/config` trả key đã che; cập nhật với key trống/đã che giữ nguyên key hiện tại.
 - CLI nhận prompt qua stdin. MutiS worker bị giới hạn vào các công cụ file được cung cấp; thao tác tiện ích dùng catalog lệnh cố định và yêu cầu xác nhận ở giao diện.

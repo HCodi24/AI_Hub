@@ -110,6 +110,9 @@ export function createDebateActions(getRecord, onProgress) {
       const permission = el("select", { ariaLabel: "Quyền sửa file" });
       permission.append(el("option", { value: "write", textContent: "Được sửa file" }),
         el("option", { value: "read", textContent: "Chỉ đọc file" }));
+      const full = el("option", { value: "full", textContent: "Toàn quyền (chạy lệnh)",
+        title: "AI được sửa file và chạy lệnh (python, git, cargo…) trong thư mục làm việc. Chỉ dùng với thư mục bạn tin tưởng." });
+      permission.append(full);
       const note = el("p", { className: "dc-meta" });
       function models() {
         const provider = state.config.providers.find(item => item.id === source.value);
@@ -117,8 +120,10 @@ export function createDebateActions(getRecord, onProgress) {
         effort.hidden = !EFFORT_KINDS.has(provider?.kind);
         effort.value = "default";
         const canWrite = provider?.agent_capable || ["codex_cli", "claude_cli"].includes(provider?.kind);
+        full.disabled = !["codex_cli", "claude_cli"].includes(provider?.kind);
+        if (full.disabled && permission.value === "full") permission.value = "write";
         permission.hidden = !canWrite;
-        note.textContent = canWrite ? "" : "Nguồn này chỉ chat, không sửa file";
+        note.textContent = full.disabled ? "Nguồn này không chạy lệnh" : "";
         buttons();
       }
       source.onchange = models;
