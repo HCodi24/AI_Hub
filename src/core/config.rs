@@ -174,13 +174,7 @@ impl Default for MutisConfig {
     }
 }
 fn default_worker_rules() -> String {
-    concat!(
-        "- Ghi mọi file bằng UTF-8 (không dùng PowerShell Set-Content/Out-File/>); ",
-        "dùng công cụ sửa file hoặc [System.IO.File]::WriteAllText với UTF8.\n",
-        "- Không xoá tính năng có sẵn khi viết lại code.\n",
-        "- Báo cáo rõ phần chưa làm."
-    )
-    .into()
+    super::rule::worker_defaults()
 }
 impl MutisConfig {
     pub fn effective(&self, flag: bool) -> bool {
@@ -282,7 +276,11 @@ impl Config {
                     base_url: String::new(),
                     api_key: String::new(),
                     executable: String::new(),
-                    models: vec!["gpt-6-luna".to_owned()],
+                    models: vec![
+                        "gpt-6-luna".to_owned(),
+                        "gpt-6.1-sol".to_owned(),
+                        "gpt-6.1-terra".to_owned(),
+                    ],
                     ..Default::default()
                 },
                 ProviderConfig {
@@ -316,20 +314,32 @@ pub fn config_file_path() -> Result<PathBuf> {
 }
 
 pub fn load_or_seed(path: &Path) -> Result<Config> {
-    if path.exists() {
+    let mut config: Config = if path.exists() {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Could not read config file at {}", path.display()))?;
-        let mut config: Config = serde_json::from_str(&content)
-            .with_context(|| format!("Could not parse config file at {}", path.display()))?;
-        merge_agent_providers(&mut config);
-        migrate_mutis(&mut config);
-        save(path, &config)?;
-        Ok(config)
+        serde_json::from_str(&content)
+            .with_context(|| format!("Could not parse config file at {}", path.display()))?
     } else {
-        let mut config = Config::seeded();
-        migrate_mutis(&mut config);
-        save(path, &config)?;
-        Ok(config)
+        Config::seeded()
+    };
+    merge_agent_providers(&mut config);
+    migrate_mutis(&mut config);
+    add_codex_cli_model_suggestions(&mut config);
+    save(path, &config)?;
+    Ok(config)
+}
+
+fn add_codex_cli_model_suggestions(config: &mut Config) {
+    for provider in config
+        .providers
+        .iter_mut()
+        .filter(|provider| provider.kind == "codex_cli")
+    {
+        for model in ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"] {
+            if !provider.models.iter().any(|existing| existing == model) {
+                provider.models.push(model.to_owned());
+            }
+        }
     }
 }
 

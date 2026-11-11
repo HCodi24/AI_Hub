@@ -22,7 +22,7 @@ export const settingsText = {
   },
   mutis: {
     enabled: "Bật MutiS", roles: "Vai trò", role: { lead: "Lập kế hoạch & review", big: "Code lớn", small: "Việc nhỏ" },
-    provider: "Nguồn", model: "Model", effort: "Mức suy luận", routing: "Định tuyến mặc định",
+    provider: "Nguồn", model: "Model", effort: "Reasoning effort", routing: "Định tuyến mặc định",
     kinds: { small_edit: "Sửa nhỏ", docs: "Tài liệu", code: "Code", test: "Test", plan: "Lập kế hoạch", review: "Review" } as Record<string, string>,
     switches: "Tự động hoá", auto_plan: "Tự động chia việc", verify_gate: "Cổng kiểm tra sau mỗi task", auto_review: "Review tự động",
     auto_fix: "Tạo task sửa khi review thất bại", fix_rounds_max: "Số vòng sửa tối đa", retry_api: "Thử lại khi API lỗi",
@@ -52,7 +52,7 @@ export const settingsText = {
     codexPlugins: "Plugin của Codex (chỉ xem)", codexMcp: "MCP server của Codex", addToCodex: "Thêm vào Codex", from: "Từ Claude Code của bạn",
     output: "Kết quả lệnh", pluginNote: "Cài plugin cần mạng và có thể mất một phút.", source: "Nguồn",
   },
-  efforts: { default: "Mặc định", low: "Thấp", medium: "Vừa", high: "Cao", xhigh: "Rất cao", max: "Tối đa" } as Record<string, string>,
+  efforts: { default: "Default", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" } as Record<string, string>,
   extensions: {
     installed: "Đã cài", notInstalled: "Chưa cài", codex: "Codex", claude: "Claude", indexed: "Thư mục đã lập chỉ mục",
     homepage: "Trang chủ", log: "Nhật ký", stop: "Dừng", done: "Hoàn tất", failed: "Lệnh thất bại",

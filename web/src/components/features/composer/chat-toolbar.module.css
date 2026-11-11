@@ -8,6 +8,16 @@
 .effort { color: var(--muted); }
 .panel { position: absolute; right: 0; bottom: calc(100% + var(--space-2)); width: min(560px, 90vw); max-height: 60dvh; overflow: auto; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--color-surface-raised); box-shadow: var(--shadow-2); z-index: var(--z-toolbar); }
 .controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.modelPicker { position: relative; min-width: 0; z-index: 1; }
+.modelPicker:focus-within { z-index: 2; }
+.modelInput { position: relative; display: flex; min-width: 0; }
+.modelInput input { width: 100%; min-width: 0; padding-right: 40px; }
+.modelInput > button { position: absolute; top: 50%; right: var(--space-1); transform: translateY(-50%); display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: var(--radius-small); background: transparent; color: inherit; cursor: pointer; }
+.modelInput > button:hover { background: var(--color-muted); }
+.modelOptions { position: absolute; top: calc(100% + var(--space-1)); left: 0; width: 100%; max-height: 220px; overflow-y: auto; padding: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius); background: var(--color-surface-raised); box-shadow: var(--shadow-2); z-index: var(--z-toolbar); }
+.modelOptions > button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--radius-small); background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.modelOptions > button:hover, .modelOptions > button[aria-selected="true"] { background: var(--color-muted); }
+.modelOptions small { color: var(--muted); font-size: var(--font-small); }
 .switches { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); font-size: var(--font-13); }
 .field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .field > span, .note { color: var(--muted); font-size: var(--font-small); }

@@ -16,6 +16,13 @@ import { cardText as t } from "@/text/cards";
 import { useShallow } from "zustand/react/shallow";
 import { notify } from "@/components/toast/toast";
 
+const MODEL_LABELS: Record<string, string> = {
+  "gpt-6-luna": "GPT-6 Luna",
+  "gpt-6.1-sol": "GPT-6.1 Sol",
+  "gpt-6.1-terra": "GPT-6.1 Terra",
+};
+const CODEX_CLI_MODEL_SUGGESTIONS = ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"];
+
 /** Thin top row: mobile menu, title, memory. */
 export function ChatHeader() {
   const { folder, setDrawer } = useChatStore(useShallow(s => ({ folder: s.settings.folder, setDrawer: s.setDrawer })));
@@ -31,9 +38,13 @@ export function ChatHeader() {
 /** Compact picker for the composer box: one summary line that opens the full settings upward. */
 export function ChatToolbar({ config }: { config?: Config }) {
   const { settings, configure, initialize, streaming } = useChatStore(useShallow(s => ({ settings: s.settings, configure: s.configure, initialize: s.initialize, streaming: s.streaming })));
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const mutis = useQuery({ queryKey: ["mutis"], queryFn: () => mutisApi.get() });
   const client = useQueryClient();
   const provider = config?.providers.find((entry) => entry.id === (settings.provider_id === "mutis" ? mutis.data?.roles.lead.provider_id : settings.provider_id));
+  const models = provider?.kind === "codex_cli"
+    ? [...new Set([...provider.models, ...CODEX_CLI_MODEL_SUGGESTIONS])]
+    : provider?.models || [];
   const cli = provider?.kind.endsWith("_cli");
   useEffect(() => {
     if (config) initialize(config.default_folder, config.providers[0]?.id || "", config.providers[0]?.models[0] || "");
@@ -50,8 +61,27 @@ export function ChatToolbar({ config }: { config?: Config }) {
         <Select label={chatText.source} value={settings.provider_id} disabled={streaming} onChange={(event) => changeProvider(event.target.value)}>
           <option value="">{chatText.source}</option><option value="mutis" disabled={!mutis.data?.enabled}>{t.mutis}</option>{config?.providers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </Select>
-        <label className={styles.field}><span>{chatText.model}</span><input list="chat-models" value={settings.model} disabled={streaming}
-          onChange={(event) => configure({ model: event.target.value })} /><datalist id="chat-models">{provider?.models.map((model) => <option key={model} value={model} />)}</datalist></label>
+        <div className={styles.modelPicker} onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setModelMenuOpen(false);
+        }}>
+          <div className={styles.field}><span>{chatText.model}</span><div className={styles.modelInput}>
+            <input aria-label={chatText.model} value={settings.model} disabled={streaming} aria-haspopup="listbox" aria-expanded={modelMenuOpen}
+              onFocus={() => setModelMenuOpen(true)} onKeyDown={(event) => { if (event.key === "Escape") setModelMenuOpen(false); }}
+              onChange={(event) => configure({ model: event.target.value })} />
+            <button type="button" aria-label={chatText.model} aria-expanded={modelMenuOpen} disabled={streaming}
+              onClick={() => setModelMenuOpen((open) => !open)}><ChevronDown size={16} aria-hidden="true" /></button>
+          </div></div>
+          {modelMenuOpen && <div className={styles.modelOptions} role="listbox" aria-label={chatText.model}>
+            {models.map((model) => {
+              const label = MODEL_LABELS[model] || model;
+              return <button key={model} type="button" role="option" aria-selected={settings.model === model}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => { configure({ model }); setModelMenuOpen(false); }}>
+                <span>{label}</span><small>{model}</small>
+              </button>;
+            })}
+          </div>}
+        </div>
         <Select label={chatText.permission} value={settings.permission} disabled={streaming} onChange={(event) => configure({ permission: PermissionSchema.parse(event.target.value) })}>
           {PERMISSIONS.map((permission) => <option key={permission} value={permission} disabled={permission === "full" && !cli}>{chatText[permission]}</option>)}
         </Select>
