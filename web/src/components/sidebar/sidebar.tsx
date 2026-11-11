@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { PenSquare, Home, History, Search, X, PanelLeftClose, PanelLeftOpen, Settings, Hammer, ChevronDown, ChevronRight, Folder } from "lucide-react";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
@@ -23,6 +23,13 @@ const LOGO_DARK = "/app/brand/mutis-logo-dark.svg";
 export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; openSettings: () => void; openDevChat?: () => void }) {
   const { id, devChat, drawer, streaming, reset, setDrawer } = useChatStore(useShallow(s => ({ id: s.id, devChat: s.settings.dev_chat, drawer: s.drawer, streaming: s.streaming, reset: s.reset, setDrawer: s.setDrawer })));
   const [collapsed, setCollapsed] = useState(false);
+  const [width, setWidth] = useState(320);
+  const [containerWidth, setContainerWidth] = useState(960);
+  const [resizing, setResizing] = useState(false);
+  const drag = useRef<{ x: number; width: number } | null>(null);
+  const maxWidth = Math.floor(containerWidth / 3);
+  const minWidth = Math.min(320, maxWidth);
+  const sidebarWidth = Math.max(minWidth, Math.min(width, maxWidth));
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [closed, setClosed] = useState<Set<string>>(new Set());
@@ -31,6 +38,14 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
   const history = useRef<HTMLElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const filteredChats = chats.filter(chat => chat.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  useEffect(() => {
+    const container = panel.current?.parentElement;
+    if (!container) return;
+    const observer = new ResizeObserver(() => setContainerWidth(container.clientWidth));
+    observer.observe(container);
+    setContainerWidth(container.clientWidth);
+    return () => observer.disconnect();
+  }, []);
   useEffect(() => {
     function closePreferences(event: PointerEvent | KeyboardEvent) {
       if (!preferences.current?.open) return;
@@ -81,6 +96,7 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
   return <>
     {drawer && <button className={styles.backdrop} aria-label={chatText.close} onClick={() => setDrawer(false)} />}
     <aside ref={panel} className={cn(styles.sidebar, drawer && styles.open, collapsed && styles.collapsed)}
+      style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties} data-resizing={resizing || undefined}
       role={drawer ? "dialog" : undefined} aria-modal={drawer || undefined} aria-label={chatText.history}>
       <div className={styles.menuLabels}><span>File</span><span>Edit</span><span>View</span></div>
       <WindowControls />
@@ -125,6 +141,37 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
           })}
         </nav>
       </div>
+      <div className={styles.resizeHandle} role="separator" aria-orientation="vertical" aria-label={chatText.resizeSidebar}
+        aria-controls="sidebar-content" aria-valuemin={minWidth} aria-valuemax={maxWidth} aria-valuenow={sidebarWidth} tabIndex={0}
+        onPointerDown={event => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.currentTarget.setPointerCapture(event.pointerId);
+          drag.current = { x: event.clientX, width: sidebarWidth };
+          setResizing(true);
+        }}
+        onPointerMove={event => {
+          if (!drag.current) return;
+          const nextWidth = drag.current.width + event.clientX - drag.current.x;
+          if (nextWidth < minWidth - 32) {
+            drag.current = null;
+            setResizing(false);
+            setWidth(minWidth);
+            setCollapsed(true);
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            return;
+          }
+          setWidth(Math.max(minWidth, Math.min(maxWidth, nextWidth)));
+        }}
+        onPointerUp={event => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onLostPointerCapture={() => { drag.current = null; setResizing(false); }}
+        onKeyDown={event => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          setWidth(event.key === "Home" ? minWidth : event.key === "End" ? maxWidth : Math.max(minWidth, Math.min(maxWidth, sidebarWidth + (event.key === "ArrowRight" ? 16 : -16))));
+        }} />
     </aside>
   </>;
 }

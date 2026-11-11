@@ -12,7 +12,7 @@ export const chatText = {
   limits: "Hạn mức CLI", limitReached: "Đã chạm hạn mức", limitWarning: "Gần chạm hạn mức", limitUnknown: "Chưa có dữ liệu hạn mức",
   limitUsed: (percent: number) => `Đã dùng ${percent}%`, limitReset: "Reset", limitUpdated: "Cập nhật", limitStale: "Dữ liệu cũ",
   limitError: "Không thể đọc hạn mức lúc này", limitHint: "Hạn mức phụ thuộc tài khoản CLI. Claude cập nhật khi CLI gửi thông tin trong cuộc trò chuyện; một số tài khoản không cung cấp dữ liệu này.",
-  mode: "Chế độ làm việc", collapseSidebar: "Thu gọn thanh bên", expandSidebar: "Mở thanh bên",
+  mode: "Chế độ làm việc", collapseSidebar: "Thu gọn thanh bên", expandSidebar: "Mở thanh bên", resizeSidebar: "Điều chỉnh độ rộng thanh bên",
   navigation: "Điều hướng", recents: "Gần đây", noFolder: "Chat", openFolder: "Mở thư mục…", chooseFolder: "Chọn thư mục", pickFolderFailed: "Không mở được hộp thoại chọn thư mục", searchChats: "Tìm trò chuyện", noChatsFound: "Không tìm thấy trò chuyện", workspaceMenu: "Menu không gian làm việc",
   composerActions: "Thêm ảnh và mở bộ nhớ",
   light: "Sáng", dark: "Tối", system: "Hệ thống", appearance: "Giao diện",
