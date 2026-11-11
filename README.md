@@ -280,6 +280,8 @@ Ghi chú AI có thể cũ hoặc sai: AI được nhắc kiểm chứng với co
 
 R1 bổ sung React 19 / Next.js 16 Pages Router tại `/app/`, dùng API chat hiện có. Giao diện cũ tiếp tục ở `/` và có liên kết “Giao diện mới (beta)” dưới sidebar.
 
+R3 thêm nút **Cài đặt** ở sidebar của `/app`: Nguồn AI (thêm/sửa/xoá, kiểm tra kết nối, tải model, tự tìm CLI, đăng nhập Claude), Chung (thư mục mặc định, thời gian chờ, bộ nhớ dự án), MutiS (vai trò, định tuyến, tự động hoá, tranh luận, quy tắc worker, thống kê 30 ngày), Tiện ích và Phát triển (repo, diff, checkpoint/commit, test, build & khởi động lại). Chưa chuyển: chẩn đoán MutiS bằng AI và chat phát triển — vẫn dùng giao diện cũ.
+
 ```powershell
 cd web
 npm.cmd run typecheck

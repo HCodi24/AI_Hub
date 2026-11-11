@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, MessageSquare, ArrowUpRight, X, Layers, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Plus, MessageSquare, ArrowUpRight, X, Layers, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import { Button } from "@/components/button/button";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
@@ -8,10 +8,11 @@ import { ThemeControl } from "@/components/theme-control/theme-control";
 import { useShallow } from "zustand/react/shallow";
 import type { ChatSummary } from "@/schema/chat.schema";
 import { chatText } from "@/text/chat";
+import { settingsText } from "@/text/settings";
 import { routes } from "@/routes/routes";
 import { cn } from "@/lib/utils";
 import styles from "./sidebar.module.css";
-export function Sidebar({ chats, loading, load }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void> }) {
+export function Sidebar({ chats, loading, load, openSettings }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; openSettings: () => void }) {
   const { id, drawer, streaming, reset, setDrawer } = useChatStore(useShallow(s => ({ id: s.id, drawer: s.drawer, streaming: s.streaming, reset: s.reset, setDrawer: s.setDrawer })));
   const [collapsed, setCollapsed] = useState(false);
   const panel = useRef<HTMLElement>(null);
@@ -57,6 +58,7 @@ export function Sidebar({ chats, loading, load }: { chats: ChatSummary[]; loadin
         {chats.map((chat) => <button key={chat.id} disabled={streaming} aria-current={chat.id === id ? "page" : undefined}
           onClick={() => void load(chat.id)}><MessageSquare size={15} aria-hidden="true" /><span>{chat.title || chatText.newChat}</span></button>)}
       </nav>
+      <Button variant="ghost" onClick={() => { setDrawer(false); openSettings(); }}><Settings size={18} aria-hidden="true" />{settingsText.open}</Button>
       <ThemeControl />
       <a className={styles.legacy} href={routes.legacy}>{chatText.legacy}<ArrowUpRight size={16} aria-hidden="true" /></a>
     </aside>

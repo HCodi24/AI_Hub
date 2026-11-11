@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Head from "next/head";
 import { useShallow } from "zustand/react/shallow";
 import { MessageList } from "./message-list";
@@ -13,14 +13,16 @@ import styles from "./chat-screen.module.css";
 import { Toast, useToast } from "@/components/toast/toast";
 import { setRunnerMemoryHandler } from "@/components/features/plan/plan-runner";
 import { memoryNotice } from "@/components/features/memory/memory-events";
+import { SettingsDialog } from "@/components/features/settings/settings-dialog";
 export function ChatScreen() {
   useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
-  const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, status: s.status })));
+  const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, status: s.status, folder: s.settings.folder })));
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { config, chats, send, stop, load } = useChat();
   const queryError = config.error || chats.error;
   return <><Head><title>{chatText.brand}</title><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
     <a className={styles.skip} href="#chat-main">{chatText.skip}</a>
-    <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} />
+    <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} openSettings={() => setSettingsOpen(true)} />
       <main id="chat-main" className={styles.main}>
         <ChatToolbar config={config.data} />
         {config.isPending && <Spinner />}
@@ -37,5 +39,5 @@ export function ChatScreen() {
         </div>
         <Composer streaming={state.streaming} send={send} stop={stop} />
       </main>
-    </div><Toast /></>;
+    </div>{settingsOpen && <SettingsDialog folder={state.folder} close={() => setSettingsOpen(false)} />}<Toast /></>;
 }

@@ -14,6 +14,23 @@ export const MutisSchema = z.object({
     auto_review: z.boolean().default(false),
     auto_fix: z.boolean().default(false),
     fix_rounds_max: z.number().default(2),
+    retry_api: z.boolean().default(false),
+    retry_attempts: z.number().default(3),
+    retry_base_ms: z.number().default(2000),
+    codex_watchdog: z.boolean().default(false),
+    watchdog_minutes: z.number().default(5),
+    codex_auto_resume: z.boolean().default(false),
+    resume_max: z.number().default(2),
+    deepseek_agent: z.boolean().default(false),
+    deepseek_max_file_lines: z.number().default(400),
+    deepseek_max_steps: z.number().default(15),
+    debate_rounds: z.number().default(2),
+    debate_judge_model: z.string().default(""),
+    verify_command: z.string().default(""),
+    verify_ignore: z.array(z.string()).default([]),
+    reviewer_provider_id: z.string().default(""),
+    reviewer_model: z.string().default(""),
+    event_log: z.boolean().default(true),
     roles: z.object({
         lead: RoleSchema,
         big: RoleSchema,
@@ -35,3 +52,16 @@ export const ResolvedRolesSchema = z.object({
     small: ResolvedRoleSchema
 });
 export type Mutis = z.infer<typeof MutisSchema>;
+const StatGroupSchema = z.object({
+    tasks_run: z.number().default(0), success_rate: z.number().default(0), avg_duration_ms: z.number().default(0),
+    total_tokens: z.number().default(0), retries: z.number().default(0), watchdog_kills: z.number().default(0),
+    resumes: z.number().default(0), verify_fail_rate: z.number().default(0), review_fail_rate: z.number().default(0),
+    fix_rounds: z.number().default(0),
+    top_errors: z.array(z.object({ message: z.string(), count: z.number() })).default([])
+}).passthrough();
+export const MutisStatsSchema = z.object({
+    days: z.number(),
+    providers: z.record(StatGroupSchema).default({}),
+    task_kinds: z.record(StatGroupSchema).default({})
+}).passthrough();
+export type MutisStats = z.infer<typeof MutisStatsSchema>;

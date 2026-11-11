@@ -4,3 +4,4 @@
 .dialog h2 { font-size: 20px; }
 .dialog textarea { width: 100%; min-height: 280px; resize: vertical; }
 .dialog p { overflow-wrap: anywhere; }
+.wide { width: min(980px, calc(100vw - 32px)); height: min(760px, calc(100dvh - 32px)); }
