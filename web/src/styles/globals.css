@@ -1,0 +1,18 @@
+@import "./tokens.css";
+* { box-sizing: border-box; }
+html, body, #__next { margin: 0; height: 100%; width: 100%; }
+body { background: var(--bg); color: var(--text); font: var(--font-body)/1.6 var(--font-sans); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button, a, select, summary { -webkit-tap-highlight-color: transparent; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .55; }
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+button, input, select, textarea { border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); }
+input, select { padding: var(--space-2) var(--space-3); min-width: 0; max-width: 100%; }
+button { padding: var(--space-2) var(--space-3); }
+button:hover:enabled { background: var(--accent-soft); }
+pre, code { font-family: var(--font-mono); }
+svg { flex-shrink: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; } }

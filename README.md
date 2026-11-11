@@ -275,3 +275,23 @@ có thể **Hoàn tác** trên thông báo hoặc **Khôi phục** trong bảng 
 Với Codex/Claude CLI, ngữ cảnh bộ nhớ chỉ được đưa vào phiên mới hoặc khi đổi nguồn;
 với nguồn HTTP, nó đi cùng lịch sử mỗi lượt. Planner và Tranh luận cũng đọc bộ nhớ.
 Ghi chú AI có thể cũ hoặc sai: AI được nhắc kiểm chứng với code/git trước khi tin.
+
+## Giao diện mới (web/)
+
+R1 bổ sung React 19 / Next.js 16 Pages Router tại `/app/`, dùng API chat hiện có. Giao diện cũ tiếp tục ở `/` và có liên kết “Giao diện mới (beta)” dưới sidebar.
+
+```powershell
+cd web
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run build
+cd ..
+$env:CARGO_TARGET_DIR = 'target/codex'
+cargo build --release --offline
+```
+
+`web/out` được nhúng nếu có lúc build Rust; có thể phục vụ từ `<repo>/web/out` hoặc `<exe dir>/web/out`. Thiếu export không chặn backend khởi động, `/app/` hiển thị hướng dẫn build. Dev React: `npm.cmd run dev` trong web, cổng 7880, API được chuyển tới backend local cổng 7878.
+
+R1 hỗ trợ lịch sử, chat SSE, markdown, hoạt động, diff, light/dark và drawer mobile. Plan/debate hiển thị liên kết về UI cũ; cấu hình nguồn vẫn thực hiện ở UI cũ. Cấu trúc cho các bước tiếp theo: [docs/FE_STRUCTURE.md](docs/FE_STRUCTURE.md).
+
+`verify.ps1` thêm typecheck/lint/build web và bỏ qua có cảnh báo nếu thiếu node_modules. `smoke.ps1` dùng dữ liệu/cổng riêng, kiểm tra `/app/` khi có export và giữ tiến trình smoke đang chạy, in PID/URL để tuân thủ yêu cầu không dừng ai-hub.

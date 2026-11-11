@@ -1,0 +1,38 @@
+import Head from "next/head";
+import { Virtuoso } from "react-virtuoso";
+import { Sidebar } from "@/components/sidebar/sidebar";
+import { EmptyState } from "@/components/empty-state/empty-state";
+import { Spinner } from "@/components/spinner/spinner";
+import { Composer } from "@/components/features/composer/composer";
+import { ChatToolbar } from "./chat-toolbar";
+import { ChatMessage } from "./chat-message";
+import { useChatStore } from "./chat-store";
+import { useChat } from "./use-chat";
+import { chatText } from "@/text/chat";
+import styles from "./chat-screen.module.css";
+export function ChatScreen() {
+  const state = useChatStore();
+  const { config, chats, send, stop, load } = useChat();
+  const queryError = config.error || chats.error;
+  return <><Head><title>{chatText.brand}</title><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
+    <a className={styles.skip} href="#chat-main">{chatText.skip}</a>
+    <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} />
+      <main id="chat-main" className={styles.main}>
+        <ChatToolbar config={config.data} />
+        {config.isPending && <Spinner />}
+        {queryError && <div role="alert" className={styles.error}>{queryError.message}
+          <button onClick={() => { void config.refetch(); void chats.refetch(); }}>{chatText.retry}</button></div>}
+        {state.error && <div role="alert" className={styles.error}>{state.error}</div>}
+        <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
+          {state.messages.length ? <Virtuoso data={state.messages} followOutput="auto" initialTopMostItemIndex={state.messages.length - 1}
+            itemContent={(_index, message) => <ChatMessage message={message} chatId={state.id} />} /> : <EmptyState />}
+        </section>
+        <div className={styles.status} role="status" aria-live="polite" aria-atomic="true">
+          {state.streaming && <>{chatText.streaming} {state.status.provider_name} {state.status.model}
+            {state.status.elapsed_s !== undefined && ` · ${state.status.elapsed_s} ${chatText.seconds}`}
+            {state.status.idle_s !== undefined && ` · ${chatText.idle}: ${state.status.idle_s} ${chatText.seconds}`}</>}
+        </div>
+        <Composer streaming={state.streaming} send={send} stop={stop} />
+      </main>
+    </div></>;
+}

@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
-$targetRoot = Join-Path $repo 'target\smoke'
+$targetRoot = Join-Path $repo ('target\smoke-' + [Guid]::NewGuid().ToString('N'))
 $dataRoot = Join-Path $targetRoot 'data'
 $logs = Join-Path $targetRoot 'logs'
 if (Test-Path $dataRoot) {
@@ -20,11 +20,17 @@ $process = $null
 try {
   $build = Start-Process -FilePath 'cargo' -ArgumentList @('build','--offline') -WorkingDirectory $repo -PassThru -Wait -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logs 'build.txt') -RedirectStandardError (Join-Path $logs 'build-stderr.txt')
   if ($build.ExitCode -ne 0) { throw "cargo build failed with exit $($build.ExitCode); see target\smoke\logs" }
-  $exe = Join-Path $env:CARGO_TARGET_DIR 'debug\ai-hub.exe'
+  $builtExe = Join-Path $env:CARGO_TARGET_DIR 'debug\ai-hub.exe'
+  $exe = Join-Path $targetRoot 'ai-hub.exe'
+  Copy-Item -LiteralPath $builtExe -Destination $exe
   $env:AI_HUB_CONFIG_PATH = $configPath
-  $env:AI_HUB_PORT = '7911'
-  $process = Start-Process -FilePath $exe -ArgumentList @('--port','7911','--no-open') -PassThru -WindowStyle Hidden
-  $base = 'http://127.0.0.1:7911'
+  $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+  $listener.Start()
+  $smokePort = $listener.LocalEndpoint.Port
+  $listener.Stop()
+  $env:AI_HUB_PORT = [string]$smokePort
+  $process = Start-Process -FilePath $exe -ArgumentList @('--port', [string]$smokePort, '--no-open') -PassThru -WindowStyle Hidden
+  $base = "http://127.0.0.1:$smokePort"
   Add-Type -AssemblyName System.Net.Http
   $client = [System.Net.Http.HttpClient]::new()
   # Role resolution probes local CLI binaries, which can take up to 10 seconds.
@@ -47,6 +53,18 @@ try {
     if ($relative -ne 'index.html') { $assetPaths.Add("/$relative") }
   }
   foreach ($path in $assetPaths) { try { $status=Get-Status "$base$path"; if ($status -ne 200) { $failures.Add("GET $path => $status") } } catch { $failures.Add("GET $path => $($_.Exception.Message)") } }
+  if (Test-Path (Join-Path $repo 'web/out/index.html')) {
+    try {
+      $response = $client.GetAsync("$base/app/").GetAwaiter().GetResult()
+      try {
+        if ([int]$response.StatusCode -ne 200 -or $response.Content.Headers.ContentType.MediaType -ne 'text/html') {
+          throw '/app/ must return 200 HTML'
+        }
+        $html = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        if (-not $html.Contains('/app/_next/')) { throw '/app/ did not serve the Next export' }
+      } finally { $response.Dispose() }
+    } catch { $failures.Add("web: $($_.Exception.Message)") }
+  }
   # Memory CRUD stays entirely local; no provider request is made.
   try {
     $folderQuery = [Uri]::EscapeDataString($repo)
@@ -94,7 +112,10 @@ try {
   try { $current=Invoke-RestMethod -UseBasicParsing "$base/api/mutis" -TimeoutSec 10; $body=ConvertTo-Json -InputObject $current -Depth 30; $r=Invoke-WebRequest -UseBasicParsing -Method Put -Uri "$base/api/mutis" -ContentType 'application/json' -Body $body -TimeoutSec 10; if ([int]$r.StatusCode -ge 500) { $failures.Add("PUT /api/mutis => $($r.StatusCode)") } } catch { $failures.Add("PUT /api/mutis => $($_.Exception.Message)") }
 } catch { $failures.Add($_.Exception.Message) }
 finally {
-  if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue; $process.WaitForExit() }
+  if ($client) { $client.Dispose() }
+  if ($process -and -not $process.HasExited) {
+    Write-Host "Smoke server retained: PID $($process.Id), $base (no ai-hub process is stopped)"
+  }
   Remove-Item Env:AI_HUB_CONFIG_PATH -ErrorAction SilentlyContinue
   Remove-Item Env:AI_HUB_PORT -ErrorAction SilentlyContinue
 }

@@ -49,6 +49,9 @@ pub fn router(state: AppState) -> Router {
     let port = state.port;
     Router::new()
         // Static UI routes.
+        .route("/app", get(crate::api::static_ui::web_index))
+        .route("/app/", get(crate::api::static_ui::web_index))
+        .route("/app/{*path}", get(crate::api::static_ui::web_asset))
         .route("/", get(crate::api::static_ui::index))
         .route("/{*path}", get(crate::api::static_ui::asset))
         // Development routes.

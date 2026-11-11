@@ -33,6 +33,17 @@ function Invoke-LoggedCheck([string]$Name, [scriptblock]$Action, [bool]$ReportOn
 }
 
 $env:CARGO_TARGET_DIR = $targetRoot
+if (Test-Path (Join-Path $repo 'web/node_modules')) {
+  Push-Location (Join-Path $repo 'web')
+  try {
+    $null = Invoke-LoggedCheck 'web-typecheck' { npx.cmd --no-install tsc --noEmit }
+    $null = Invoke-LoggedCheck 'web-lint' { npm.cmd run lint }
+    $null = Invoke-LoggedCheck 'web-build' { npm.cmd run build }
+    $null = Invoke-LoggedCheck 'web-contract' { node ../scripts/test-web.cjs }
+  } finally { Pop-Location }
+} else {
+  Write-Host 'WARNING: skipped web-typecheck, web-lint, web-build: web/node_modules is missing'
+}
 $null = Invoke-LoggedCheck 'fmt' { cargo fmt --check }
 $null = Invoke-LoggedCheck 'clippy' { cargo clippy --offline --all-targets -- -D warnings }
 $null = Invoke-LoggedCheck 'test' { cargo test --offline }

@@ -1,0 +1,5 @@
+.composer { width: 100%; max-width: 900px; margin: 0 auto; padding: var(--space-3) var(--space-6); }
+.box { display: flex; gap: var(--space-2); align-items: flex-end; background: var(--surface); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.box textarea { flex: 1; width: 0; min-width: 0; resize: none; border: 0; padding: var(--space-2); max-height: 180px; background: transparent; }
+.composer p { color: var(--muted); font-size: var(--font-small); text-align: center; margin: var(--space-2) 0 0; }
+@media (max-width: 767px) { .composer { padding: var(--space-3); } }

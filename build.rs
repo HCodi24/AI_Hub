@@ -1,17 +1,31 @@
 use std::{env, fs, path::Path};
 
 fn main() {
-    let root = Path::new(&env::var("CARGO_MANIFEST_DIR").expect("manifest dir")).join("ui");
-    let out = Path::new(&env::var("OUT_DIR").expect("output dir")).join("ui_assets.rs");
-    let mut files = Vec::new();
-    walk(&root, &mut files);
-    files.sort();
+    let manifest = env::var("CARGO_MANIFEST_DIR").expect("manifest dir");
+    let output = env::var("OUT_DIR").expect("output dir");
+    generate(
+        &Path::new(&manifest).join("ui"),
+        &Path::new(&output).join("ui_assets.rs"),
+        "UI_ASSETS",
+    );
+    generate(
+        &Path::new(&manifest).join("web/out"),
+        &Path::new(&output).join("web_assets.rs"),
+        "WEB_ASSETS",
+    );
+    println!("cargo:rerun-if-changed=ui");
+    println!("cargo:rerun-if-changed=web/out");
+}
 
-    let mut generated = String::from("static UI_ASSETS: &[(&str, &[u8])] = &[\n");
+fn generate(root: &Path, out: &Path, table: &str) {
+    let mut files = Vec::new();
+    walk(root, &mut files);
+    files.sort();
+    let mut generated = format!("static {table}: &[(&str, &[u8])] = &[\n");
     for file in files {
         let name = file
-            .strip_prefix(&root)
-            .expect("asset under ui")
+            .strip_prefix(root)
+            .expect("asset under root")
             .to_string_lossy()
             .replace('\\', "/");
         let absolute = file
@@ -23,8 +37,7 @@ fn main() {
         ));
     }
     generated.push_str("];\n");
-    fs::write(out, generated).expect("write UI asset table");
-    println!("cargo:rerun-if-changed=ui");
+    fs::write(out, generated).expect("write asset table");
 }
 
 fn walk(directory: &Path, files: &mut Vec<std::path::PathBuf>) {

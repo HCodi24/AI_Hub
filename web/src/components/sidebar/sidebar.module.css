@@ -1,0 +1,19 @@
+.sidebar { width: 272px; flex-shrink: 0; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6) var(--space-4); height: 100%; }
+.brand { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.brand svg { color: var(--accent); }
+.brand strong { font-size: 20px; }
+.brand > span { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; }
+.sidebar h2 { font-size: var(--font-small); text-transform: uppercase; color: var(--muted); margin: var(--space-2) 0 0; letter-spacing: .05em; }
+.history { flex: 1; overflow-y: auto; min-height: 0; }
+.history p { color: var(--muted); }
+.history button { display: flex; align-items: center; gap: var(--space-2); width: 100%; border: 0; background: transparent; text-align: left; margin-bottom: var(--space-1); }
+.history button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history button[aria-current] { background: var(--accent-soft); color: var(--accent); }
+.legacy { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); border-top: 1px solid var(--border); font-size: var(--font-small); }
+.close, .backdrop { display: none; }
+@media (max-width: 767px) {
+  .sidebar { display: none; position: fixed; left: 0; top: 0; width: min(310px, calc(100vw - 40px)); z-index: 30; box-shadow: var(--shadow); }
+  .open { display: flex; }
+  .close { display: block; margin-left: auto; }
+  .backdrop { display: block; position: fixed; inset: 0; z-index: 29; background: #0009; border: 0; border-radius: 0; }
+}

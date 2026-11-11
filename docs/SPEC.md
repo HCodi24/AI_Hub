@@ -13,6 +13,10 @@ AI Hub là ứng dụng desktop cục bộ dạng một binary Rust, phục vụ
 ## API theo tính năng
 
 ### Giao diện
+- `GET /app`, `/app/`, `/app/{*path}`: React 19 / Next.js 16 Pages Router static export trong `web/out`. Route thư mục đọc `index.html`; đường dẫn lạ trả `404.html` hoặc `index.html`. MIME JS/CSS/WOFF2/SVG/JSON/TXT chính xác; chặn traversal và symlink ra ngoài export.
+- `build.rs` nhúng `web/out` khi có lúc build; thiếu thư mục tạo bảng rỗng, backend vẫn chạy. Dev ưu tiên repo/web/out; bản thường hỗ trợ cwd/web/out và exe-dir/web/out, rồi tài nguyên nhúng. Chưa có export trả trang tiếng Việt hướng dẫn `npm run build` trong web.
+- Build: `cd web`, `npm run typecheck`, `npm run lint`, `npm run build`; sau đó build Rust offline với `CARGO_TARGET_DIR=target/codex`. `/` vẫn là legacy UI, thêm link beta trong sidebar.
+- R1: sidebar lịch sử, chọn nguồn/model/quyền/effort, thư mục theo chat, composer Enter/Shift+Enter/Dừng, SSE store Zustand, virtualized messages, markdown sanitize/highlight/copy, hoạt động/token/diff/lỗi. Card plan/debate là link về `/`. Query data dùng React Query; cấu trúc theo `docs/FE_STRUCTURE.md`.
 - `GET /` và `GET /{*path}`: trang và tài nguyên UI đã nhúng.
 
 ### Chế độ phát triển (`/api/dev`)

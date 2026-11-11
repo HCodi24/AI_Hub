@@ -1,0 +1,17 @@
+.toolbar { border-bottom: 1px solid var(--border); padding: var(--space-3) var(--space-6); background: var(--surface); }
+.heading { display: flex; align-items: center; gap: var(--space-3); color: var(--muted); margin-bottom: var(--space-3); }
+.heading > span:nth-last-child(2) { flex: 1; }
+.controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
+.field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.field > span, .folder > span, .note { color: var(--muted); font-size: var(--font-small); }
+.folder { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
+.folder input { flex: 1; width: 0; font-family: var(--font-mono); font-size: var(--font-small); }
+.mobile { display: none; }
+.note { display: block; margin-top: var(--space-1); }
+@media (max-width: 767px) {
+  .toolbar { padding: var(--space-3); }
+  .mobile { display: inline-flex; }
+  .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+  .folder { align-items: stretch; flex-direction: column; gap: var(--space-1); }
+  .folder input { width: 100%; }
+}
