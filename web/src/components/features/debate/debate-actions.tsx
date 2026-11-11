@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Play, Sparkles } from "lucide-react";
+import { Button } from "@/components/button/button";
+import { useShallow } from "zustand/react/shallow";
 import { useQuery } from "@tanstack/react-query";
 import { debatesApi } from "@/apis/debates.api";
 import { configApi } from "@/apis/config.api";
@@ -13,14 +16,15 @@ import type { Debate } from "@/schema/debates.schema";
 export function DebateActions({ debate }: { debate: Debate }) {
   const [open, setOpen] = useState(false); const [busy, setBusy] = useState(false);
   const { send } = useChat();
-  const { streaming, settings, configure } = useChatStore(); const running = useCardStore(s => s.running);
+  const { streaming, settings, configure } = useChatStore(useShallow(s => ({ streaming: s.streaming, settings: s.settings, configure: s.configure })));
+  const running = useCardStore(s => s.running);
   const config = useQuery({ queryKey: ["config"], queryFn: () => configApi.get() });
   const blocked = busy || streaming || Boolean(running);
   async function act(action: () => Promise<unknown>) { setBusy(true); try { await action(); } catch (e) { notify(e instanceof Error ? e.message : t.error); } finally { setBusy(false); } }
-  return <div><button disabled={blocked || Boolean(debate.plan_id)} onClick={() => void act(async () => {
+  return <footer><Button variant="primary" size="sm" disabled={blocked || Boolean(debate.plan_id)} onClick={() => void act(async () => {
     const full = await debatesApi.get(debate.id); await startCard(full.plan_request, "plan", debate.id);
-  })}>{t.planExecute}</button>
-    <button disabled={blocked} aria-expanded={open} onClick={() => setOpen(!open)}>{t.executeWith}</button>
+  })}><Sparkles size={16} aria-hidden="true" />{t.planExecute}</Button>
+    <Button size="sm" disabled={blocked} aria-expanded={open} onClick={() => setOpen(!open)}><Play size={16} aria-hidden="true" />{t.executeWith}</Button>
     {open && <div role="group" aria-label={t.executeWith}>
       <SourceControls providers={config.data?.providers || []} value={{ assignee: settings.provider_id, model: settings.model, effort: settings.effort, permission: settings.permission }}
         change={value => configure({ provider_id: value.assignee, model: value.model || "", effort: value.effort, permission: value.permission || "write" })} />
@@ -31,5 +35,5 @@ export function DebateActions({ debate }: { debate: Debate }) {
         setOpen(false);
         await send(`${t.directInstruction}\n\n${full.plan_request}`, true);
       })}>{t.execute}</button></div>}
-  </div>;
+  </footer>;
 }

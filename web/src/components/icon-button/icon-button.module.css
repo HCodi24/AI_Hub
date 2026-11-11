@@ -1,1 +1,2 @@
-.button { width: 40px; min-width: 40px; padding: var(--space-2); }
+.button { width: 36px; min-width: 36px; min-height: 36px; padding: var(--space-2); }
+@media (max-width: 767px) { .button { width: 44px; min-width: 44px; min-height: 44px; } }

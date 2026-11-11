@@ -1,3 +1,4 @@
+import { ChevronRight, CheckCircle2, XCircle, Circle, Loader2 } from "lucide-react";
 import type { Plan, PlanTask } from "@/schema/plans.schema";
 import type { Config } from "@/schema/config.schema";
 import type { Mutis } from "@/schema/mutis.schema";
@@ -10,8 +11,8 @@ export function PlanTaskRow({ task, index, plan, config, mutis, busy, edit, run,
   const patch = (value: Partial<PlanTask>) => edit(p => { Object.assign(p.tasks.find(item => item.id === task.id)!, value); });
   const ready = task.depends_on.every(id => plan.tasks.find(t => t.id === id)?.status === t.complete);
   const provider = config?.providers.find(p => p.id === task.assignee);
-  const icon = task.status === t.complete ? "✓" : task.status === t.active ? "◐" : [t.failed, t.fixing].includes(task.status) ? "✗" : "○";
-  return <details><summary><span>{icon} #{task.id} {task.title}</span> <small>{provider?.name || task.assignee}</small> <small>{task.kind}</small> {task.depends_on.map(id => <small key={id}>↳ #{id} </small>)}</summary>
+  const Icon = task.status === t.complete ? CheckCircle2 : task.status === t.active ? Loader2 : [t.failed, t.fixing].includes(task.status) ? XCircle : Circle;
+  return <details><summary><ChevronRight size={16} aria-hidden="true" /><Icon size={16} aria-hidden="true" className={task.status === t.active ? "spin" : undefined} /><span>#{task.id} {task.title}</span> <small>{task.status}</small> <small>{provider?.name || task.assignee}</small> <small>{task.kind}</small> {task.depends_on.map(id => <small key={id}>↳ #{id} </small>)}</summary>
     <fieldset disabled={busy}><label>{t.taskTitle}<input value={task.title} onChange={event => patch({ title: event.target.value })} /></label>
       <label>{t.detail}<textarea value={task.detail} rows={4} onChange={event => patch({ detail: event.target.value })} /></label>
       <SourceControls providers={config?.providers || []} roles={mutis?.roles} value={{ ...task, permission: task.permission || (taskCanWrite(task) ? "write" : "read") }} change={patch} disabled={busy} />

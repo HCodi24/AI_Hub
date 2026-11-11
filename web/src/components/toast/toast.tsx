@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { create } from "zustand";
 import { cardText as t } from "@/text/cards";
 import styles from "./toast.module.css";
@@ -9,5 +10,5 @@ export function Toast() {
   if (!notice) return null;
   return <aside className={styles.toast} role="status"><span>{notice.text}</span>
     {notice.action && <button onClick={() => { void notice.action?.().catch(e => notify(String(e))); }}>{t.undo}</button>}
-    <button aria-label={t.close} onClick={() => useToast.setState({ notice: null })}>×</button></aside>;
+    <button aria-label={t.close} onClick={() => useToast.setState({ notice: null })}><X size={16} aria-hidden="true" /></button></aside>;
 }

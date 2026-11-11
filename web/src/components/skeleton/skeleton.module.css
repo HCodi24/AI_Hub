@@ -1,0 +1,5 @@
+.skeleton { padding: var(--space-4); display: grid; gap: var(--space-3); }
+.skeleton[data-card=true] { min-height: 240px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.skeleton span { height: 16px; border-radius: var(--radius-xs); background: var(--color-muted); animation: pulse 1.5s var(--ease-in-out) infinite alternate; }
+.skeleton span:last-child { width: 65%; }
+@keyframes pulse { to { opacity: .4; } }

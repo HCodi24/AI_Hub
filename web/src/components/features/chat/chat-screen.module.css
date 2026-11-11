@@ -1,9 +1,9 @@
 .shell { height: 100dvh; display: flex; overflow: hidden; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100%; }
 .messages { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.messages > div { flex: 1; min-height: 0; }
+.messages > div { flex: 1; min-height: 0; overflow-y: auto; }
 .status { color: var(--muted); font-size: var(--font-small); padding: 0 var(--space-4); overflow-wrap: anywhere; }
 .error { background: var(--danger-bg); color: var(--danger); padding: var(--space-3); overflow-wrap: anywhere; }
 .error button { margin-left: var(--space-3); }
-.skip { position: fixed; top: -100px; left: var(--space-4); z-index: 100; padding: var(--space-3); background: var(--surface); }
+.skip { position: fixed; top: -100px; left: var(--space-4); z-index: var(--z-skip); padding: var(--space-3); background: var(--surface); }
 .skip:focus { top: var(--space-4); }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Menu, SunMoon } from "lucide-react";
+import { Menu, Folder, FileEdit } from "lucide-react";
 import { useChatStore } from "./chat-store";
 import { Select } from "@/components/select/select";
 import { IconButton } from "@/components/icon-button/icon-button";
@@ -13,9 +13,10 @@ import { mutisApi } from "@/apis/mutis.api";
 import { SourceControls } from "@/components/features/plan/source-controls";
 import { MemoryPanel } from "@/components/features/memory/memory-panel";
 import { cardText as t } from "@/text/cards";
+import { useShallow } from "zustand/react/shallow";
 import { notify } from "@/components/toast/toast";
 export function ChatToolbar({ config }: { config?: Config }) {
-  const { settings, configure, initialize, streaming, setDrawer } = useChatStore();
+  const { settings, configure, initialize, streaming, setDrawer } = useChatStore(useShallow(s => ({ settings: s.settings, configure: s.configure, initialize: s.initialize, streaming: s.streaming, setDrawer: s.setDrawer })));
   const [memory, setMemory] = useState(false);
   const mutis = useQuery({ queryKey: ["mutis"], queryFn: () => mutisApi.get() });
   const client = useQueryClient();
@@ -28,21 +29,12 @@ export function ChatToolbar({ config }: { config?: Config }) {
     const next = config?.providers.find((entry) => entry.id === (id === "mutis" ? mutis.data?.roles.lead.provider_id : id));
     configure({ provider_id: id, model: next?.models[0] || "", file_tools: "none", permission: "write" });
   }
-  function toggleTheme() {
-    const current = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    const theme = current === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem("ai-hub-theme", theme); } catch { /* Storage can be unavailable. */ }
-  }
-  useEffect(() => {
-    try { const theme = localStorage.getItem("ai-hub-theme"); if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme; } catch { /* Use system theme. */ }
-  }, []);
   return <header className={styles.toolbar}>
     <div className={styles.heading}><span className={styles.mobile}><IconButton aria-label={chatText.menu} onClick={() => setDrawer(true)}><Menu size={20} /></IconButton></span>
-      <span>{chatText.local}</span><IconButton aria-label={chatText.theme} onClick={toggleTheme}><SunMoon size={18} /></IconButton>
-      <button disabled={!settings.folder} onClick={() => setMemory(true)}>{t.memory}</button></div>
+      <span>{chatText.local}</span>
+      <button disabled={!settings.folder} onClick={() => setMemory(true)}><FileEdit size={16} aria-hidden="true" />{t.memory}</button></div>
     {memory && <MemoryPanel folder={settings.folder} close={() => setMemory(false)} />}
-    <div className={styles.controls}>
+    <div className={styles.controls} role="group" aria-label={chatText.mode}>
       <Select label={chatText.source} value={settings.provider_id} disabled={streaming} onChange={(event) => changeProvider(event.target.value)}>
         <option value="">{chatText.source}</option><option value="mutis" disabled={!mutis.data?.enabled}>{t.mutis}</option>{config?.providers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
       </Select>
@@ -67,7 +59,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
         const next = { ...mutis.data!, roles: { ...mutis.data!.roles, [key]: { provider_id: value.assignee, model: value.model || "", effort: value.effort } } };
         void mutisApi.put(next).then(() => client.invalidateQueries({ queryKey: ["mutis"] })).catch(error => notify(String(error)));
       }} /></section>)}</details>}
-    <label className={styles.folder}><span>{chatText.folder}</span><input value={settings.folder} disabled={streaming} spellCheck={false}
+    <label className={styles.folder}><Folder size={16} aria-hidden="true" /><span className="sr-only">{chatText.folder}</span><input title={settings.folder} value={settings.folder} disabled={streaming} spellCheck={false}
       onChange={(event) => configure({ folder: event.target.value })} /></label>
     {provider && !cli && <span className={styles.note}>{chatText.noCommands}</span>}
   </header>;

@@ -1,3 +1,6 @@
+import { Scale, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { StatusBadge } from "@/components/status-badge/status-badge";
+import { Skeleton } from "@/components/skeleton/skeleton";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { debatesApi } from "@/apis/debates.api";
@@ -19,15 +22,15 @@ export function DebateCard({ id }: { id: string }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<number | null>(null); const [side, setSide] = useState("codex");
   const clock = useClock(Boolean(cached?.live), record?.created_at || 0, record?.elapsed_s);
-  if (!record) return <p role="status">{query.error?.message || t.wait}</p>;
+  if (!record) return query.error ? <p role="alert">{query.error.message}</p> : <Skeleton card />;
   const round = record.rounds.find(r => r.index === (selected || cached?.round)) || record.rounds.at(-1);
   const verdict = record.verdict;
   const steps = [...Array.from({ length: record.max_rounds }, (_, index) => ({ label: `${t.round} ${index + 1} ${index ? t.rebuttal : t.proposal}`, done: cached?.live ? Boolean(cached.finished?.includes(`codex:${index + 1}`)) : Boolean(record.rounds.find(r => r.index === index + 1)?.codex.text), active: cached?.live && cached.phase === "round" && cached.round === index + 1 })),
     { label: t.judge, done: Boolean(verdict), active: cached?.live && cached.phase === "judge" }, { label: t.plan, done: Boolean(plan && !plan.planning), active: plan?.planning },
     { label: t.execute, done: Boolean(plan?.tasks.length && plan.tasks.every(task => task.status === t.complete)), active: plan?.tasks.some(task => task.status === t.active) }];
-  return <section className={styles.card} aria-label={t.debate}><header><strong>{t.debate} · {record.title || record.request.slice(0, 72)}</strong><time>{clock}</time></header>
+  return <section className={styles.card} aria-label={t.debate}><header><strong><Scale size={18} aria-hidden="true" /> {t.debate} · {record.title || record.request.slice(0, 72)}</strong><StatusBadge state={cached?.live ? "running" : record.error ? "failed" : record.status === "done" ? "done" : "draft"} label={cached?.live ? t.running : record.error ? t.error : record.status === "done" ? t.done : t.stopped} /><time>{clock}s</time></header>
     <p className={styles.meta}>{t.codex} {record.codex_model} · {t.claude} {record.claude_model} · {t.judge}: {record.judge_model}</p>
-    <div className={styles.chips}>{steps.map(step => <span key={step.label} data-active={step.active}>{step.done ? "●" : step.active ? "◐" : "○"} {step.label}</span>)}</div>
+    <div className={styles.chips}>{steps.map(step => <span key={step.label} data-active={step.active}>{step.done ? <CheckCircle2 size={14} aria-hidden="true" /> : step.active ? <Loader2 size={14} aria-hidden="true" className="spin" /> : <Circle size={14} aria-hidden="true" />} {step.label}</span>)}</div>
     {verdict && <section className={styles.verdict}><h3>{t.verdict} · {t.chosen[verdict.chosen as keyof typeof t.chosen] || t.chosen.merged}</h3><MarkdownView source={verdict.decision} />
       <div className={styles.chips}>{(["agreed_points", "disagreements", "risks", "plan_steps"] as const).map(key => <details key={key}><summary>{t[key]} ({verdict[key].length})</summary><ul>{verdict[key].map((text, i) => <li key={i}>{text}</li>)}</ul></details>)}</div>
       {record.status === "done" && <DebateActions debate={record} />}</section>}

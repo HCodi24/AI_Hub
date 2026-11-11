@@ -1,12 +1,11 @@
 import { useEffect } from "react";
 import Head from "next/head";
-import { Virtuoso } from "react-virtuoso";
+import { useShallow } from "zustand/react/shallow";
+import { MessageList } from "./message-list";
 import { Sidebar } from "@/components/sidebar/sidebar";
-import { EmptyState } from "@/components/empty-state/empty-state";
 import { Spinner } from "@/components/spinner/spinner";
 import { Composer } from "@/components/features/composer/composer";
 import { ChatToolbar } from "./chat-toolbar";
-import { ChatMessage } from "./chat-message";
 import { useChatStore } from "./chat-store";
 import { useChat } from "./use-chat";
 import { chatText } from "@/text/chat";
@@ -16,7 +15,7 @@ import { setRunnerMemoryHandler } from "@/components/features/plan/plan-runner";
 import { memoryNotice } from "@/components/features/memory/memory-events";
 export function ChatScreen() {
   useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
-  const state = useChatStore();
+  const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, status: s.status })));
   const { config, chats, send, stop, load } = useChat();
   const queryError = config.error || chats.error;
   return <><Head><title>{chatText.brand}</title><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
@@ -29,8 +28,7 @@ export function ChatScreen() {
           <button onClick={() => { void config.refetch(); void chats.refetch(); }}>{chatText.retry}</button></div>}
         {state.error && <div role="alert" className={styles.error}>{state.error}</div>}
         <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
-          {state.messages.length ? <Virtuoso data={state.messages} followOutput="auto" initialTopMostItemIndex={state.messages.length - 1}
-            itemContent={(_index, message) => <ChatMessage message={message} chatId={state.id} />} /> : <EmptyState />}
+          <MessageList />
         </section>
         <div className={styles.status} role="status" aria-live="polite" aria-atomic="true">
           {state.streaming && <>{chatText.streaming} {state.status.provider_name} {state.status.model}

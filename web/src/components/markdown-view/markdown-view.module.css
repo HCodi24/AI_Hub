@@ -1,13 +1,21 @@
-.markdown { overflow-wrap: anywhere; min-width: 0; }
+.markdown { overflow-wrap: anywhere; min-width: 0; line-height: 1.6; }
 .markdown > :first-child { margin-top: 0; }
 .markdown > :last-child { margin-bottom: 0; }
-.markdown pre { overflow: auto; max-width: 100%; background: var(--code); padding: var(--space-4); border-radius: 0 0 var(--radius-small) var(--radius-small); margin-top: 0; }
-.markdown :not(pre) > code { background: var(--code); padding: 2px 5px; border-radius: 4px; }
+.markdown pre { overflow-x: auto; max-width: 100%; background: var(--code); padding: var(--space-4); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--radius-small) var(--radius-small); margin-top: 0; white-space: pre; overflow-wrap: normal; }
+.markdown :not(pre) > code { background: var(--color-muted); padding: 2px var(--space-1); border-radius: var(--radius-xs); font-size: .875em; }
 .markdown table { display: block; overflow-x: auto; border-collapse: collapse; max-width: 100%; }
-.markdown th, .markdown td { border: 1px solid var(--border); padding: var(--space-2) var(--space-3); }
+.markdown th, .markdown td { border: 1px solid var(--border); padding: var(--space-2) var(--space-3); text-align: left; }
+.markdown th, .markdown tbody tr:nth-child(even) { background: var(--color-muted); }
 .markdown blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: var(--space-4); color: var(--muted); }
 .markdown img { max-width: 100%; height: auto; }
-.codeHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); background: var(--code); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); border-radius: var(--radius-small) var(--radius-small) 0 0; font-size: var(--font-small); }
-.markdown :global(.hljs-keyword), .markdown :global(.hljs-selector-tag) { color: var(--accent); }
-.markdown :global(.hljs-string), .markdown :global(.hljs-literal) { color: var(--green); }
-.markdown :global(.hljs-comment) { color: var(--muted); font-style: italic; }
+.markdown h1 { font-size: var(--font-24); } .markdown h2 { font-size: var(--font-20); } .markdown h3 { font-size: var(--font-18); }
+.codeHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); background: var(--code); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small) var(--radius-small) 0 0; font-size: var(--font-small); color: var(--muted); font-family: var(--font-mono); }
+/* GitHub / GitHub Dark syntax roles mapped to semantic, theme-aware tokens. */
+.markdown :global(.hljs) { color: var(--text); background: var(--code); }
+.markdown :global(.hljs-keyword), .markdown :global(.hljs-selector-tag), .markdown :global(.hljs-deletion) { color: var(--color-syntax-keyword); }
+.markdown :global(.hljs-string), .markdown :global(.hljs-regexp), .markdown :global(.hljs-meta), .markdown :global(.hljs-attr) { color: var(--color-syntax-string); }
+.markdown :global(.hljs-number), .markdown :global(.hljs-literal), .markdown :global(.hljs-built_in), .markdown :global(.hljs-symbol) { color: var(--color-syntax-number); }
+.markdown :global(.hljs-title), .markdown :global(.hljs-section), .markdown :global(.hljs-type) { color: var(--color-info); }
+.markdown :global(.hljs-addition), .markdown :global(.hljs-bullet) { color: var(--accent); }
+.markdown :global(.hljs-comment), .markdown :global(.hljs-quote) { color: var(--muted); font-style: italic; }
+.markdown :global(.hljs-emphasis) { font-style: italic; } .markdown :global(.hljs-strong) { font-weight: 700; }

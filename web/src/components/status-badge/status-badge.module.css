@@ -1,0 +1,4 @@
+.badge { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border: 1px solid currentColor; border-radius: var(--radius-xs); font-size: var(--font-12); font-weight: 500; color: var(--muted); white-space: nowrap; }
+.badge[data-state=running] { color: var(--color-info); }
+.badge[data-state=done] { color: var(--accent); }
+.badge[data-state=failed] { color: var(--danger); }

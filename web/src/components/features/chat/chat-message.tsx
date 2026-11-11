@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Bot, UserRound } from "lucide-react";
 import type { ChatMessage as Message } from "@/schema/chat.schema";
 import { MarkdownView } from "@/components/markdown-view/markdown-view";
@@ -5,10 +6,10 @@ import { chatText } from "@/text/chat";
 import { DebateCard } from "@/components/features/debate/debate-card";
 import { PlanCard } from "@/components/features/plan/plan-card";
 import styles from "./chat-message.module.css";
-export function ChatMessage({ message, chatId }: { message: Message; chatId: string }) {
+export const ChatMessage = memo(function ChatMessage({ message, chatId, streaming = false }: { message: Message; chatId: string; streaming?: boolean }) {
   const user = message.role === "user";
   const tokenLine = message.logs.filter((line) => /token|usage|chi phí/i.test(line)).at(-1);
-  return <article className={styles.message}>
+  return <article className={styles.message} data-user={user} data-streaming={streaming}>
     <div className={styles.identity}>{user ? <UserRound size={18} aria-hidden="true" /> : <Bot size={18} aria-hidden="true" />}
       <strong>{user ? chatText.you : chatText.assistant}</strong></div>
     {message.debate_id ? <DebateCard id={message.debate_id} /> : message.plan_id ? <PlanCard id={message.plan_id} /> : <MarkdownView source={message.content} />}
@@ -20,4 +21,4 @@ export function ChatMessage({ message, chatId }: { message: Message; chatId: str
       <span key={index} className={line.startsWith("+") ? styles.add : line.startsWith("-") ? styles.remove : undefined}>{line}{"\n"}</span>)}</pre></details>}
     {message.error && <div className={styles.error} role="alert">{message.error}</div>}
   </article>;
-}
+});

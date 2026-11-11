@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Square } from "lucide-react";
+import { ArrowUp, Square, Scale, Sparkles } from "lucide-react";
 import { Button } from "@/components/button/button";
 import { chatText } from "@/text/chat";
 import { cardText as t } from "@/text/cards";
@@ -17,6 +17,14 @@ export function Composer({ streaming, send, stop }: { streaming: boolean; send: 
   useEffect(() => {
     if (input.current) { input.current.style.height = "auto"; input.current.style.height = `${Math.min(input.current.scrollHeight, 180)}px`; }
   }, [value]);
+  useEffect(() => {
+    function suggest(event: Event) {
+      if (!(event instanceof CustomEvent) || typeof event.detail !== "string") return;
+      setValue(event.detail); input.current?.focus();
+    }
+    window.addEventListener("ai-hub:suggestion", suggest);
+    return () => window.removeEventListener("ai-hub:suggestion", suggest);
+  }, []);
   async function submit() {
     if (pending.current || streaming || !value.trim()) return;
     pending.current = true;
@@ -27,13 +35,13 @@ export function Composer({ streaming, send, stop }: { streaming: boolean; send: 
   }
   return <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <label className="sr-only" htmlFor="chat-input">{chatText.placeholder}</label>
-    <div><button type="button" aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}>{t.debate}</button>
-      <button type="button" disabled={streaming || Boolean(running) || !value.trim()} onClick={() => { const draft = value; setValue(""); void startCard(draft, "plan").catch(error => { setValue(draft); notify(String(error)); }); }}>{t.plan}</button></div>
+    <div><button type="button" aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" />{t.debate}</button>
+      <button type="button" disabled={streaming || Boolean(running) || !value.trim()} onClick={() => { const draft = value; setValue(""); void startCard(draft, "plan").catch(error => { setValue(draft); notify(String(error)); }); }}><Sparkles size={16} aria-hidden="true" />{t.plan}</button></div>
     <div className={styles.box}><textarea id="chat-input" ref={input} value={value} rows={1} disabled={streaming}
       placeholder={chatText.placeholder} onChange={(event) => setValue(event.target.value)}
       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
-      {streaming ? <Button onClick={() => void stop()} aria-label={chatText.stop}><Square size={16} />{chatText.stop}</Button> :
-        <Button type="submit" disabled={!value.trim() || Boolean(running)} aria-label={chatText.send}><ArrowUp size={18} /></Button>}
+      {streaming ? <Button variant="danger" onClick={() => void stop()} aria-label={chatText.stop}><Square size={16} aria-hidden="true" />{chatText.stop}</Button> :
+        <Button variant="primary" type="submit" disabled={!value.trim() || Boolean(running)} aria-label={chatText.send}><ArrowUp size={18} aria-hidden="true" /></Button>}
     </div><p>{chatText.hint}</p>
   </form>;
 }

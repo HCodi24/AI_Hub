@@ -1,4 +1,7 @@
 export const chatText = {
+  suggestions: ["Giải thích cấu trúc dự án", "Tìm nguyên nhân một lỗi", "Lập kế hoạch tính năng", "Review thay đổi gần đây"],
+  mode: "Chế độ làm việc", collapseSidebar: "Thu gọn thanh bên", expandSidebar: "Mở thanh bên",
+  light: "Sáng", dark: "Tối", system: "Hệ thống", appearance: "Giao diện",
   brand: "AI Hub", beta: "Bản thử nghiệm", newChat: "Chat mới", history: "Lịch sử trò chuyện",
   legacy: "Mở giao diện cũ", local: "Không gian làm việc của bạn", source: "Nguồn AI",
   model: "Model", permission: "Quyền", effort: "Mức suy luận", folder: "Thư mục làm việc",
@@ -9,7 +12,7 @@ export const chatText = {
   placeholder: "Nhập tin nhắn…", send: "Gửi tin nhắn", stop: "Dừng", hint: "Enter để gửi · Shift + Enter để xuống dòng",
   you: "Bạn", assistant: "Trợ lý", activity: "Hoạt động", reasoning: "Suy luận", diff: "Thay đổi file",
   debate: "Tranh luận — mở trong giao diện cũ", plan: "Kế hoạch — mở trong giao diện cũ",
-  copy: "Sao chép", copied: "Đã sao chép", copyError: "Không thể sao chép", code: "Mã nguồn",
+  copy: "Sao chép", copied: "Đã chép", copyError: "Không thể sao chép", code: "Mã nguồn",
   loading: "Đang tải…", streaming: "Đang phản hồi…", stopped: "Đã dừng", empty: "Chưa có cuộc trò chuyện",
   menu: "Mở lịch sử", close: "Đóng lịch sử", theme: "Đổi giao diện sáng / tối",
   requestError: "Không thể thực hiện yêu cầu", invalidData: "Dữ liệu phản hồi không hợp lệ",

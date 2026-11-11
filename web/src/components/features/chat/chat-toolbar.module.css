@@ -1,17 +1,19 @@
-.toolbar { border-bottom: 1px solid var(--border); padding: var(--space-3) var(--space-6); background: var(--surface); }
-.heading { display: flex; align-items: center; gap: var(--space-3); color: var(--muted); margin-bottom: var(--space-3); }
+.toolbar { border-bottom: 1px solid var(--border); padding: var(--space-3) var(--space-6); background: var(--bg); flex-shrink: 0; max-height: 45dvh; overflow: auto; z-index: var(--z-toolbar); }
+.heading { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); margin-bottom: var(--space-2); font-size: var(--font-13); }
 .heading > span:nth-last-child(2) { flex: 1; }
-.controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
+.heading button { font-size: var(--font-13); }
+.controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.controls select, .controls input { border-color: transparent; background: transparent; font-size: var(--font-13); }
 .field { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
-.field > span, .folder > span, .note { color: var(--muted); font-size: var(--font-small); }
-.folder { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
-.folder input { flex: 1; width: 0; font-family: var(--font-mono); font-size: var(--font-small); }
+.field > span, .note { color: var(--muted); font-size: var(--font-small); }
+.field > span { padding-left: var(--space-3); }
+.folder { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); color: var(--muted); }
+.folder input { flex: 1; min-width: 0; max-width: 520px; font-family: var(--font-mono); font-size: var(--font-small); background: var(--color-muted); border-color: transparent; text-overflow: ellipsis; min-height: 32px; padding: var(--space-1) var(--space-2); }
 .mobile { display: none; }
 .note { display: block; margin-top: var(--space-1); }
 @media (max-width: 767px) {
-  .toolbar { padding: var(--space-3); }
+  .toolbar { padding: var(--space-2) var(--space-3); }
   .mobile { display: inline-flex; }
-  .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
-  .folder { align-items: stretch; flex-direction: column; gap: var(--space-1); }
-  .folder input { width: 100%; }
+  .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1); }
+  .folder input { min-height: 44px; }
 }

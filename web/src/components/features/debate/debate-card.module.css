@@ -1,4 +1,4 @@
-.card { padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); min-width: 0; overflow-wrap: anywhere; }
+.card { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; overflow-wrap: anywhere; }
 .card header { display: flex; justify-content: space-between; gap: 16px; }
 .meta { color: var(--muted); font-size: 12px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
@@ -13,3 +13,12 @@
 .card button { margin: 4px; max-width: 100%; }
 .card select, .card input { max-width: 100%; }
 @media (max-width: 699px) { .columns { grid-template-columns: minmax(0, 1fr); } .side[data-selected=false] { display: none; } .toggle { display: flex; } .card { padding: 12px; } }
+
+.card { min-height: 240px; box-shadow: var(--shadow-1); }
+.card header { align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); flex-wrap: wrap; }
+.card header > strong { flex: 1; min-width: 120px; font-size: var(--font-14); font-weight: 600; }
+.card header time { font-size: var(--font-12); color: var(--muted); }
+.card footer { justify-content: flex-end; border-top: 1px solid var(--border); padding-top: var(--space-3); margin-top: var(--space-4); }
+.card button[aria-selected=true], .card button[aria-pressed=true] { color: var(--accent); background: var(--green-bg); }
+.card h3 { font-size: var(--font-16); }
+.chips > span { display: inline-flex; gap: var(--space-1); align-items: center; }

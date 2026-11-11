@@ -17,10 +17,12 @@ export const useChatStore = create<ChatState>((set) => ({
   initialize: (folder, provider_id, model) => set((state) => state.initialized ? {} : ({
     initialized: true, settings: { ...state.settings, folder, provider_id, model },
   })),
-  load: (chat) => set({ id: chat.id, messages: chat.messages, settings: {
-    provider_id: chat.provider_id, model: chat.model, folder: chat.folder, permission: chat.permission,
+  // Chats created by a plan or debate have no source of their own: keep the one currently selected.
+  load: (chat) => set((state) => ({ id: chat.id, messages: chat.messages, settings: {
+    provider_id: chat.provider_id || state.settings.provider_id, model: chat.provider_id ? chat.model : state.settings.model,
+    folder: chat.folder, permission: chat.permission,
     effort: chat.effort, file_tools: chat.file_tools, dev_chat: chat.dev_chat,
-  }, status: {}, error: "", drawer: false, initialized: true }),
+  }, status: {}, error: "", drawer: false, initialized: true })),
   reset: () => set((state) => ({ id: "", messages: [], status: {}, error: "", drawer: false,
     settings: { ...state.settings, dev_chat: false } })),
   begin: (text) => set((state) => ({ id: state.id || crypto.randomUUID(), streaming: true, status: {}, error: "",

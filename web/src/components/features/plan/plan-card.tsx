@@ -1,3 +1,7 @@
+import { Sparkles } from "lucide-react";
+import { Button } from "@/components/button/button";
+import { StatusBadge } from "@/components/status-badge/status-badge";
+import { Skeleton } from "@/components/skeleton/skeleton";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { plansApi } from "@/apis/plans.api";
@@ -36,7 +40,7 @@ export function PlanCard({ id }: { id: string }) {
     }, 400);
     return () => { active = false; clearTimeout(timer); };
   }, [plan, dirty, busy, invalid]);
-  if (!plan) return <p role="status">{query.error?.message || t.wait}</p>;
+  if (!plan) return query.error ? <p role="alert">{query.error.message}</p> : <Skeleton card />;
   const done = plan.tasks.filter(task => task.status === t.complete).length;
   async function action(fn: () => Promise<unknown>) { setLocalBusy(true); try { await fn(); } catch (error) { notify(error instanceof Error ? error.message : t.error); } finally { setLocalBusy(false); } }
   function updateSummary(value: Plan) {
@@ -50,7 +54,8 @@ export function PlanCard({ id }: { id: string }) {
     if (!config.data || !mutis.data) throw new Error(t.wait);
     runner.current = createPlanRunner(mutis.data, config.data.providers); return runner.current;
   }
-  return <section className={styles.card} aria-label={t.plan}><header><strong>{t.plan} · {plan.title}</strong><span>{plan.planning ? `${t.planning} ${clock}` : `${done}/${plan.tasks.length} · ${running === id ? t.running : done === plan.tasks.length && done ? t.done : plan.approved ? t.approved : t.draft}`}</span></header>
+  return <section className={styles.card} aria-label={t.plan}><header><strong><Sparkles size={18} aria-hidden="true" /> {t.plan} · {plan.title}</strong><StatusBadge state={plan.error ? "failed" : plan.planning || running === id ? "running" : done === plan.tasks.length && done ? "done" : "draft"} label={plan.error ? t.error : plan.planning ? t.planning : running === id ? t.running : done === plan.tasks.length && done ? t.done : plan.approved ? t.approved : t.draft} /><time>{plan.planning ? `${clock}s` : `${done}/${plan.tasks.length}`}</time></header>
+    <progress value={done} max={Math.max(1, plan.tasks.length)} aria-label={`${done}/${plan.tasks.length} ${t.done}`} />
     {plan.error && <p role="alert">{plan.error}</p>}
     {plan.planning ? <><pre aria-live="polite">{logs?.join("\n")}</pre><button onClick={() => cancelCard(id)}>{t.cancel}</button></> : <>
       <label>{t.title}<input value={plan.title} disabled={busy} onChange={event => edit(p => { p.title = event.target.value; })} /></label>
@@ -60,7 +65,7 @@ export function PlanCard({ id }: { id: string }) {
       <footer><button disabled={busy} onClick={() => edit(p => { p.tasks.push(TaskSchema.parse({ id: Math.max(0, ...p.tasks.map(t => t.id)) + 1, title: t.newTask, detail: t.newDetail, assignee: config.data?.providers[0]?.id || "", kind: "code" })); })}>{t.addTask}</button>
         <button disabled={busy || invalid || !dirty} onClick={() => void action(() => save())}>{t.save}</button>
         {!plan.approved && <button disabled={busy || invalid} onClick={() => void action(() => save({ ...plan, approved: true }))}>{t.approve}</button>}
-        {running === id ? <button onClick={() => void stopActivePlan()}>{t.stop}</button> : <button disabled={busy || invalid || done === plan.tasks.length} onClick={() => useCardStore.setState({ confirm: id })}>{plan.tasks.some(task => [t.failed, t.halted].includes(task.status)) ? t.resume : t.runAll}</button>}
+        {running === id ? <Button variant="danger" size="sm" onClick={() => void stopActivePlan()}>{t.stop}</Button> : <Button variant="primary" size="sm" disabled={busy || invalid || done === plan.tasks.length} onClick={() => useCardStore.setState({ confirm: id })}>{plan.tasks.some(task => [t.failed, t.halted].includes(task.status)) ? t.resume : t.runAll}</Button>}
         {confirm && <div role="group" aria-label={t.confirm(plan.tasks.length - done)}><p>{t.confirm(plan.tasks.length - done)}</p><button disabled={busy || invalid} onClick={() => void action(async () => { const approved = { ...plan, approved: true }; await save(approved); useCardStore.setState({ confirm: null }); await getRunner().runWholePlan(approved); })}>{t.run}</button><button onClick={() => useCardStore.setState({ confirm: null })}>{t.preview}</button></div>}
         <button disabled={busy || !mutis.data?.enabled || !mutis.data.verify_gate} onClick={() => void action(async () => { const report = await plansApi.verify(plan.folder, new AbortController().signal, notify); notify(report.summary_lines.join(" · ")); })}>{t.verify}</button>
         <button disabled={busy} onClick={() => void action(() => startCard(plan.request, "plan", undefined, false))}>{t.replan}</button>

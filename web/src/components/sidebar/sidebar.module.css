@@ -6,14 +6,22 @@
 .sidebar h2 { font-size: var(--font-small); text-transform: uppercase; color: var(--muted); margin: var(--space-2) 0 0; letter-spacing: .05em; }
 .history { flex: 1; overflow-y: auto; min-height: 0; }
 .history p { color: var(--muted); }
-.history button { display: flex; align-items: center; gap: var(--space-2); width: 100%; border: 0; background: transparent; text-align: left; margin-bottom: var(--space-1); }
+.history button { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2); width: 100%; border: 0; background: transparent; text-align: left; margin-bottom: var(--space-1); }
 .history button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history button[aria-current] { background: var(--accent-soft); color: var(--accent); }
 .legacy { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); border-top: 1px solid var(--border); font-size: var(--font-small); }
 .close, .backdrop { display: none; }
 @media (max-width: 767px) {
-  .sidebar { display: none; position: fixed; left: 0; top: 0; width: min(310px, calc(100vw - 40px)); z-index: 30; box-shadow: var(--shadow); }
+  .sidebar { display: none; position: fixed; left: 0; top: 0; width: min(310px, calc(100vw - 40px)); z-index: var(--z-drawer); box-shadow: var(--shadow); }
   .open { display: flex; }
   .close { display: block; margin-left: auto; }
-  .backdrop { display: block; position: fixed; inset: 0; z-index: 29; background: #0009; border: 0; border-radius: 0; }
+  .backdrop { display: block; position: fixed; inset: 0; z-index: var(--z-overlay); background: var(--color-overlay); border: 0; border-radius: 0; }
 }
+.collapse { align-self: flex-end; }
+.sidebar { position: relative; width: 256px; padding-top: var(--space-3); }
+.brand > span { font-size: var(--font-12); border-radius: var(--radius-xs); }
+@media (min-width: 768px) {
+  .collapsed { width: 60px; padding: var(--space-3); }
+  .collapsed > :not(.collapse) { display: none; }
+}
+@media (max-width: 767px) { .collapse { display: none; } .sidebar { position: fixed; padding-top: max(var(--space-4), env(safe-area-inset-top)); } }

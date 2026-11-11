@@ -1,24 +1,114 @@
+/* WCAG sRGB relative luminance, (Llighter + .05)/(Ldarker + .05).
+ * dark: foreground/background 17.06:1; foreground/card 14.98:1; foreground/muted 12.77:1; foreground/surface-raised 13.73:1; foreground/code 16.47:1; muted-foreground/background 8.59:1; muted-foreground/card 7.54:1; muted-foreground/muted 6.43:1; muted-foreground/surface-raised 6.91:1; muted-foreground/code 8.29:1.
+ * light: foreground/background 17.06:1; foreground/card 17.85:1; foreground/muted 15.17:1; foreground/surface-raised 17.85:1; foreground/code 16.18:1; muted-foreground/background 6.03:1; muted-foreground/card 6.31:1; muted-foreground/muted 5.36:1; muted-foreground/surface-raised 6.31:1; muted-foreground/code 5.72:1.
+ */
 :root {
-  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
-  --radius: 12px; --radius-small: 8px; --shadow: 0 12px 40px #00000014;
-  --font-small: 12px; --font-body: 14px; --font-title: 28px;
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-12: 48px;
+  --radius-xs: 6px; --radius-small: 8px; --radius: 12px;
+  --shadow-1: 0 1px 2px #02061726;
+  --shadow-2: 0 4px 12px #02061733;
+  --shadow-3: 0 12px 32px #0206174d;
+  --shadow: var(--shadow-2);
+  --duration-fast: 150ms; --duration-normal: 200ms; --duration-slow: 250ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-in-out: cubic-bezier(.4, 0, .2, 1);
+  --z-base: 0; --z-toolbar: 10; --z-overlay: 20; --z-drawer: 30; --z-toast: 40; --z-skip: 50;
+  --font-12: .75rem; --font-13: .8125rem; --font-14: .875rem; --font-15: .9375rem;
+  --font-16: 1rem; --font-18: 1.125rem; --font-20: 1.25rem; --font-24: 1.5rem;
+  --font-small: var(--font-12); --font-body: var(--font-15); --font-title: var(--font-24);
+  --font-sans: 'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', Consolas, monospace;
+  --icon-sm: 16px; --icon-md: 20px; --icon-lg: 24px;
+  --bg: var(--color-background); --text: var(--color-foreground);
+  --surface: var(--color-card); --sidebar: var(--color-card);
+  --muted: var(--color-muted-foreground); --border: var(--color-border);
+  --accent: var(--color-accent); --accent-soft: var(--color-muted);
+  --danger: var(--color-destructive); --danger-bg: var(--color-danger-bg);
+  --green: var(--color-accent); --green-bg: var(--color-green-bg); --code: var(--color-code);
+  color-scheme: dark;
 }
-:root, [data-theme="light"] {
-  color-scheme: light; --bg: #f8fafc; --surface: #ffffff; --sidebar: #eff3f8; --text: #17243a;
-  --muted: #5e6d82; --border: #dce3ee; --accent: #315bd6; --accent-soft: #e8eeff;
-  --danger: #b42332; --danger-bg: #fff0f1; --green: #197044; --green-bg: #eaf8ef; --code: #eff3f8;
+:root {
+  --color-background: #0f172a;
+  --color-foreground: #f8fafc;
+  --color-card: #1b2336;
+  --color-card-foreground: #f8fafc;
+  --color-muted: #272f42;
+  --color-muted-foreground: #a8b5c8;
+  --color-border: #526177;
+  --color-primary: #334155;
+  --color-on-primary: #ffffff;
+  --color-accent: #22c55e;
+  --color-on-accent: #0f172a;
+  --color-destructive: #ff9aab;
+  --color-on-destructive: #0f172a;
+  --color-warning: #f5cb78;
+  --color-info: #a8c7ff;
+  --color-ring: #c7ddff;
+  --color-surface-raised: #202a3e;
+  --color-overlay: #020617b8;
+  --color-selection: #334d70;
+  --color-danger-bg: #3a2433;
+  --color-green-bg: #173b2e;
+  --color-code: #121b2c;
+  --color-syntax-keyword: #ffabb5;
+  --color-syntax-string: #a5d6ff;
+  --color-syntax-number: #d2a8ff;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark; --bg: #11151e; --surface: #191f2b; --sidebar: #141925; --text: #e7edf8;
-    --muted: #a2afc4; --border: #30394a; --accent: #97b3ff; --accent-soft: #243555;
-    --danger: #ffacb4; --danger-bg: #3c232d; --green: #8de2b4; --green-bg: #18392b; --code: #121823;
-  }
+[data-theme="light"] { color-scheme: light; }
+[data-theme="light"] {
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-muted: #e8edf3;
+  --color-muted-foreground: #526176;
+  --color-border: #7b899b;
+  --color-primary: #1e293b;
+  --color-on-primary: #ffffff;
+  --color-accent: #176b3a;
+  --color-on-accent: #ffffff;
+  --color-destructive: #af233d;
+  --color-on-destructive: #ffffff;
+  --color-warning: #805900;
+  --color-info: #24549d;
+  --color-ring: #24549d;
+  --color-surface-raised: #ffffff;
+  --color-overlay: #020617b8;
+  --color-selection: #cee1fc;
+  --color-danger-bg: #fff0f3;
+  --color-green-bg: #e6f5eb;
+  --color-code: #f1f4f8;
+  --color-syntax-keyword: #a62032;
+  --color-syntax-string: #164780;
+  --color-syntax-number: #6e329c;
 }
-[data-theme="dark"] {
-  color-scheme: dark; --bg: #11151e; --surface: #191f2b; --sidebar: #141925; --text: #e7edf8;
-  --muted: #a2afc4; --border: #30394a; --accent: #97b3ff; --accent-soft: #243555;
-  --danger: #ffacb4; --danger-bg: #3c232d; --green: #8de2b4; --green-bg: #18392b; --code: #121823;
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+  color-scheme: light;
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
+  --color-muted: #e8edf3;
+  --color-muted-foreground: #526176;
+  --color-border: #7b899b;
+  --color-primary: #1e293b;
+  --color-on-primary: #ffffff;
+  --color-accent: #176b3a;
+  --color-on-accent: #ffffff;
+  --color-destructive: #af233d;
+  --color-on-destructive: #ffffff;
+  --color-warning: #805900;
+  --color-info: #24549d;
+  --color-ring: #24549d;
+  --color-surface-raised: #ffffff;
+  --color-overlay: #020617b8;
+  --color-selection: #cee1fc;
+  --color-danger-bg: #fff0f3;
+  --color-green-bg: #e6f5eb;
+  --color-code: #f1f4f8;
+  --color-syntax-keyword: #a62032;
+  --color-syntax-string: #164780;
+  --color-syntax-number: #6e329c;
+}
 }

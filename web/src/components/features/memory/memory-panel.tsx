@@ -1,3 +1,5 @@
+import { FileEdit } from "lucide-react";
+import { Skeleton } from "@/components/skeleton/skeleton";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { memoryApi } from "@/apis/memory.api";
@@ -18,7 +20,8 @@ export function MemoryPanel({ folder, close }: { folder: string; close: () => vo
   async function open(scope: string, archived: boolean) {
     await run(async () => { const result = await memoryApi.get(folder, scope); setSelected({ scope, archived }); setText(result.text); setConfirm(null); });
   }
-  return <Dialog title={t.memoryTitle} close={close}><p>{folder}</p>
+  return <Dialog title={t.memoryTitle} close={close}><p><FileEdit size={16} aria-hidden="true" /> {folder}</p>
+    {view.isPending && <Skeleton card />}
     {view.error && <p role="alert">{view.error.message}</p>}
     <div className={styles.scopes}>{([false, true] as const).map(archived => <section key={String(archived)}><h3>{archived ? t.archived : t.activeScopes}</h3>
       {(archived ? view.data?.archived : view.data?.scopes)?.map(scope => <button key={scope.scope} disabled={busy} aria-pressed={selected?.scope === scope.scope} onClick={() => void open(scope.scope, archived)}>[{scope.status}] {scope.scope} — {scope.title}</button>)}</section>)}</div>
