@@ -40,7 +40,7 @@ fn parse_options() -> Result<Options> {
             "--no-open" => open_browser = false,
             "--dev" => dev = true,
             "--help" | "-h" => {
-                println!("AI Hub\n\nUsage: ai-hub [--dev] [--port PORT] [--no-open]\n\nAI_HUB_PORT sets the default port (7878); AI_HUB_DEV=1 enables dev mode.");
+                println!("MutiS\n\nUsage: ai-hub [--dev] [--port PORT] [--no-open]\n\nAI_HUB_PORT sets the default port (7878); AI_HUB_DEV=1 enables dev mode.");
                 std::process::exit(0);
             }
             unknown => anyhow::bail!("Unknown argument: {unknown}"),
@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
     let actual_port = listener.local_addr()?.port();
     let state = app::AppState::new(config, config_path, chat_dir, repo, actual_port);
     let url = format!("http://127.0.0.1:{actual_port}/");
-    println!("AI Hub is running at {url}");
+    println!("MutiS is running at {url}");
     if options.open_browser {
         if let Err(error) = open::that(&url) {
             eprintln!("Could not open the browser: {error}");

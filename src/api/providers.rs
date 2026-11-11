@@ -46,6 +46,22 @@ pub(crate) struct ModelsResponse {
     models: Vec<String>,
 }
 
+pub(crate) async fn provider_limits(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<providers::limits::Limits>> {
+    let provider = state
+        .config
+        .read()
+        .await
+        .providers
+        .iter()
+        .find(|p| p.id == id)
+        .cloned()
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Provider not found"))?;
+    Ok(Json(providers::limits::read(&provider).await))
+}
+
 #[derive(Serialize)]
 pub(crate) struct CliStatus {
     codex_cli: CliInfo,

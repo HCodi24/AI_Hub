@@ -82,6 +82,7 @@ impl Provider for ClaudeCliProvider {
             events.clone(),
             cancel.clone(),
             |line| {
+                super::limits::record_claude(&request.provider.id, line);
                 parser
                     .lock()
                     .expect("Claude parser mutex poisoned")

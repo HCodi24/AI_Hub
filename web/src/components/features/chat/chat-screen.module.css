@@ -1,5 +1,5 @@
-.shell { height: 100dvh; display: flex; overflow: hidden; }
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100%; }
+.shell { height: 100dvh; display: flex; overflow: hidden; background: var(--surface); }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100%; background: var(--bg); }
 .messages { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .messages > div { flex: 1; min-height: 0; overflow-y: auto; }
 .status { color: var(--muted); font-size: var(--font-small); padding: 0 var(--space-4); overflow-wrap: anywhere; }
@@ -7,3 +7,6 @@
 .error button { margin-left: var(--space-3); }
 .skip { position: fixed; top: -100px; left: var(--space-4); z-index: var(--z-skip); padding: var(--space-3); background: var(--surface); }
 .skip:focus { top: var(--space-4); }
+@media (min-width: 768px) {
+  .main { margin-top: 12px; height: calc(100% - 12px); border-top: 1px solid var(--border); }
+}

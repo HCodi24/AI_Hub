@@ -122,6 +122,10 @@ pub fn router(state: AppState) -> Router {
         )
         // Provider management and discovery routes.
         .route(
+            "/api/providers/{id}/limits",
+            get(crate::api::providers::provider_limits),
+        )
+        .route(
             "/api/providers",
             post(crate::api::providers::create_provider),
         )

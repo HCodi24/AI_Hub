@@ -4,6 +4,7 @@ pub(crate) mod cli_support;
 pub mod codex_cli;
 pub mod deepseek_agent;
 pub(crate) mod discovery;
+pub(crate) mod limits;
 pub mod openai_compat;
 
 use crate::{

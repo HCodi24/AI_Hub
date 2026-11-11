@@ -10,8 +10,11 @@ import { chatText } from "@/text/chat";
 import { settingsText } from "@/text/settings";
 import { cn } from "@/lib/utils";
 import styles from "./sidebar.module.css";
+// Served from web/public/brand; the app lives under basePath "/app" (next.config.js).
+const LOGO = "/app/brand/mutis-logo.svg";
+const LOGO_DARK = "/app/brand/mutis-logo-dark.svg";
 export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; openSettings: () => void; openDevChat?: () => void }) {
-  const { id, drawer, streaming, reset, setDrawer } = useChatStore(useShallow(s => ({ id: s.id, drawer: s.drawer, streaming: s.streaming, reset: s.reset, setDrawer: s.setDrawer })));
+  const { id, devChat, drawer, streaming, reset, setDrawer } = useChatStore(useShallow(s => ({ id: s.id, devChat: s.settings.dev_chat, drawer: s.drawer, streaming: s.streaming, reset: s.reset, setDrawer: s.setDrawer })));
   const [collapsed, setCollapsed] = useState(false);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
@@ -73,16 +76,16 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
       role={drawer ? "dialog" : undefined} aria-modal={drawer || undefined} aria-label={chatText.history}>
       <div className={styles.rail}>
         <nav className={styles.railNav} aria-label={chatText.navigation}>
-          <IconButton className={cn(styles.railButton, !id && styles.active)} aria-label={chatText.home} disabled={streaming} onClick={reset}><Home size={23} /></IconButton>
+          <IconButton className={cn(styles.railButton, !id && !devChat && styles.active)} aria-label={chatText.home} disabled={streaming} onClick={reset}><Home size={23} /></IconButton>
           <IconButton className={styles.railButton} aria-label={chatText.history} aria-controls="sidebar-history" onClick={() => { setCollapsed(false); requestAnimationFrame(() => history.current?.focus()); }}><History size={23} /></IconButton>
-          {openDevChat && <IconButton className={styles.railButton} aria-label={settingsText.dev.devChat} disabled={streaming} onClick={() => { setDrawer(false); openDevChat(); }}><Hammer size={23} /></IconButton>}
+          {openDevChat && <IconButton className={cn(styles.railButton, devChat && styles.active)} aria-label={settingsText.dev.devChat} aria-pressed={devChat} disabled={streaming} onClick={() => { setDrawer(false); openDevChat(); }}><Hammer size={23} /></IconButton>}
         </nav>
         <div className={styles.railBottom}>
           <div className={styles.collapse}><IconButton className={styles.railButton} aria-label={collapsed ? chatText.expandSidebar : chatText.collapseSidebar} aria-expanded={!collapsed} aria-controls="sidebar-content" onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelLeftOpen size={21} /> : <PanelLeftClose size={21} />}</IconButton></div>
           <details ref={preferences} className={styles.preferences}>
-            <summary className={styles.profile} aria-label={chatText.workspaceMenu} title={chatText.workspaceMenu}><span className={styles.avatar} aria-hidden="true">AH</span></summary>
+            <summary className={styles.profile} aria-label={chatText.workspaceMenu} title={chatText.workspaceMenu}><img className={styles.avatar} src={LOGO_DARK} alt="" aria-hidden="true" /></summary>
             <div className={styles.preferencesPanel}>
-              <div className={styles.identity}><span className={styles.avatar} aria-hidden="true">AH</span><div><strong>{chatText.brand}</strong><span>{chatText.local}</span></div></div>
+              <div className={styles.identity}><img className={styles.avatar} src={LOGO_DARK} alt="" aria-hidden="true" /><div><strong>{chatText.brand}</strong><span>{chatText.local}</span></div></div>
               <button className={styles.settings} onClick={() => { if (preferences.current) preferences.current.open = false; setDrawer(false); openSettings(); }}><Settings size={20} aria-hidden="true" />{settingsText.open}</button>
               <div className={styles.appearance}><span>{chatText.appearance}</span><ThemeControl /></div>
             </div>
@@ -90,7 +93,7 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
         </div>
       </div>
       <div id="sidebar-content" className={styles.content}>
-        <div className={styles.brand}><strong>{chatText.brand}</strong>
+        <div className={styles.brand}><img className={styles.logo} src={LOGO} alt="" aria-hidden="true" /><strong>{chatText.brand}</strong>
           <IconButton aria-label={chatText.searchChats} aria-expanded={searching} aria-controls="sidebar-search" onClick={() => { setSearching(!searching); setQuery(""); }}><Search size={20} /></IconButton>
           <div className={styles.close}><IconButton aria-label={chatText.close} onClick={() => setDrawer(false)}><X size={20} /></IconButton></div>
         </div>

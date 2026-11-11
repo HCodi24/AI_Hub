@@ -30,7 +30,7 @@ fn hub_dir() -> ApiResult<PathBuf> {
     cli_support::ai_hub_claude_config_dir().ok_or_else(|| {
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Không tạo được thư mục cấu hình Claude của AI Hub",
+            "Không tạo được thư mục cấu hình Claude của MutiS",
         )
     })
 }

@@ -1,18 +1,19 @@
 ﻿.sidebar {
-  --sidebar-rail: light-dark(#f0f0f0, #202020);
-  --sidebar-panel: light-dark(#fafafa, #191919);
-  --sidebar-hover: light-dark(#e5e5e5, #303030);
-  --sidebar-line: light-dark(#dedede, #303030);
+  --sidebar-rail: var(--surface);
+  --sidebar-panel: var(--bg);
+  --sidebar-hover: var(--color-muted);
+  --sidebar-line: var(--border);
   position: relative; width: 320px; flex-shrink: 0; height: 100%;
-  display: flex; background: var(--sidebar-rail); border-right: 1px solid var(--sidebar-line);
+  display: flex; background: var(--sidebar-rail);
 }
+.sidebar::after { content: ""; position: absolute; top: 12px; right: 0; bottom: 0; border-right: 1px solid var(--sidebar-line); pointer-events: none; }
 .rail { width: 64px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding: 20px 8px 12px; }
 .railNav, .railBottom { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
 .railBottom { margin-top: auto; padding-top: 16px; }
 .railButton { width: 44px; height: 44px; padding: 0; border-radius: 12px; color: var(--muted); }
 .railButton.active { background: var(--sidebar-hover); color: var(--text); }
 .sidebar button:hover:enabled, .profile:hover { background: var(--sidebar-hover); }
-.content { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 20px 12px 12px; margin-top: 12px; border: 1px solid var(--sidebar-line); border-right: 0; border-bottom: 0; border-radius: 20px 0 0 0; background: var(--sidebar-panel); }
+.content { display: flex; flex-direction: column; flex: 1; min-width: 0; padding: 20px 12px 12px; margin-top: 12px; border-top: 1px solid var(--sidebar-line); border-left: 1px solid var(--sidebar-line); border-radius: 20px 0 0 0; background: var(--sidebar-panel); }
 .brand { display: flex; align-items: center; gap: 4px; margin-bottom: 20px; padding-left: 8px; }
 .brand strong { flex: 1; font-size: var(--font-20); font-weight: 600; letter-spacing: -.025em; }
 .brand button { color: var(--muted); }
@@ -28,7 +29,8 @@
 .preferences { width: 44px; }
 .profile { display: flex; justify-content: center; align-items: center; width: 44px; height: 48px; list-style: none; border-radius: 12px; }
 .profile::-webkit-details-marker { display: none; }
-.avatar { display: inline-flex; justify-content: center; align-items: center; width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--color-primary); color: var(--color-on-primary); font-size: var(--font-12); font-weight: 600; }
+.avatar { width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px; }
+.logo { width: 28px; height: 28px; flex-shrink: 0; margin-right: 6px; }
 .preferences[open] > .profile { background: var(--sidebar-hover); }
 .preferencesPanel { position: absolute; z-index: var(--z-toolbar); left: 56px; bottom: 12px; width: 264px; max-width: calc(100vw - 80px); padding: 12px; border: 1px solid var(--sidebar-line); border-radius: 20px; background: var(--sidebar-rail); box-shadow: var(--shadow-3); }
 .identity { display: flex; gap: 10px; align-items: center; padding: 4px 4px 16px; margin-bottom: 8px; border-bottom: 1px solid var(--sidebar-line); }

@@ -270,7 +270,7 @@ pub fn remove_skill(hub_dir: &Path, name: &str) -> Result<()> {
     }
     let dir = hub_dir.join("skills").join(name);
     if !dir.join("SKILL.md").is_file() {
-        bail!("AI Hub không có skill «{name}»");
+        bail!("MutiS không có skill «{name}»");
     }
     std::fs::remove_dir_all(dir).with_context(|| format!("Không xoá được skill «{name}»"))
 }

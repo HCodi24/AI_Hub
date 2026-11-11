@@ -106,7 +106,7 @@ async fn serve_web(state: &AppState, path: &str) -> Response {
     }
     (
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        "<!doctype html><html lang=\"vi\"><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"3\"><title>AI Hub</title>\
+        "<!doctype html><html lang=\"vi\"><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"3\"><title>MutiS</title>\
          <p>Giao diện mới chưa được build: chạy npm run build trong web/</p></html>",
     )
         .into_response()

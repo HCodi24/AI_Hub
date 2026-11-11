@@ -8,6 +8,7 @@ import { EFFORTS, PERMISSIONS, FILE_TOOLS } from "@/constants/chat";
 import { PermissionSchema, EffortSchema, FileToolsSchema } from "@/schema/chat.schema";
 import type { Config } from "@/schema/config.schema";
 import styles from "./chat-toolbar.module.css";
+import { CliLimits } from "./cli-limits";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { mutisApi } from "@/apis/mutis.api";
 import { SourceControls } from "@/components/features/plan/source-controls";
@@ -22,12 +23,11 @@ const MODEL_LABELS: Record<string, string> = {
 };
 const CODEX_CLI_MODEL_SUGGESTIONS = ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"];
 
-/** Thin top row: mobile menu and title. */
+/** Sidebar access on mobile. */
 export function ChatHeader() {
   const setDrawer = useChatStore(s => s.setDrawer);
   return <header className={styles.header}>
-    <span className={styles.mobile}><IconButton aria-label={chatText.menu} onClick={() => setDrawer(true)}><Menu size={20} /></IconButton></span>
-    <span>{chatText.local}</span>
+    <IconButton aria-label={chatText.menu} onClick={() => setDrawer(true)}><Menu size={20} /></IconButton>
   </header>;
 }
 
@@ -72,7 +72,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
     configure({ provider_id: id, model: next?.models[0] || "", file_tools: "none", permission: "write" });
   }
   const name = settings.provider_id === "mutis" ? t.mutis : provider?.name || chatText.source;
-  return <details ref={picker} className={styles.picker} onToggle={(event) => {
+  return <><details ref={picker} className={styles.picker} onToggle={(event) => {
     if (event.target === event.currentTarget && !event.currentTarget.open) setModelMenuOpen(false);
   }}>
     <summary><span>{settings.model || name}</span> <span className={styles.effort}>{chatText[settings.effort]}</span><ChevronDown size={14} aria-hidden="true" /></summary>
@@ -125,5 +125,5 @@ export function ChatToolbar({ config }: { config?: Config }) {
         onChange={(event) => configure({ folder: event.target.value })} /></label>
       {provider && !cli && <span className={styles.note}>{chatText.noCommands}</span>}
     </div>
-  </details>;
+  </details>{provider && cli && <CliLimits key={provider.id} providerId={provider.id} name={provider.name} />}</>;
 }

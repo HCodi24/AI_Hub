@@ -68,7 +68,7 @@ pub(crate) fn effective_chat_folder(
 pub(crate) fn dev_chat_preamble(repo: &str) -> String {
     format!(
         concat!(
-            "Bạn đang sửa chính ứng dụng AI Hub (repo: {repo}) đang chạy ở chế độ dev.\n",
+            "Bạn đang sửa chính ứng dụng MutiS (repo: {repo}) đang chạy ở chế độ dev.\n",
             "- Giao diện React ở web/src cần người dùng bấm 'Build giao diện' (trang tự tải lại ",
             "khi build xong); code Rust ở src/ cần 'Build & khởi động lại'.\n",
             "- Không chạy `cargo build --release`, không tắt tiến trình ai-hub, ",

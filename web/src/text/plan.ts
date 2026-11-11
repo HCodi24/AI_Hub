@@ -2,7 +2,7 @@ import type { Plan, PlanTask } from "@/schema/plans.schema";
 import type { Mutis } from "@/schema/mutis.schema";
 export function taskPrompt(plan: Plan, task: PlanTask, config: Mutis) {
   const dev = plan.dev_chat ? [
-    `Bạn đang sửa chính ứng dụng AI Hub (repo: ${plan.folder}) đang chạy ở chế độ dev.`,
+    `Bạn đang sửa chính ứng dụng MutiS (repo: ${plan.folder}) đang chạy ở chế độ dev.`,
     "- Giao diện React ở web/src cần người dùng bấm 'Build giao diện' (trang tự tải lại khi build xong); code Rust ở src/ cần 'Build & khởi động lại'.",
     "- Không chạy `cargo build --release`, không tắt tiến trình ai-hub, không sửa target/.",
     "- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy `cargo test` với CARGO_TARGET_DIR=target/dev-check nếu cần.",
