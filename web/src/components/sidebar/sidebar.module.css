@@ -9,7 +9,6 @@
 .history button { display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2); width: 100%; border: 0; background: transparent; text-align: left; margin-bottom: var(--space-1); }
 .history button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history button[aria-current] { background: var(--accent-soft); color: var(--accent); }
-.legacy { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); border-top: 1px solid var(--border); font-size: var(--font-small); }
 .close, .backdrop { display: none; }
 @media (max-width: 767px) {
   .sidebar { display: none; position: fixed; left: 0; top: 0; width: min(310px, calc(100vw - 40px)); z-index: var(--z-drawer); box-shadow: var(--shadow); }

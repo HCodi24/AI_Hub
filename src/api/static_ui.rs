@@ -4,21 +4,13 @@ use axum::{
     http::{header, StatusCode},
     response::{IntoResponse, Response},
 };
-use std::path::{Component, Path as FsPath};
+use std::path::Path as FsPath;
 
-include!(concat!(env!("OUT_DIR"), "/ui_assets.rs"));
 include!(concat!(env!("OUT_DIR"), "/web_assets.rs"));
 
-/// `/` opens the new React UI when a build of it exists; otherwise the legacy UI (still reachable at `/legacy`).
-pub(crate) async fn index(State(state): State<AppState>) -> Response {
-    if web_available(&state).await {
-        return axum::response::Redirect::temporary("/app/").into_response();
-    }
-    serve_asset(&state, "index.html").await
-}
-
-pub(crate) async fn legacy_index(State(state): State<AppState>) -> Response {
-    serve_asset(&state, "index.html").await
+/// `/` opens the React UI (served under /app/).
+pub(crate) async fn index() -> Response {
+    axum::response::Redirect::temporary("/app/").into_response()
 }
 
 fn web_roots(state: &AppState) -> Vec<std::path::PathBuf> {
@@ -31,64 +23,6 @@ fn web_roots(state: &AppState) -> Vec<std::path::PathBuf> {
         .ok()
         .and_then(|exe| exe.parent().map(|dir| dir.join("web/out")));
     [root, exe_root].into_iter().flatten().collect()
-}
-
-async fn web_available(state: &AppState) -> bool {
-    for root in web_roots(state) {
-        if tokio::fs::try_exists(root.join("index.html"))
-            .await
-            .unwrap_or(false)
-        {
-            return true;
-        }
-    }
-    state.dev_repo.is_none() && WEB_ASSETS.iter().any(|(name, _)| *name == "index.html")
-}
-
-pub(crate) async fn asset(State(state): State<AppState>, Path(path): Path<String>) -> Response {
-    if !safe_ui_path(&path) {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-    serve_asset(&state, &path).await
-}
-
-fn safe_ui_path(path: &str) -> bool {
-    let path = FsPath::new(path);
-    !path.is_absolute()
-        && path
-            .components()
-            .all(|component| matches!(component, Component::Normal(_)))
-        && matches!(
-            path.extension().and_then(|ext| ext.to_str()),
-            Some("html" | "js" | "css" | "svg" | "png")
-        )
-}
-
-async fn serve_asset(state: &AppState, path: &str) -> Response {
-    let Some(content_type) = content_type(path) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    if let Some(repo) = state.dev_repo.as_ref() {
-        if !safe_ui_path(path) {
-            return StatusCode::NOT_FOUND.into_response();
-        }
-        let file = repo.join("ui").join(path);
-        return match tokio::fs::read(file).await {
-            Ok(body) => (
-                [
-                    (header::CONTENT_TYPE, content_type),
-                    (header::CACHE_CONTROL, "no-store"),
-                ],
-                body,
-            )
-                .into_response(),
-            Err(_) => StatusCode::NOT_FOUND.into_response(),
-        };
-    }
-    match UI_ASSETS.iter().find(|(name, _)| *name == path) {
-        Some((_, body)) => ([(header::CONTENT_TYPE, content_type)], *body).into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
 }
 
 fn content_type(path: &str) -> Option<&'static str> {

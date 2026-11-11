@@ -69,8 +69,8 @@ pub(crate) fn dev_chat_preamble(repo: &str) -> String {
     format!(
         concat!(
             "Bạn đang sửa chính ứng dụng AI Hub (repo: {repo}) đang chạy ở chế độ dev.\n",
-            "- Giao diện ở ui/ tự tải lại khi lưu; code Rust ở src/ cần người dùng bấm ",
-            "'Build & khởi động lại'.\n",
+            "- Giao diện React ở web/src cần người dùng bấm 'Build giao diện' (trang tự tải lại ",
+            "khi build xong); code Rust ở src/ cần 'Build & khởi động lại'.\n",
             "- Không chạy `cargo build --release`, không tắt tiến trình ai-hub, ",
             "không sửa target/.\n",
             "- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy `cargo test` ",
@@ -173,10 +173,10 @@ pub(crate) async fn dev_git_reset(State(state): State<AppState>) -> ApiResult<Js
     let files = git_text(&repo, &["status", "--porcelain", "--untracked-files=all"])
         .await?
         .lines()
-        // Report only what reset/clean really discards: tracked changes anywhere, untracked files only under src/ and ui/.
+        // Report only what reset/clean really discards: tracked changes anywhere, untracked files only under src/ and web/src/.
         .filter(|line| {
             let path = line.get(3..).unwrap_or_default();
-            !line.starts_with("??") || path.starts_with("src/") || path.starts_with("ui/")
+            !line.starts_with("??") || path.starts_with("src/") || path.starts_with("web/src/")
         })
         .map(|line| line.get(3..).unwrap_or(line).to_owned())
         .collect::<Vec<_>>();
@@ -409,15 +409,14 @@ pub(crate) async fn dev_events(State(state): State<AppState>) -> Response {
 
 pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
     tokio::spawn(async move {
-        let (mut old_ui, mut old_rust) = crate::dev::snapshot(&repo);
+        let mut old_rust = crate::dev::snapshot(&repo);
         let mut old_web = crate::dev::snapshot_web_src(&repo);
         let mut old_out = crate::dev::snapshot_web_out(&repo);
         let mut out_changed_at: Option<Instant> = None;
         let mut pending: Option<Instant> = None;
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
-            let (ui, rust) = crate::dev::snapshot(&repo);
-            let ui_changes = crate::dev::changed_files(&old_ui, &ui);
+            let rust = crate::dev::snapshot(&repo);
             let rust_changes = crate::dev::changed_files(&old_rust, &rust);
             let web = crate::dev::snapshot_web_src(&repo);
             let web_changes = crate::dev::changed_files(&old_web, &web);
@@ -441,11 +440,6 @@ pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
                     .dev_events
                     .send(json!({"event":"ui_changed","data":{}}).to_string());
             }
-            if !ui_changes.is_empty() {
-                let _ = state
-                    .dev_events
-                    .send(json!({"event":"ui_changed","data":{}}).to_string());
-            }
             if !rust_changes.is_empty() {
                 let files = rust_changes
                     .iter()
@@ -461,7 +455,6 @@ pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
                     .send(json!({"event":"rust_changed","data":{"files":files}}).to_string());
                 pending = Some(Instant::now() + Duration::from_secs(3));
             }
-            old_ui = ui;
             old_rust = rust;
             if pending.is_some_and(|at| Instant::now() >= at) {
                 pending = None;

@@ -54,9 +54,6 @@ pub fn router(state: AppState) -> Router {
         .route("/app/", get(crate::api::static_ui::web_index))
         .route("/app/{*path}", get(crate::api::static_ui::web_asset))
         .route("/", get(crate::api::static_ui::index))
-        .route("/legacy", get(crate::api::static_ui::legacy_index))
-        .route("/legacy/", get(crate::api::static_ui::legacy_index))
-        .route("/{*path}", get(crate::api::static_ui::asset))
         // Development routes.
         .route("/api/dev/status", get(crate::api::dev::dev_status))
         .route("/api/dev/repo", get(crate::api::dev::dev_repo_info))

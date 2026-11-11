@@ -13,7 +13,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
     <div className={styles.identity}>{user ? <UserRound size={18} aria-hidden="true" /> : <Bot size={18} aria-hidden="true" />}
       <strong>{user ? chatText.you : chatText.assistant}</strong></div>
     {message.debate_id ? <DebateCard id={message.debate_id} /> : message.plan_id ? <PlanCard id={message.plan_id} /> : <MarkdownView source={message.content} />}
-    {message.attachments.map((attachment) => <a key={attachment.id} href={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} target="_blank" rel="noreferrer">{chatText.attachments}</a>)}
+    {message.attachments.map((attachment) => <a key={attachment.id} href={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} target="_blank" rel="noreferrer"><img className={styles.thumb} alt={chatText.attachments} src={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} /></a>)}
     {message.reasoning && <details><summary>{chatText.reasoning}</summary><MarkdownView source={message.reasoning} /></details>}
     {message.logs.length > 0 && <details><summary>{chatText.activity}</summary><pre className={styles.logs}>{message.logs.join("\n")}</pre></details>}
     {tokenLine && <div className={styles.tokens}>{tokenLine}</div>}

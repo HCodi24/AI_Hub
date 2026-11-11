@@ -23,7 +23,7 @@ pub fn git_commit_args(message: &str) -> Vec<Vec<String>> {
 }
 
 pub fn clean_paths() -> [&'static str; 2] {
-    ["src", "ui"]
+    ["src", "web/src"]
 }
 
 pub fn git_reset_args() -> Vec<Vec<String>> {
@@ -88,8 +88,8 @@ mod command_tests {
     }
 
     #[test]
-    fn clean_whitelist_is_only_src_and_ui() {
-        assert_eq!(clean_paths(), ["src", "ui"]);
+    fn clean_whitelist_is_only_src_and_web_src() {
+        assert_eq!(clean_paths(), ["src", "web/src"]);
         assert_eq!(
             git_reset_args(),
             vec![
@@ -104,7 +104,7 @@ mod command_tests {
                     "clean".to_owned(),
                     "-fd".to_owned(),
                     "--".to_owned(),
-                    "ui".to_owned()
+                    "web/src".to_owned()
                 ]
             ]
         );
@@ -139,10 +139,8 @@ pub fn changed_files(before: &Snapshot, after: &Snapshot) -> Vec<PathBuf> {
         .collect()
 }
 
-pub fn snapshot(repo: &Path) -> (Snapshot, Snapshot) {
-    let mut ui = Snapshot::new();
+pub fn snapshot(repo: &Path) -> Snapshot {
     let mut rust = Snapshot::new();
-    collect_files(&repo.join("ui"), &mut ui, |_| true);
     collect_files(&repo.join("src"), &mut rust, |p| {
         p.extension().is_some_and(|x| x == "rs")
     });
@@ -152,7 +150,7 @@ pub fn snapshot(repo: &Path) -> (Snapshot, Snapshot) {
             rust.insert(path, stamp(&repo.join(name)));
         }
     }
-    (ui, rust)
+    rust
 }
 
 /// The exported React UI (web/out). `next build` empties it first, so the watcher waits until it is complete and

@@ -47,17 +47,9 @@ if (Test-Path (Join-Path $repo 'web/node_modules')) {
 $null = Invoke-LoggedCheck 'fmt' { cargo fmt --check }
 $null = Invoke-LoggedCheck 'clippy' { cargo clippy --offline --all-targets -- -D warnings }
 $null = Invoke-LoggedCheck 'test' { cargo test --offline }
-$null = Invoke-LoggedCheck 'node' {
-  $files = @(Get-ChildItem -LiteralPath (Join-Path $repo 'ui') -Filter '*.js' -File -Recurse)
-  foreach ($file in $files) { node --check $file.FullName; if ($LASTEXITCODE -ne 0) { throw "node --check failed: $($file.FullName)" } }
-}
-$null = Invoke-LoggedCheck 'plan-order' { node scripts/test-plan-order.mjs }
-$null = Invoke-LoggedCheck 'plan-run' { node scripts/test-plan-run.mjs }
-$null = Invoke-LoggedCheck 'plan-summary' { node scripts/test-plan-summary.mjs }
-$null = Invoke-LoggedCheck 'plan-card' { node --experimental-vm-modules scripts/test-plan-card.mjs }
 $null = Invoke-LoggedCheck 'encoding' {
   $bad = [System.Collections.Generic.List[string]]::new()
-  foreach ($folder in @('src','ui','scripts')) {
+  foreach ($folder in @('src','scripts')) {
     foreach ($file in Get-ChildItem (Join-Path $repo $folder) -File -Recurse) {
       if ($file.Extension -notin @('.js','.css','.html','.rs','.ps1','.cmd','.json','.toml')) { continue }
       $bytes = [IO.File]::ReadAllBytes($file.FullName)
@@ -76,7 +68,7 @@ $null = Invoke-LoggedCheck 'encoding' {
 $null = Invoke-LoggedCheck 'line-length' {
   $longSrc = [System.Collections.Generic.List[string]]::new()
   $longUi = [System.Collections.Generic.List[string]]::new()
-  foreach ($folder in @('ui','src')) {
+  foreach ($folder in @('src')) {
     foreach ($file in Get-ChildItem (Join-Path $repo $folder) -File -Recurse) {
       if (($folder -eq 'ui' -and $file.Extension -notin @('.js','.css','.html')) -or ($folder -eq 'src' -and $file.Extension -ne '.rs')) { continue }
       $lineNo = 0

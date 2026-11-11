@@ -44,15 +44,7 @@ try {
   if (-not $ready) { throw 'server did not become ready on port 7911' }
   $routes = @('/api/dev/status','/api/dev/repo','/api/dev/git/diff','/api/dev/settings','/api/dev/events','/api/config','/api/mutis','/api/mutis/roles/resolve','/api/mutis/stats','/api/mutis/diagnoses','/api/mutis/events','/api/chats','/api/plans','/api/cli-status','/api/extensions')
   foreach ($route in $routes) { try { $status=Get-Status "$base$route"; if ($status -ge 500) { $failures.Add("GET $route => $status") } } catch { $failures.Add("GET $route => $($_.Exception.Message)") } }
-  $uiFiles = @(Get-ChildItem -LiteralPath (Join-Path $repo 'ui') -File -Recurse | Where-Object { $_.Extension -in @('.html','.js','.css','.svg','.png') })
-  $assetPaths = [System.Collections.Generic.List[string]]::new()
-  $assetPaths.Add('/')
-  $uiRoot = [IO.Path]::GetFullPath((Join-Path $repo 'ui')).TrimEnd([IO.Path]::DirectorySeparatorChar,[IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-  foreach ($file in $uiFiles) {
-    $relative = $file.FullName.Substring($uiRoot.Length).Replace('\','/')
-    if ($relative -ne 'index.html') { $assetPaths.Add("/$relative") }
-  }
-  foreach ($path in $assetPaths) { try { $status=Get-Status "$base$path"; if ($status -ne 200) { $failures.Add("GET $path => $status") } } catch { $failures.Add("GET $path => $($_.Exception.Message)") } }
+  foreach ($path in @('/')) { try { $status=Get-Status "$base$path"; if ($status -ne 200) { $failures.Add("GET $path => $status") } } catch { $failures.Add("GET $path => $($_.Exception.Message)") } }
   if (Test-Path (Join-Path $repo 'web/out/index.html')) {
     try {
       $response = $client.GetAsync("$base/app/").GetAwaiter().GetResult()

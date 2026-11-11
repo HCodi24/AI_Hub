@@ -3,7 +3,7 @@ export const chatText = {
   mode: "Chế độ làm việc", collapseSidebar: "Thu gọn thanh bên", expandSidebar: "Mở thanh bên",
   light: "Sáng", dark: "Tối", system: "Hệ thống", appearance: "Giao diện",
   brand: "AI Hub", beta: "Bản thử nghiệm", newChat: "Chat mới", history: "Lịch sử trò chuyện",
-  legacy: "Mở giao diện cũ", local: "Không gian làm việc của bạn", source: "Nguồn AI",
+  local: "Không gian làm việc của bạn", source: "Nguồn AI",
   model: "Model", permission: "Quyền", effort: "Mức suy luận", folder: "Thư mục làm việc",
   read: "Chỉ đọc", write: "Được sửa file", full: "Toàn quyền (chạy lệnh)",
   default: "Mặc định", low: "Thấp", medium: "Vừa", high: "Cao", xhigh: "Rất cao", max: "Tối đa",
@@ -18,6 +18,6 @@ export const chatText = {
   requestError: "Không thể thực hiện yêu cầu", invalidData: "Dữ liệu phản hồi không hợp lệ",
   streamError: "Mất kết nối. Phản hồi có thể chưa hoàn tất; kiểm tra trước khi gửi lại.",
   selectRequired: "Hãy chọn nguồn, model và nhập thư mục làm việc.", memory: "Bộ nhớ dự án",
-  retry: "Thử lại", notFound: "Không tìm thấy trang", home: "Về trang chat", attachments: "Ảnh đã gửi",
+  retry: "Thử lại", notFound: "Không tìm thấy trang", home: "Về trang chat", attachments: "Ảnh đã gửi", attachImage: "Đính kèm ảnh", removeImage: "Xóa ảnh", maxImages: "Mỗi tin nhắn tối đa 5 ảnh",
   tokens: "Token", seconds: "giây", idle: "Chờ hoạt động", skip: "Đến nội dung chat",
 } as const;

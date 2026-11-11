@@ -4,16 +4,10 @@ fn main() {
     let manifest = env::var("CARGO_MANIFEST_DIR").expect("manifest dir");
     let output = env::var("OUT_DIR").expect("output dir");
     generate(
-        &Path::new(&manifest).join("ui"),
-        &Path::new(&output).join("ui_assets.rs"),
-        "UI_ASSETS",
-    );
-    generate(
         &Path::new(&manifest).join("web/out"),
         &Path::new(&output).join("web_assets.rs"),
         "WEB_ASSETS",
     );
-    println!("cargo:rerun-if-changed=ui");
     println!("cargo:rerun-if-changed=web/out");
 }
 

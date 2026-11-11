@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, MessageSquare, ArrowUpRight, X, Layers, PanelLeftClose, PanelLeftOpen, Settings, Hammer } from "lucide-react";
+import { Plus, MessageSquare, X, Layers, PanelLeftClose, PanelLeftOpen, Settings, Hammer } from "lucide-react";
 import { Button } from "@/components/button/button";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
@@ -9,7 +9,6 @@ import { useShallow } from "zustand/react/shallow";
 import type { ChatSummary } from "@/schema/chat.schema";
 import { chatText } from "@/text/chat";
 import { settingsText } from "@/text/settings";
-import { routes } from "@/routes/routes";
 import { cn } from "@/lib/utils";
 import styles from "./sidebar.module.css";
 export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; openSettings: () => void; openDevChat?: () => void }) {
@@ -61,7 +60,6 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
       </nav>
       <Button variant="ghost" onClick={() => { setDrawer(false); openSettings(); }}><Settings size={18} aria-hidden="true" />{settingsText.open}</Button>
       <ThemeControl />
-      <a className={styles.legacy} href={routes.legacy}>{chatText.legacy}<ArrowUpRight size={16} aria-hidden="true" /></a>
     </aside>
   </>;
 }

@@ -7,7 +7,7 @@ type ChatState = {
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
   load: (chat: ChatRecord) => void; reset: () => void;
-  begin: (text: string) => void; event: (event: string, data: StreamData) => void;
+  begin: (text: string, attachments?: ChatMessage["attachments"]) => void; event: (event: string, data: StreamData) => void;
   finish: (error?: string) => void; setDrawer: (open: boolean) => void;
 };
 const defaults: Settings = { provider_id: "", model: "", folder: "", permission: "write", effort: "default", file_tools: "none", dev_chat: false };
@@ -25,8 +25,8 @@ export const useChatStore = create<ChatState>((set) => ({
   }, status: {}, error: "", drawer: false, initialized: true })),
   reset: () => set((state) => ({ id: "", messages: [], status: {}, error: "", drawer: false,
     settings: { ...state.settings, dev_chat: false } })),
-  begin: (text) => set((state) => ({ id: state.id || crypto.randomUUID(), streaming: true, status: {}, error: "",
-    messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text }),
+  begin: (text, attachments = []) => set((state) => ({ id: state.id || crypto.randomUUID(), streaming: true, status: {}, error: "",
+    messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text, attachments }),
       ChatMessageSchema.parse({ role: "assistant", content: "" })] })),
   event: (event, data) => set((state) => {
     if (event === "status" || event === "heartbeat") return { status: { ...state.status, ...data } };

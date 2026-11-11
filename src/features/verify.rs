@@ -281,7 +281,7 @@ async fn changed_files(folder: &Path) -> Vec<PathBuf> {
 }
 fn walk_text(folder: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    for top in ["src", "ui", "app"] {
+    for top in ["src", "web/src", "app"] {
         let root = folder.join(top);
         if root.exists() {
             let mut stack = vec![root];

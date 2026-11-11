@@ -13,7 +13,7 @@ export function useChat() {
   const client = useQueryClient();
   const config = useQuery({ queryKey: ["config"], queryFn: ({ signal }) => configApi.get(signal) });
   const chats = useQuery({ queryKey: ["chats"], queryFn: ({ signal }) => chatApi.list(signal) });
-  async function send(text: string, direct = false) {
+  async function send(text: string, direct = false, attachments: { id: string; mime: string }[] = []) {
     const state = useChatStore.getState();
     if (state.streaming || useCardStore.getState().running) return false;
     const mutis = await mutisApi.get();
@@ -35,7 +35,7 @@ export function useChat() {
     if (!settings.provider_id || !settings.model.trim() || !settings.folder.trim()) {
       useChatStore.setState({ error: chatText.selectRequired }); return false;
     }
-    state.begin(text);
+    state.begin(text, attachments);
     const current = useChatStore.getState();
     const controller = new AbortController(); activeChatAbort = controller;
     try {
