@@ -109,7 +109,6 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
       {streaming ? <Button className={styles.sendButton} variant="danger" onClick={() => void stop()} aria-label={chatText.stop} title={chatText.stop}><Square size={18} aria-hidden="true" /></Button> :
         <Button className={styles.sendButton} variant="primary" type="submit" disabled={!canSend || Boolean(running)} aria-label={chatText.send} title={chatText.send}><ArrowUp size={20} aria-hidden="true" /></Button>}
     </div>
-    <p>{chatText.hint}</p>
     <div className={styles.toolbar}><ChatToolbar config={config} /></div>
   </form>;
 }
