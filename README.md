@@ -295,3 +295,11 @@ cargo build --release --offline
 R1 hỗ trợ lịch sử, chat SSE, markdown, hoạt động, diff, light/dark và drawer mobile. Plan/debate hiển thị liên kết về UI cũ; cấu hình nguồn vẫn thực hiện ở UI cũ. Cấu trúc cho các bước tiếp theo: [docs/FE_STRUCTURE.md](docs/FE_STRUCTURE.md).
 
 `verify.ps1` thêm typecheck/lint/build web và bỏ qua có cảnh báo nếu thiếu node_modules. `smoke.ps1` dùng dữ liệu/cổng riêng, kiểm tra `/app/` khi có export và giữ tiến trình smoke đang chạy, in PID/URL để tuân thủ yêu cầu không dừng ai-hub.
+
+## React R2 tại /app/
+
+React chat hỗ trợ thẻ Tranh luận, Chia việc và Bộ nhớ dự án ngay trong hội thoại. Công tắc Tranh luận dùng chung `localStorage.debateMode` với legacy (`1`/`0`). Nguồn `✦ MutiS (3 AI)` dùng lead cho chat thường; bật auto_plan để chuyển yêu cầu thành kế hoạch. Phán quyết có thể tạo kế hoạch với xác nhận chạy inline hoặc gửi thẳng tới nguồn đã chọn.
+
+Thẻ kế hoạch có editor, lưu, duyệt, chạy từng việc/toàn bộ theo phụ thuộc, dừng/chạy tiếp, verify, review và các vòng sửa có giới hạn. Bộ nhớ trong thanh trên cùng theo thư mục chat, hỗ trợ active/archive, sửa nội dung, xác nhận lưu trữ/khôi phục/xoá và toast Hoàn tác cho sự kiện SSE archive. Giao diện `/` vẫn hoạt động độc lập.
+
+Kiểm tra không dùng AI: `node scripts/test-web.cjs`; `python scripts/screenshot-web-r2.py` chụp React export bằng Chrome headless đã cài, dữ liệu mock localhost, hai kích thước 1100px tối và 375px sáng. Ảnh và DOM nằm trong `target/codex/screenshots-r2/`. Script tự đóng máy chủ mock và các phiên Chrome của nó. Không cài gói hay dùng cấu hình người dùng.

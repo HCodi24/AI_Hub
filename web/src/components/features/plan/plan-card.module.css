@@ -1,0 +1,13 @@
+.card { min-width: 0; border: 1px solid var(--border); border-radius: 16px; padding: 16px; background: var(--surface); overflow-wrap: anywhere; }
+.card header, .card footer { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.card header { justify-content: space-between; }
+.card label { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; min-width: 0; }
+.card input, .card textarea, .card select { width: 100%; min-width: 0; max-width: 100%; }
+.card input[type=checkbox] { width: auto; }
+.card button { margin: 4px; max-width: 100%; }
+.card fieldset { min-width: 0; border: 0; padding: 8px; }
+.card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+.tasks > details { padding: 12px 0; border-top: 1px solid var(--border); }
+.tasks summary { cursor: pointer; }
+.tasks small { border-radius: 4px; background: var(--bg); padding: 4px; }
+@media (max-width: 699px) { .card { padding: 12px; } }

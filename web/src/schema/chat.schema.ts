@@ -24,7 +24,7 @@ export type ChatRecord = z.infer<typeof ChatRecordSchema>;
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;
 export const StreamDataSchema = z.object({
-  text: z.string().optional(), provider_name: z.string().optional(), model: z.string().optional(),
+  text: z.string().optional(), message: z.string().optional(), provider_name: z.string().optional(), model: z.string().optional(),
   effort: z.string().optional(), role: z.string().nullish(), elapsed_s: z.number().optional(),
   idle_s: z.number().optional(), last_activity: z.string().optional(), scope: z.string().optional(),
   action: z.string().optional(), status: z.string().optional(),

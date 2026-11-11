@@ -17,7 +17,8 @@ function load(file) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const localRequire = (id) => id.startsWith("@/")
-    ? load(path.join(web, "src", id.slice(2) + ".ts")) : fromWeb(id);
+    ? load(path.join(web, "src", id.slice(2) + ".ts"))
+    : id.startsWith(".") ? load(path.resolve(path.dirname(file), id + ".ts")) : fromWeb(id);
   vm.runInThisContext(`(function(require,module,exports){${source}\n})`, { filename: file })(localRequire, module, module.exports);
   return module.exports;
 }
@@ -68,6 +69,7 @@ async function run() {
   await assert.rejects(postSse("/chat", {}, new AbortController().signal, () => {}), { message: text.streamError });
   http.request = async () => new Response('data: {}', { headers: { "content-type": "application/json" } });
   await assert.rejects(postSse("/chat", {}, new AbortController().signal, () => {}), { message: text.streamError });
+  await require("./test-web-r2.cjs")(load, web);
   console.log("PASS web contracts: UTF-8/CRLF SSE, missing done, content-type, store events, history defaults, hidden memory");
 }
 run().catch((error) => { console.error(error); process.exitCode = 1; });

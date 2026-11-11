@@ -16,7 +16,7 @@ AI Hub là ứng dụng desktop cục bộ dạng một binary Rust, phục vụ
 - `GET /app`, `/app/`, `/app/{*path}`: React 19 / Next.js 16 Pages Router static export trong `web/out`. Route thư mục đọc `index.html`; đường dẫn lạ trả `404.html` hoặc `index.html`. MIME JS/CSS/WOFF2/SVG/JSON/TXT chính xác; chặn traversal và symlink ra ngoài export.
 - `build.rs` nhúng `web/out` khi có lúc build; thiếu thư mục tạo bảng rỗng, backend vẫn chạy. Dev ưu tiên repo/web/out; bản thường hỗ trợ cwd/web/out và exe-dir/web/out, rồi tài nguyên nhúng. Chưa có export trả trang tiếng Việt hướng dẫn `npm run build` trong web.
 - Build: `cd web`, `npm run typecheck`, `npm run lint`, `npm run build`; sau đó build Rust offline với `CARGO_TARGET_DIR=target/codex`. `/` vẫn là legacy UI, thêm link beta trong sidebar.
-- R1: sidebar lịch sử, chọn nguồn/model/quyền/effort, thư mục theo chat, composer Enter/Shift+Enter/Dừng, SSE store Zustand, virtualized messages, markdown sanitize/highlight/copy, hoạt động/token/diff/lỗi. Card plan/debate là link về `/`. Query data dùng React Query; cấu trúc theo `docs/FE_STRUCTURE.md`.
+- R1: sidebar lịch sử, chọn nguồn/model/quyền/effort, thư mục theo chat, composer Enter/Shift+Enter/Dừng, SSE store Zustand, virtualized messages, markdown sanitize/highlight/copy, hoạt động/token/diff/lỗi. R2 thay link plan/debate bằng thẻ React đầy đủ trong chat. Query data dùng React Query; cấu trúc theo `docs/FE_STRUCTURE.md`.
 - `GET /` và `GET /{*path}`: trang và tài nguyên UI đã nhúng.
 
 ### Chế độ phát triển (`/api/dev`)
@@ -179,3 +179,13 @@ API (mọi tuyến yêu cầu `?folder=…`, thư mục không tồn tại trả
 - `PUT /api/memory/{scope}` `{text}` → `{text}`; kiểm tra scope frontmatter, tái tạo index.
 - `POST /api/memory/{scope}/archive`, `POST /api/memory/{scope}/restore`.
 - `DELETE /api/memory/{scope}`: chỉ xoá scope đã archive.
+
+## React R2 — thẻ trong /app chat
+
+- `web/src/apis/{debates,plans,memory,mutis}.api.ts` và schemas tương ứng kiểm tra JSON/SSE bằng Zod, nhận defaults lịch sử Rust. SSE chat/debate kết thúc bằng `done`, planner bằng `plan`, verify bằng `verify`; ngắt sớm báo lỗi.
+- Message `debate_id`/`plan_id` render thẻ React, GET bằng React Query. Zustand giữ bản đang chạy qua việc unmount/remount của danh sách virtualized. Tóm tắt Unicode tối đa 1.500 ký tự được giữ trong chat cho lượt sau.
+- Tranh luận: phán quyết trước biên bản, chips, tab vòng, hai cột Codex/Claude; dưới 700px chọn một bên; markdown chung có sanitize, stance/token/cảnh báo 500k, timer/activity và dừng reader. Chia việc tạo thẻ kế hoạch ngay sau tranh luận, lưu liên kết và yêu cầu duyệt/chạy inline. Thực hiện với nguồn gửi direct, bỏ qua debate/auto_plan.
+- `features/plan/plan-runner.ts` dùng adapter có thể thay trong test: mỗi việc có chat UUID riêng, truyền plan_id/task_id/task_kind, quyền và file_tools. Chạy theo topo ổn định, bỏ việc xong, dừng khi lỗi, hỗ trợ cancel và auto_continue. `plan-gates.ts` xử lý verify, lead review, SKIPPED nếu thiếu reviewer, JSON sai thành FAIL, fix high/medium có giới hạn vòng và giữ ngữ cảnh gốc. MutiS nhận sự kiện verify/review/fix_task.
+- Editor kế hoạch tự lưu thay đổi hợp lệ sau 400ms, có nút Lưu; PUT theo từng plan được tuần tự hoá để không ghi đè tiến trình mới bằng bản cũ; kiểm tra tên/chi tiết/ID trùng/phụ thuộc thiếu/chu trình trước duyệt/chạy. Đổi vai trò MutiS chép provider/model/effort vào task. Chỉ CLI cho chọn quyền full; nguồn HTTP có ghi chú không chạy lệnh.
+- Bộ nhớ dùng native modal dialog (Escape, focus trap của trình duyệt, trả focus khi đóng), theo folder hiện tại. GET/PUT scope và archive/restore/delete dùng cùng API legacy. Toast archive cung cấp Hoàn tác tới đúng folder của stream.
+- Kiểm tra offline trong `scripts/test-web-r2.cjs`, tích hợp `test-web.cjs`; ảnh mock bằng `scripts/screenshot-web-r2.py`, không gọi AI.

@@ -1,0 +1,15 @@
+.card { padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); min-width: 0; overflow-wrap: anywhere; }
+.card header { display: flex; justify-content: space-between; gap: 16px; }
+.meta { color: var(--muted); font-size: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.chips > span, .badge { border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; font-size: 12px; }
+.chips [data-active=true] { color: var(--accent); }
+.verdict { border-left: 3px solid var(--accent); padding-left: 12px; margin: 16px 0; }
+.columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.side { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
+.preview { max-height: 180px; overflow: hidden; }
+.preview[data-expanded=true] { max-height: none; }
+.toggle { display: none; }
+.card button { margin: 4px; max-width: 100%; }
+.card select, .card input { max-width: 100%; }
+@media (max-width: 699px) { .columns { grid-template-columns: minmax(0, 1fr); } .side[data-selected=false] { display: none; } .toggle { display: flex; } .card { padding: 12px; } }

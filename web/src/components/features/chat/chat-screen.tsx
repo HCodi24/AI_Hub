@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import Head from "next/head";
 import { Virtuoso } from "react-virtuoso";
 import { Sidebar } from "@/components/sidebar/sidebar";
@@ -10,7 +11,11 @@ import { useChatStore } from "./chat-store";
 import { useChat } from "./use-chat";
 import { chatText } from "@/text/chat";
 import styles from "./chat-screen.module.css";
+import { Toast, useToast } from "@/components/toast/toast";
+import { setRunnerMemoryHandler } from "@/components/features/plan/plan-runner";
+import { memoryNotice } from "@/components/features/memory/memory-events";
 export function ChatScreen() {
+  useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
   const state = useChatStore();
   const { config, chats, send, stop, load } = useChat();
   const queryError = config.error || chats.error;
@@ -34,5 +39,5 @@ export function ChatScreen() {
         </div>
         <Composer streaming={state.streaming} send={send} stop={stop} />
       </main>
-    </div></>;
+    </div><Toast /></>;
 }

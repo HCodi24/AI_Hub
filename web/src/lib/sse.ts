@@ -1,7 +1,7 @@
 import { http } from "@/lib/http";
 import { chatText } from "@/text/chat";
 export async function postSse(path: string, body: unknown, signal: AbortSignal,
-  onEvent: (event: string, data: unknown) => void): Promise<void> {
+  onEvent: (event: string, data: unknown) => void, terminal = "done"): Promise<void> {
   const response = await http.request(path, { method: "POST", body: JSON.stringify(body), signal });
   if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) throw new Error(chatText.streamError);
   const reader = response.body.getReader();
@@ -17,7 +17,7 @@ export async function postSse(path: string, body: unknown, signal: AbortSignal,
     }
     if (!data.length) return;
     onEvent(event, JSON.parse(data.join("\n")) as unknown);
-    if (event === "done") done = true;
+    if (event === terminal) done = true;
   }
   try {
     while (!done) {

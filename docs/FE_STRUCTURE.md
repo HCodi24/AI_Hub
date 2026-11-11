@@ -19,3 +19,11 @@ React Query quản lý server data và invalidation. Zustand quản lý selectio
 CSS Modules + tokens là quy ước mặc định. Không dùng Tailwind để thay CSS Modules. Icon lấy từ lucide-react; không dùng emoji ở chrome. Label gắn input, focus-visible rõ, drawer có Escape/Tab trap, streaming dùng aria-live. Kiểm tra chiều rộng 375px và cả hai theme.
 
 Build web trước release Rust để nhúng export. Chạy typecheck, lint, build, verify và smoke; tuyệt đối không dùng AI thật trong kiểm tra tự động.
+
+## R2
+
+- API/schema riêng cho debates, plans, memory, mutis; cấu hình MutiS giữ trường mở rộng khi PUT, chỉ lưu role provider summary không có API key.
+- `components/features/debate/`: reducer SSE thuần, thẻ, thao tác sau phán quyết. `features/plan/`: order/summary, runner có dependency injection, gates, card/task editor và source controls. `features/memory/`: panel và chuyển SSE thành toast Hoàn tác.
+- `features/chat/card-store.ts` giữ live card; `card-actions.ts` điều phối tạo plan/debate trong chat. React Query tải lịch sử khi chưa có bản live. Native `components/dialog/` và `components/toast/` dùng chung. Nhãn đặt tại `text/cards.ts`.
+- SSE reader nhận terminal event theo API: `done`, `plan`, `verify`. Không coi EOF chưa có terminal event là thành công. Nút Hủy/Dừng plan/debate ngắt reader; chat/task stop gọi API stop và abort.
+- `scripts/test-web.cjs` chạy bằng compiler đã cài, không cần package test mới. `scripts/screenshot-web-r2.py` phục vụ export cùng fixture localhost riêng, Chrome headless riêng theo viewport/theme, kiểm tra DOM không tràn ngang, đóng server trong finally.
