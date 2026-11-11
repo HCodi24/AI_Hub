@@ -16,6 +16,7 @@ pub mod config;
 pub mod debate;
 pub mod dev;
 pub mod extensions;
+pub mod folder;
 pub mod memory;
 pub mod mutis;
 pub mod plans;
@@ -172,6 +173,7 @@ pub fn router(state: AppState) -> Router {
             "/api/chat/{chat_id}/stop",
             post(crate::api::chat::stop_chat),
         )
+        .route("/api/pick-folder", post(crate::api::folder::pick_folder))
         .route("/api/chats", get(crate::api::chat::list_chats))
         .route(
             "/api/chats/{chat_id}",

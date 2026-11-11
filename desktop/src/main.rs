@@ -41,8 +41,17 @@ fn server_path() -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
+/// Same port every launch, because the web UI keeps theme, draft and open chat in localStorage, which is per origin
+/// (a random port would reset them each time). Falls back to a random free port if this one is taken.
+const PREFERRED_PORT: u16 = 47878;
+
 fn free_port() -> Option<u16> {
-    TcpListener::bind(("127.0.0.1", 0)).ok()?.local_addr().ok().map(|addr| addr.port())
+    TcpListener::bind(("127.0.0.1", PREFERRED_PORT))
+        .or_else(|_| TcpListener::bind(("127.0.0.1", 0)))
+        .ok()?
+        .local_addr()
+        .ok()
+        .map(|addr| addr.port())
 }
 
 fn spawn_server(path: &PathBuf, port: u16) -> std::io::Result<Child> {
@@ -205,6 +214,8 @@ fn main() {
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("AI Hub")
+                // No native title bar: the web UI draws its own window buttons in the top strip.
+                .decorations(false)
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(420.0, 560.0)
                 // Links that leave the local app (docs, sign-in pages) open in the default browser.

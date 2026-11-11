@@ -1,7 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The window only shows the local AI Hub web UI; it needs no Tauri commands.",
+  "description": "The local AI Hub web UI may only control its own window (minimize, maximize, close, drag).",
   "windows": ["main"],
-  "permissions": []
+  "remote": { "urls": ["http://127.0.0.1:*/*"] },
+  "permissions": [
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging"
+  ]
 }

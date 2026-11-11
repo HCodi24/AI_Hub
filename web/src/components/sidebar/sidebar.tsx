@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState } from "react";
-import { PenSquare, Home, History, Search, X, PanelLeftClose, PanelLeftOpen, Settings, Hammer } from "lucide-react";
+import { PenSquare, Home, History, Search, X, PanelLeftClose, PanelLeftOpen, Settings, Hammer, ChevronDown, ChevronRight, Folder } from "lucide-react";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { Skeleton } from "@/components/skeleton/skeleton";
+import { WindowControls } from "@/components/window-controls/window-controls";
 import { ThemeControl } from "@/components/theme-control/theme-control";
 import { useShallow } from "zustand/react/shallow";
 import type { ChatSummary } from "@/schema/chat.schema";
 import { chatText } from "@/text/chat";
 import { settingsText } from "@/text/settings";
-import { cn } from "@/lib/utils";
+import { cn, folderName } from "@/lib/utils";
 import styles from "./sidebar.module.css";
 // Served from web/public/brand; the app lives under basePath "/app" (next.config.js).
+// Chats arrive newest first, so groups keep first-seen order: the most recently used project is on top.
+function groupByFolder(chats: ChatSummary[]) {
+  const groups = new Map<string, ChatSummary[]>();
+  for (const chat of chats) groups.set(chat.folder, [...(groups.get(chat.folder) || []), chat]);
+  return [...groups];
+}
 const LOGO = "/app/brand/mutis-logo.svg";
 const LOGO_DARK = "/app/brand/mutis-logo-dark.svg";
 export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; openSettings: () => void; openDevChat?: () => void }) {
@@ -18,6 +25,7 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
   const [collapsed, setCollapsed] = useState(false);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
+  const [closed, setClosed] = useState<Set<string>>(new Set());
   const panel = useRef<HTMLElement>(null);
   const preferences = useRef<HTMLDetailsElement>(null);
   const history = useRef<HTMLElement>(null);
@@ -74,14 +82,16 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
     {drawer && <button className={styles.backdrop} aria-label={chatText.close} onClick={() => setDrawer(false)} />}
     <aside ref={panel} className={cn(styles.sidebar, drawer && styles.open, collapsed && styles.collapsed)}
       role={drawer ? "dialog" : undefined} aria-modal={drawer || undefined} aria-label={chatText.history}>
+      <div className={styles.menuLabels}><span>File</span><span>Edit</span><span>View</span></div>
+      <WindowControls />
       <div className={styles.rail}>
+        <div className={styles.collapse}><IconButton className={styles.collapseButton} aria-label={collapsed ? chatText.expandSidebar : chatText.collapseSidebar} aria-expanded={!collapsed} aria-controls="sidebar-content" onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</IconButton></div>
         <nav className={styles.railNav} aria-label={chatText.navigation}>
           <IconButton className={cn(styles.railButton, !id && !devChat && styles.active)} aria-label={chatText.home} disabled={streaming} onClick={reset}><Home size={23} /></IconButton>
           <IconButton className={styles.railButton} aria-label={chatText.history} aria-controls="sidebar-history" onClick={() => { setCollapsed(false); requestAnimationFrame(() => history.current?.focus()); }}><History size={23} /></IconButton>
           {openDevChat && <IconButton className={cn(styles.railButton, devChat && styles.active)} aria-label={settingsText.dev.devChat} aria-pressed={devChat} disabled={streaming} onClick={() => { setDrawer(false); openDevChat(); }}><Hammer size={23} /></IconButton>}
         </nav>
         <div className={styles.railBottom}>
-          <div className={styles.collapse}><IconButton className={styles.railButton} aria-label={collapsed ? chatText.expandSidebar : chatText.collapseSidebar} aria-expanded={!collapsed} aria-controls="sidebar-content" onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelLeftOpen size={21} /> : <PanelLeftClose size={21} />}</IconButton></div>
           <details ref={preferences} className={styles.preferences}>
             <summary className={styles.profile} aria-label={chatText.workspaceMenu} title={chatText.workspaceMenu}><img className={styles.avatar} src={LOGO_DARK} alt="" aria-hidden="true" /></summary>
             <div className={styles.preferencesPanel}>
@@ -102,8 +112,17 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
         <h2>{chatText.recents}</h2>
         <nav ref={history} id="sidebar-history" tabIndex={-1} className={styles.history} aria-label={chatText.history}>
           {loading && <Skeleton />}{!loading && !filteredChats.length && <p>{query.trim() ? chatText.noChatsFound : chatText.empty}</p>}
-          {filteredChats.map((chat) => <button key={chat.id} disabled={streaming} aria-current={chat.id === id ? "page" : undefined} title={chat.title || chatText.newChat}
-            onClick={() => void load(chat.id)}><span>{chat.title || chatText.newChat}</span></button>)}
+          {groupByFolder(filteredChats).map(([folder, items]) => {
+            const open = Boolean(query.trim()) || !closed.has(folder);
+            return <section key={folder} className={styles.group}>
+              <button className={styles.groupHead} aria-expanded={open} title={folder || chatText.noFolder}
+                onClick={() => setClosed(prev => { const next = new Set(prev); if (!next.delete(folder)) next.add(folder); return next; })}>
+                {open ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
+                <Folder size={16} aria-hidden="true" /><span>{folder ? folderName(folder) : chatText.noFolder}</span></button>
+              {open && items.map((chat) => <button key={chat.id} className={styles.chatItem} disabled={streaming} aria-current={chat.id === id ? "page" : undefined} title={chat.title || chatText.newChat}
+                onClick={() => void load(chat.id)}><span>{chat.title || chatText.newChat}</span></button>)}
+            </section>;
+          })}
         </nav>
       </div>
     </aside>

@@ -1,0 +1,16 @@
+.picker { position: relative; min-width: 0; }
+.picker > summary { display: flex; align-items: center; gap: 6px; height: 36px; max-width: 220px; padding: 4px 10px; border-radius: 999px; background: var(--color-muted); color: var(--muted); font-size: var(--font-13); list-style: none; cursor: pointer; white-space: nowrap; }
+.picker > summary::-webkit-details-marker { display: none; }
+.picker > summary > span { overflow: hidden; text-overflow: ellipsis; }
+.picker svg { flex-shrink: 0; }
+.panel { position: absolute; left: 0; bottom: calc(100% + 8px); width: min(340px, calc(100vw - 48px)); max-height: 60dvh; overflow-y: auto; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: var(--shadow-2); z-index: var(--z-toolbar); }
+.panel > p { margin: 4px 8px 6px; color: var(--muted); font-size: var(--font-12); }
+.panel > button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.panel > button > span { flex: 1; min-width: 0; }
+.panel strong { display: block; font-size: var(--font-13); font-weight: 500; }
+.panel small { display: block; margin-top: 2px; color: var(--muted); font-size: var(--font-12); line-height: 1.35; }
+.panel > button:hover { background: var(--color-muted); }
+.picker [data-full="true"], .panel [data-full="true"] small { color: var(--color-warning); }
+.panel > button:disabled { opacity: 1; cursor: default; }
+.picker > summary:focus-visible, .panel > button:focus-visible { outline: 2px solid var(--color-info); outline-offset: 2px; }
+@media (max-width: 767px) { .picker > summary { height: 44px; max-width: 180px; } }

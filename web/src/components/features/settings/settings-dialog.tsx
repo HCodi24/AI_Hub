@@ -16,15 +16,18 @@ const TABS = [
 type TabId = typeof TABS[number]["id"];
 export function SettingsDialog({ folder, close }: { folder: string; close: () => void }) {
   const [tab, setTab] = useState<TabId>("providers");
-  return <Dialog title={t.title} close={close} wide>
-    <div className={styles.tabs} role="tablist" aria-label={t.title}>
-      {TABS.map(({ id, icon: Icon }) => <button key={id} role="tab" id={`settings-tab-${id}`} aria-selected={tab === id}
-        aria-controls="settings-panel" onClick={() => setTab(id)}><Icon size={16} aria-hidden="true" />{t.tabs[id]}</button>)}
-    </div>
-    <div id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${tab}`} className={styles.panel}>
+  return <Dialog title={t.title} close={close} wide className={styles.settingsDialog} iconClose>
+    <div className={styles.layout}>
+    <nav className={styles.tabs} aria-label={t.title}>
+      {TABS.map(({ id, icon: Icon }) => <button key={id} id={`settings-tab-${id}`} aria-current={tab === id ? "page" : undefined}
+        aria-controls="settings-panel" onClick={() => setTab(id)}><Icon size={20} aria-hidden="true" />{t.tabs[id]}</button>)}
+    </nav>
+    <section id="settings-panel" aria-labelledby={`settings-tab-${tab}`} className={styles.panel} key={tab}>
+      <h3 className={styles.panelTitle}>{t.tabs[tab]}</h3>
       {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab />}{tab === "mutis" && <MutisTab />}
       {tab === "addons" && <AddonsTab />}
       {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "dev" && <DevTab />}
+    </section>
     </div>
   </Dialog>;
 }

@@ -8,7 +8,10 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ConfigInput {
-    default_folder: String,
+    #[serde(default)]
+    default_folder: Option<String>,
+    #[serde(default)]
+    theme: Option<String>,
     #[serde(default)]
     memory: Option<crate::features::memory::MemoryConfig>,
     // Optional on purpose: a partial update (e.g. the UI saving only the working folder) must NOT reset
@@ -42,6 +45,13 @@ pub(crate) async fn put_config(
             "Thời gian chờ chat phải từ 0 đến 120 phút",
         ));
     }
+    if input
+        .theme
+        .as_deref()
+        .is_some_and(|theme| !matches!(theme, "light" | "dark" | "system"))
+    {
+        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Giao diện không hợp lệ"));
+    }
     if let Some(memory) = &input.memory {
         memory
             .validate()
@@ -51,7 +61,12 @@ pub(crate) async fn put_config(
     if let Some(memory) = input.memory {
         config.memory = memory;
     }
-    config.default_folder = input.default_folder.trim().to_owned();
+    if let Some(folder) = input.default_folder {
+        config.default_folder = folder.trim().to_owned();
+    }
+    if let Some(theme) = input.theme {
+        config.theme = theme;
+    }
     if let Some(minutes) = input.chat_idle_timeout_minutes {
         config.chat_idle_timeout_minutes = minutes;
     }
@@ -81,7 +96,8 @@ mod tests {
     #[test]
     fn partial_update_only_carries_fields_that_were_sent() {
         let input: ConfigInput = serde_json::from_str(r#"{"default_folder":"C:/TOOL"}"#).unwrap();
-        assert_eq!(input.default_folder, "C:/TOOL");
+        assert_eq!(input.default_folder.as_deref(), Some("C:/TOOL"));
+        assert!(input.theme.is_none());
         assert!(input.planner_provider_id.is_none());
         assert!(input.planner_model.is_none());
         assert!(input.chat_idle_timeout_minutes.is_none());

@@ -11,7 +11,7 @@ type ChatState = {
   begin: (text: string, attachments?: { id: string; mime: string }[]) => void; event: (event: string, data: StreamData) => void;
   finish: (error?: string) => void; setDrawer: (open: boolean) => void;
 };
-const defaults: Settings = { provider_id: "", model: "", folder: "", permission: "write", effort: "default", file_tools: "none", dev_chat: false };
+const defaults: Settings = { provider_id: "", model: "", folder: "", permission: "write", effort: "medium", file_tools: "none", dev_chat: false };
 const DRAFT_ID = "draft";
 export const ACTIVE_CHAT_KEY = "ai-hub-active-chat";
 function readModelSelection(id: string): ModelSelection | undefined {
@@ -54,7 +54,7 @@ export const useChatStore = create<ChatState>((set) => ({
         provider_id: selected?.provider_id ?? (chat.provider_id || state.settings.provider_id),
         model: selected?.model ?? (chat.provider_id ? chat.model : state.settings.model),
         folder: chat.folder, permission: chat.permission,
-        effort: chat.effort, file_tools: chat.file_tools, dev_chat: chat.dev_chat,
+        effort: chat.effort === "default" ? "medium" as const : chat.effort, file_tools: chat.file_tools, dev_chat: chat.dev_chat,
       };
       saveModelSelection(chat.id, settings);
       return { id: chat.id, messages: chat.messages, settings, status: {}, error: "", drawer: false, initialized: true };

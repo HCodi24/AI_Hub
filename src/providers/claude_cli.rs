@@ -207,7 +207,12 @@ impl ClaudeParser {
                                 }
                             }
                             "tool_use" => {
-                                events.push(ProviderEvent::text("log", summarize_tool_use(block)))
+                                events.push(ProviderEvent::text("log", summarize_tool_use(block)));
+                                // A skill/plugin run shows as its own line in the reply, free of model tokens.
+                                if let Some(skill) = skill_name(block) {
+                                    let lead = if self.delta_seen { "\n\n" } else { "" };
+                                    events.push(ProviderEvent::text("delta", format!("{lead}✦ {skill}\n\n")));
+                                }
                             }
                             _ => {}
                         }
@@ -295,6 +300,14 @@ impl ClaudeParser {
         }
         events
     }
+}
+
+/// Name of the skill when a `tool_use` block is Claude Code's `Skill` tool.
+fn skill_name(block: &Value) -> Option<&str> {
+    (block["name"] == "Skill")
+        .then(|| block["input"]["skill"].as_str())
+        .flatten()
+        .filter(|name| !name.is_empty())
 }
 
 fn summarize_tool_use(block: &Value) -> String {
@@ -469,5 +482,18 @@ mod separator_tests {
             shown.push_str(&deltas(parser.parse(line)));
         }
         assert_eq!(shown, "A");
+    }
+
+    #[test]
+    fn a_skill_run_shows_as_its_own_line() {
+        let mut parser = ClaudeParser::default();
+        let mut shown = String::new();
+        for line in [
+            r#"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Trước"}}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Trước"},{"type":"tool_use","name":"Skill","input":{"skill":"ponytail"}}]}}"#,
+        ] {
+            shown.push_str(&deltas(parser.parse(line)));
+        }
+        assert_eq!(shown, "Trước\n\n✦ ponytail\n\n");
     }
 }

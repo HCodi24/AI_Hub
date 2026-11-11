@@ -2,11 +2,15 @@
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100%; background: var(--bg); }
 .messages { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .messages > div { flex: 1; min-height: 0; overflow-y: auto; }
-.status { color: var(--muted); font-size: var(--font-small); padding: 0 var(--space-4); overflow-wrap: anywhere; }
+.status { width: 100%; max-width: 820px; margin: 0 auto; flex-shrink: 0; color: var(--muted); font-size: var(--font-small); padding: 0 var(--space-6); overflow-wrap: anywhere; }
 .error { background: var(--danger-bg); color: var(--danger); padding: var(--space-3); overflow-wrap: anywhere; }
 .error button { margin-left: var(--space-3); }
 .skip { position: fixed; top: -100px; left: var(--space-4); z-index: var(--z-skip); padding: var(--space-3); background: var(--surface); }
 .skip:focus { top: var(--space-4); }
+@media (max-width: 767px) {
+  .status { padding-inline: var(--space-3); }
+}
 @media (min-width: 768px) {
-  .main { margin-top: 12px; height: calc(100% - 12px); border-top: 1px solid var(--border); }
+  .shell { --workspace-top: 48px; --workspace-radius: 12px; padding: 0 3px 3px 0; }
+  .main { margin-top: var(--workspace-top); height: calc(100% - var(--workspace-top)); border: 1px solid var(--border); border-left: 0; border-radius: 0 var(--workspace-radius) var(--workspace-radius) 0; overflow: hidden; }
 }

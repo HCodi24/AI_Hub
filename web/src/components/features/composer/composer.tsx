@@ -48,14 +48,6 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
   useEffect(() => {
     if (input.current) { input.current.style.height = "auto"; input.current.style.height = `${Math.min(input.current.scrollHeight, 180)}px`; }
   }, [value]);
-  useEffect(() => {
-    function suggest(event: Event) {
-      if (!(event instanceof CustomEvent) || typeof event.detail !== "string") return;
-      setValue(event.detail); input.current?.focus();
-    }
-    window.addEventListener("ai-hub:suggestion", suggest);
-    return () => window.removeEventListener("ai-hub:suggestion", suggest);
-  }, []);
   async function addImages(files: File[]) {
     let count = images.length;
     for (const file of files) {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { http, parseResponse } from "@/lib/http";
 import { chatText as t } from "@/text/chat";
 import styles from "./chat-toolbar.module.css";
+import limitStyles from "./cli-limits.module.css";
 
 const LimitsSchema = z.object({
   updated_at: z.number().nullable(),
@@ -53,16 +54,24 @@ export function CliLimits({ providerId, name }: { providerId: string; name: stri
         {warning && percent == null && !rejected && <text x="12" y="16" textAnchor="middle">!</text>}
       </svg>
     </summary>
-    <div className={styles.panel}>
-      <strong>{t.limits} · {name}</strong>
-      <p>{query.isPending ? t.loading : query.isError ? t.limitError : label}</p>
-      {windows.map((window, index) => <div key={`${window.label}-${index}`} className={styles.limitWindow}>
-        <span>{window.label}</span>
-        <span>{window.used_percent == null ? window.status === "rejected" ? t.limitReached : window.status === "allowed_warning" ? t.limitWarning : t.limitUnknown : t.limitUsed(Math.round(window.used_percent))}</span>
-        {window.resets_at != null && <small>{t.limitReset}: {new Date(window.resets_at * 1000).toLocaleString()}</small>}
+    <div className={`${styles.panel} ${limitStyles.panel}`} role="region" aria-label={`${t.limits} · ${name}`}>
+      {query.isPending && <p className={limitStyles.note}>{t.loading}</p>}
+      {query.isError && <p className={limitStyles.note}>{t.limitError}</p>}
+      {windows.map((window, index) => <div key={`${window.label}-${index}`} className={limitStyles.window}>
+        <div className={limitStyles.heading}>
+          <span className={limitStyles.label}>{t.limitWindowLabels[window.label as keyof typeof t.limitWindowLabels] || window.label}</span>
+          {window.resets_at != null && <time className={limitStyles.reset} dateTime={new Date(window.resets_at * 1000).toISOString()} title={new Date(window.resets_at * 1000).toLocaleString()}>
+            {t.limitReset} {new Date(window.resets_at * 1000).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })}
+          </time>}
+          <span className={limitStyles.percent}>{window.used_percent == null ? window.status === "rejected" ? t.limitReached : window.status === "allowed_warning" ? t.limitWarning : "—" : `${Math.round(window.used_percent)}%`}</span>
+        </div>
+        <div className={limitStyles.track} role="progressbar" aria-label={window.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={window.used_percent ?? undefined}
+          aria-valuetext={window.used_percent == null ? t.limitUnknown : t.limitUsed(Math.round(window.used_percent))}>
+          {window.used_percent != null && <span style={{ width: `${window.used_percent}%` }} />}
+        </div>
       </div>)}
-      {query.data?.updated_at != null && <p className={styles.note}>{t.limitUpdated}: {new Date(query.data.updated_at * 1000).toLocaleString()}{!fresh && ` · ${t.limitStale}`}</p>}
-      {!windows.length && !query.isPending && <p className={styles.note}>{t.limitHint}</p>}
+      {windows.length > 0 && !fresh && !query.isError && <p className={limitStyles.note}>{t.limitStale}</p>}
+      {!windows.length && !query.isPending && !query.isError && <p className={limitStyles.note}>{t.limitHint}</p>}
     </div>
   </details>;
 }

@@ -101,6 +101,7 @@ pub struct ChatSummary {
     pub updated_at: u64,
     #[serde(default)]
     pub dev_chat: bool,
+    pub folder: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -170,6 +171,7 @@ impl ChatStore {
                     title: chat.title,
                     updated_at: chat.updated_at,
                     dev_chat: chat.dev_chat,
+                    folder: chat.folder,
                 });
             }
         }

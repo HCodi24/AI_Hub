@@ -1,27 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import { Menu, Folder, ChevronDown } from "lucide-react";
+import { Menu, ChevronDown, RotateCcw } from "lucide-react";
 import { useChatStore } from "@/components/features/chat/chat-store";
-import { Select } from "@/components/select/select";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { chatText } from "@/text/chat";
-import { EFFORTS, PERMISSIONS, FILE_TOOLS } from "@/constants/chat";
-import { PermissionSchema, EffortSchema, FileToolsSchema } from "@/schema/chat.schema";
+import { EFFORTS } from "@/constants/chat";
 import type { Config } from "@/schema/config.schema";
 import styles from "./chat-toolbar.module.css";
 import { CliLimits } from "./cli-limits";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { SourceMenu } from "./source-menu";
+import { ModelMenu, modelLabel as getModelLabel } from "./model-menu";
 import { mutisApi } from "@/apis/mutis.api";
-import { SourceControls } from "@/components/features/plan/source-controls";
+import { PermissionMenu } from "./permission-menu";
 import { cardText as t } from "@/text/cards";
 import { useShallow } from "zustand/react/shallow";
-import { notify } from "@/components/toast/toast";
 
-const MODEL_LABELS: Record<string, string> = {
-  "gpt-6-luna": "GPT-6 Luna",
-  "gpt-6.1-sol": "GPT-6.1 Sol",
-  "gpt-6.1-terra": "GPT-6.1 Terra",
+const SLIDER_EFFORTS: readonly (typeof EFFORTS)[number][] = EFFORTS.filter((effort) => effort !== "default");
+const CLI_MODEL_SUGGESTIONS: Record<string, string[]> = {
+  codex_cli: ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"],
+  claude_cli: ["opus", "sonnet", "haiku", "claude-fable-5-2"],
 };
-const CODEX_CLI_MODEL_SUGGESTIONS = ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"];
 
 /** Sidebar access on mobile. */
 export function ChatHeader() {
@@ -35,16 +33,27 @@ export function ChatHeader() {
 export function ChatToolbar({ config }: { config?: Config }) {
   const { settings, configure, initialize, streaming } = useChatStore(useShallow(s => ({ settings: s.settings, configure: s.configure, initialize: s.initialize, streaming: s.streaming })));
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [sourceMenuOpen, setSourceMenuOpen] = useState(false);
   const picker = useRef<HTMLDetailsElement>(null);
+  const permissions = useRef<HTMLDetailsElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     function closeOutside(event: PointerEvent) {
+      if (permissions.current?.open && !permissions.current.contains(event.target as Node)) permissions.current.open = false;
       if (picker.current?.open && !picker.current.contains(event.target as Node)) {
         picker.current.open = false;
         setModelMenuOpen(false);
       }
     }
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape" || !picker.current?.open) return;
+      if (event.key !== "Escape") return;
+      if (permissions.current?.open) {
+        event.preventDefault();
+        permissions.current.open = false;
+        permissions.current.querySelector("summary")?.focus();
+        return;
+      }
+      if (!picker.current?.open) return;
       event.preventDefault();
       picker.current.open = false;
       setModelMenuOpen(false);
@@ -58,11 +67,8 @@ export function ChatToolbar({ config }: { config?: Config }) {
     };
   }, []);
   const mutis = useQuery({ queryKey: ["mutis"], queryFn: () => mutisApi.get() });
-  const client = useQueryClient();
   const provider = config?.providers.find((entry) => entry.id === (settings.provider_id === "mutis" ? mutis.data?.roles.lead.provider_id : settings.provider_id));
-  const models = provider?.kind === "codex_cli"
-    ? [...new Set([...provider.models, ...CODEX_CLI_MODEL_SUGGESTIONS])]
-    : provider?.models || [];
+  const models = provider ? [...new Set([...provider.models, ...(CLI_MODEL_SUGGESTIONS[provider.kind] || [])])] : [];
   const cli = provider?.kind.endsWith("_cli");
   useEffect(() => {
     if (config) initialize(config.default_folder, config.providers[0]?.id || "", config.providers[0]?.models[0] || "");
@@ -72,58 +78,32 @@ export function ChatToolbar({ config }: { config?: Config }) {
     configure({ provider_id: id, model: next?.models[0] || "", file_tools: "none", permission: "write" });
   }
   const name = settings.provider_id === "mutis" ? t.mutis : provider?.name || chatText.source;
-  return <><details ref={picker} className={styles.picker} onToggle={(event) => {
-    if (event.target === event.currentTarget && !event.currentTarget.open) setModelMenuOpen(false);
+  const modelLabel = getModelLabel(settings.model) || name;
+  const effortIndex = Math.max(0, SLIDER_EFFORTS.indexOf(settings.effort));
+  return <><PermissionMenu value={settings.permission} disabled={streaming} cli={!!cli} menuRef={permissions}
+    onOpen={() => { if (picker.current) picker.current.open = false; }} onPick={permission => configure({ permission })} />
+  <details ref={picker} className={styles.picker} onToggle={(event) => {
+    if (event.target === event.currentTarget && event.currentTarget.open && permissions.current) permissions.current.open = false;
+    if (event.target === event.currentTarget && !event.currentTarget.open) { setModelMenuOpen(false); setSourceMenuOpen(false); }
   }}>
-    <summary><span>{settings.model || name}</span> <span className={styles.effort}>{chatText[settings.effort]}</span><ChevronDown size={14} aria-hidden="true" /></summary>
-    <div className={styles.panel}>
-      <div className={styles.controls} role="group" aria-label={chatText.mode}>
-        <Select label={chatText.source} value={settings.provider_id} disabled={streaming} onChange={(event) => changeProvider(event.target.value)}>
-          <option value="">{chatText.source}</option><option value="mutis" disabled={!mutis.data?.enabled}>{t.mutis}</option>{config?.providers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-        </Select>
-        <div className={styles.modelPicker} onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setModelMenuOpen(false);
-        }}>
-          <div className={styles.field}><span>{chatText.model}</span><div className={styles.modelInput}>
-            <input aria-label={chatText.model} value={settings.model} disabled={streaming} aria-haspopup="listbox" aria-expanded={modelMenuOpen}
-              onFocus={() => setModelMenuOpen(true)} onKeyDown={(event) => { if (event.key === "Escape") setModelMenuOpen(false); }}
-              onChange={(event) => configure({ model: event.target.value })} />
-            <button type="button" aria-label={chatText.model} aria-expanded={modelMenuOpen} disabled={streaming}
-              onClick={() => setModelMenuOpen((open) => !open)}><ChevronDown size={16} aria-hidden="true" /></button>
-          </div></div>
-          {modelMenuOpen && <div className={styles.modelOptions} role="listbox" aria-label={chatText.model}>
-            {models.map((model) => {
-              const label = MODEL_LABELS[model] || model;
-              return <button key={model} type="button" role="option" aria-selected={settings.model === model}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => { configure({ model }); setModelMenuOpen(false); }}>
-                <span>{label}</span><small>{model}</small>
-              </button>;
-            })}
-          </div>}
-        </div>
-        <Select label={chatText.permission} value={settings.permission} disabled={streaming} onChange={(event) => configure({ permission: PermissionSchema.parse(event.target.value) })}>
-          {PERMISSIONS.map((permission) => <option key={permission} value={permission} disabled={permission === "full" && !cli}>{chatText[permission]}</option>)}
-        </Select>
-        <Select label={chatText.effort} value={settings.effort} disabled={streaming} onChange={(event) => configure({ effort: EffortSchema.parse(event.target.value) })}>
-          {EFFORTS.map((effort) => <option key={effort} value={effort}>{chatText[effort]}</option>)}
-        </Select>
-        {provider?.agent_capable && <Select label={chatText.fileTools} value={settings.file_tools} disabled={streaming}
-          onChange={(event) => configure({ file_tools: FileToolsSchema.parse(event.target.value) })}>
-          {FILE_TOOLS.map((tools) => <option key={tools} value={tools}>{chatText[tools]}</option>)}
-        </Select>}
+    <summary><span>{modelLabel}</span> <span className={styles.effort}>{chatText[settings.effort]}</span><ChevronDown size={14} aria-hidden="true" /></summary>
+    <div ref={panel} className={`${styles.panel} ${styles.effortPanel}`}>
+      <div className={styles.effortHeading}>
+        <SourceMenu providers={config?.providers || []} mutisEnabled={!!mutis.data?.enabled} value={settings.provider_id} title={name} disabled={streaming}
+          open={sourceMenuOpen} setOpen={(open) => { setSourceMenuOpen(open); setModelMenuOpen(false); }} anchor={panel} onPick={changeProvider} />
+        <strong>{chatText[settings.effort]}</strong>
+        <button type="button" className={styles.resetEffort} disabled={streaming} aria-label={chatText.resetEffort} title={chatText.resetEffort} onClick={() => configure({ effort: "medium" })}><RotateCcw size={18} /></button>
       </div>
-      {settings.provider_id === "mutis" && mutis.data && <div className={styles.switches}>{(Object.keys(t.switches) as (keyof typeof t.switches)[]).map(key => <label key={key}><input type="checkbox" checked={mutis.data[key]} disabled={streaming} onChange={event => {
-        void mutisApi.put({ ...mutis.data!, [key]: event.target.checked }).then(() => client.invalidateQueries({ queryKey: ["mutis"] })).catch(error => notify(String(error)));
-      }} />{t.switches[key]}</label>)}</div>}
-      {settings.provider_id === "mutis" && mutis.data && <details><summary>{t.team}</summary>{(["lead", "big", "small"] as const).map(key => <section key={key}><strong>{key}</strong><SourceControls showPermission={false} providers={config?.providers || []}
-        value={{ ...mutis.data!.roles[key], assignee: mutis.data!.roles[key].provider_id }} disabled={streaming} change={value => {
-          const next = { ...mutis.data!, roles: { ...mutis.data!.roles, [key]: { provider_id: value.assignee, model: value.model || "", effort: value.effort } } };
-          void mutisApi.put(next).then(() => client.invalidateQueries({ queryKey: ["mutis"] })).catch(error => notify(String(error)));
-        }} /></section>)}</details>}
-      <label className={styles.folder}><Folder size={16} aria-hidden="true" /><span className="sr-only">{chatText.folder}</span><input title={settings.folder} value={settings.folder} disabled={streaming} spellCheck={false}
-        onChange={(event) => configure({ folder: event.target.value })} /></label>
-      {provider && !cli && <span className={styles.note}>{chatText.noCommands}</span>}
+      <ModelMenu models={models} value={settings.model} label={modelLabel} disabled={streaming} open={modelMenuOpen}
+        setOpen={open => { setModelMenuOpen(open); setSourceMenuOpen(false); }} anchor={panel}
+        onPick={model => configure({ model })} />
+      <div className={styles.effortSlider}>
+        <input type="range" min={0} max={SLIDER_EFFORTS.length - 1} step={1} value={effortIndex} disabled={streaming} aria-label={chatText.effort} aria-valuetext={chatText[settings.effort]}
+          style={{ background: `linear-gradient(to right, var(--effort-fill) ${effortIndex / (SLIDER_EFFORTS.length - 1) * 100}%, var(--color-muted) 0%)` }}
+          onChange={event => configure({ effort: SLIDER_EFFORTS[Number(event.target.value)] })} />
+        <div className={styles.effortTicks} aria-hidden="true">{SLIDER_EFFORTS.map((effort, index) => <span key={effort} data-filled={index < effortIndex} data-selected={index === effortIndex} />)}</div>
+      </div>
     </div>
-  </details>{provider && cli && <CliLimits key={provider.id} providerId={provider.id} name={provider.name} />}</>;
+  </details>
+  {provider && cli && <CliLimits key={provider.id} providerId={provider.id} name={provider.name} />}</>;
 }

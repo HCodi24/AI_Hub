@@ -8,7 +8,7 @@ const send = async (path: string, method: string, body?: unknown) =>
 const id = (value: string) => encodeURIComponent(value);
 export const settingsApi = {
   async config(signal?: AbortSignal) { return parseResponse(FullConfigSchema, await http.get("/config", signal)); },
-  /** Partial update: the server keeps every field that is not sent (default_folder is always required). */
+  /** Partial update: the server keeps every field that is not sent (default_folder is optional too). */
   async saveConfig(body: { default_folder: string; chat_idle_timeout_minutes?: number; memory?: MemoryConfig;
     planner_provider_id?: string; planner_model?: string }) {
     return parseResponse(FullConfigSchema, await send("/config", "PUT", body));

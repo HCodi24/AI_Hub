@@ -1,0 +1,6 @@
+.trigger { width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--text); }
+.menu { position: fixed; width: min(240px, 90vw); overflow-y: auto; padding: var(--space-1); border: 1px solid color-mix(in srgb, var(--border) 35%, var(--surface)); border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: var(--shadow-2); z-index: var(--z-toolbar); }
+.menu > button { display: block; width: 100%; padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--radius-small); background: transparent; color: inherit; font-size: var(--font-13); text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.menu > button:hover, .menu > button[aria-selected="true"] { background: var(--color-muted); }
+.note { display: block; padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--font-small); }
+.trigger:disabled, .menu > button:disabled { opacity: 1; }

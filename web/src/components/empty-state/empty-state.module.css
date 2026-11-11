@@ -2,8 +2,14 @@
 .empty > svg { color: var(--muted); margin-bottom: var(--space-4); }
 .empty h1 { font-size: var(--font-24); font-weight: 550; letter-spacing: -.035em; line-height: 1.3; margin: 0 0 var(--space-2); }
 .empty p { color: var(--muted); margin-bottom: var(--space-6); }
-.suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
-.suggestions button { font-size: var(--font-13); border-radius: var(--radius-small); text-align: left; }
+.picker { position: relative; align-self: start; }
+.trigger { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-3); border-radius: 10px; font-size: var(--font-14); }
+.trigger span { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu { position: absolute; z-index: 5; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); width: 280px; padding: 4px; text-align: left; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 8px 24px rgb(0 0 0 / .12); }
+.menu button { text-align: left; display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 38px; padding: 0 var(--space-3); border: 0; border-radius: 8px; background: transparent; font-size: var(--font-14); }
+.menu button span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu button:hover { background: var(--color-muted); }
+.menu .openFolder { margin-top: 4px; border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; color: var(--muted); }
 @media (max-width: 767px) {
   .empty { padding: var(--space-4); }
   .empty h1 { font-size: var(--font-20); }

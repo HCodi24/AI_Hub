@@ -28,6 +28,9 @@ pub struct Config {
     pub mutis: MutisConfig,
     #[serde(default)]
     pub self_dev: SelfDevConfig,
+    /// Interface theme: "light", "dark" or "system"; empty until the user picks one.
+    #[serde(default)]
+    pub theme: String,
 }
 
 fn default_chat_idle_timeout_minutes() -> u32 {
@@ -110,6 +113,7 @@ impl Config {
             planner_model: String::new(),
             mutis: MutisConfig::default(),
             self_dev: SelfDevConfig::default(),
+            theme: String::new(),
         }
     }
 }

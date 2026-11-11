@@ -9,7 +9,7 @@ export const ChatMessageSchema = z.object({
   error: z.string().nullish(), debate_id: z.string().nullish(), plan_id: z.string().nullish(),
   attachments: z.array(z.object({ id: z.string(), mime: z.string(), path: z.string().default("") })).default([]),
 });
-export const ChatSummarySchema = z.object({ id: z.string().uuid(), title: z.string(), updated_at: z.number(), dev_chat: z.boolean().default(false) });
+export const ChatSummarySchema = z.object({ id: z.string().uuid(), title: z.string(), updated_at: z.number(), dev_chat: z.boolean().default(false), folder: z.string().default("") });
 export const ChatRecordSchema = ChatSummarySchema.extend({
   provider_id: z.string(), model: z.string(), folder: z.string(),
   permission: PermissionSchema.default("write"), effort: EffortSchema.default("default"),
