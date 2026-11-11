@@ -88,10 +88,11 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
       <div className={styles.foot}>
         <Button type="button" aria-label={chatText.attachImage} disabled={streaming} onClick={() => picker.current?.click()}><ImagePlus size={18} aria-hidden="true" /></Button>
-        <ChatToolbar config={config} />
         {streaming ? <Button variant="danger" onClick={() => void stop()} aria-label={chatText.stop}><Square size={16} aria-hidden="true" />{chatText.stop}</Button> :
           <Button variant="primary" type="submit" disabled={!canSend || Boolean(running)} aria-label={chatText.send}><ArrowUp size={18} aria-hidden="true" /></Button>}
       </div>
-    </div><p>{chatText.hint}</p>
+    </div>
+    <p>{chatText.hint}</p>
+    <div className={styles.toolbar}><ChatToolbar config={config} /></div>
   </form>;
 }

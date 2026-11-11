@@ -4,7 +4,8 @@
 .composer button[aria-pressed=true] { color: var(--accent); background: var(--green-bg); }
 .box { display: flex; flex-direction: column; gap: var(--space-2); background: var(--color-surface-raised); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); }
 .box textarea { width: 100%; min-width: 0; resize: none; border: 0; padding: var(--space-2); max-height: 180px; background: transparent; }
-.foot { display: flex; align-items: center; gap: var(--space-2); }
+.foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.toolbar { display: flex; justify-content: flex-end; margin-top: var(--space-1); }
 .tray { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
 .tray span { position: relative; }
 .tray img { width: 56px; height: 56px; object-fit: cover; border-radius: var(--radius-small); border: 1px solid var(--border); }

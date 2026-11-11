@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Menu, Folder, FileEdit, ChevronDown } from "lucide-react";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { Select } from "@/components/select/select";
@@ -39,6 +39,28 @@ export function ChatHeader() {
 export function ChatToolbar({ config }: { config?: Config }) {
   const { settings, configure, initialize, streaming } = useChatStore(useShallow(s => ({ settings: s.settings, configure: s.configure, initialize: s.initialize, streaming: s.streaming })));
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const picker = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    function closeOutside(event: PointerEvent) {
+      if (picker.current?.open && !picker.current.contains(event.target as Node)) {
+        picker.current.open = false;
+        setModelMenuOpen(false);
+      }
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape" || !picker.current?.open) return;
+      event.preventDefault();
+      picker.current.open = false;
+      setModelMenuOpen(false);
+      picker.current.querySelector("summary")?.focus();
+    }
+    document.addEventListener("pointerdown", closeOutside, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
   const mutis = useQuery({ queryKey: ["mutis"], queryFn: () => mutisApi.get() });
   const client = useQueryClient();
   const provider = config?.providers.find((entry) => entry.id === (settings.provider_id === "mutis" ? mutis.data?.roles.lead.provider_id : settings.provider_id));
@@ -54,7 +76,9 @@ export function ChatToolbar({ config }: { config?: Config }) {
     configure({ provider_id: id, model: next?.models[0] || "", file_tools: "none", permission: "write" });
   }
   const name = settings.provider_id === "mutis" ? t.mutis : provider?.name || chatText.source;
-  return <details className={styles.picker}>
+  return <details ref={picker} className={styles.picker} onToggle={(event) => {
+    if (event.target === event.currentTarget && !event.currentTarget.open) setModelMenuOpen(false);
+  }}>
     <summary><span>{settings.model || name}</span> <span className={styles.effort}>{chatText[settings.effort]}</span><ChevronDown size={14} aria-hidden="true" /></summary>
     <div className={styles.panel}>
       <div className={styles.controls} role="group" aria-label={chatText.mode}>
