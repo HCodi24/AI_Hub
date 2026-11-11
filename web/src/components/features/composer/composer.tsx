@@ -9,6 +9,8 @@ import { startCard } from "@/components/features/chat/card-actions";
 import { notify } from "@/components/toast/toast";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { useChatStore } from "@/components/features/chat/chat-store";
+import { ChatToolbar } from "./chat-toolbar";
+import type { Config } from "@/schema/config.schema";
 import styles from "./composer.module.css";
 const MAX_IMAGES = 5;
 const UploadSchema = z.object({ id: z.string(), mime: z.string(), url: z.string() });
@@ -19,7 +21,7 @@ const readBase64 = (file: File) => new Promise<string>((resolve, reject) => {
   reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
   reader.readAsDataURL(file);
 });
-export function Composer({ streaming, send, stop }: { streaming: boolean; send: (text: string, direct?: boolean, attachments?: { id: string; mime: string }[]) => Promise<boolean>; stop: () => Promise<void> }) {
+export function Composer({ config, streaming, send, stop }: { config?: Config; streaming: boolean; send: (text: string, direct?: boolean, attachments?: { id: string; mime: string }[]) => Promise<boolean>; stop: () => Promise<void> }) {
   const [debate, setDebate] = useState(false);
   const running = useCardStore(s => s.running);
   const chatId = useChatStore(s => s.id);
@@ -80,13 +82,16 @@ export function Composer({ streaming, send, stop }: { streaming: boolean; send: 
       <button type="button" aria-label={chatText.removeImage} onClick={() => setImages(current => current.filter(item => item.id !== image.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
     <div className={styles.box}>
       <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(event) => void addImages([...(event.target.files ?? [])])} />
-      <Button type="button" aria-label={chatText.attachImage} disabled={streaming} onClick={() => picker.current?.click()}><ImagePlus size={18} aria-hidden="true" /></Button>
       <textarea id="chat-input" ref={input} value={value} rows={1} disabled={streaming}
       placeholder={chatText.placeholder} onChange={(event) => setValue(event.target.value)}
       onPaste={(event) => { const files = [...event.clipboardData.items].flatMap(item => item.kind === "file" && item.type.startsWith("image/") ? [item.getAsFile()] : []).filter((file): file is File => file !== null); if (files.length) { event.preventDefault(); void addImages(files); } }}
       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
-      {streaming ? <Button variant="danger" onClick={() => void stop()} aria-label={chatText.stop}><Square size={16} aria-hidden="true" />{chatText.stop}</Button> :
-        <Button variant="primary" type="submit" disabled={!canSend || Boolean(running)} aria-label={chatText.send}><ArrowUp size={18} aria-hidden="true" /></Button>}
+      <div className={styles.foot}>
+        <Button type="button" aria-label={chatText.attachImage} disabled={streaming} onClick={() => picker.current?.click()}><ImagePlus size={18} aria-hidden="true" /></Button>
+        <ChatToolbar config={config} />
+        {streaming ? <Button variant="danger" onClick={() => void stop()} aria-label={chatText.stop}><Square size={16} aria-hidden="true" />{chatText.stop}</Button> :
+          <Button variant="primary" type="submit" disabled={!canSend || Boolean(running)} aria-label={chatText.send}><ArrowUp size={18} aria-hidden="true" /></Button>}
+      </div>
     </div><p>{chatText.hint}</p>
   </form>;
 }

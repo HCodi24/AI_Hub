@@ -5,8 +5,8 @@ import { MessageList } from "./message-list";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { Spinner } from "@/components/spinner/spinner";
 import { Composer } from "@/components/features/composer/composer";
-import { ChatToolbar } from "./chat-toolbar";
-import { useChatStore } from "./chat-store";
+import { ChatHeader } from "@/components/features/composer/chat-toolbar";
+import { ACTIVE_CHAT_KEY, useChatStore } from "./chat-store";
 import { useChat } from "./use-chat";
 import { chatText } from "@/text/chat";
 import styles from "./chat-screen.module.css";
@@ -24,10 +24,13 @@ export function ChatScreen() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { config, chats, send, stop, load } = useChat();
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
-  // After a dev reload, come back to the chat that was open.
+  // Restore the chat that was open before the page reload.
   useEffect(() => {
     let id: string | null = null;
-    try { id = sessionStorage.getItem(RESUME_KEY); sessionStorage.removeItem(RESUME_KEY); } catch { /* storage unavailable */ }
+    try {
+      id = sessionStorage.getItem(RESUME_KEY) || sessionStorage.getItem(ACTIVE_CHAT_KEY);
+      sessionStorage.removeItem(RESUME_KEY);
+    } catch { /* storage unavailable */ }
     if (id) void load(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
@@ -38,7 +41,7 @@ export function ChatScreen() {
       openDevChat={dev.data?.dev ? () => void openDevChat(config.data?.providers || []) : undefined} />
       <main id="chat-main" className={styles.main}>
         <DevBanner />
-        <ChatToolbar config={config.data} />
+        <ChatHeader />
         {config.isPending && <Spinner />}
         {queryError && <div role="alert" className={styles.error}>{queryError.message}
           <button onClick={() => { void config.refetch(); void chats.refetch(); }}>{chatText.retry}</button></div>}
@@ -51,7 +54,7 @@ export function ChatScreen() {
             {state.status.elapsed_s !== undefined && ` · ${state.status.elapsed_s} ${chatText.seconds}`}
             {state.status.idle_s !== undefined && ` · ${chatText.idle}: ${state.status.idle_s} ${chatText.seconds}`}</>}
         </div>
-        <Composer streaming={state.streaming} send={send} stop={stop} />
+        <Composer config={config.data} streaming={state.streaming} send={send} stop={stop} />
       </main>
     </div>{settingsOpen && <SettingsDialog folder={state.folder} close={() => setSettingsOpen(false)} />}<Toast /></>;
 }

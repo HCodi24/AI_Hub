@@ -2,8 +2,9 @@
 .composer > div:first-of-type { display: flex; gap: var(--space-2); margin-bottom: var(--space-2); }
 .composer > div:first-of-type button { font-size: var(--font-13); border-color: transparent; background: transparent; }
 .composer button[aria-pressed=true] { color: var(--accent); background: var(--green-bg); }
-.box { display: flex; gap: var(--space-2); align-items: flex-end; background: var(--color-surface-raised); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); }
-.box textarea { flex: 1; width: 0; min-width: 0; resize: none; border: 0; padding: var(--space-2); max-height: 180px; background: transparent; }
+.box { display: flex; flex-direction: column; gap: var(--space-2); background: var(--color-surface-raised); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2); }
+.box textarea { width: 100%; min-width: 0; resize: none; border: 0; padding: var(--space-2); max-height: 180px; background: transparent; }
+.foot { display: flex; align-items: center; gap: var(--space-2); }
 .tray { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
 .tray span { position: relative; }
 .tray img { width: 56px; height: 56px; object-fit: cover; border-radius: var(--radius-small); border: 1px solid var(--border); }

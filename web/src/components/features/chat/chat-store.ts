@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { ChatMessageSchema, type ChatMessage, type ChatRecord, type ChatRequest, type StreamData } from "@/schema/chat.schema";
 type Settings = Omit<ChatRequest, "chat_id" | "messages">;
+type ModelSelection = Pick<Settings, "provider_id" | "model">;
 type ChatState = {
   id: string; messages: ChatMessage[]; settings: Settings; streaming: boolean; drawer: boolean;
   status: StreamData; error: string; initialized: boolean;
@@ -11,23 +12,70 @@ type ChatState = {
   finish: (error?: string) => void; setDrawer: (open: boolean) => void;
 };
 const defaults: Settings = { provider_id: "", model: "", folder: "", permission: "write", effort: "default", file_tools: "none", dev_chat: false };
+const DRAFT_ID = "draft";
+export const ACTIVE_CHAT_KEY = "ai-hub-active-chat";
+function readModelSelection(id: string): ModelSelection | undefined {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(`ai-hub-chat-selection:${id}`) || "null");
+    if (typeof value !== "object" || value === null) return;
+    const selection = value as Partial<ModelSelection>;
+    if (typeof selection.provider_id !== "string" || typeof selection.model !== "string") return;
+    return { provider_id: selection.provider_id, model: selection.model };
+  } catch { return; }
+}
+function saveModelSelection(id: string, settings: ModelSelection) {
+  try { localStorage.setItem(`ai-hub-chat-selection:${id}`, JSON.stringify(settings)); } catch { /* Storage unavailable. */ }
+}
+function rememberActiveChat(id: string) {
+  try {
+    if (id) sessionStorage.setItem(ACTIVE_CHAT_KEY, id);
+    else sessionStorage.removeItem(ACTIVE_CHAT_KEY);
+  } catch { /* Storage unavailable. */ }
+}
 export const useChatStore = create<ChatState>((set) => ({
   id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false,
-  configure: (settings) => set((state) => ({ settings: { ...state.settings, ...settings } })),
-  initialize: (folder, provider_id, model) => set((state) => state.initialized ? {} : ({
-    initialized: true, settings: { ...state.settings, folder, provider_id, model },
-  })),
+  configure: (settings) => set((state) => {
+    const next = { ...state.settings, ...settings };
+    saveModelSelection(state.id || DRAFT_ID, next);
+    return { settings: next };
+  }),
+  initialize: (folder, provider_id, model) => set((state) => {
+    if (state.initialized) return {};
+    const selected = readModelSelection(DRAFT_ID);
+    return { initialized: true, settings: { ...state.settings, folder,
+      provider_id: selected?.provider_id ?? provider_id, model: selected?.model ?? model } };
+  }),
   // Chats created by a plan or debate have no source of their own: keep the one currently selected.
-  load: (chat) => set((state) => ({ id: chat.id, messages: chat.messages, settings: {
-    provider_id: chat.provider_id || state.settings.provider_id, model: chat.provider_id ? chat.model : state.settings.model,
-    folder: chat.folder, permission: chat.permission,
-    effort: chat.effort, file_tools: chat.file_tools, dev_chat: chat.dev_chat,
-  }, status: {}, error: "", drawer: false, initialized: true })),
-  reset: () => set((state) => ({ id: "", messages: [], status: {}, error: "", drawer: false,
-    settings: { ...state.settings, dev_chat: false } })),
-  begin: (text, attachments = []) => set((state) => ({ id: state.id || crypto.randomUUID(), streaming: true, status: {}, error: "",
-    messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text, attachments }),
-      ChatMessageSchema.parse({ role: "assistant", content: "" })] })),
+  load: (chat) => {
+    rememberActiveChat(chat.id);
+    set((state) => {
+      const selected = readModelSelection(chat.id);
+      const settings = {
+        provider_id: selected?.provider_id ?? (chat.provider_id || state.settings.provider_id),
+        model: selected?.model ?? (chat.provider_id ? chat.model : state.settings.model),
+        folder: chat.folder, permission: chat.permission,
+        effort: chat.effort, file_tools: chat.file_tools, dev_chat: chat.dev_chat,
+      };
+      saveModelSelection(chat.id, settings);
+      return { id: chat.id, messages: chat.messages, settings, status: {}, error: "", drawer: false, initialized: true };
+    });
+  },
+  reset: () => {
+    rememberActiveChat("");
+    set((state) => {
+      const settings = { ...state.settings, dev_chat: false };
+      saveModelSelection(DRAFT_ID, settings);
+      return { id: "", messages: [], status: {}, error: "", drawer: false, settings };
+    });
+  },
+  begin: (text, attachments = []) => set((state) => {
+    const id = state.id || crypto.randomUUID();
+    rememberActiveChat(id);
+    if (!state.id) saveModelSelection(id, state.settings);
+    return { id, streaming: true, status: {}, error: "",
+      messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text, attachments }),
+        ChatMessageSchema.parse({ role: "assistant", content: "" })] };
+  }),
   event: (event, data) => set((state) => {
     if (event === "status" || event === "heartbeat") return { status: { ...state.status, ...data } };
     const messages = [...state.messages];
