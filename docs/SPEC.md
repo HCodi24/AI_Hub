@@ -98,6 +98,10 @@ lưu thẻ và kế hoạch liên kết nếu có; không chạy AI. Bản ghi �
   Chạy với một nguồn dùng các điều khiển composer hiện có và `sendMessage({text,direct:true})`, bỏ qua MutiS tự chia việc/tranh luận.
   Từ lịch sử mở `chat_id` đã lưu; dữ liệu không có chat_id tạo chat mới trong thư mục tranh luận.
 
+### Plugin & Skill (`/api/addons`)
+- `GET /api/addons` → `{personal, hub, codex}`; mỗi phần `{path, plugins[{id,version,enabled,marketplace_source}], skills[], mcp[{name,summary}]}`. `personal` = Claude Code của người dùng (`~/.claude`, `~/.claude.json`), `hub` = Claude của AI Hub (`<data>/claude-config`), `codex` = `~/.codex/config.toml`. Chỉ đọc file; không trả env/header.
+- `POST /api/addons` `{target: "claude"|"codex", kind: "plugin"|"skill"|"mcp", name, action: "add"|"remove"}` → `{ok, output}`. Claude: plugin qua `claude plugin marketplace add` + `install`/`uninstall`, MCP qua `claude mcp add-json`/`remove` (đều với `CLAUDE_CONFIG_DIR` của AI Hub), skill chép/xoá thư mục. Codex: chỉ `mcp` (`codex mcp add`/`remove`). Tên chỉ gồm chữ, số, `. _ - @`; lệnh tối đa 3 phút.
+
 ### Tiện ích
 - `GET /api/extensions`
 - `POST /api/extensions/{id}/actions/{action}`, `/api/extensions/{id}/stop`

@@ -293,6 +293,8 @@ R1 bổ sung React 19 / Next.js 16 Pages Router tại `/app/`, dùng API chat hi
 
 R4: `/` mở thẳng giao diện mới (chuyển hướng sang `/app/` khi đã có bản build; chưa có thì dùng giao diện cũ). Giao diện cũ ở `/legacy`. Chế độ dev trong giao diện mới có banner (Rust đổi → Build & khởi động lại; `web/src` đổi → Build giao diện; build xong trang tự tải lại khi không có chat đang chạy), nút **Chat phát triển**, và mở lại đúng chat sau khi tải lại. Tab MutiS có **Chẩn đoán bằng AI** kèm nút Áp dụng.
 
+Tab **Plugin & Skill** trong Cài đặt: Claude trong AI Hub dùng cấu hình riêng nên không có plugin, skill, MCP server bạn đã cài cho Claude Code; tab này liệt kê chúng và cho thêm/gỡ từng mục hoặc "Thêm tất cả" (plugin cài qua `claude plugin`, MCP qua `claude mcp add-json`, skill chép thư mục). Codex chạy bằng chính cấu hình của bạn nên đã nạp sẵn; tab cho xem plugin/MCP của Codex và thêm MCP server từ Claude Code sang Codex. Giá trị bí mật (env, header) không bao giờ được trả về giao diện.
+
 R3 thêm nút **Cài đặt** ở sidebar của `/app`: Nguồn AI (thêm/sửa/xoá, kiểm tra kết nối, tải model, tự tìm CLI, đăng nhập Claude), Chung (thư mục mặc định, thời gian chờ, bộ nhớ dự án), MutiS (vai trò, định tuyến, tự động hoá, tranh luận, quy tắc worker, thống kê 30 ngày), Tiện ích và Phát triển (repo, diff, checkpoint/commit, test, build & khởi động lại). Chưa chuyển: chẩn đoán MutiS bằng AI và chat phát triển — vẫn dùng giao diện cũ.
 
 ```powershell

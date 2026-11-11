@@ -1,6 +1,6 @@
 export const settingsText = {
   title: "Cài đặt", open: "Cài đặt",
-  tabs: { providers: "Nguồn AI", general: "Chung", mutis: "MutiS", extensions: "Tiện ích", dev: "Phát triển" },
+  tabs: { providers: "Nguồn AI", general: "Chung", mutis: "MutiS", addons: "Plugin & Skill", extensions: "Tiện ích", dev: "Phát triển" },
   save: "Lưu", saved: "Đã lưu", delete: "Xoá", cancel: "Hủy", loading: "Đang tải…", error: "Có lỗi xảy ra",
   providers: {
     list: "Danh sách nguồn", add: "Thêm nguồn", newName: "Nguồn mới", name: "Tên hiển thị", kind: "Loại nguồn",
@@ -39,6 +39,18 @@ export const settingsText = {
     history: "Các lần trước",
     stats: "Thống kê 30 ngày", noStats: "Chưa có dữ liệu.", statSource: "Nguồn / loại việc", statTasks: "Task", statSuccess: "Thành công",
     statAvg: "TB (giây)", statTokens: "Token", statRetries: "Thử lại", byProvider: "Theo nguồn", byKind: "Theo loại việc",
+  },
+  addons: {
+    intro: "Claude trong AI Hub dùng tài khoản và cấu hình riêng, nên chưa có plugin, skill và MCP server bạn đã cài cho Claude Code. Thêm chúng vào đây để Claude trong AI Hub dùng được.",
+    claude: "Claude trong AI Hub", codex: "Codex", plugin: "Plugin", skill: "Skill", mcp: "MCP server",
+    kinds: { plugin: "Plugin", skill: "Skill", mcp: "MCP server" },
+    inHub: "Đã có", notInHub: "Chưa có", onlyHub: "Chỉ có trong AI Hub", disabled: "đang tắt", add: "Thêm", remove: "Gỡ", addAll: "Thêm tất cả",
+    adding: "Đang thêm…", removing: "Đang gỡ…", none: "Claude Code của bạn chưa có mục nào.",
+    added: (name: string) => `Đã thêm ${name}`, removed: (name: string) => `Đã gỡ ${name}`,
+    confirmRemove: (name: string) => `Gỡ ${name} khỏi Claude trong AI Hub?`,
+    codexIntro: "AI Hub chạy Codex bằng chính cấu hình Codex của bạn, nên plugin và MCP server ở đó đã được nạp sẵn. Bạn có thể thêm MCP server từ Claude Code sang Codex.",
+    codexPlugins: "Plugin của Codex (chỉ xem)", codexMcp: "MCP server của Codex", addToCodex: "Thêm vào Codex", from: "Từ Claude Code của bạn",
+    output: "Kết quả lệnh", pluginNote: "Cài plugin cần mạng và có thể mất một phút.", source: "Nguồn",
   },
   efforts: { default: "Mặc định", low: "Thấp", medium: "Vừa", high: "Cao", xhigh: "Rất cao", max: "Tối đa" } as Record<string, string>,
   extensions: {

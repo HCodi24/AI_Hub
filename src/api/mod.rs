@@ -9,6 +9,7 @@ use axum::{
 };
 use serde_json::json;
 
+pub mod addons;
 pub mod attachments;
 pub mod chat;
 pub mod config;
@@ -75,6 +76,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/dev/events", get(crate::api::dev::dev_events))
         .route("/api/dev/rebuild", post(crate::api::dev::dev_rebuild))
         .route("/api/dev/web-build", post(crate::api::dev::dev_web_build))
+        // Plugin & Skill: add-ons loaded by Claude Code and Codex.
+        .route(
+            "/api/addons",
+            get(crate::api::addons::overview).post(crate::api::addons::change),
+        )
         // Configuration routes.
         .route(
             "/api/config",

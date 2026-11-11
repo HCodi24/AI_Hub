@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Blocks, Boxes, Hammer, SlidersHorizontal, Users } from "lucide-react";
+import { Blocks, Boxes, Hammer, Puzzle, SlidersHorizontal, Users } from "lucide-react";
 import { Dialog } from "@/components/dialog/dialog";
 import { settingsText as t } from "@/text/settings";
+import { AddonsTab } from "./addons-tab";
 import { DevTab } from "./dev-tab";
 import { ExtensionsTab } from "./extensions-tab";
 import { GeneralTab } from "./general-tab";
@@ -10,7 +11,7 @@ import { ProvidersTab } from "./providers-tab";
 import styles from "./settings.module.css";
 const TABS = [
   { id: "providers", icon: Boxes }, { id: "general", icon: SlidersHorizontal }, { id: "mutis", icon: Users },
-  { id: "extensions", icon: Blocks }, { id: "dev", icon: Hammer },
+  { id: "addons", icon: Puzzle }, { id: "extensions", icon: Blocks }, { id: "dev", icon: Hammer },
 ] as const;
 type TabId = typeof TABS[number]["id"];
 export function SettingsDialog({ folder, close }: { folder: string; close: () => void }) {
@@ -22,6 +23,7 @@ export function SettingsDialog({ folder, close }: { folder: string; close: () =>
     </div>
     <div id="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${tab}`} className={styles.panel}>
       {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab />}{tab === "mutis" && <MutisTab />}
+      {tab === "addons" && <AddonsTab />}
       {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "dev" && <DevTab />}
     </div>
   </Dialog>;
