@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, MessageSquare, X, Layers, PanelLeftClose, PanelLeftOpen, Settings, Hammer } from "lucide-react";
-import { Button } from "@/components/button/button";
+import { PenSquare, Home, History, Search, X, PanelLeftClose, PanelLeftOpen, Settings, Hammer } from "lucide-react";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { Skeleton } from "@/components/skeleton/skeleton";
@@ -14,7 +13,32 @@ import styles from "./sidebar.module.css";
 export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; openSettings: () => void; openDevChat?: () => void }) {
   const { id, drawer, streaming, reset, setDrawer } = useChatStore(useShallow(s => ({ id: s.id, drawer: s.drawer, streaming: s.streaming, reset: s.reset, setDrawer: s.setDrawer })));
   const [collapsed, setCollapsed] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
   const panel = useRef<HTMLElement>(null);
+  const preferences = useRef<HTMLDetailsElement>(null);
+  const history = useRef<HTMLElement>(null);
+  const search = useRef<HTMLInputElement>(null);
+  const filteredChats = chats.filter(chat => chat.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  useEffect(() => {
+    function closePreferences(event: PointerEvent | KeyboardEvent) {
+      if (!preferences.current?.open) return;
+      if (event instanceof KeyboardEvent) {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        preferences.current.querySelector("summary")?.focus();
+      } else if (event.target instanceof Node && preferences.current.contains(event.target)) return;
+      preferences.current.open = false;
+    }
+    document.addEventListener("pointerdown", closePreferences);
+    document.addEventListener("keydown", closePreferences, true);
+    return () => {
+      document.removeEventListener("pointerdown", closePreferences);
+      document.removeEventListener("keydown", closePreferences, true);
+    };
+  }, []);
+  useEffect(() => { if (searching) search.current?.focus(); }, [searching]);
   useEffect(() => {
     const desktop = matchMedia("(min-width: 768px)");
     const close = () => { if (desktop.matches) setDrawer(false); };
@@ -24,7 +48,7 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
   useEffect(() => {
     if (!drawer) return;
     const previous = document.activeElement;
-    const controls = () => [...(panel.current?.querySelectorAll<HTMLElement>("button:not(:disabled), a[href]") || [])]
+    const controls = () => [...(panel.current?.querySelectorAll<HTMLElement>("button:not(:disabled), a[href], summary, input") || [])]
       .filter(element => element.getClientRects().length > 0);
     const main = document.querySelector("main");
     if (main) main.inert = true;
@@ -47,19 +71,38 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
     {drawer && <button className={styles.backdrop} aria-label={chatText.close} onClick={() => setDrawer(false)} />}
     <aside ref={panel} className={cn(styles.sidebar, drawer && styles.open, collapsed && styles.collapsed)}
       role={drawer ? "dialog" : undefined} aria-modal={drawer || undefined} aria-label={chatText.history}>
-      <div className={styles.collapse}><IconButton aria-label={collapsed ? chatText.expandSidebar : chatText.collapseSidebar} onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}</IconButton></div>
-      <div className={styles.brand}><Layers size={24} aria-hidden="true" /><strong>{chatText.brand}</strong><span>{chatText.beta}</span>
-        <div className={styles.close}><IconButton aria-label={chatText.close} onClick={() => setDrawer(false)}><X size={18} /></IconButton></div></div>
-      <Button disabled={streaming} onClick={reset}><Plus size={18} aria-hidden="true" />{chatText.newChat}</Button>
-      {openDevChat && <Button disabled={streaming} onClick={() => { setDrawer(false); openDevChat(); }}><Hammer size={18} aria-hidden="true" />{settingsText.dev.devChat}</Button>}
-      <h2>{chatText.history}</h2>
-      <nav className={styles.history} aria-label={chatText.history}>
-        {loading && <Skeleton />}{!loading && !chats.length && <p>{chatText.empty}</p>}
-        {chats.map((chat) => <button key={chat.id} disabled={streaming} aria-current={chat.id === id ? "page" : undefined}
-          onClick={() => void load(chat.id)}><MessageSquare size={15} aria-hidden="true" /><span>{chat.title || chatText.newChat}</span></button>)}
-      </nav>
-      <Button variant="ghost" onClick={() => { setDrawer(false); openSettings(); }}><Settings size={18} aria-hidden="true" />{settingsText.open}</Button>
-      <ThemeControl />
+      <div className={styles.rail}>
+        <nav className={styles.railNav} aria-label={chatText.navigation}>
+          <IconButton className={cn(styles.railButton, !id && styles.active)} aria-label={chatText.home} disabled={streaming} onClick={reset}><Home size={23} /></IconButton>
+          <IconButton className={styles.railButton} aria-label={chatText.history} aria-controls="sidebar-history" onClick={() => { setCollapsed(false); requestAnimationFrame(() => history.current?.focus()); }}><History size={23} /></IconButton>
+          {openDevChat && <IconButton className={styles.railButton} aria-label={settingsText.dev.devChat} disabled={streaming} onClick={() => { setDrawer(false); openDevChat(); }}><Hammer size={23} /></IconButton>}
+        </nav>
+        <div className={styles.railBottom}>
+          <div className={styles.collapse}><IconButton className={styles.railButton} aria-label={collapsed ? chatText.expandSidebar : chatText.collapseSidebar} aria-expanded={!collapsed} aria-controls="sidebar-content" onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelLeftOpen size={21} /> : <PanelLeftClose size={21} />}</IconButton></div>
+          <details ref={preferences} className={styles.preferences}>
+            <summary className={styles.profile} aria-label={chatText.workspaceMenu} title={chatText.workspaceMenu}><span className={styles.avatar} aria-hidden="true">AH</span></summary>
+            <div className={styles.preferencesPanel}>
+              <div className={styles.identity}><span className={styles.avatar} aria-hidden="true">AH</span><div><strong>{chatText.brand}</strong><span>{chatText.local}</span></div></div>
+              <button className={styles.settings} onClick={() => { if (preferences.current) preferences.current.open = false; setDrawer(false); openSettings(); }}><Settings size={20} aria-hidden="true" />{settingsText.open}</button>
+              <div className={styles.appearance}><span>{chatText.appearance}</span><ThemeControl /></div>
+            </div>
+          </details>
+        </div>
+      </div>
+      <div id="sidebar-content" className={styles.content}>
+        <div className={styles.brand}><strong>{chatText.brand}</strong>
+          <IconButton aria-label={chatText.searchChats} aria-expanded={searching} aria-controls="sidebar-search" onClick={() => { setSearching(!searching); setQuery(""); }}><Search size={20} /></IconButton>
+          <div className={styles.close}><IconButton aria-label={chatText.close} onClick={() => setDrawer(false)}><X size={20} /></IconButton></div>
+        </div>
+        <button className={styles.newChat} disabled={streaming} onClick={reset}><PenSquare size={21} aria-hidden="true" />{chatText.newChat}</button>
+        {searching && <input ref={search} id="sidebar-search" className={styles.search} type="search" aria-label={chatText.searchChats} placeholder={chatText.searchChats} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); setQuery(""); setSearching(false); panel.current?.querySelector<HTMLButtonElement>('[aria-controls="sidebar-search"]')?.focus(); } }} />}
+        <h2>{chatText.recents}</h2>
+        <nav ref={history} id="sidebar-history" tabIndex={-1} className={styles.history} aria-label={chatText.history}>
+          {loading && <Skeleton />}{!loading && !filteredChats.length && <p>{query.trim() ? chatText.noChatsFound : chatText.empty}</p>}
+          {filteredChats.map((chat) => <button key={chat.id} disabled={streaming} aria-current={chat.id === id ? "page" : undefined} title={chat.title || chatText.newChat}
+            onClick={() => void load(chat.id)}><span>{chat.title || chatText.newChat}</span></button>)}
+        </nav>
+      </div>
     </aside>
   </>;
 }

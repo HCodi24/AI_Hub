@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { ArrowUp, Square, Scale, Sparkles, ImagePlus, Plus, X } from "lucide-react";
+import { ArrowUp, Square, Scale, Sparkles, ImagePlus, Plus, X, FileEdit } from "lucide-react";
 import { Button } from "@/components/button/button";
 import { http } from "@/lib/http";
 import { chatText } from "@/text/chat";
@@ -10,6 +10,7 @@ import { notify } from "@/components/toast/toast";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { ChatToolbar } from "./chat-toolbar";
+import { MemoryPanel } from "@/components/features/memory/memory-panel";
 import type { Config } from "@/schema/config.schema";
 import styles from "./composer.module.css";
 const MAX_IMAGES = 5;
@@ -25,6 +26,8 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
   const [debate, setDebate] = useState(false);
   const running = useCardStore(s => s.running);
   const chatId = useChatStore(s => s.id);
+  const folder = useChatStore(s => s.settings.folder);
+  const [memory, setMemory] = useState(false);
   useEffect(() => { try { setDebate(["1", "true"].includes(localStorage.getItem("debateMode") || "")); } catch { /* Storage unavailable. */ } }, []);
   const [value, setValue] = useState("");
   const [images, setImages] = useState<Image[]>([]);
@@ -79,7 +82,7 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
     catch (error) { setValue(draft); setImages(sent); notify(error instanceof Error ? error.message : t.error); }
     finally { pending.current = false; input.current?.focus(); }
   }
-  return <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void submit(); }}
+  return <><form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void submit(); }}
     onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
     onDrop={(event) => { if (event.dataTransfer.files.length) { event.preventDefault(); void addImages([...event.dataTransfer.files]); } }}>
     <label className="sr-only" htmlFor="chat-input">{chatText.placeholder}</label>
@@ -93,13 +96,19 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
       <details ref={attachmentMenu} className={styles.attachments} onKeyDown={(event) => {
         if (event.key === "Escape") { event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); }
       }}>
-        <summary aria-label={chatText.attachImage} title={chatText.attachImage} aria-disabled={streaming}
-          onClick={(event) => { if (streaming) event.preventDefault(); }}><Plus size={22} aria-hidden="true" /></summary>
+        <summary aria-label={chatText.composerActions} title={chatText.composerActions}><Plus size={22} aria-hidden="true" /></summary>
         <div className={styles.attachmentMenu}>
           <Button variant="ghost" type="button" disabled={streaming} onClick={() => {
             if (attachmentMenu.current) attachmentMenu.current.open = false;
             picker.current?.click();
           }}><ImagePlus size={18} aria-hidden="true" />{chatText.attachImage}</Button>
+          <Button variant="ghost" type="button" disabled={!folder} onClick={() => {
+            if (attachmentMenu.current) {
+              attachmentMenu.current.open = false;
+              attachmentMenu.current.querySelector("summary")?.focus();
+            }
+            setMemory(true);
+          }}><FileEdit size={18} aria-hidden="true" />{chatText.memory}</Button>
         </div>
       </details>
       <textarea id="chat-input" ref={input} value={value} rows={1} disabled={streaming}
@@ -110,5 +119,5 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
         <Button className={styles.sendButton} variant="primary" type="submit" disabled={!canSend || Boolean(running)} aria-label={chatText.send} title={chatText.send}><ArrowUp size={20} aria-hidden="true" /></Button>}
     </div>
     <div className={styles.toolbar}><ChatToolbar config={config} /></div>
-  </form>;
+  </form>{memory && <MemoryPanel folder={folder} close={() => setMemory(false)} />}</>;
 }

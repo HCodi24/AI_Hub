@@ -1,6 +1,8 @@
 export const chatText = {
   suggestions: ["Giải thích cấu trúc dự án", "Tìm nguyên nhân một lỗi", "Lập kế hoạch tính năng", "Review thay đổi gần đây"],
   mode: "Chế độ làm việc", collapseSidebar: "Thu gọn thanh bên", expandSidebar: "Mở thanh bên",
+  navigation: "Điều hướng", recents: "Gần đây", searchChats: "Tìm trò chuyện", noChatsFound: "Không tìm thấy trò chuyện", workspaceMenu: "Menu không gian làm việc",
+  composerActions: "Thêm ảnh và mở bộ nhớ",
   light: "Sáng", dark: "Tối", system: "Hệ thống", appearance: "Giao diện",
   brand: "AI Hub", beta: "Bản thử nghiệm", newChat: "Chat mới", history: "Lịch sử trò chuyện",
   local: "Không gian làm việc của bạn", source: "Nguồn AI",

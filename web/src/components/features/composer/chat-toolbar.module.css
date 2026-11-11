@@ -1,5 +1,5 @@
 .header { display: flex; align-items: center; gap: var(--space-2); border-bottom: 1px solid var(--border); padding: var(--space-3) var(--space-6); background: var(--bg); flex-shrink: 0; color: var(--muted); font-size: var(--font-13); z-index: var(--z-toolbar); }
-.header > span:nth-last-child(2) { flex: 1; }
+.header > span:last-child { flex: 1; }
 .header button { font-size: var(--font-13); }
 .picker { position: relative; margin-left: auto; }
 .picker > summary { display: flex; align-items: center; gap: var(--space-1); cursor: pointer; list-style: none; padding: var(--space-1) var(--space-2); border-radius: var(--radius-small); font-size: var(--font-13); white-space: nowrap; max-width: 220px; }

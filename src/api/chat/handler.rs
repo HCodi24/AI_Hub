@@ -20,6 +20,18 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+/// First user message of the conversation gets the fixed rules in front of it.
+fn add_first_request_rules(request: &mut ProviderRequest) {
+    if request.messages.iter().filter(|m| m.role == "user").count() != 1 {
+        return;
+    }
+    if let Some(message) = request.messages.iter_mut().find(|m| m.role == "user") {
+        message.content = format!("{}
+
+{}", crate::core::rule::first_request_rules(), message.content);
+    }
+}
+
 /// Cancels the run when the browser drops the stream.
 struct CancelOnDrop(CancellationToken);
 
@@ -180,6 +192,10 @@ pub(crate) async fn chat_handler(
     if memory_config.enabled {
         crate::features::memory::inject(&mut provider_request, &memory_context);
     }
+    // Plan task workers cannot stop to ask the user, so they skip the first-request rules.
+    if request.plan_id.is_none() {
+        add_first_request_rules(&mut provider_request);
+    }
     let event_provider_id = provider_request.provider.id.clone();
     let provider_name = provider_request.provider.name.clone();
     let status_model = provider_request.model.clone();
@@ -282,4 +298,35 @@ pub(crate) async fn chat_handler(
     Ok(Sse::new(event_stream)
         .keep_alive(KeepAlive::default())
         .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(messages: serde_json::Value) -> ProviderRequest {
+        ProviderRequest {
+            provider: Default::default(),
+            model: "m".into(),
+            folder: "f".into(),
+            permission: Default::default(),
+            effort: Default::default(),
+            messages: serde_json::from_value(messages).unwrap(),
+            session_id: None,
+            mutis: Default::default(),
+        }
+    }
+
+    #[test]
+    fn rules_go_only_on_the_first_user_message() {
+        let mut first = request(json!([{"role":"user","content":"làm đi"}]));
+        add_first_request_rules(&mut first);
+        assert!(first.messages[0].content.contains(".codegraph"));
+        assert!(first.messages[0].content.ends_with("làm đi"));
+        let mut later = request(json!([
+            {"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}
+        ]));
+        add_first_request_rules(&mut later);
+        assert!(later.messages.iter().all(|m| !m.content.contains(".codegraph")));
+    }
 }

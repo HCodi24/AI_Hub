@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Menu, Folder, FileEdit, ChevronDown } from "lucide-react";
+import { Menu, Folder, ChevronDown } from "lucide-react";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { Select } from "@/components/select/select";
 import { IconButton } from "@/components/icon-button/icon-button";
@@ -11,7 +11,6 @@ import styles from "./chat-toolbar.module.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { mutisApi } from "@/apis/mutis.api";
 import { SourceControls } from "@/components/features/plan/source-controls";
-import { MemoryPanel } from "@/components/features/memory/memory-panel";
 import { cardText as t } from "@/text/cards";
 import { useShallow } from "zustand/react/shallow";
 import { notify } from "@/components/toast/toast";
@@ -23,15 +22,12 @@ const MODEL_LABELS: Record<string, string> = {
 };
 const CODEX_CLI_MODEL_SUGGESTIONS = ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"];
 
-/** Thin top row: mobile menu, title, memory. */
+/** Thin top row: mobile menu and title. */
 export function ChatHeader() {
-  const { folder, setDrawer } = useChatStore(useShallow(s => ({ folder: s.settings.folder, setDrawer: s.setDrawer })));
-  const [memory, setMemory] = useState(false);
+  const setDrawer = useChatStore(s => s.setDrawer);
   return <header className={styles.header}>
     <span className={styles.mobile}><IconButton aria-label={chatText.menu} onClick={() => setDrawer(true)}><Menu size={20} /></IconButton></span>
     <span>{chatText.local}</span>
-    <button disabled={!folder} onClick={() => setMemory(true)}><FileEdit size={16} aria-hidden="true" />{t.memory}</button>
-    {memory && <MemoryPanel folder={folder} close={() => setMemory(false)} />}
   </header>;
 }
 
