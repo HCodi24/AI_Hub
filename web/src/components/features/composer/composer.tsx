@@ -51,8 +51,10 @@ export function Composer({ streaming, send, stop }: { streaming: boolean; send: 
       let id = useChatStore.getState().id;
       if (!id) { id = crypto.randomUUID(); useChatStore.setState({ id }); owner.current = id; }
       try {
-        const response = await http.request("/attachments", { method: "POST", body: JSON.stringify({ chat_id: id, data: await readBase64(file) }) });
-        const image = UploadSchema.parse(await response.json());
+        const data = await readBase64(file);
+        const response = await http.request("/attachments", { method: "POST", body: JSON.stringify({ chat_id: id, data }) });
+        // Preview from the local bytes: it shows even if the stored copy cannot be fetched back.
+        const image = { ...UploadSchema.parse(await response.json()), url: `data:${file.type};base64,${data}` };
         if (useChatStore.getState().id === id) { count++; setImages(current => [...current, image]); }
       } catch (error) { notify(error instanceof Error ? error.message : t.error); }
     }
@@ -81,7 +83,7 @@ export function Composer({ streaming, send, stop }: { streaming: boolean; send: 
       <Button type="button" aria-label={chatText.attachImage} disabled={streaming} onClick={() => picker.current?.click()}><ImagePlus size={18} aria-hidden="true" /></Button>
       <textarea id="chat-input" ref={input} value={value} rows={1} disabled={streaming}
       placeholder={chatText.placeholder} onChange={(event) => setValue(event.target.value)}
-      onPaste={(event) => { const files = [...event.clipboardData.files].filter(file => file.type.startsWith("image/")); if (files.length) { event.preventDefault(); void addImages(files); } }}
+      onPaste={(event) => { const files = [...event.clipboardData.items].flatMap(item => item.kind === "file" && item.type.startsWith("image/") ? [item.getAsFile()] : []).filter((file): file is File => file !== null); if (files.length) { event.preventDefault(); void addImages(files); } }}
       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
       {streaming ? <Button variant="danger" onClick={() => void stop()} aria-label={chatText.stop}><Square size={16} aria-hidden="true" />{chatText.stop}</Button> :
         <Button variant="primary" type="submit" disabled={!canSend || Boolean(running)} aria-label={chatText.send}><ArrowUp size={18} aria-hidden="true" /></Button>}

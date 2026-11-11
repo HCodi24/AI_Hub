@@ -7,7 +7,7 @@ type ChatState = {
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
   load: (chat: ChatRecord) => void; reset: () => void;
-  begin: (text: string, attachments?: ChatMessage["attachments"]) => void; event: (event: string, data: StreamData) => void;
+  begin: (text: string, attachments?: { id: string; mime: string }[]) => void; event: (event: string, data: StreamData) => void;
   finish: (error?: string) => void; setDrawer: (open: boolean) => void;
 };
 const defaults: Settings = { provider_id: "", model: "", folder: "", permission: "write", effort: "default", file_tools: "none", dev_chat: false };
