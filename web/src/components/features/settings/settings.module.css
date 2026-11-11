@@ -55,6 +55,12 @@
 .table caption { text-align: left; color: var(--muted); padding: var(--space-2) 0; }
 .table th, .table td { padding: var(--space-2); border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
 .table th:first-child { text-align: left; }
+.inlineLabel { flex-direction: row !important; align-items: center; gap: var(--space-2) !important; }
+.inlineLabel select { width: auto; }
+.finding { display: grid; gap: var(--space-1); padding: var(--space-3); border-left: 3px solid var(--border); background: var(--color-muted); border-radius: var(--radius-xs); }
+.finding p { margin: 0; font-size: var(--font-13); }
+.finding[data-severity=high] { border-left-color: var(--danger); }
+.finding[data-severity=medium] { border-left-color: var(--color-warning); }
 @media (max-width: 767px) {
   .split { grid-template-columns: 1fr; }
   .row, .switch { grid-template-columns: 1fr; }

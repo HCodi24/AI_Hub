@@ -113,9 +113,8 @@ try {
 } catch { $failures.Add($_.Exception.Message) }
 finally {
   if ($client) { $client.Dispose() }
-  if ($process -and -not $process.HasExited) {
-    Write-Host "Smoke server retained: PID $($process.Id), $base (no ai-hub process is stopped)"
-  }
+  # Only the server this script started is stopped; the user's own ai-hub processes are never touched.
+  if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue; $process.WaitForExit() }
   Remove-Item Env:AI_HUB_CONFIG_PATH -ErrorAction SilentlyContinue
   Remove-Item Env:AI_HUB_PORT -ErrorAction SilentlyContinue
 }

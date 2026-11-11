@@ -283,6 +283,31 @@ pub(crate) async fn dev_release(State(state): State<AppState>) -> ApiResult<Resp
     Ok(sse_channel(rx))
 }
 
+/// Build the React UI (`npm run build` in web/). The dev watcher then sees web/out change and reloads the page.
+pub(crate) async fn dev_web_build(State(state): State<AppState>) -> ApiResult<Response> {
+    let repo = dev_repo_path(&state)?;
+    let (tx, rx) = mpsc::channel::<String>(64);
+    tokio::spawn(async move {
+        let mut cmd = if cfg!(windows) {
+            let mut cmd = tokio::process::Command::new("cmd");
+            cmd.args(["/C", "npm", "run", "build"]);
+            cmd
+        } else {
+            let mut cmd = tokio::process::Command::new("npm");
+            cmd.args(["run", "build"]);
+            cmd
+        };
+        cmd.current_dir(repo.join("web"))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let ok = stream_process(cmd, tx.clone()).await;
+        let _ = tx
+            .send(json!({"event":"summary","data":{"web_ok":ok}}).to_string())
+            .await;
+    });
+    Ok(sse_channel(rx))
+}
+
 async fn stream_process(mut command: tokio::process::Command, tx: mpsc::Sender<String>) -> bool {
     let Ok(mut child) = command.spawn() else {
         return false;
@@ -385,12 +410,37 @@ pub(crate) async fn dev_events(State(state): State<AppState>) -> Response {
 pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
     tokio::spawn(async move {
         let (mut old_ui, mut old_rust) = crate::dev::snapshot(&repo);
+        let mut old_web = crate::dev::snapshot_web_src(&repo);
+        let mut old_out = crate::dev::snapshot_web_out(&repo);
+        let mut out_changed_at: Option<Instant> = None;
         let mut pending: Option<Instant> = None;
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
             let (ui, rust) = crate::dev::snapshot(&repo);
             let ui_changes = crate::dev::changed_files(&old_ui, &ui);
             let rust_changes = crate::dev::changed_files(&old_rust, &rust);
+            let web = crate::dev::snapshot_web_src(&repo);
+            let web_changes = crate::dev::changed_files(&old_web, &web);
+            if !web_changes.is_empty() {
+                let _ = state.dev_events.send(
+                    json!({"event":"web_changed","data":{"files":web_changes.len()}}).to_string(),
+                );
+            }
+            old_web = web;
+            let out = crate::dev::snapshot_web_out(&repo);
+            if !crate::dev::changed_files(&old_out, &out).is_empty() {
+                out_changed_at = Some(Instant::now());
+            }
+            old_out = out;
+            // Reload the page only once the new export is finished: unchanged for 3 seconds and index.html is back.
+            if out_changed_at.is_some_and(|at| at.elapsed() >= Duration::from_secs(3))
+                && repo.join("web/out/index.html").is_file()
+            {
+                out_changed_at = None;
+                let _ = state
+                    .dev_events
+                    .send(json!({"event":"ui_changed","data":{}}).to_string());
+            }
             if !ui_changes.is_empty() {
                 let _ = state
                     .dev_events

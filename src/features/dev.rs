@@ -155,6 +155,27 @@ pub fn snapshot(repo: &Path) -> (Snapshot, Snapshot) {
     (ui, rust)
 }
 
+/// The exported React UI (web/out). `next build` empties it first, so the watcher waits until it is complete and
+/// stable before telling the page to reload.
+pub fn snapshot_web_out(repo: &Path) -> Snapshot {
+    let mut out = Snapshot::new();
+    collect_files(&repo.join("web/out"), &mut out, |_| true);
+    out
+}
+
+/// Source files of the React UI (web/src + its config). They need `npm run build` before the page can show them.
+pub fn snapshot_web_src(repo: &Path) -> Snapshot {
+    let mut web = Snapshot::new();
+    collect_files(&repo.join("web/src"), &mut web, |_| true);
+    for name in ["package.json", "next.config.js", "tsconfig.json"] {
+        let path = repo.join("web").join(name);
+        if path.is_file() {
+            web.insert(path.clone(), stamp(&path));
+        }
+    }
+    web
+}
+
 fn collect_files(root: &Path, out: &mut Snapshot, include: impl Fn(&Path) -> bool + Copy) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;

@@ -9,8 +9,40 @@ use std::path::{Component, Path as FsPath};
 include!(concat!(env!("OUT_DIR"), "/ui_assets.rs"));
 include!(concat!(env!("OUT_DIR"), "/web_assets.rs"));
 
+/// `/` opens the new React UI when a build of it exists; otherwise the legacy UI (still reachable at `/legacy`).
 pub(crate) async fn index(State(state): State<AppState>) -> Response {
+    if web_available(&state).await {
+        return axum::response::Redirect::temporary("/app/").into_response();
+    }
     serve_asset(&state, "index.html").await
+}
+
+pub(crate) async fn legacy_index(State(state): State<AppState>) -> Response {
+    serve_asset(&state, "index.html").await
+}
+
+fn web_roots(state: &AppState) -> Vec<std::path::PathBuf> {
+    let root = state
+        .dev_repo
+        .as_ref()
+        .map(|repo| repo.join("web/out"))
+        .or_else(|| std::env::current_dir().ok().map(|dir| dir.join("web/out")));
+    let exe_root = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("web/out")));
+    [root, exe_root].into_iter().flatten().collect()
+}
+
+async fn web_available(state: &AppState) -> bool {
+    for root in web_roots(state) {
+        if tokio::fs::try_exists(root.join("index.html"))
+            .await
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+    state.dev_repo.is_none() && WEB_ASSETS.iter().any(|(name, _)| *name == "index.html")
 }
 
 pub(crate) async fn asset(State(state): State<AppState>, Path(path): Path<String>) -> Response {
@@ -115,15 +147,7 @@ async fn serve_web(state: &AppState, path: &str) -> Response {
     let Some(candidates) = web_candidates(path) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let root = state
-        .dev_repo
-        .as_ref()
-        .map(|repo| repo.join("web/out"))
-        .or_else(|| std::env::current_dir().ok().map(|dir| dir.join("web/out")));
-    let exe_root = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join("web/out")));
-    for root in [root, exe_root].into_iter().flatten() {
+    for root in web_roots(state) {
         let Ok(canonical_root) = tokio::fs::canonicalize(&root).await else {
             continue;
         };
@@ -148,7 +172,7 @@ async fn serve_web(state: &AppState, path: &str) -> Response {
     }
     (
         [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-        "<!doctype html><html lang=\"vi\"><meta charset=\"utf-8\"><title>AI Hub</title>\
+        "<!doctype html><html lang=\"vi\"><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"3\"><title>AI Hub</title>\
          <p>Giao diện mới chưa được build: chạy npm run build trong web/</p></html>",
     )
         .into_response()

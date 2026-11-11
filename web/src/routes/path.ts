@@ -1,1 +1,1 @@
-export const PATH_HOME = { ROOT: "/", CHAT: "/chat", LEGACY: "/" } as const;
+export const PATH_HOME = { ROOT: "/", CHAT: "/chat", LEGACY: "/legacy" } as const;

@@ -15,7 +15,7 @@ export const devApi = {
     return parseResponse(DevSettingsSchema, await (await http.request("/dev/settings", { method: "PUT", body: JSON.stringify({ auto_rebuild }) })).json());
   },
   /** Streams `log` / `summary` / `verify` / `rebuild` events until the command ends. */
-  run(kind: "test" | "release" | "rebuild", signal: AbortSignal, onEvent: (event: string, data: unknown) => void) {
+  run(kind: "test" | "release" | "rebuild" | "web-build", signal: AbortSignal, onEvent: (event: string, data: unknown) => void) {
     return streamEvents(`/dev/${kind}`, undefined, signal, onEvent);
   },
 };

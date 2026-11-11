@@ -12,6 +12,7 @@ const field = (data: unknown, key: string): unknown => typeof data === "object" 
 /** One output line for an event of the dev test / release / rebuild streams. */
 function line(event: string, data: unknown): string {
   if (event === "log") return String(field(data, "text") ?? (typeof data === "string" ? data : ""));
+  if (event === "summary" && field(data, "web_ok") !== undefined) return field(data, "web_ok") ? t.dev.webOk : t.dev.webFail;
   if (event === "summary" && field(data, "cargo_ok") !== undefined) return field(data, "cargo_ok") ? t.dev.cargoOk : t.dev.cargoFail;
   if (event === "summary") return field(data, "ok") ? `${t.dev.buildOk}\n${String(field(data, "exe") ?? "")}\n${String(field(data, "note") ?? "")}` : t.dev.buildFailed;
   if (event === "verify") { const lines = field(data, "summary_lines"); return Array.isArray(lines) ? lines.join(" · ") : ""; }
@@ -34,7 +35,7 @@ export function DevTab() {
     try { await action(); await client.invalidateQueries({ queryKey: ["dev-repo"] }); }
     catch (error) { notify(errorText(error, t.error)); } finally { setBusy(""); }
   }
-  const stream = (kind: "test" | "release" | "rebuild") => act(kind, async () => {
+  const stream = (kind: "test" | "release" | "rebuild" | "web-build") => act(kind, async () => {
     setOutput(""); abort.current = new AbortController();
     await devApi.run(kind, abort.current.signal, (event, data) => { const text = line(event, data); if (text) setOutput(current => `${current}${text}\n`); });
   });
@@ -67,6 +68,7 @@ export function DevTab() {
     <section className={styles.group}><div className={styles.actions}>
       <Button disabled={Boolean(busy)} onClick={() => void stream("test")}>{t.dev.test}</Button>
       <Button disabled={Boolean(busy)} onClick={() => void stream("release")}>{t.dev.release}</Button>
+      <Button disabled={Boolean(busy)} onClick={() => void stream("web-build")}>{t.dev.webBuild}</Button>
       <Button variant="primary" disabled={Boolean(busy)} onClick={() => void stream("rebuild")}>{t.dev.rebuild}</Button>
       {busy && <Button variant="danger" onClick={() => abort.current?.abort()}>{t.extensions.stop}</Button>}</div>
       <label className={styles.check}><input type="checkbox" checked={settings.data?.auto_rebuild ?? false} disabled={!settings.data}

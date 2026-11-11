@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, MessageSquare, ArrowUpRight, X, Layers, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
+import { Plus, MessageSquare, ArrowUpRight, X, Layers, PanelLeftClose, PanelLeftOpen, Settings, Hammer } from "lucide-react";
 import { Button } from "@/components/button/button";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
@@ -12,7 +12,7 @@ import { settingsText } from "@/text/settings";
 import { routes } from "@/routes/routes";
 import { cn } from "@/lib/utils";
 import styles from "./sidebar.module.css";
-export function Sidebar({ chats, loading, load, openSettings }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; openSettings: () => void }) {
+export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; openSettings: () => void; openDevChat?: () => void }) {
   const { id, drawer, streaming, reset, setDrawer } = useChatStore(useShallow(s => ({ id: s.id, drawer: s.drawer, streaming: s.streaming, reset: s.reset, setDrawer: s.setDrawer })));
   const [collapsed, setCollapsed] = useState(false);
   const panel = useRef<HTMLElement>(null);
@@ -52,6 +52,7 @@ export function Sidebar({ chats, loading, load, openSettings }: { chats: ChatSum
       <div className={styles.brand}><Layers size={24} aria-hidden="true" /><strong>{chatText.brand}</strong><span>{chatText.beta}</span>
         <div className={styles.close}><IconButton aria-label={chatText.close} onClick={() => setDrawer(false)}><X size={18} /></IconButton></div></div>
       <Button disabled={streaming} onClick={reset}><Plus size={18} aria-hidden="true" />{chatText.newChat}</Button>
+      {openDevChat && <Button disabled={streaming} onClick={() => { setDrawer(false); openDevChat(); }}><Hammer size={18} aria-hidden="true" />{settingsText.dev.devChat}</Button>}
       <h2>{chatText.history}</h2>
       <nav className={styles.history} aria-label={chatText.history}>
         {loading && <Skeleton />}{!loading && !chats.length && <p>{chatText.empty}</p>}

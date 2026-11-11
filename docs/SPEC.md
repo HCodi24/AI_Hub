@@ -20,6 +20,8 @@ AI Hub là ứng dụng desktop cục bộ dạng một binary Rust, phục vụ
 - `GET /` và `GET /{*path}`: trang và tài nguyên UI đã nhúng.
 
 ### Chế độ phát triển (`/api/dev`)
+- `POST /api/dev/web-build` (SSE `log`, `summary{web_ok}`): chạy `npm run build` trong `web/`. Sự kiện `/api/dev/events` có thêm `web_changed{files}` (mã `web/src` đổi); `ui_changed` cho `web/out` chỉ phát khi bản export đã ổn định 3 giây và có `index.html`.
+- `/` chuyển hướng 307 sang `/app/` khi có bản build của `web/`; giao diện cũ ở `/legacy`.
 - `GET /api/dev/status`, `/api/dev/repo`, `/api/dev/git/diff`, `/api/dev/events`
 - `GET, PUT /api/dev/settings`
 - `POST /api/dev/git/checkpoint`, `/api/dev/git/reset`, `/api/dev/git/commit`, `/api/dev/test`, `/api/dev/release`, `/api/dev/rebuild`

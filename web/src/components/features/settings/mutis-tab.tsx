@@ -7,6 +7,7 @@ import { notify } from "@/components/toast/toast";
 import type { Mutis } from "@/schema/mutis.schema";
 import type { Provider } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
+import { MutisDiagnosis } from "./mutis-diagnosis";
 import { MutisStats } from "./mutis-stats";
 import { errorText, useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
@@ -84,6 +85,7 @@ export function MutisTab() {
     </div></fieldset>
     <label>{t.mutis.worker_rules}<textarea rows={5} value={draft.worker_rules} onChange={event => edit({ worker_rules: event.target.value })} /></label>
     <div className={styles.actions}><Button type="submit" variant="primary" disabled={busy}>{t.save}</Button></div>
+    <MutisDiagnosis />
     <MutisStats />
   </form>;
 }

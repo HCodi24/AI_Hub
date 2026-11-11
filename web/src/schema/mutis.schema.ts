@@ -51,6 +51,17 @@ export const ResolvedRolesSchema = z.object({
     big: ResolvedRoleSchema,
     small: ResolvedRoleSchema
 });
+export const DiagnosisSchema = z.object({
+    ts: z.number().default(0), health: z.string().default(""), summary: z.string().default(""),
+    findings: z.array(z.object({
+        severity: z.string().default("low"), problem: z.string().default(""), evidence: z.string().default(""),
+        cause: z.string().default(""), suggestion: z.string().default(""),
+        setting_change: z.object({ path: z.string(), value: z.unknown() }).nullish()
+    }).passthrough()).default([])
+}).passthrough();
+export const DiagnosesSchema = z.array(DiagnosisSchema);
+export const ApplyResultSchema = z.object({ old: z.unknown(), new: z.unknown() });
+export type Diagnosis = z.infer<typeof DiagnosisSchema>;
 export type Mutis = z.infer<typeof MutisSchema>;
 const StatGroupSchema = z.object({
     tasks_run: z.number().default(0), success_rate: z.number().default(0), avg_duration_ms: z.number().default(0),

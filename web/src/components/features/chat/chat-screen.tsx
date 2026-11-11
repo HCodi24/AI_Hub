@@ -14,16 +14,30 @@ import { Toast, useToast } from "@/components/toast/toast";
 import { setRunnerMemoryHandler } from "@/components/features/plan/plan-runner";
 import { memoryNotice } from "@/components/features/memory/memory-events";
 import { SettingsDialog } from "@/components/features/settings/settings-dialog";
+import { DevBanner, RESUME_KEY } from "@/components/features/dev/dev-banner";
+import { openDevChat } from "@/components/features/dev/dev-chat";
+import { useQuery } from "@tanstack/react-query";
+import { devApi } from "@/apis/dev.api";
 export function ChatScreen() {
   useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
   const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, status: s.status, folder: s.settings.folder })));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { config, chats, send, stop, load } = useChat();
+  const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
+  // After a dev reload, come back to the chat that was open.
+  useEffect(() => {
+    let id: string | null = null;
+    try { id = sessionStorage.getItem(RESUME_KEY); sessionStorage.removeItem(RESUME_KEY); } catch { /* storage unavailable */ }
+    if (id) void load(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, []);
   const queryError = config.error || chats.error;
   return <><Head><title>{chatText.brand}</title><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
     <a className={styles.skip} href="#chat-main">{chatText.skip}</a>
-    <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} openSettings={() => setSettingsOpen(true)} />
+    <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} openSettings={() => setSettingsOpen(true)}
+      openDevChat={dev.data?.dev ? () => void openDevChat(config.data?.providers || []) : undefined} />
       <main id="chat-main" className={styles.main}>
+        <DevBanner />
         <ChatToolbar config={config.data} />
         {config.isPending && <Spinner />}
         {queryError && <div role="alert" className={styles.error}>{queryError.message}
