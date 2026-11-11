@@ -163,6 +163,7 @@ pub(crate) async fn chat_handler(
         reasoning: String::new(),
         logs: Vec::new(),
         diff: String::new(),
+        files: Vec::new(),
         error: None,
         attachments: Vec::new(),
     });
@@ -196,6 +197,7 @@ pub(crate) async fn chat_handler(
     }
     let memory_context =
         crate::features::memory::memory_context(&state.config_path, &folder, &memory_config);
+    let files_before = crate::features::changes::snapshot(std::path::Path::new(&folder)).await;
     let mut provider_request = ProviderRequest {
         provider: provider_config,
         model: request.model,
@@ -449,6 +451,16 @@ pub(crate) async fn chat_handler(
                         }
                     }
                 }
+            }
+        }
+        let files_after = crate::features::changes::snapshot(std::path::Path::new(&record.folder)).await;
+        let files = crate::features::changes::changes(&files_before, &files_after);
+        if !files.is_empty() {
+            let _ = sse_sender
+                .send(chat::sse_event("files", &json!({ "files": files })))
+                .await;
+            if let Some(message) = record.messages.last_mut() {
+                message.files = files;
             }
         }
         let _ = chat::save_record(&task_state.chats, &mut record);

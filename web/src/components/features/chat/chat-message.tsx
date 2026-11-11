@@ -17,6 +17,13 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
     {message.reasoning && <details><summary>{chatText.reasoning}</summary><MarkdownView source={message.reasoning} /></details>}
     {message.logs.length > 0 && <details><summary>{chatText.activity}</summary><pre className={styles.logs}>{message.logs.join("\n")}</pre></details>}
     {tokenLine && <div className={styles.tokens}>{tokenLine}</div>}
+    {message.files.length > 0 && <section className={styles.files} aria-label={chatText.diff}>
+      <header><strong>{chatText.edited(message.files.length)}</strong>
+        <span className={styles.add}>+{message.files.reduce((sum, file) => sum + file.added, 0)}</span>{" "}
+        <span className={styles.remove}>−{message.files.reduce((sum, file) => sum + file.removed, 0)}</span></header>
+      <ul>{message.files.map((file) => <li key={file.path}><span className={styles.path}>{file.path}</span>
+        <span><span className={styles.add}>+{file.added}</span> <span className={styles.remove}>−{file.removed}</span></span></li>)}</ul>
+    </section>}
     {message.diff && <details open><summary>{chatText.diff}</summary><pre className={styles.diff}>{message.diff.split("\n").map((line, index) =>
       <span key={index} className={line.startsWith("+") ? styles.add : line.startsWith("-") ? styles.remove : undefined}>{line}{"\n"}</span>)}</pre></details>}
     {message.error && <div className={styles.error} role="alert">{message.error}</div>}

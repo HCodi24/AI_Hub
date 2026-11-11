@@ -1,4 +1,5 @@
 pub(crate) mod addons;
+pub(crate) mod changes;
 pub(crate) mod chat;
 pub(crate) mod debate;
 pub(crate) mod dev;

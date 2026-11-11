@@ -2,9 +2,10 @@ import { z } from "zod";
 export const PermissionSchema = z.enum(["read", "write", "full"]);
 export const EffortSchema = z.enum(["default", "low", "medium", "high", "xhigh", "max"]);
 export const FileToolsSchema = z.enum(["none", "read", "write"]);
+export const FileChangeSchema = z.object({ path: z.string(), added: z.number(), removed: z.number() });
 export const ChatMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]), content: z.string(),
-  reasoning: z.string().default(""), logs: z.array(z.string()).default([]), diff: z.string().default(""),
+  reasoning: z.string().default(""), logs: z.array(z.string()).default([]), diff: z.string().default(""), files: z.array(FileChangeSchema).default([]),
   error: z.string().nullish(), debate_id: z.string().nullish(), plan_id: z.string().nullish(),
   attachments: z.array(z.object({ id: z.string(), mime: z.string(), path: z.string().default("") })).default([]),
 });
@@ -27,6 +28,6 @@ export const StreamDataSchema = z.object({
   text: z.string().optional(), message: z.string().optional(), provider_name: z.string().optional(), model: z.string().optional(),
   effort: z.string().optional(), role: z.string().nullish(), elapsed_s: z.number().optional(),
   idle_s: z.number().optional(), last_activity: z.string().optional(), scope: z.string().optional(),
-  action: z.string().optional(), status: z.string().optional(),
+  action: z.string().optional(), status: z.string().optional(), files: z.array(FileChangeSchema).optional(),
 });
 export type StreamData = z.infer<typeof StreamDataSchema>;

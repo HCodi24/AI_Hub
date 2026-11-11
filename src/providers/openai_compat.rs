@@ -233,6 +233,7 @@ mod image_builder_tests {
             reasoning: String::new(),
             logs: vec![],
             diff: String::new(),
+            files: Vec::new(),
             error: None,
         };
         let value = openai_message(&message).unwrap();

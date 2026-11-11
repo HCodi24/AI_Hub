@@ -87,6 +87,7 @@ export const useChatStore = create<ChatState>((set) => ({
     if (event === "log") message.logs = [...message.logs, data.text || ""];
     if (event === "memory") message.logs = [...message.logs, [data.scope, data.status, data.action].filter(Boolean).join(" · ")];
     if (event === "diff") message.diff = data.text || "";
+    if (event === "files") message.files = data.files || [];
     if (event === "error") message.error = data.text;
     messages[messages.length - 1] = message;
     return { messages };

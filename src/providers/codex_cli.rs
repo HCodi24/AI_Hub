@@ -492,6 +492,7 @@ mod resume_tests {
             reasoning: String::new(),
             logs: vec![],
             diff: String::new(),
+            files: Vec::new(),
             error: None,
         };
         assert!(super::super::latest_image_paths(&[message], &inside).is_err());

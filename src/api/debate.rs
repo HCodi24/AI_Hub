@@ -135,6 +135,7 @@ async fn run_turn(
             reasoning: String::new(),
             logs: Vec::new(),
             diff: String::new(),
+            files: Vec::new(),
             error: None,
         }],
         session_id: debater.session.clone(),

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { ArrowUp, Square, Scale, Sparkles, ImagePlus, X } from "lucide-react";
+import { ArrowUp, Square, Scale, Sparkles, ImagePlus, Plus, X } from "lucide-react";
 import { Button } from "@/components/button/button";
 import { http } from "@/lib/http";
 import { chatText } from "@/text/chat";
@@ -30,6 +30,14 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
   const [images, setImages] = useState<Image[]>([]);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const attachmentMenu = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    function closeOutside(event: PointerEvent) {
+      if (attachmentMenu.current?.open && !attachmentMenu.current.contains(event.target as Node)) attachmentMenu.current.open = false;
+    }
+    document.addEventListener("pointerdown", closeOutside, true);
+    return () => document.removeEventListener("pointerdown", closeOutside, true);
+  }, []);
   const pending = useRef(false);
   // Uploads are stored per chat id, so images picked for another chat no longer apply.
   const owner = useRef(chatId);
@@ -82,15 +90,24 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
       <button type="button" aria-label={chatText.removeImage} onClick={() => setImages(current => current.filter(item => item.id !== image.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
     <div className={styles.box}>
       <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(event) => void addImages([...(event.target.files ?? [])])} />
+      <details ref={attachmentMenu} className={styles.attachments} onKeyDown={(event) => {
+        if (event.key === "Escape") { event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); }
+      }}>
+        <summary aria-label={chatText.attachImage} title={chatText.attachImage} aria-disabled={streaming}
+          onClick={(event) => { if (streaming) event.preventDefault(); }}><Plus size={22} aria-hidden="true" /></summary>
+        <div className={styles.attachmentMenu}>
+          <Button variant="ghost" type="button" disabled={streaming} onClick={() => {
+            if (attachmentMenu.current) attachmentMenu.current.open = false;
+            picker.current?.click();
+          }}><ImagePlus size={18} aria-hidden="true" />{chatText.attachImage}</Button>
+        </div>
+      </details>
       <textarea id="chat-input" ref={input} value={value} rows={1} disabled={streaming}
       placeholder={chatText.placeholder} onChange={(event) => setValue(event.target.value)}
       onPaste={(event) => { const files = [...event.clipboardData.items].flatMap(item => item.kind === "file" && item.type.startsWith("image/") ? [item.getAsFile()] : []).filter((file): file is File => file !== null); if (files.length) { event.preventDefault(); void addImages(files); } }}
       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
-      <div className={styles.foot}>
-        <Button type="button" aria-label={chatText.attachImage} disabled={streaming} onClick={() => picker.current?.click()}><ImagePlus size={18} aria-hidden="true" /></Button>
-        {streaming ? <Button variant="danger" onClick={() => void stop()} aria-label={chatText.stop}><Square size={16} aria-hidden="true" />{chatText.stop}</Button> :
-          <Button variant="primary" type="submit" disabled={!canSend || Boolean(running)} aria-label={chatText.send}><ArrowUp size={18} aria-hidden="true" /></Button>}
-      </div>
+      {streaming ? <Button className={styles.sendButton} variant="danger" onClick={() => void stop()} aria-label={chatText.stop} title={chatText.stop}><Square size={18} aria-hidden="true" /></Button> :
+        <Button className={styles.sendButton} variant="primary" type="submit" disabled={!canSend || Boolean(running)} aria-label={chatText.send} title={chatText.send}><ArrowUp size={20} aria-hidden="true" /></Button>}
     </div>
     <p>{chatText.hint}</p>
     <div className={styles.toolbar}><ChatToolbar config={config} /></div>
