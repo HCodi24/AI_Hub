@@ -15,3 +15,31 @@ desktop/node_modules/
 
 # Clawd pet artwork (c) Anthropic, unofficial fan adaptation: personal use only, never commit or ship it
 web/public/pets/clawd-svg/
+
+# Windows caches accidentally created under the workspace
+/%SystemDrive%/
+/Microsoft/Windows/
+
+# Python bytecode and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local patch used during Claude integration
+/claude-ui.patch
+
+# Local credentials and environment overrides
+.env
+.env.*
+!.env.example
+!.env.sample
+/.aws/
+/.codex/
+
+# Editor and operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
