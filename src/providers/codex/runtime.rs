@@ -38,6 +38,9 @@ impl Provider for CodexProvider {
             let account = client.call("account/read", json!({"refreshToken":false})).await?;
             if account["account"].is_null() { bail!("Codex của MutiS chưa đăng nhập; dùng Tìm Codex CLI hoặc Đăng nhập qua web trong Cài đặt"); }
             let sandbox = if request.permission == Permission::Read { "read-only" } else { "workspace-write" };
+            if sandbox == "workspace-write" && crate::api::providers::codex_sandbox_status(&mut client).await != "ready" {
+                bail!("Codex riêng của MutiS chưa thiết lập sandbox Windows nên không ghi được file. Vào Cài đặt › Nguồn AI › Codex bấm «Thiết lập sandbox» (cần xác nhận quyền quản trị), hoặc chọn quyền Chỉ đọc.");
+            }
             let context = environment::project_context(folder, &settings)?;
             let mcp = request.mcp.iter().filter(|server| server.enabled).map(|server| (
                 server.name.clone(), json!({"command":server.command,"args":server.args,"env":server.env})
@@ -68,7 +71,7 @@ impl Provider for CodexProvider {
             } else { client.call("thread/start", params).await? };
             let id = thread["thread"]["id"].as_str().context("Codex không trả mã phiên")?.to_owned();
             events.send(ProviderEvent { name:"session", data:json!({"session_id":format!("{prefix}{id}")}) }).await?;
-            let mut input = vec![json!({"type":"text","text":cli_support::compose_prompt(&request.messages, resumed)})];
+            let mut input = vec![json!({"type":"text","text":cli_support::compose_prompt_for(&request.messages, resumed, "codex_cli")})];
             if let Some(dir) = crate::providers::latest_chat_attachment_dir(&request.messages) {
                 for image in crate::providers::latest_image_paths(&request.messages, &dir)? {
                     input.push(json!({"type":"localImage","path":image}));

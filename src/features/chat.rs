@@ -91,6 +91,9 @@ pub struct ChatRecord {
     pub messages: Vec<ChatMessage>,
     #[serde(default)]
     pub session_id: Option<String>,
+    /// CLI sessions of the sources this chat left, so switching back resumes them instead of starting over.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub sessions: std::collections::BTreeMap<String, String>,
     pub updated_at: u64,
     /// Set for the hidden chat a plan task runs in: its output is shown in the plan card, not in the chat history list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -217,6 +220,16 @@ impl ChatStore {
     }
 }
 
+impl ChatRecord {
+    /// The user picked another source: park this source's CLI session and resume the new source's earlier one, if any.
+    pub fn switch_source(&mut self, new_provider_id: &str) {
+        if let Some(current) = self.session_id.take() {
+            self.sessions.insert(self.provider_id.clone(), current);
+        }
+        self.session_id = self.sessions.remove(new_provider_id);
+    }
+}
+
 pub fn new_record(request: &ChatRequest) -> ChatRecord {
     let title = request
         .messages
@@ -246,6 +259,7 @@ pub fn new_record(request: &ChatRequest) -> ChatRecord {
             .unwrap_or_default(),
         messages: request.messages.clone(),
         session_id: None,
+        sessions: Default::default(),
         updated_at: unix_time(),
         plan_task_of: request.task_id.as_ref().and(request.plan_id.clone()),
     }
@@ -454,5 +468,32 @@ mod plan_task_chat_tests {
         assert!(ids.contains(&normal.id) && ids.contains(&plan_only.id));
         assert!(!ids.contains(&task.id));
         let _ = std::fs::remove_dir_all(directory);
+    }
+}
+
+#[cfg(test)]
+mod switch_source_tests {
+    use super::*;
+
+    fn record() -> ChatRecord {
+        serde_json::from_value(serde_json::json!({
+            "id": "c", "title": "t", "provider_id": "claude-cli", "model": "m", "folder": "f",
+            "messages": [], "session_id": "claude-session", "updated_at": 0
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn switching_away_and_back_resumes_each_sources_own_session() {
+        let mut chat = record();
+        chat.switch_source("codex-cli");
+        assert_eq!(chat.session_id, None, "the new source has no session yet");
+        chat.provider_id = "codex-cli".into();
+        chat.session_id = Some("codex-session".into());
+        chat.switch_source("claude-cli");
+        assert_eq!(chat.session_id.as_deref(), Some("claude-session"));
+        chat.provider_id = "claude-cli".into();
+        chat.switch_source("codex-cli");
+        assert_eq!(chat.session_id.as_deref(), Some("codex-session"));
     }
 }

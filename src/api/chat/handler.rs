@@ -127,7 +127,7 @@ pub(crate) async fn chat_handler(
         .is_some_and(|r| r.provider_id != request.provider_id);
     let mut record = existing.unwrap_or_else(|| chat::new_record(&request));
     if switched_source {
-        record.session_id = None;
+        record.switch_source(&request.provider_id);
     }
     if provider_config.kind == "codex_cli" {
         let settings = state.config.read().await.codex.clone();

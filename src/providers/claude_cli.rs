@@ -49,7 +49,7 @@ impl Provider for ClaudeCliProvider {
             args.extend([OsString::from("--resume"), OsString::from(session_id)]);
         }
         let mut prompt =
-            cli_support::compose_prompt(&request.messages, request.session_id.is_some());
+            cli_support::compose_prompt_for(&request.messages, request.session_id.is_some(), "claude_cli");
         if let Some(directory) = super::latest_chat_attachment_dir(&request.messages) {
             let paths = super::latest_image_paths(&request.messages, &directory)?;
             args.extend([

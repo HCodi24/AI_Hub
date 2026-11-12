@@ -92,11 +92,14 @@ pub(crate) fn image_block(attachment: &crate::chat::ChatAttachment) -> Result<Va
     )
 }
 
+/// The message whose images a CLI should be pointed at: only the user's newest message. An image from an earlier
+/// turn must not be re-attached to an unrelated question (the CLI would answer about the old image).
+fn message_with_new_images(messages: &[ChatMessage]) -> Option<&ChatMessage> {
+    messages.last().filter(|m| m.role == "user" && !m.attachments.is_empty())
+}
+
 pub(crate) fn latest_chat_attachment_dir(messages: &[ChatMessage]) -> Option<PathBuf> {
-    messages
-        .iter()
-        .rev()
-        .find(|m| m.role == "user" && !m.attachments.is_empty())?
+    message_with_new_images(messages)?
         .attachments
         .first()?
         .path
@@ -111,11 +114,7 @@ pub(crate) fn latest_image_paths(
     expected_dir: &Path,
 ) -> Result<Vec<PathBuf>> {
     let expected_dir = fs::canonicalize(expected_dir).context("Thư mục ảnh chat không hợp lệ")?;
-    let Some(message) = messages
-        .iter()
-        .rev()
-        .find(|m| m.role == "user" && !m.attachments.is_empty())
-    else {
+    let Some(message) = message_with_new_images(messages) else {
         return Ok(Vec::new());
     };
     message
@@ -322,5 +321,24 @@ mod retry_tests {
         assert_eq!(retry_delay(2000, 0, 0).as_millis(), 2000);
         assert_eq!(retry_delay(2000, 1, 250).as_millis(), 4250);
         assert_eq!(retry_delay(2000, 2, 999).as_millis(), 8250);
+    }
+}
+
+#[cfg(test)]
+mod image_scope_tests {
+    use super::*;
+
+    fn message(role: &str, images: bool) -> ChatMessage {
+        let attachments = if images { serde_json::json!([{"id": "i", "mime": "image/png", "path": "C:/x/i.png"}]) } else { serde_json::json!([]) };
+        serde_json::from_value(serde_json::json!({"role": role, "content": "c", "attachments": attachments})).unwrap()
+    }
+
+    #[test]
+    fn only_the_newest_user_message_brings_images() {
+        let old_image = [message("user", true), message("assistant", false), message("user", false)];
+        assert!(message_with_new_images(&old_image).is_none(), "an old image must not follow later questions");
+        assert!(latest_chat_attachment_dir(&old_image).is_none());
+        let new_image = [message("user", false), message("assistant", false), message("user", true)];
+        assert!(message_with_new_images(&new_image).is_some());
     }
 }

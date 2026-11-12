@@ -20,7 +20,7 @@ export function CodexConnection({ providerId }: { providerId: string }) {
       status: state.connected ? "connected" : "not_configured", message: state.message, detail: "" });
   }, [client, providerId, state]);
 
-  async function act(action: "cli" | "web" | "cancel" | "logout") {
+  async function act(action: "cli" | "web" | "cancel" | "logout" | "sandbox") {
     if (locked.current) return;
     const popup = action === "web" ? window.open("about:blank", "_blank") : null;
     if (popup) popup.opener = null;
@@ -62,7 +62,10 @@ export function CodexConnection({ providerId }: { providerId: string }) {
       <Button disabled={busy || Boolean(state?.pending)} onClick={() => void act("web")}>Đăng nhập qua web</Button>
       {state?.pending && <Button disabled={busy} onClick={() => void act("cancel")}>Hủy đăng nhập</Button>}
       {state?.connected && <Button disabled={busy} onClick={() => void act("logout")}>Đăng xuất khỏi MutiS</Button>}
+      {state?.connected && state.sandbox !== "ready" && state.sandbox !== "unknown" && <Button disabled={busy} onClick={() => void act("sandbox")}>Thiết lập sandbox</Button>}
     </div>
+    {state?.connected && state.sandbox !== "ready" && state.sandbox !== "unknown" && <p className={styles.note} role="alert">
+      Codex riêng của MutiS chưa có sandbox Windows nên chưa ghi được file (chỉ đọc). Bấm «Thiết lập sandbox» rồi chọn Có ở hộp thoại quyền quản trị của Windows; việc này chỉ làm một lần.</p>}
     <p className={styles.note} role="status">{busy ? "Đang xử lý…" : state?.message || (query.isPending ? "Đang kiểm tra Codex…" : "Chưa kiểm tra được Codex")}</p>
     {state?.pending && url && <a href={url} target="_blank" rel="noopener noreferrer">Mở trang đăng nhập</a>}
     <label className={styles.check}><input type="checkbox" checked={state?.project_skills || false} disabled={!state || busy || state.pending}

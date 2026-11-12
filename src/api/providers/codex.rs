@@ -47,6 +47,38 @@ pub(crate) struct Status {
     message: String,
     project_skills: bool,
     project_instructions: bool,
+    /// Windows sandbox of this MutiS Codex home: `ready`, `notConfigured`, `updateRequired` or `unknown`.
+    sandbox: String,
+}
+
+/// Windows needs a one-time sandbox setup per Codex home before Codex may write files; elsewhere it is always ready.
+pub(crate) async fn sandbox_status(client: &mut Client) -> String {
+    if !cfg!(windows) {
+        return "ready".into();
+    }
+    match client.call("windowsSandbox/readiness", json!({})).await {
+        Ok(value) => value["status"].as_str().unwrap_or("unknown").to_owned(),
+        Err(_) => "unknown".into(),
+    }
+}
+
+/// Runs the elevated sandbox setup. Windows shows its administrator prompt; the user has a few minutes to accept.
+async fn setup_sandbox(client: &mut Client) -> anyhow::Result<()> {
+    let started = client.call("windowsSandbox/setupStart", json!({"mode":"elevated"})).await?;
+    anyhow::ensure!(started["started"].as_bool().unwrap_or(false), "Codex không bắt đầu thiết lập sandbox");
+    tokio::time::timeout(Duration::from_secs(240), async {
+        loop {
+            let message = client.next().await?;
+            if message["method"] == "windowsSandbox/setupCompleted" {
+                if message["params"]["success"].as_bool().unwrap_or(false) {
+                    return Ok(());
+                }
+                anyhow::bail!("Thiết lập sandbox thất bại: {}", message["params"]["error"].as_str().unwrap_or("không rõ lý do"));
+            }
+        }
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("Hết 4 phút chờ thiết lập sandbox (đã bấm Có ở hộp thoại quyền quản trị chưa?)"))?
 }
 
 async fn provider(state: &AppState, id: &str) -> ApiResult<ProviderConfig> {
@@ -92,12 +124,14 @@ pub(crate) async fn codex_status(
         }
     }
     let mut temporary;
-    let account = if let Some(session) = connections.get_mut(&id) {
-        session
+    let (account, sandbox) = if let Some(session) = connections.get_mut(&id) {
+        let account = session
             .client
             .call("account/read", json!({"refreshToken":false}))
             .await
-            .map_err(error)?
+            .map_err(error)?;
+        let sandbox = sandbox_status(&mut session.client).await;
+        (account, sandbox)
     } else {
         // No credentials: avoid starting a process just to show the signed-out state.
         let dir = home(&state.config_path, &provider).map_err(error)?;
@@ -110,14 +144,16 @@ pub(crate) async fn codex_status(
                 message: "Chưa đăng nhập Codex trong MutiS".into(),
                 project_skills: config.codex.project_skills,
                 project_instructions: config.codex.project_instructions,
+                sandbox: "unknown".into(),
             }));
         }
         temporary = new_client(&state, &provider).await?;
         let result = temporary
             .call("account/read", json!({"refreshToken":false}))
             .await;
+        let sandbox = sandbox_status(&mut temporary).await;
         temporary.close().await;
-        result.map_err(error)?
+        (result.map_err(error)?, sandbox)
     };
     let is_connected = connected(&account);
     let failed = connections
@@ -146,6 +182,7 @@ pub(crate) async fn codex_status(
         message: message.clone(),
         project_skills: config.codex.project_skills,
         project_instructions: config.codex.project_instructions,
+        sandbox,
     };
     drop(config);
     state.provider_status.lock().await.insert(
@@ -178,7 +215,7 @@ pub(crate) async fn codex_action(
     Json(input): Json<Action>,
 ) -> ApiResult<Json<Status>> {
     let mut provider = provider(&state, &id).await?;
-    if !matches!(input.action.as_str(), "cli" | "web" | "cancel" | "logout") {
+    if !matches!(input.action.as_str(), "cli" | "web" | "cancel" | "logout" | "sandbox") {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "Thao tác Codex không hợp lệ",
@@ -189,6 +226,15 @@ pub(crate) async fn codex_action(
             StatusCode::CONFLICT,
             "Chờ AI hoàn tất trước khi thay đổi kết nối Codex",
         ));
+    }
+    if input.action == "sandbox" {
+        // Outside the connections lock: waiting for the administrator prompt can take minutes.
+        let mut client = new_client(&state, &provider).await?;
+        let outcome = setup_sandbox(&mut client).await;
+        client.close().await;
+        state.provider_status.lock().await.remove(&id);
+        outcome.map_err(error)?;
+        return codex_status(State(state), Path(id)).await;
     }
     let mut connections = state.codex_connections.lock().await;
     if let Some(mut session) = connections.remove(&id) {

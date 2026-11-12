@@ -59,6 +59,8 @@ pub fn launch_args(folder: &Path) -> Vec<OsString> {
     let root = project_root(folder);
     let configs = [
         "cli_auth_credentials_store=\"file\"".to_owned(),
+        // Without a Windows sandbox mode Codex falls back to read-only no matter what permission is requested.
+        "windows.sandbox=\"elevated\"".into(),
         "project_doc_max_bytes=0".into(),
         "skills.include_instructions=false".into(),
         "skills.bundled.enabled=false".into(),

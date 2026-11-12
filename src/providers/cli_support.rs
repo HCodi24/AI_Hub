@@ -392,35 +392,77 @@ fn format_cost(cost: &Value) -> String {
         .unwrap_or_else(|| cost.to_string())
 }
 
-pub fn compose_prompt(messages: &[crate::chat::ChatMessage], has_session: bool) -> String {
+/// Which AI wrote a reply, as `ChatMessage::provider` labels it.
+fn ai_label(kind: &str) -> &'static str {
+    match kind {
+        "codex_cli" => "Codex",
+        "claude_cli" | "anthropic" => "Claude",
+        "deepseek" => "DeepSeek",
+        _ => "AI",
+    }
+}
+
+const TRANSCRIPT_MESSAGES: usize = 30;
+const TRANSCRIPT_CHARS: usize = 40_000;
+/// The answer right before the user's new message matters most, so it keeps (almost) everything.
+const LAST_ANSWER_CHARS: usize = 12_000;
+const OLDER_MESSAGE_CHARS: usize = 2_500;
+
+/// Newest messages first until the budget is spent, printed oldest first. Done once, when a CLI has no session
+/// for this chat (a source switch), so a larger budget costs little.
+fn transcript(messages: &[crate::chat::ChatMessage]) -> String {
+    let mut lines = Vec::new();
+    let mut used = 0;
+    for (age, message) in messages.iter().rev().filter(|m| !m.content.trim().is_empty()).enumerate() {
+        if age >= TRANSCRIPT_MESSAGES || used >= TRANSCRIPT_CHARS {
+            break;
+        }
+        let limit = if age == 0 && message.role == "assistant" { LAST_ANSWER_CHARS } else { OLDER_MESSAGE_CHARS };
+        let who = match message.role.as_str() {
+            "assistant" => format!("Assistant ({})", ai_label(&message.provider)),
+            "system" => "System".to_owned(),
+            _ => "User".to_owned(),
+        };
+        let line = format!("{who}: {}\n", crate::core::text::truncate_chars(message.content.trim(), limit));
+        used += line.chars().count();
+        lines.push(line);
+    }
+    lines.reverse();
+    lines.concat()
+}
+
+/// Prompt for a CLI of `kind` (`codex_cli`, `claude_cli`):
+/// - no session yet (first use, or the user switched to this source): a transcript of the conversation so far;
+/// - session resumed but another AI answered since this CLI's last reply: only what it missed;
+/// - otherwise just the latest message (the CLI remembers the rest).
+pub fn compose_prompt_for(messages: &[crate::chat::ChatMessage], has_session: bool, kind: &str) -> String {
     let Some(latest) = messages.last() else {
         return String::new();
     };
-    if has_session || messages.len() == 1 {
+    if messages.len() == 1 {
         return latest.content.clone();
     }
-
     let history = &messages[..messages.len() - 1];
-    let start = history.len().saturating_sub(8);
-    let mut transcript = String::from("Earlier conversation for context:\n");
-    for message in &history[start..] {
-        let role = match message.role.as_str() {
-            "assistant" => "Assistant",
-            "system" => "System",
-            _ => "User",
+    if has_session {
+        // Old chats carry no author labels: assume the session knows everything.
+        let Some(seen) = history.iter().rposition(|m| m.role == "assistant" && m.provider == kind) else {
+            return latest.content.clone();
         };
-        let content = crate::core::text::truncate_chars(message.content.trim(), 700);
-        transcript.push_str(role);
-        transcript.push_str(": ");
-        transcript.push_str(&content);
-        transcript.push('\n');
-        if transcript.chars().count() >= 4_000 {
-            break;
+        let missed = &history[seen + 1..];
+        if !missed.iter().any(|m| m.role == "assistant" && !m.content.trim().is_empty()) {
+            return latest.content.clone();
         }
+        return format!(
+            "While you were away, the conversation continued with other AIs:\n{}\nLatest user message:\n{}",
+            transcript(missed),
+            latest.content
+        );
     }
-    transcript.push_str("\nLatest user message:\n");
-    transcript.push_str(&latest.content);
-    transcript
+    format!(
+        "Earlier conversation for context (some answers come from other AIs):\n{}\nLatest user message:\n{}",
+        transcript(history),
+        latest.content
+    )
 }
 
 pub fn valid_model(model: &str) -> bool {
@@ -519,5 +561,42 @@ mod claude_support_tests {
         assert_eq!(parse_auth_logged_in(br#"{"loggedIn":false}"#), Some(false));
         assert_eq!(parse_auth_logged_in(b"{}"), None);
         assert_eq!(parse_auth_logged_in(b"not json"), None);
+    }
+}
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+    use crate::chat::ChatMessage;
+
+    fn message(role: &str, provider: &str, content: &str) -> ChatMessage {
+        serde_json::from_value(serde_json::json!({"role": role, "content": content, "provider": provider})).unwrap()
+    }
+
+    #[test]
+    fn a_fresh_session_gets_the_long_last_answer_and_who_wrote_it() {
+        let long = "x".repeat(5_000);
+        let chat = [message("user", "", "q1"), message("assistant", "codex_cli", &long), message("user", "", "what did you see?")];
+        let prompt = compose_prompt_for(&chat, false, "claude_cli");
+        assert!(prompt.contains("Assistant (Codex): ") && prompt.contains(&long));
+        assert!(prompt.ends_with("Latest user message:\nwhat did you see?"));
+    }
+
+    #[test]
+    fn a_resumed_session_only_hears_what_other_ais_said_meanwhile() {
+        let chat = [
+            message("user", "", "q1"),
+            message("assistant", "claude_cli", "a1"),
+            message("user", "", "q2"),
+            message("assistant", "codex_cli", "codex answer"),
+            message("user", "", "q3"),
+        ];
+        let prompt = compose_prompt_for(&chat, true, "claude_cli");
+        assert!(prompt.contains("User: q2") && prompt.contains("Assistant (Codex): codex answer"));
+        assert!(!prompt.contains("a1") && prompt.ends_with("q3"));
+        // Nobody else spoke, or old chat without labels: just the latest message.
+        assert_eq!(compose_prompt_for(&chat, true, "codex_cli"), "q3");
+        assert_eq!(compose_prompt_for(&chat[..3], true, "claude_cli"), "q2");
+        assert_eq!(compose_prompt_for(&chat, true, "deepseek"), "q3");
     }
 }
