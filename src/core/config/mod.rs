@@ -1,10 +1,16 @@
 mod mcp;
+mod codex;
 mod migrate;
 mod mutis;
+#[path = "mutiHigh/mod.rs"]
+mod muti_high;
+#[path = "mutiMax/mod.rs"]
+mod muti_max;
 mod provider;
 mod store;
 
 pub use mcp::*;
+pub use codex::*;
 pub use mutis::*;
 pub use provider::*;
 pub use store::*;
@@ -13,6 +19,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default)]
+    pub codex: CodexConfig,
     #[serde(default)]
     pub memory: crate::features::memory::MemoryConfig,
     #[serde(default)]
@@ -36,6 +44,9 @@ pub struct Config {
     /// MCP servers MutiS runs for in-app (API source) agents.
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
+    /// Chosen chat avatar pet per source kind (`codex_cli`, `claude_cli`, `anthropic`, `openai_compat`); missing = default.
+    #[serde(default)]
+    pub pets: std::collections::BTreeMap<String, String>,
 }
 
 fn default_chat_idle_timeout_minutes() -> u32 {
@@ -55,6 +66,7 @@ fn default_folder() -> String {
 impl Config {
     pub fn seeded() -> Self {
         Self {
+            codex: CodexConfig::default(),
             memory: Default::default(),
             providers: vec![
                 ProviderConfig {
@@ -120,6 +132,7 @@ impl Config {
             self_dev: SelfDevConfig::default(),
             theme: String::new(),
             mcp_servers: Vec::new(),
+            pets: Default::default(),
         }
     }
 }

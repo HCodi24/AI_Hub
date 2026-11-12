@@ -24,6 +24,8 @@ function load(file) {
 }
 const text = load(path.join(web, "src/text/chat.ts")).chatText;
 require("./test-chat-choices.cjs")(load, web);
+require("./test-chat-questions.cjs")(load, web);
+require("./test-chat-pet-state.cjs")(load, web);
 assert.equal(text.newChat, "Chat mới");
 const schema = load(path.join(web, "src/schema/chat.schema.ts"));
 const { useChatStore } = load(path.join(web, "src/components/features/chat/chat-store.ts"));

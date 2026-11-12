@@ -1,0 +1,23 @@
+const assert = require("node:assert/strict");
+const path = require("node:path");
+module.exports = function testChatPetState(load, web) {
+  const { chatPetState } = load(path.join(web, "src/lib/chat-pet-state.ts"));
+  const { ChatMessageSchema } = load(path.join(web, "src/schema/chat.schema.ts"));
+  const { chatText } = load(path.join(web, "src/text/chat.ts"));
+  const message = extra => ChatMessageSchema.parse({ role: "assistant", content: "", ...extra });
+  assert.equal(chatPetState(message(), true, true), "working");
+  assert.equal(chatPetState(message({ reasoning: "Thinking" }), true, true), "working");
+  assert.equal(chatPetState(message({ content: "Xin chào" }), true, true), "replying");
+  const question = message({ content: "Bạn có muốn tôi sửa tiếp không?" });
+  assert.equal(chatPetState(question, true, true), "replying");
+  assert.equal(chatPetState(question, false, true), "waiting");
+  assert.equal(chatPetState(question, false, false), "idle");
+  assert.equal(chatPetState(message({ error: "Network error" }), true, true), "failed");
+  assert.equal(chatPetState(message({ error: "Network error" }), false, true), "failed");
+  assert.equal(chatPetState(message({ error: chatText.stopped }), false, true), "idle");
+  assert.equal(chatPetState(message({ content: "Đã xong" }), false, true), "idle");
+  assert.equal(chatPetState(message({ ...question, plan_id: "plan" }), false, true), "idle");
+  assert.equal(chatPetState(message({ ...question, debate_id: "debate" }), false, true), "idle");
+  assert.equal(chatPetState(message({ ...question, role: "user" }), false, true), "idle");
+  console.log("PASS pet state: processing, replying, quick-reply wait, errors, completion and history");
+};

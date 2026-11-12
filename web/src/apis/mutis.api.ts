@@ -12,7 +12,8 @@ export const mutisApi = {
   async apply(change: { path: string; value: unknown }) {
     return parseResponse(ApplyResultSchema, await (await http.request("/mutis/apply", { method: "POST", body: JSON.stringify(change) })).json());
   },
-  async resolve() { return parseResponse(ResolvedRolesSchema, await http.get("/mutis/roles/resolve")); },
+  /** `effort` picks the level: max/xhigh = 3 AIs, otherwise Codex + DeepSeek only. */
+  async resolve(effort?: string) { return parseResponse(ResolvedRolesSchema, await http.get(`/mutis/roles/resolve${effort ? `?effort=${encodeURIComponent(effort)}` : ""}`)); },
   async event(body: { plan_id: string; task_id: string; task_kind: string; provider_id: string; kind: "verify" | "review" | "fix_task"; ok: boolean; detail: string }) {
     return parseResponse(z.object({ ok: z.boolean() }), await (await http.request("/mutis/events", { method: "POST", body: JSON.stringify(body) })).json());
   },

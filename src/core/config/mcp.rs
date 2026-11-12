@@ -1,5 +1,5 @@
-//! MCP servers MutiS itself runs for in-app agents (API sources such as DeepSeek). The Codex and Claude CLIs keep
-//! using their own MCP configuration; these entries are never written into their config files.
+//! MCP servers managed by MutiS. API agents and the isolated Codex adapter use
+//! these entries; Claude retains its own MCP configuration.
 use anyhow::{bail, ensure, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};

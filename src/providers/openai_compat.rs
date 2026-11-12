@@ -1,7 +1,6 @@
 use super::{
     emit_text, error_value_text, safe_error_body, Provider, ProviderEvent, ProviderRequest,
 };
-use crate::chat::Effort;
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -46,13 +45,8 @@ impl Provider for OpenAiCompatibleProvider {
             "messages": messages,
             "stream": true
         });
-        if request.effort != Effort::Default {
-            body["reasoning_effort"] = json!(match request.effort {
-                Effort::Low => "low",
-                Effort::Medium => "medium",
-                Effort::High | Effort::Xhigh | Effort::Max => "high",
-                Effort::Default => unreachable!(),
-            });
+        if let Some(effort) = super::api_reasoning_effort(&request.model, request.effort) {
+            body["reasoning_effort"] = json!(effort);
         }
         let client = reqwest::Client::new();
         let secret = request.provider.api_key.clone();

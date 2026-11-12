@@ -1,5 +1,6 @@
 import { debatesApi } from "@/apis/debates.api";
 import { plansApi } from "@/apis/plans.api";
+import { rolesFor } from "@/lib/mutis-level";
 import { mutisApi } from "@/apis/mutis.api";
 import { configApi } from "@/apis/config.api";
 import { ChatMessageSchema, StreamDataSchema } from "@/schema/chat.schema";
@@ -45,11 +46,12 @@ export async function startCard(request: string, kind: "debate" | "plan", afterD
     });
     else {
       const [cfg, mutis] = await Promise.all([configApi.get(), mutisApi.get()]);
-      if (mutis.enabled) await mutisApi.resolve();
+      if (mutis.enabled) await mutisApi.resolve(state.settings.effort);
+      const activeRoles = rolesFor(mutis, state.settings.effort);
       await plansApi.generate({ request, folder: state.settings.folder, chat_id: chatId, append_request: appendRequest,
         after_debate_id: afterDebateId, dev_chat: state.settings.dev_chat,
-        provider_id: mutis.enabled ? mutis.roles.lead.provider_id : cfg.planner_provider_id,
-        model: mutis.enabled ? mutis.roles.lead.model : cfg.planner_model }, controller.signal, (event, raw) => {
+        provider_id: mutis.enabled ? activeRoles?.lead.provider_id || "" : cfg.planner_provider_id,
+        model: mutis.enabled ? activeRoles?.lead.model || "" : cfg.planner_model, effort: state.settings.effort }, controller.signal, (event, raw) => {
         if (event === "error") throw new Error(StreamDataSchema.parse(raw).message || StreamDataSchema.parse(raw).text || t.error);
         if (event === "log") useCardStore.getState().log(currentId, StreamDataSchema.parse(raw).text || "");
         if (event === "planning" || event === "plan") { plan = PlanSchema.parse(raw); attach(plan.id); useCardStore.getState().plan(plan); }

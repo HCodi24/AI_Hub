@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Head from "next/head";
 import { useShallow } from "zustand/react/shallow";
 import { MessageList } from "./message-list";
@@ -19,8 +19,9 @@ import { openDevChat } from "@/components/features/dev/dev-chat";
 import { useQuery } from "@tanstack/react-query";
 import { devApi } from "@/apis/dev.api";
 export function ChatScreen() {
+  const dropTarget = useRef<HTMLElement>(null);
   useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
-  const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, status: s.status, folder: s.settings.folder })));
+  const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, folder: s.settings.folder })));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { config, chats, send, stop, load, remove } = useChat();
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
@@ -39,7 +40,7 @@ export function ChatScreen() {
     <a className={styles.skip} href="#chat-main">{chatText.skip}</a>
     <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} remove={remove} openSettings={() => setSettingsOpen(true)}
       openDevChat={dev.data?.dev ? () => void openDevChat(config.data?.providers || []) : undefined} />
-      <main id="chat-main" className={styles.main}>
+      <main ref={dropTarget} id="chat-main" className={styles.main}>
         <DevBanner />
         <ChatHeader />
         {config.isPending && <Spinner />}
@@ -49,12 +50,7 @@ export function ChatScreen() {
         <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
           <MessageList send={send} />
         </section>
-        <div className={styles.status} role="status" aria-live="polite" aria-atomic="true">
-          {state.streaming && <>{chatText.streaming} {state.status.provider_name} {state.status.model}
-            {state.status.elapsed_s !== undefined && ` · ${state.status.elapsed_s} ${chatText.seconds}`}
-            {state.status.idle_s !== undefined && ` · ${chatText.idle}: ${state.status.idle_s} ${chatText.seconds}`}</>}
-        </div>
-        <Composer config={config.data} streaming={state.streaming} send={send} stop={stop} />
+        <Composer dropTarget={dropTarget} config={config.data} streaming={state.streaming} send={send} stop={stop} />
       </main>
     </div>{settingsOpen && <SettingsDialog folder={state.folder} close={() => setSettingsOpen(false)} />}<Toast /></>;
 }

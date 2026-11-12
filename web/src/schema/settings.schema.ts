@@ -14,7 +14,7 @@ export const McpToolsSchema = z.object({ tools: z.array(z.object({ name: z.strin
 export const FullConfigSchema = z.object({
   providers: z.array(ProviderSchema), default_folder: z.string().default(""),
   chat_idle_timeout_minutes: z.number().default(10), planner_provider_id: z.string().default(""),
-  planner_model: z.string().default(""), memory: MemoryConfigSchema.default({}), mcp_servers: z.array(McpServerSchema).default([]),
+  planner_model: z.string().default(""), memory: MemoryConfigSchema.default({}), mcp_servers: z.array(McpServerSchema).default([]), pets: z.record(z.string(), z.string()).default({}),
 }).passthrough();
 export const ConnectionTestSchema = z.object({
   ok: z.boolean(), status: z.string(), message: z.string().default(""), detail: z.string().default(""),

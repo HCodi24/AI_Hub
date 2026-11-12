@@ -12,3 +12,6 @@ desktop/target/
 desktop/gen/
 /dist/
 desktop/node_modules/
+
+# Clawd pet artwork (c) Anthropic, unofficial fan adaptation: personal use only, never commit or ship it
+web/public/pets/clawd-svg/

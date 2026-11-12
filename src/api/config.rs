@@ -15,6 +15,9 @@ pub(crate) struct ConfigInput {
     /// The whole MCP list when sent; omitted = unchanged.
     #[serde(default)]
     mcp_servers: Option<Vec<config::McpServerConfig>>,
+    /// The whole pet choice map when sent; omitted = unchanged.
+    #[serde(default)]
+    pets: Option<std::collections::BTreeMap<String, String>>,
     #[serde(default)]
     memory: Option<crate::features::memory::MemoryConfig>,
     // Optional on purpose: a partial update (e.g. the UI saving only the working folder) must NOT reset
@@ -55,6 +58,13 @@ pub(crate) async fn put_config(
     {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Giao diện không hợp lệ"));
     }
+    if let Some(pets) = &input.pets {
+        let valid_kind = |kind: &str| matches!(kind, "codex_cli" | "claude_cli" | "anthropic" | "openai_compat");
+        let valid_pet = |pet: &str| (1..=48).contains(&pet.len()) && pet.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+        if pets.len() > 8 || pets.iter().any(|(kind, pet)| !valid_kind(kind) || !valid_pet(pet)) {
+            return Err(ApiError::new(StatusCode::BAD_REQUEST, "Lựa chọn pet không hợp lệ"));
+        }
+    }
     if let Some(servers) = &input.mcp_servers {
         config::validate_mcp_servers(servers)
             .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
@@ -76,6 +86,10 @@ pub(crate) async fn put_config(
     }
     if let Some(servers) = input.mcp_servers {
         config.mcp_servers = servers;
+        config.codex.revision = config.codex.revision.wrapping_add(1);
+    }
+    if let Some(pets) = input.pets {
+        config.pets = pets;
     }
     if let Some(minutes) = input.chat_idle_timeout_minutes {
         config.chat_idle_timeout_minutes = minutes;

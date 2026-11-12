@@ -1,6 +1,7 @@
 import { ReviewSchema, type Plan, type PlanTask, type Review } from "@/schema/plans.schema";
 import type { RunnerContext } from "./plan-runner";
 import { cardText as t } from "@/text/cards";
+import { rolesFor } from "@/lib/mutis-level";
 export function nextReviewAction(review: Review, used: number, max: number) {
   if (review.verdict === "SKIPPED") return "skip";
   if (review.verdict !== "FAIL") return "complete";
@@ -37,15 +38,16 @@ export async function runTaskGates(ctx: RunnerContext, task: PlanTask, plan: Pla
   }
   if (cfg.auto_review && ["code", "test", "docs", "small_edit"].includes(task.kind)) {
     const resolved = await ctx.services.resolve();
+    const role = rolesFor(cfg, plan.level)?.lead || cfg.roles.lead;
     const reviewer = resolved.lead.used_provider;
-    if (!reviewer) task.review = { verdict: "SKIPPED", issues: [], notes: t.noReview };
+    const reviewerId = plan.level === "high" ? role.provider_id : reviewer?.id;
+    if (!reviewerId) task.review = { verdict: "SKIPPED", issues: [], notes: t.noReview };
     else {
       const diff = task.diff || (await ctx.services.diff(plan.folder)).diff;
-      const role = cfg.roles.lead;
       let answer = "";
       ctx.chatId = crypto.randomUUID();
       await ctx.services.chat({ chat_id: ctx.chatId, plan_id: plan.id, task_id: String(task.id), task_kind: task.kind,
-        provider_id: reviewer.id, model: reviewer.id === role.provider_id ? role.model || reviewer.models[0] || "" : reviewer.models[0] || "",
+        provider_id: reviewerId, model: plan.level === "high" ? role.model : reviewerId === role.provider_id ? role.model || reviewer?.models[0] || "" : reviewer?.models[0] || "",
         effort: role.effort, folder: plan.folder, permission: "read", file_tools: "none", dev_chat: plan.dev_chat,
         messages: [{ role: "user", content: `Review task và trả CHỈ JSON {"verdict":"PASS|FAIL","issues":[{"severity":"high|medium|low","file":"","line":0,"problem":"","fix":""}],"notes":""}. Task: ${task.title}\nChi tiết: ${task.detail}\nTóm tắt: ${task.summary}\nVerify: ${(task.verify?.summary_lines || []).join("\n")}\nDiff:\n${diff.slice(0, 30000)}` }] }, ctx.signal, (event, data) => { if (event === "delta") answer += data.text || ""; if (event === "error") throw new Error(data.text || t.error); });
       task.review = extractReview(answer);

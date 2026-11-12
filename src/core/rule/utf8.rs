@@ -1,5 +1,5 @@
 //! Rule: write files as UTF-8.
 pub const RULE: &str = concat!(
-    "- Ghi mọi file bằng UTF-8 (không dùng PowerShell Set-Content/Out-File/>); ",
-    "dùng công cụ sửa file hoặc [System.IO.File]::WriteAllText với UTF8."
+    "- Write every file as UTF-8 (do not use PowerShell Set-Content/Out-File/>); ",
+    "use the file editing tool or [System.IO.File]::WriteAllText with UTF8."
 );

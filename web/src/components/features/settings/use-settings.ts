@@ -9,6 +9,7 @@ export function useSettingsConfig() {
     client.setQueryData(["settings-config"], config);
     void client.invalidateQueries({ queryKey: ["config"] });
     void client.invalidateQueries({ queryKey: ["connections"] });
+    void client.invalidateQueries({ queryKey: ["provider-test"] });
   }
   return { query, apply };
 }

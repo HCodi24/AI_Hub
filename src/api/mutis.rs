@@ -8,7 +8,7 @@ use crate::{
     providers::{self, ProviderEvent, ProviderRequest},
 };
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::StatusCode,
     response::{sse::KeepAlive, sse::Sse, IntoResponse, Response},
     Json,
@@ -77,25 +77,34 @@ pub(crate) struct ResolvedRole {
     live_status: Option<ConnectionTest>,
     used_provider: Option<ProviderConfig>,
 }
-pub(crate) async fn resolve_mutis_roles(State(state): State<AppState>) -> ApiResult<Json<Value>> {
+#[derive(serde::Deserialize)]
+pub(crate) struct ResolveQuery {
+    /// The effort the user picked for MutiS: `max`/`xhigh` = all three AIs, anything else = Codex + DeepSeek only.
+    effort: Option<String>,
+}
+pub(crate) async fn resolve_mutis_roles(
+    State(state): State<AppState>,
+    Query(query): Query<ResolveQuery>,
+) -> ApiResult<Json<Value>> {
     let cfg = state.config.read().await.clone();
+    let effort = query.effort.as_deref().unwrap_or("max");
+    let roles = cfg.mutis.roles_for(effort);
+    // High level never falls back to Claude: its whole point is to run without it.
+    let high = config::MutisConfig::level_for(effort) == "high";
+    let (lead_fallback, big_fallback, small_fallback): (&[&str], &[&str], &[&str]) = if high {
+        (&["codex_cli"], &["codex_cli"], &["codex_cli"])
+    } else {
+        (
+            &["claude_cli", "anthropic", "codex_cli"],
+            &["codex_cli", "claude_cli", "anthropic"],
+            &["codex_cli", "claude_cli"],
+        )
+    };
     let mut output = serde_json::Map::new();
     for (name, role, fallback) in [
-        (
-            "lead",
-            &cfg.mutis.roles.lead,
-            ["claude_cli", "anthropic", "codex_cli"].as_slice(),
-        ),
-        (
-            "big",
-            &cfg.mutis.roles.big,
-            ["codex_cli", "claude_cli", "anthropic"].as_slice(),
-        ),
-        (
-            "small",
-            &cfg.mutis.roles.small,
-            ["codex_cli", "claude_cli"].as_slice(),
-        ),
+        ("lead", &roles.lead, lead_fallback),
+        ("big", &roles.big, big_fallback),
+        ("small", &roles.small, small_fallback),
     ] {
         // The removed legacy agent id still resolves to the agent-capable Deploy source.
         let configured =
@@ -190,7 +199,10 @@ pub(crate) async fn put_mutis(
             ));
         }
     }
-    for role in [&value.roles.lead, &value.roles.big, &value.roles.small] {
+    for role in [&value.roles.lead, &value.roles.big, &value.roles.small, &value.high_roles.lead, &value.high_roles.big, &value.high_roles.small] {
+        if !role.provider_id.is_empty() && !state.config.read().await.providers.iter().any(|provider| provider.id == role.provider_id) {
+            return Err(ApiError::new(StatusCode::BAD_REQUEST, "Nguồn AI không tồn tại"));
+        }
         if !matches!(
             role.effort.as_str(),
             "default" | "low" | "medium" | "high" | "xhigh" | "max"

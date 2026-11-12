@@ -11,8 +11,8 @@ import { MutisDiagnosis } from "./mutis-diagnosis";
 import { MutisStats } from "./mutis-stats";
 import { errorText, useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
+import { effortsFor, effortFor } from "@/constants/chat";
 const ROLES = ["lead", "big", "small"] as const;
-const EFFORTS = ["default", "low", "medium", "high", "xhigh", "max"] as const;
 type BoolKey = "auto_plan" | "verify_gate" | "auto_review" | "auto_fix" | "retry_api" | "codex_watchdog" | "codex_auto_resume" | "deepseek_agent" | "event_log";
 type NumKey = "fix_rounds_max" | "retry_attempts" | "retry_base_ms" | "watchdog_minutes" | "resume_max" | "deepseek_max_file_lines" | "deepseek_max_steps" | "debate_rounds";
 /** One switch with the numeric limits that only matter while it is on. */
@@ -46,17 +46,18 @@ export function MutisTab() {
   return <form className={styles.form} onSubmit={event => { event.preventDefault(); void save(); }}>
     <label className={styles.check}><input type="checkbox" checked={draft.enabled} onChange={event => edit({ enabled: event.target.checked })} />
       <span><strong>{t.mutis.enabled}</strong></span></label>
-    <fieldset className={styles.group} disabled={off}><legend>{t.mutis.roles}</legend>
-      {ROLES.map(role => { const value = draft.roles[role];
-        const setRole = (patch: Partial<typeof value>) => edit({ roles: { ...draft.roles, [role]: { ...value, ...patch } } });
+    <p>{t.mutis.levelHint}</p>
+    {(["roles", "high_roles"] as const).map(profile => <fieldset key={profile} className={styles.group} disabled={off}><legend>{profile === "roles" ? t.mutis.maxRoles : t.mutis.highRoles}</legend>
+      {ROLES.map(role => { const value = draft[profile][role];
+        const setRole = (patch: Partial<typeof value>) => edit({ [profile]: { ...draft[profile], [role]: { ...value, ...patch } } });
         return <div key={role} className={styles.row}><strong>{t.mutis.role[role]}</strong>
           <label>{t.mutis.provider}<select value={value.provider_id} onChange={event => setRole({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" })}>
             <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
           <label>{t.mutis.model}<input list={`mutis-models-${role}`} value={value.model} onChange={event => setRole({ model: event.target.value })} />
             <datalist id={`mutis-models-${role}`}>{modelsOf(providers, value.provider_id).map(m => <option key={m} value={m} />)}</datalist></label>
-          <label>{t.mutis.effort}<select value={value.effort} onChange={event => setRole({ effort: event.target.value as typeof value.effort })}>
-            {EFFORTS.map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>; })}
-    </fieldset>
+          <label>{t.mutis.effort}<select value={effortFor(value.model, value.effort, providers.find(p => p.id === value.provider_id)?.kind)} onChange={event => setRole({ effort: event.target.value as typeof value.effort })}>
+            {effortsFor(value.model, providers.find(p => p.id === value.provider_id)?.kind).map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>; })}
+    </fieldset>)}
     <fieldset className={styles.group} disabled={off}><legend>{t.mutis.routing}</legend>
       <div className={styles.grid}>{draft.routing.map((rule, index) => <label key={rule.kind}>{t.mutis.kinds[rule.kind] || rule.kind}
         <select value={rule.role} onChange={event => edit({ routing: draft.routing.map((item, i) => i === index ? { ...item, role: event.target.value } : item) })}>

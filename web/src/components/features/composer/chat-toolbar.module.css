@@ -35,3 +35,4 @@
   .limits > summary { width: 44px; min-height: 44px; }
   .header { display: flex; padding: var(--space-2) var(--space-3); }
 }
+.mutisRoles { margin: 0; padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--font-14); text-align: center; overflow-wrap: anywhere; }

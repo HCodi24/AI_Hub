@@ -57,6 +57,8 @@ pub struct MutisConfig {
     pub routing: Vec<RoutingRule>,
     #[serde(default)]
     pub roles: MutisRoles,
+    #[serde(default)]
+    pub high_roles: MutisRoles,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -115,6 +117,7 @@ impl Default for MutisConfig {
             auto_plan: false,
             routing: default_routing(),
             roles: MutisRoles::default(),
+            high_roles: MutisRoles::default(),
         }
     }
 }
@@ -124,6 +127,12 @@ fn default_worker_rules() -> String {
 impl MutisConfig {
     pub fn effective(&self, flag: bool) -> bool {
         self.enabled && flag
+    }
+    pub fn roles_for(&self, effort: &str) -> &MutisRoles {
+        if matches!(effort, "max" | "xhigh") { &self.roles } else { &self.high_roles }
+    }
+    pub fn level_for(effort: &str) -> &'static str {
+        if matches!(effort, "max" | "xhigh") { "max" } else { "high" }
     }
 }
 fn default_deepseek_max_steps() -> u32 {
@@ -177,4 +186,19 @@ fn default_routing() -> Vec<RoutingRule> {
 
 fn default_effort() -> String {
     "default".into()
+}
+
+#[cfg(test)]
+mod level_tests {
+    use super::*;
+    #[test]
+    fn effort_selects_max_or_high_roles() {
+        let mut config = MutisConfig::default();
+        config.roles.lead.provider_id = "max".into();
+        config.high_roles.lead.provider_id = "high".into();
+        for effort in ["max", "xhigh"] { assert_eq!(config.roles_for(effort).lead.provider_id, "max"); }
+        for effort in ["default", "low", "medium", "high"] { assert_eq!(config.roles_for(effort).lead.provider_id, "high"); }
+        assert_eq!(MutisConfig::level_for("xhigh"), "max");
+        assert_eq!(MutisConfig::level_for("medium"), "high");
+    }
 }

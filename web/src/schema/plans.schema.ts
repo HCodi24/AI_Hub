@@ -45,6 +45,7 @@ export const PlanSchema = z.object({
     folder: z.string(),
     dev_chat: z.boolean().default(false),
     request: z.string(),
+    level: z.enum(["high", "max"]).default("max"),
     approved: z.boolean().default(false),
     planning: z.boolean().default(false),
     error: z.string().nullish(),
@@ -60,7 +61,8 @@ export const PlanInputSchema = z.object({
     after_debate_id: z.string().nullish(),
     dev_chat: z.boolean().default(false),
     provider_id: z.string().default(""),
-    model: z.string().default("")
+    model: z.string().default(""),
+    effort: EffortSchema.default("max")
 });
 export type Plan = z.infer<typeof PlanSchema>;
 export type PlanTask = z.infer<typeof TaskSchema>;

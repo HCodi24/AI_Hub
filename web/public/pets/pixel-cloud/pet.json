@@ -1,0 +1,8 @@
+{
+  "id": "pixel-cloud",
+  "displayName": "Pixel Cloud",
+  "description": "Robot pixel tím xanh, tạo chuyển động từ ảnh tham chiếu của bạn.",
+  "spritesheetPath": "spritesheet.webp",
+  "spriteVersionNumber": 2,
+  "kind": "creature"
+}

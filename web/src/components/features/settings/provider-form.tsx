@@ -5,6 +5,7 @@ import { Button } from "@/components/button/button";
 import type { ConnectionTest, FullConfig, Provider, ProviderInput } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
 import { ClaudeLogin } from "./claude-login";
+import { CodexConnection } from "./codex-connection";
 import { errorText } from "./use-settings";
 import styles from "./settings.module.css";
 const KINDS = ["codex_cli", "claude_cli", "openai_compat", "anthropic"] as const;
@@ -54,10 +55,10 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested }:
     {isCli(form.kind) && <label>{t.providers.executable}
       <span className={styles.inline}><input value={form.executable} spellCheck={false} placeholder={t.providers.executableHint}
         onChange={event => set("executable", event.target.value)} />
-      <Button disabled={Boolean(busy)} onClick={() => void act("discover", async () => {
+      {(form.kind !== "codex_cli" || !provider) && <Button disabled={Boolean(busy)} onClick={() => void act("discover", async () => {
         const found = await settingsApi.discoverCli(cliName);
         if (found.length === 1 && found[0]) { await pick(found[0]); } else setCandidates(found);
-      })}><Search size={16} aria-hidden="true" />{busy === "discover" ? t.providers.discovering : t.providers.discover}</Button></span></label>}
+      })}><Search size={16} aria-hidden="true" />{busy === "discover" ? t.providers.discovering : t.providers.discover}</Button>}</span></label>}
     {candidates && (candidates.length ? <div className={styles.candidates}><strong>{t.providers.pickInstall}</strong>
       {candidates.map(candidate => <button type="button" key={candidate.path} onClick={() => void pick(candidate)}>
         {candidate.path} · {candidate.version} · {candidate.source}</button>)}</div>
@@ -80,5 +81,6 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested }:
       <Button onClick={() => setConfirmDelete(false)}>{t.cancel}</Button></div>}
     {(note || status) && <p className={styles.note} role="status" title={status?.detail}>{note || status?.message}</p>}
     {provider?.kind === "claude_cli" && status && !status.ok && <ClaudeLogin providerId={provider.id} onDone={() => void act("test", () => test(provider.id))} />}
+    {provider?.kind === "codex_cli" && <CodexConnection key={provider.id} providerId={provider.id} />}
   </form>;
 }

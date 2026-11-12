@@ -10,7 +10,7 @@ export const settingsApi = {
   async config(signal?: AbortSignal) { return parseResponse(FullConfigSchema, await http.get("/config", signal)); },
   /** Partial update: the server keeps every field that is not sent (default_folder is optional too). */
   async saveConfig(body: { default_folder?: string; chat_idle_timeout_minutes?: number; memory?: MemoryConfig;
-    planner_provider_id?: string; planner_model?: string; mcp_servers?: McpServer[] }) {
+    planner_provider_id?: string; planner_model?: string; mcp_servers?: McpServer[]; pets?: Record<string, string> }) {
     return parseResponse(FullConfigSchema, await send("/config", "PUT", body));
   },
   async testMcp(server: McpServer) { return parseResponse(McpToolsSchema, await send("/mcp/test", "POST", server)).tools; },

@@ -21,7 +21,7 @@ export const settingsText = {
     memoryChars: "Giới hạn ký tự mỗi scope (1000–20000)",
   },
   mutis: {
-    enabled: "Bật MutiS", roles: "Vai trò", role: { lead: "Lập kế hoạch & review", big: "Code lớn", small: "Việc nhỏ" },
+    enabled: "Bật MutiS", roles: "Vai trò", maxRoles: "Mức Max — cả 3 AI (Claude, Codex, DeepSeek)", highRoles: "Mức High — chỉ Codex và DeepSeek", levelHint: "Thanh effort của MutiS chọn mức: Max/Extra high dùng 3 AI; các mức thấp hơn dùng Codex + DeepSeek.", role: { lead: "Lập kế hoạch & review", big: "Code lớn", small: "Việc nhỏ" },
     provider: "Nguồn", model: "Model", effort: "Reasoning effort", routing: "Định tuyến mặc định",
     kinds: { small_edit: "Sửa nhỏ", docs: "Tài liệu", code: "Code", test: "Test", plan: "Lập kế hoạch", review: "Review" } as Record<string, string>,
     switches: "Tự động hoá", auto_plan: "Tự động chia việc", verify_gate: "Cổng kiểm tra sau mỗi task", auto_review: "Review tự động",
@@ -68,6 +68,10 @@ export const settingsText = {
     warn: "MCP server là chương trình chạy trên máy bạn với quyền của bạn: chỉ thêm thứ bạn tin tưởng.",
   },
   pets: {
+    use: "Pet cho từng nguồn AI", useHint: "Pet hiện cạnh câu trả lời. Mặc định: Codex dùng pet Codex, Claude dùng Clawd (nếu có) hoặc linh vật của MutiS.",
+    default: "Mặc định", kinds: { codex_cli: "Codex", claude_cli: "Claude Code", anthropic: "Claude (API)", deepseek: "DeepSeek", openai_compat: "Nguồn API khác" } as Record<string, string>,
+    importFolder: "Thêm pet của bạn từ thư mục…", importHint: "Chọn thư mục chứa pet.json và spritesheet.png (định dạng pet của Codex). Thư mục gốc không bị thay đổi.",
+    inApp: "Có sẵn trong ứng dụng", imported: (name: string) => `Đã thêm ${name}`, own: "Pet của bạn", fromMutis: "Thư mục MutiS", fromCodexFolder: "Codex của bạn",
     title: "Pet", intro: "Linh vật hiện cạnh câu trả lời của AI. Ảnh không đi kèm ứng dụng: chỉ được tải về khi bạn bấm Tải.",
     forProvider: (provider: string) => `Cho ${provider}`, from: "Nguồn", download: "Tải", downloading: "Đang tải…", remove: "Gỡ",
     installed: "Đã có", notInstalled: "Chưa tải", fromCodex: "Đã có sẵn trong Codex của bạn",

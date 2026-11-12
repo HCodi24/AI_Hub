@@ -36,6 +36,7 @@ export const MutisSchema = z.object({
         big: RoleSchema,
         small: RoleSchema
     }),
+    high_roles: z.object({ lead: RoleSchema, big: RoleSchema, small: RoleSchema }).default({ lead: { provider_id: "", model: "", effort: "default" }, big: { provider_id: "", model: "", effort: "default" }, small: { provider_id: "", model: "", effort: "default" } }),
     routing: z.array(z.object({
         kind: z.string(),
         role: z.string().default(""),

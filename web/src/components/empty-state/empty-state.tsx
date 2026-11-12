@@ -37,8 +37,10 @@ export function EmptyState() {
   return <div className={styles.empty}><MessagesSquare size={36} aria-hidden="true" /><h1>{chatText.greeting}</h1><p>{chatText.intro}</p>
     <div ref={root} className={styles.picker}>
       <button className={styles.trigger} aria-haspopup="listbox" aria-expanded={open} title={folder} onClick={() => setOpen(!open)}>
-        <Folder size={18} aria-hidden="true" /><span>{folder ? folderName(folder) : chatText.chooseFolder}</span><ChevronDown size={16} aria-hidden="true" /></button>
+        {folder ? <Folder size={18} aria-hidden="true" /> : <MessagesSquare size={18} aria-hidden="true" />}<span>{folder ? folderName(folder) : chatText.noFolder}</span><ChevronDown size={16} aria-hidden="true" /></button>
       {open && <div className={styles.menu} role="listbox" aria-label={chatText.folder}>
+        <button role="option" aria-selected={!folder} title={chatText.normalChatHint} onClick={() => { configure({ folder: "" }); setOpen(false); }}>
+          <MessagesSquare size={18} aria-hidden="true" /><span>{chatText.noFolder}</span>{!folder && <Check size={18} aria-hidden="true" />}</button>
         {projects.map(path => <button key={path} role="option" aria-selected={path === folder} title={path} onClick={() => { configure({ folder: path }); setOpen(false); }}>
           <Folder size={18} aria-hidden="true" /><span>{folderName(path)}</span>{path === folder && <Check size={18} aria-hidden="true" />}</button>)}
         <button className={styles.openFolder} onClick={() => void openFolder()}><FolderOpen size={18} aria-hidden="true" /><span>{chatText.openFolder}</span></button>

@@ -1,4 +1,4 @@
-// shortcut: recognize common yes/no wording in plain replies; use structured questions if providers support them later.
+// Plain yes/no replies remain supported alongside structured question cards.
 export function chatChoices(source: string): string[] {
   const text = source
     .replace(/<memory\b[^>]*>[\s\S]*?(?:<\/memory\s*>|$)/gi, "")

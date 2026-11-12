@@ -26,6 +26,7 @@ pub struct AppState {
     pub(crate) provider_status:
         Arc<Mutex<HashMap<String, (Instant, crate::api::providers::ConnectionTest)>>>,
     pub(crate) claude_login: Arc<Mutex<Option<ClaudeLoginSession>>>,
+    pub(crate) codex_connections: Arc<Mutex<HashMap<String, crate::api::providers::CodexConnection>>>,
     pub(crate) event_log: EventLog,
     pub(crate) dev_repo: Option<PathBuf>,
     pub(crate) dev_events: broadcast::Sender<String>,
@@ -87,6 +88,7 @@ impl AppState {
             extension_running: Arc::new(Mutex::new(HashMap::new())),
             provider_status: Arc::new(Mutex::new(HashMap::new())),
             claude_login: Arc::new(Mutex::new(None)),
+            codex_connections: Arc::new(Mutex::new(HashMap::new())),
             event_log,
             dev_repo: dev_repo.clone(),
             dev_events,
@@ -114,6 +116,8 @@ fn spawn_claude_login_reaper(state: AppState) {
                     let _ = expired.child.kill().await;
                 }
             }
+            drop(session);
+            crate::api::providers::reap_codex_connections(&state).await;
         }
     });
 }

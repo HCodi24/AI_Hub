@@ -214,6 +214,8 @@ fn main() {
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("MutiS")
+                // Let the React UI receive HTML5 file drops on Windows.
+                .disable_drag_drop_handler()
                 // No native title bar: the web UI draws its own window buttons in the top strip.
                 .decorations(false)
                 .inner_size(1280.0, 820.0)

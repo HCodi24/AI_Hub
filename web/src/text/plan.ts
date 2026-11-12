@@ -2,14 +2,15 @@ import type { Plan, PlanTask } from "@/schema/plans.schema";
 import type { Mutis } from "@/schema/mutis.schema";
 export function taskPrompt(plan: Plan, task: PlanTask, config: Mutis) {
   const dev = plan.dev_chat ? [
-    `Bạn đang sửa chính ứng dụng MutiS (repo: ${plan.folder}) đang chạy ở chế độ dev.`,
-    "- Giao diện React ở web/src cần người dùng bấm 'Build giao diện' (trang tự tải lại khi build xong); code Rust ở src/ cần 'Build & khởi động lại'.",
-    "- Không chạy `cargo build --release`, không tắt tiến trình ai-hub, không sửa target/.",
-    "- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy `cargo test` với CARGO_TARGET_DIR=target/dev-check nếu cần.",
-    "- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.",
+    "- Write all rules in English.",
+    `You are editing the MutiS app itself (repo: ${plan.folder}), which is running in dev mode.`,
+    "- React UI in web/src needs the user to click 'Build giao diện' (the page reloads when the build finishes); Rust code in src/ needs 'Build & khởi động lại'.",
+    "- Do not run `cargo build --release`, do not kill the ai-hub process, do not modify target/.",
+    "- Write files as UTF-8; keep existing features; run `cargo test` with CARGO_TARGET_DIR=target/dev-check if needed.",
+    "- Finally report: which files you changed, and whether a Build & khởi động lại is needed.",
   ].join("\n") : "";
-  return [dev, config.enabled ? config.worker_rules : "", `Kế hoạch: ${plan.title}`, `Công việc: ${task.title}`,
-    `Chi tiết: ${task.detail}`, "Tóm tắt công việc phụ thuộc đã hoàn tất:",
+  return [dev, config.enabled ? config.worker_rules : "", `Plan: ${plan.title}`, `Task: ${task.title}`,
+    `Details: ${task.detail}`, "Summary of completed dependency tasks:",
     ...task.depends_on.map(id => plan.tasks.find(item => item.id === id)?.summary || ""),
   ].filter(Boolean).join("\n");
 }

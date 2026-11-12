@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { z } from "zod";
 import { ArrowUp, Square, Scale, Sparkles, ImagePlus, Plus, X, FileEdit, FileUp } from "lucide-react";
-import { importTextFile, importedFileText, type ImportedFile } from "@/lib/import-file";
+import { droppedFiles, fileReadError, importDirectory, importTextFile, importedFileText, type DroppedFile, type ImportedFile } from "@/lib/import-file";
 import { Button } from "@/components/button/button";
 import { http } from "@/lib/http";
 import { chatText } from "@/text/chat";
@@ -11,6 +11,7 @@ import { notify } from "@/components/toast/toast";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { ChatToolbar } from "./chat-toolbar";
+import { AttachmentCard } from "@/components/features/chat/attachment-card";
 import { MemoryPanel } from "@/components/features/memory/memory-panel";
 import type { Config } from "@/schema/config.schema";
 import styles from "./composer.module.css";
@@ -24,7 +25,7 @@ const readBase64 = (file: File) => new Promise<string>((resolve, reject) => {
   reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
   reader.readAsDataURL(file);
 });
-export function Composer({ config, streaming, send, stop }: { config?: Config; streaming: boolean; send: (text: string, direct?: boolean, attachments?: { id: string; mime: string }[]) => Promise<boolean>; stop: () => Promise<void> }) {
+export function Composer({ dropTarget, config, streaming, send, stop }: { dropTarget: RefObject<HTMLElement | null>; config?: Config; streaming: boolean; send: (text: string, direct?: boolean, attachments?: { id: string; mime: string }[]) => Promise<boolean>; stop: () => Promise<void> }) {
   const [debate, setDebate] = useState(false);
   const running = useCardStore(s => s.running);
   const chatId = useChatStore(s => s.id);
@@ -37,7 +38,7 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
   const importing = useRef(false);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
-  function updateAttachments(next: Attachment[]) { attached.current = next; setAttachments(next); }
+  const updateAttachments = useCallback((next: Attachment[]) => { attached.current = next; setAttachments(next); }, []);
   const [recalled, setRecalled] = useState<{ label: string; text: string }[]>([]);
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
@@ -57,7 +58,7 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
   useEffect(() => {
     if (input.current) { input.current.style.height = "auto"; input.current.style.height = `${Math.min(input.current.scrollHeight, 180)}px`; }
   }, [value]);
-  async function addFiles(files: File[]) {
+  const addFiles = useCallback(async (files: DroppedFile[]) => {
     if (importing.current || pending.current || useChatStore.getState().streaming || useCardStore.getState().running || !files.length) return;
     importing.current = true; setUploading(true);
     let id = useChatStore.getState().id;
@@ -68,7 +69,11 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
         if (attached.current.length >= MAX_FILES) { notify(chatText.maxFiles); break; }
         try {
           let attachment: Attachment;
-          if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(file.name)) {
+          if ("isDirectory" in file) {
+            const imported = await importDirectory(file, () => useChatStore.getState().id !== id);
+            if (!imported) break;
+            attachment = { ...imported, id: crypto.randomUUID(), kind: "text" };
+          } else if (file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(file.name)) {
             if (file.size > 10 * 1024 * 1024) throw new Error(chatText.imageTooLarge);
             const data = await readBase64(file);
             const response = await http.request("/attachments", { method: "POST", body: JSON.stringify({ chat_id: id, data }) });
@@ -78,14 +83,42 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
             attachment = { ...await importTextFile(file), id: crypto.randomUUID(), kind: "text" };
           }
           if (useChatStore.getState().id === id) updateAttachments([...attached.current, attachment]);
-        } catch (error) { notify(`${file.name}: ${error instanceof Error ? error.message : t.error}`); }
+        } catch (error) { notify(`${file.name}: ${fileReadError(error)}`); }
       }
     } finally {
       importing.current = false; setUploading(false);
       if (picker.current) picker.current.value = "";
       if (filePicker.current) filePicker.current.value = "";
     }
-  }
+  }, [updateAttachments]);
+  useEffect(() => {
+    const target = dropTarget.current;
+    if (!target) return;
+    const busy = () => importing.current || pending.current || useChatStore.getState().streaming || Boolean(useCardStore.getState().running);
+    const over = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes("Files")) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = busy() ? "none" : "copy";
+      setDragging(!busy());
+    };
+    const leave = (event: DragEvent) => {
+      if (!(event.relatedTarget instanceof Node) || !target.contains(event.relatedTarget)) setDragging(false);
+    };
+    const drop = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes("Files")) return;
+      event.preventDefault(); setDragging(false);
+      if (busy()) return;
+      void addFiles(droppedFiles(event.dataTransfer));
+    };
+    target.addEventListener("dragover", over);
+    target.addEventListener("dragleave", leave);
+    target.addEventListener("drop", drop);
+    return () => {
+      target.removeEventListener("dragover", over);
+      target.removeEventListener("dragleave", leave);
+      target.removeEventListener("drop", drop);
+    };
+  }, [addFiles, dropTarget]);
   const canSend = Boolean(value.trim()) || attachments.length > 0;
   async function submit() {
     if (pending.current || importing.current || streaming || Boolean(running) || !canSend) return;
@@ -102,19 +135,17 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
     catch (error) { restore(); notify(error instanceof Error ? error.message : t.error); }
     finally { pending.current = false; input.current?.focus(); }
   }
-  return <><form className={styles.composer} data-dragging={dragging || undefined} onSubmit={(event) => { event.preventDefault(); void submit(); }}
-    onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = streaming || uploading || Boolean(running) ? "none" : "copy"; setDragging(true); } }}
-    onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
-    onDrop={(event) => { event.preventDefault(); setDragging(false); void addFiles([...event.dataTransfer.files]); }}>
+  return <><form className={styles.composer} data-dragging={dragging || undefined} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <label className="sr-only" htmlFor="chat-input">{chatText.placeholder}</label>
     <div><button type="button" aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" />{t.debate}</button>
       <button type="button" disabled={streaming || uploading || attachments.length > 0 || Boolean(running) || !value.trim()} onClick={() => { const draft = value; setValue(""); void startCard(draft, "plan").catch(error => { setValue(draft); notify(String(error)); }); }}><Sparkles size={16} aria-hidden="true" />{t.plan}</button></div>
     {recalled.length > 0 && <div className={styles.recalled} aria-label={t.recalled}>{recalled.map((item, index) => <span key={item.label}>
       <FileEdit size={14} aria-hidden="true" /><span title={item.label}>{item.label}</span>
       <button type="button" aria-label={`${t.removeMemory}: ${item.label}`} onClick={() => setRecalled(current => current.filter((_, i) => i !== index))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
-    {attachments.length > 0 && <div className={styles.tray} aria-label={chatText.attachedFiles}>{attachments.map(file => <span key={file.id} className={file.kind === "text" ? styles.fileChip : undefined} title={file.name}>
-      {file.kind === "image" ? <img src={file.url} alt={file.name || chatText.attachments} /> : <><FileEdit size={18} aria-hidden="true" /><span>{file.name}</span></>}
-      <button type="button" disabled={uploading} aria-label={`${chatText.removeFile}: ${file.name}`} onClick={() => updateAttachments(attached.current.filter(item => item.id !== file.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
+    {attachments.length > 0 && <div className={styles.tray} aria-label={chatText.attachedFiles}>{attachments.map(file => file.kind === "text"
+      ? <AttachmentCard key={file.id} name={file.name} disabled={uploading} remove={() => updateAttachments(attached.current.filter(item => item.id !== file.id))} />
+      : <span key={file.id} title={file.name}><img src={file.url} alt={file.name || chatText.attachments} />
+        <button type="button" disabled={uploading} aria-label={`${chatText.removeFile}: ${file.name}`} onClick={() => updateAttachments(attached.current.filter(item => item.id !== file.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
     <div className={styles.box}>
       <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(event) => void addFiles([...(event.target.files ?? [])])} />
       <input ref={filePicker} type="file" multiple hidden onChange={(event) => void addFiles([...(event.target.files ?? [])])} />
@@ -148,7 +179,7 @@ export function Composer({ config, streaming, send, stop }: { config?: Config; s
         <Button className={styles.sendButton} variant="primary" type="submit" disabled={uploading || !canSend || Boolean(running)} aria-label={chatText.send} title={chatText.send}><ArrowUp size={20} aria-hidden="true" /></Button>}
     </div>
     <div className={styles.toolbar}><ChatToolbar config={config} /></div>
-    <p className={styles.fileHint} role="status">{uploading ? chatText.importingFiles : dragging ? chatText.dropFiles : chatText.fileHint}</p>
+    {(uploading || dragging) && <p className={styles.fileHint} role="status">{uploading ? chatText.importingFiles : chatText.dropFiles}</p>}
   </form>{memory && <MemoryPanel folder={folder} close={() => setMemory(false)}
     attach={(label, text) => setRecalled(current => [...current.filter(item => item.label !== label), { label, text }])} />}</>;
 }

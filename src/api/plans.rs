@@ -35,11 +35,14 @@ pub(super) struct PlanRequest {
     provider_id: String,
     #[serde(default)]
     model: String,
+    #[serde(default = "default_plan_effort")]
+    effort: String,
 }
 
 fn append_request_default() -> bool {
     true
 }
+fn default_plan_effort() -> String { "max".into() }
 
 struct CancelOnDrop(CancellationToken);
 
@@ -188,6 +191,8 @@ pub(super) async fn generate_plan(
         .map(crate::core::text::strip_verbatim)
         .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Thư mục làm việc không tồn tại"))?;
     let cfg = state.config.read().await.clone();
+    let level = crate::config::MutisConfig::level_for(&input.effort).to_string();
+    let roles = cfg.mutis.roles_for(&input.effort).clone();
     let statuses = join_all(
         cfg.providers
             .iter()
@@ -296,9 +301,9 @@ pub(super) async fn generate_plan(
                 .map(|route| format!("{} -> {}", route.kind, route.role))
                 .collect::<Vec<_>>()
                 .join("\n"),
-            cfg.mutis.roles.lead.provider_id,
-            cfg.mutis.roles.big.provider_id,
-            cfg.mutis.roles.small.provider_id
+            roles.lead.provider_id,
+            roles.big.provider_id,
+            roles.small.provider_id
         )
     } else {
         String::new()
@@ -379,6 +384,7 @@ pub(super) async fn generate_plan(
         Vec::new(),
     )
     .with_dev_chat(input.dev_chat);
+    pending.level = level;
     pending.chat_id = input.chat_id.clone();
     pending.planning = true;
     pending
@@ -477,7 +483,7 @@ pub(super) async fn generate_plan(
                                     &connected,
                                     &planner_id,
                                     &cfg.mutis.routing,
-                                    &cfg.mutis.roles,
+                                    &roles,
                                     cfg.mutis.enabled,
                                 )
                             } else if valid {
@@ -488,15 +494,15 @@ pub(super) async fn generate_plan(
                                     &connected,
                                     &planner_id,
                                     &cfg.mutis.routing,
-                                    &cfg.mutis.roles,
+                                    &roles,
                                     false,
                                 )
                             };
                             let role = cfg.mutis.routing.iter().find(|rule| rule.kind == kind).map(
                                 |rule| match rule.role.as_str() {
-                                    "big" => &cfg.mutis.roles.big,
-                                    "small" => &cfg.mutis.roles.small,
-                                    _ => &cfg.mutis.roles.lead,
+                                    "big" => &roles.big,
+                                    "small" => &roles.small,
+                                    _ => &roles.lead,
                                 },
                             );
                             let assigned_provider =

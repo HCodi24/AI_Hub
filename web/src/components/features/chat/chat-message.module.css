@@ -1,9 +1,15 @@
 .message { max-width: 860px; margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-8); min-width: 0; }
 .identity { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); color: var(--muted); font-size: var(--font-small); }
+.identity { flex-wrap: wrap; }
+.petStatus { font-size: var(--font-12); font-weight: 400; color: var(--muted); }
+.petStatus:empty { display: none; }
+.petStatus[data-state=failed] { color: var(--danger); }
 .thumb { max-width: 160px; max-height: 160px; margin: var(--space-2) var(--space-2) 0 0; border-radius: var(--radius-small); border: 1px solid var(--border); }
 .identity svg { color: var(--accent); }
 .message details { margin-top: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-3); }
 .message summary { cursor: pointer; color: var(--muted); }
+.attachments { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.message[data-user=true] .attachments { justify-content: flex-end; }
 .logs, .diff { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-small); }
 .diff span { display: block; }
 .add { color: var(--green); background: var(--green-bg); }
@@ -16,7 +22,9 @@
 .message[data-user=true] { margin-left: auto; }
 .message[data-user=true] > div:nth-child(2) { background: var(--color-muted); padding: var(--space-3) var(--space-4); border-radius: var(--radius); width: fit-content; max-width: 90%; margin-left: auto; }
 .message[data-user=true] .identity { justify-content: flex-end; }
-.message[data-streaming=true] > div:nth-child(2)::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: var(--space-1); background: var(--accent); animation: caret 1s steps(2) infinite; }
+.streamStatus { color: var(--muted); font-size: var(--font-small); overflow-wrap: anywhere; }
+.streamStatus::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: var(--space-1); vertical-align: text-bottom; background: var(--accent); animation: caret 1s steps(2) infinite; }
+@media (prefers-reduced-motion: reduce) { .streamStatus::after { animation: none; } }
 .tokens { font-variant-numeric: tabular-nums; }
 @keyframes caret { 50% { opacity: 0; } }
 .files { border: 1px solid var(--border, currentColor); border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-size: var(--font-small); }

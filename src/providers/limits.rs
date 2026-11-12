@@ -4,11 +4,13 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
-    process::Stdio,
     sync::{Mutex, OnceLock},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+pub(crate) fn invalidate(id: &str) {
+    cache().lock().unwrap_or_else(|e| e.into_inner()).remove(id);
+}
 
 #[derive(Clone, Default, Serialize)]
 pub(crate) struct Limits {
@@ -152,34 +154,14 @@ pub(crate) async fn read(provider: &ProviderConfig) -> Limits {
 
 // This helper starts a separate, read-only App Server; it never creates a turn.
 async fn read_codex(provider: &ProviderConfig) -> Option<Vec<LimitWindow>> {
+    let config = crate::config::config_file_path().ok()?;
+    let home = super::codex::home(&config, provider).ok()?;
+    if !home.join("auth.json").is_file() { return Some(Vec::new()); }
     let path = cli_support::resolve_executable("codex", Some(&provider.executable))?;
-    let mut command = cli_support::command_for(&path, &["app-server".into()]);
-    let mut child = command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .ok()?;
-    let result = tokio::time::timeout(Duration::from_secs(12), async {
-        let mut input = child.stdin.take()?;
-        let mut output = BufReader::new(child.stdout.take()?).lines();
-        let init = json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"ai_hub","version":env!("CARGO_PKG_VERSION")}}});
-        input.write_all(format!("{init}\n").as_bytes()).await.ok()?;
-        while let Some(line) = output.next_line().await.ok()? {
-            let value: Value = serde_json::from_str(&line).ok()?;
-            if value["id"] == 1 {
-                if value.get("error").is_some() { return None }
-                input.write_all(b"{\"method\":\"initialized\"}\n{\"id\":2,\"method\":\"account/rateLimits/read\"}\n").await.ok()?;
-            } else if value["id"] == 2 {
-                if value.get("error").is_some() { return None }
-                return Some(codex_windows(&value["result"]));
-            }
-        }
-        None
-    }).await.ok().flatten();
-    cli_support::terminate_child_tree(&mut child).await;
-    result
+    let mut client = super::codex::transport::Client::start(&path, &home, &home).await.ok()?;
+    let result = client.call("account/rateLimits/read",json!({})).await.ok();
+    client.close().await;
+    result.map(|result| codex_windows(&result))
 }
 
 #[cfg(test)]

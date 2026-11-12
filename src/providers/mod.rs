@@ -3,6 +3,7 @@ pub mod anthropic;
 pub mod claude_cli;
 pub(crate) mod cli_support;
 pub mod codex_cli;
+pub(crate) mod codex;
 pub mod deepseek_agent;
 pub(crate) mod discovery;
 pub(crate) mod limits;
@@ -33,8 +34,30 @@ pub struct ProviderRequest {
     pub messages: Vec<ChatMessage>,
     pub session_id: Option<String>,
     pub mutis: MutisConfig,
-    /// MCP servers the in-app agent may use (only API sources that run their own tool loop read this).
+    /// App-managed MCP servers for API agents and the isolated Codex adapter.
     pub mcp: Vec<crate::config::McpServerConfig>,
+}
+
+pub(crate) fn is_deepseek_flash(model: &str) -> bool {
+    let name: String = model.to_ascii_lowercase().chars()
+        .filter(|c| !matches!(c, '-' | '_' | '.') && !c.is_whitespace()).collect();
+    name.contains("deepseekv41flash") || name == "deepseekflash"
+}
+
+pub(crate) fn api_reasoning_effort(model: &str, effort: Effort) -> Option<&'static str> {
+    if is_deepseek_flash(model) {
+        return Some(match effort {
+            Effort::Low => "low",
+            Effort::Max => "max",
+            _ => "high",
+        });
+    }
+    match effort {
+        Effort::Default => None,
+        Effort::Low => Some("low"),
+        Effort::Medium => Some("medium"),
+        _ => Some("high"),
+    }
 }
 
 pub(crate) fn api_images_with_limit(messages: &mut [ChatMessage]) -> bool {
@@ -138,7 +161,7 @@ pub fn for_kind(kind: &str) -> Result<Box<dyn Provider>> {
         "openai_compat" => Ok(Box::new(openai_compat::OpenAiCompatibleProvider)),
         "deepseek_agent" | "mcp_agent" => Ok(Box::new(deepseek_agent::DeepSeekAgentProvider)),
         "anthropic" => Ok(Box::new(anthropic::AnthropicProvider)),
-        "codex_cli" => Ok(Box::new(codex_cli::CodexCliProvider)),
+        "codex_cli" => Ok(Box::new(codex::CodexProvider)),
         "claude_cli" => Ok(Box::new(claude_cli::ClaudeCliProvider)),
         _ => bail!("Loại nhà cung cấp không được hỗ trợ: {kind}"),
     }
@@ -268,6 +291,19 @@ fn redact_sensitive_fields(value: &mut Value) {
 #[cfg(test)]
 mod retry_tests {
     use super::{retry_delay, retryable_status};
+    #[test]
+    fn deepseek_flash_effort_preserves_three_levels() {
+        use super::{api_reasoning_effort, Effort};
+        for model in ["DeepSeek-V4.1-Flash", "deepseek-v4.1-flash", "deepseek-flash"] {
+            for (effort, expected) in [(Effort::Low, "low"), (Effort::High, "high"), (Effort::Max, "max"),
+                (Effort::Default, "high"), (Effort::Medium, "high"), (Effort::Xhigh, "high")] {
+                assert_eq!(api_reasoning_effort(model, effort), Some(expected));
+            }
+        }
+        assert_eq!(api_reasoning_effort("other-model", Effort::Default), None);
+        assert_eq!(api_reasoning_effort("other-model", Effort::Medium), Some("medium"));
+        assert_eq!(api_reasoning_effort("other-model", Effort::Max), Some("high"));
+    }
     #[test]
     fn retries_only_transient_statuses() {
         for status in [429, 500, 502, 503, 504] {

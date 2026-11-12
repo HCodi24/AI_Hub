@@ -5,6 +5,10 @@ export const configApi = {
   async get(signal?: AbortSignal) { return parseResponse(ConfigSchema, await http.get("/config", signal)); },
   /** The theme lives in the server's config file, so it does not depend on the page's address. */
   async saveTheme(theme: string) { await http.request("/config", { method: "PUT", body: JSON.stringify({ theme }) }); },
+  async listDir(path: string) {
+    const data = await http.get(`/folder-tree?path=${encodeURIComponent(path)}`);
+    return parseResponse(z.object({ entries: z.array(z.object({ name: z.string(), dir: z.boolean() })) }), data).entries;
+  },
   /** Opens the native folder dialog on this machine; resolves to null when the user cancels. */
   async pickFolder() {
     const data = await (await http.request("/pick-folder", { method: "POST" })).json();

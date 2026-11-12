@@ -16,7 +16,7 @@ export const ChatRecordSchema = ChatSummarySchema.extend({
   file_tools: FileToolsSchema.default("none"), messages: z.array(ChatMessageSchema),
 });
 export const ChatRequestSchema = z.object({
-  chat_id: z.string().uuid(), provider_id: z.string().min(1), model: z.string().min(1), folder: z.string().min(1),
+  chat_id: z.string().uuid(), provider_id: z.string().min(1), model: z.string().min(1), folder: z.string(),
   permission: PermissionSchema, effort: EffortSchema, file_tools: FileToolsSchema,
   dev_chat: z.boolean(), messages: z.array(ChatMessageSchema),
 });

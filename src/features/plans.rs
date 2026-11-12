@@ -16,6 +16,8 @@ pub struct Plan {
     #[serde(default)]
     pub dev_chat: bool,
     pub request: String,
+    #[serde(default = "default_plan_level")]
+    pub level: String,
     pub approved: bool,
     #[serde(default)]
     pub planning: bool,
@@ -117,6 +119,7 @@ pub fn reassign_with_routing(
 fn default_effort() -> String {
     "default".into()
 }
+fn default_plan_level() -> String { "max".into() }
 
 pub fn has_dependency_cycle(tasks: &[PlanTask]) -> bool {
     fn visit(
@@ -213,6 +216,7 @@ impl Plan {
             folder,
             dev_chat: false,
             request,
+            level: "max".into(),
             approved: false,
             planning: false,
             error: None,
@@ -315,6 +319,15 @@ fn now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_plan_defaults_to_max_level() {
+        let plan = Plan::new("t".into(), "f".into(), "r".into(), vec![]);
+        let saved = serde_json::to_value(plan).unwrap();
+        let mut saved = saved;
+        saved.as_object_mut().unwrap().remove("level");
+        assert_eq!(serde_json::from_value::<Plan>(saved).unwrap().level, "max");
+    }
 
     #[test]
     fn task_full_permission_roundtrips() {

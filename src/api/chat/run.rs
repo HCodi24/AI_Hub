@@ -167,7 +167,9 @@ impl Run {
             persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
             let _ = sse_sender.send(chat::sse_event("error", &event.data)).await;
         }
-        let files_after = crate::features::changes::snapshot(std::path::Path::new(&record.folder)).await;
+        let files_after = if record.folder.is_empty() { Default::default() } else {
+            crate::features::changes::snapshot(std::path::Path::new(&record.folder)).await
+        };
         let files = crate::features::changes::changes(&files_before, &files_after);
         if !files.is_empty() {
             let _ = sse_sender

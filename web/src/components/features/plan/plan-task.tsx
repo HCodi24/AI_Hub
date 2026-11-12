@@ -6,6 +6,7 @@ import { taskCanWrite } from "./plan-order";
 import { SourceControls } from "./source-controls";
 import { MarkdownView } from "@/components/markdown-view/markdown-view";
 import { cardText as t } from "@/text/cards";
+import { rolesFor } from "@/lib/mutis-level";
 export function PlanTaskRow({ task, index, plan, config, mutis, busy, edit, run, review }: { task: PlanTask; index: number; plan: Plan; config?: Config; mutis?: Mutis; busy: boolean;
   edit: (update: (plan: Plan) => void) => void; run: () => void; review: () => void }) {
   const patch = (value: Partial<PlanTask>) => edit(p => { Object.assign(p.tasks.find(item => item.id === task.id)!, value); });
@@ -15,7 +16,7 @@ export function PlanTaskRow({ task, index, plan, config, mutis, busy, edit, run,
   return <details><summary><ChevronRight size={16} aria-hidden="true" /><Icon size={16} aria-hidden="true" className={task.status === t.active ? "spin" : undefined} /><span>#{task.id} {task.title}</span> <small>{task.status}</small> <small>{provider?.name || task.assignee}</small> <small>{task.kind}</small> {task.depends_on.map(id => <small key={id}>↳ #{id} </small>)}</summary>
     <fieldset disabled={busy}><label>{t.taskTitle}<input value={task.title} onChange={event => patch({ title: event.target.value })} /></label>
       <label>{t.detail}<textarea value={task.detail} rows={4} onChange={event => patch({ detail: event.target.value })} /></label>
-      <SourceControls providers={config?.providers || []} roles={mutis?.roles} value={{ ...task, permission: task.permission || (taskCanWrite(task) ? "write" : "read") }} change={patch} disabled={busy} />
+      <SourceControls providers={config?.providers || []} roles={rolesFor(mutis, plan.level)} value={{ ...task, permission: task.permission || (taskCanWrite(task) ? "write" : "read") }} change={patch} disabled={busy} />
       <label>{t.deps}<input value={task.depends_on.join(",")} onChange={event => patch({ depends_on: event.target.value.split(",").map(s => s.trim()).filter(Boolean).map(Number) })} /></label>
       <label>{t.kind}<select value={task.kind} onChange={event => patch({ kind: event.target.value as PlanTask["kind"] })}>{["plan", "small_edit", "code", "test", "docs", "review"].map(kind => <option key={kind}>{kind}</option>)}</select></label>
       <button disabled={!plan.approved || !ready} onClick={run}>{t.runTask}</button>

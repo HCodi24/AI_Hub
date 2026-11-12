@@ -20,6 +20,18 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+/// What the chat avatar is chosen by: the source kind, except DeepSeek models (by model, source id or name), which get their own.
+fn avatar_source(provider: &crate::config::ProviderConfig, model: &str) -> String {
+    let deepseek = [model, provider.id.as_str(), provider.name.as_str()]
+        .iter()
+        .any(|text| text.to_ascii_lowercase().contains("deepseek"));
+    if deepseek && !provider.kind.ends_with("_cli") {
+        "deepseek".to_owned()
+    } else {
+        provider.kind.clone()
+    }
+}
+
 /// First user message of the conversation gets the fixed rules in front of it.
 fn add_first_request_rules(request: &mut ProviderRequest) {
     if request.messages.iter().filter(|m| m.role == "user").count() != 1 {
@@ -36,6 +48,12 @@ fn add_first_request_rules(request: &mut ProviderRequest) {
             crate::core::rule::first_request_rules(indexed),
             message.content
         );
+    }
+}
+
+fn add_question_rules(request: &mut ProviderRequest) {
+    if let Some(message) = request.messages.iter_mut().rev().find(|m| m.role == "user") {
+        message.content = format!("{}\n\n{}", crate::core::rule::chat_questions::RULE, message.content);
     }
 }
 
@@ -66,6 +84,7 @@ pub(crate) async fn chat_handler(
     })?;
     let dev_chat = request.dev_chat || existing.as_ref().is_some_and(|chat| chat.dev_chat);
     let folder = request::resolve_folder(&state, &request, dev_chat)?;
+    let plain_chat = !dev_chat && request.folder.trim().is_empty();
     let effort = request::check_request(&request)?;
     let mut provider_config = {
         let config = state.config.read().await;
@@ -75,7 +94,8 @@ pub(crate) async fn chat_handler(
             .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?
     };
     // File tools = agent mode of the SAME source; Full also grants API-key sources run_command.
-    let agent = chat::agent_permission(&provider_config, request.file_tools, request.permission)
+    let file_tools = if plain_chat { chat::FileTools::None } else { request.file_tools };
+    let agent = chat::agent_permission(&provider_config, file_tools, request.permission)
         .map_err(|message| ApiError::new(StatusCode::BAD_REQUEST, message))?;
     if provider_config.kind == "anthropic" {
         // Anthropic keeps its provider kind; the request-local flag tells it to enter the file-tool loop.
@@ -83,6 +103,10 @@ pub(crate) async fn chat_handler(
     } else if agent.is_some() {
         provider_config.kind = "deepseek_agent".into();
     } else if provider_config.kind == "openai_compat"
+        && request
+            .messages
+            .last()
+            .is_none_or(|message| message.attachments.is_empty())
         && state
             .config
             .read()
@@ -92,6 +116,7 @@ pub(crate) async fn chat_handler(
             .any(|server| server.enabled)
     {
         // MCP servers enabled in the app: this key-based source runs the tool loop (MCP tools only, no file tools).
+        // A message with images stays a plain chat: the tool loop sends text only.
         provider_config.kind = "mcp_agent".into();
     }
     let mutis_config = state.config.read().await.mutis.clone();
@@ -104,12 +129,19 @@ pub(crate) async fn chat_handler(
     if switched_source {
         record.session_id = None;
     }
+    if provider_config.kind == "codex_cli" {
+        let settings = state.config.read().await.codex.clone();
+        let prefix = providers::codex::session_prefix(&settings, &provider_config, &folder);
+        if !record.session_id.as_deref().is_some_and(|id| id.starts_with(&prefix)) {
+            record.session_id = None;
+        }
+    }
     record.provider_id = request.provider_id.clone();
     record.model = request.model.clone();
-    record.folder = folder.clone();
+    record.folder = if plain_chat { String::new() } else { folder.clone() };
     record.dev_chat = dev_chat;
     record.permission = request.permission;
-    record.file_tools = request.file_tools;
+    record.file_tools = file_tools;
     record.effort = effort;
     record.messages = request
         .messages
@@ -148,7 +180,7 @@ pub(crate) async fn chat_handler(
         logs: Vec::new(),
         diff: String::new(),
         files: Vec::new(),
-        provider: provider_config.kind.clone(),
+        provider: avatar_source(&provider_config, &request.model),
         error: None,
         attachments: Vec::new(),
     });
@@ -177,12 +209,14 @@ pub(crate) async fn chat_handler(
     let provider_cancel = cancel.clone();
     let mut memory_config = state.config.read().await.memory.clone();
     // Plan task workers neither read nor write the memory: the planner already got it, the main chat AI writes it.
-    if request.plan_id.is_some() {
+    if request.plan_id.is_some() || plain_chat {
         memory_config.enabled = false;
     }
     let memory_context =
         crate::features::memory::memory_context(&state.config_path, &folder, &memory_config);
-    let files_before = crate::features::changes::snapshot(std::path::Path::new(&folder)).await;
+    let files_before = if plain_chat { Default::default() } else {
+        crate::features::changes::snapshot(std::path::Path::new(&folder)).await
+    };
     let mut provider_request = ProviderRequest {
         provider: provider_config,
         model: request.model,
@@ -223,23 +257,28 @@ pub(crate) async fn chat_handler(
     if memory_config.enabled {
         crate::features::memory::inject(&mut provider_request, &memory_context);
     }
-    // Plan task workers cannot stop to ask the user, so they skip the first-request rules.
+    // Plan workers run unattended; interactive chat supports user decision cards on every turn.
     if request.plan_id.is_none() {
+        add_question_rules(&mut provider_request);
+    }
+    // Plan task workers cannot stop to ask the user, so they skip the first-request rules.
+    if request.plan_id.is_none() && !plain_chat {
         add_first_request_rules(&mut provider_request);
     }
     let event_provider_id = provider_request.provider.id.clone();
     let provider_name = provider_request.provider.name.clone();
-    let provider_kind = provider_request.provider.kind.clone();
+    let provider_kind = avatar_source(&provider_request.provider, &provider_request.model);
     let status_model = provider_request.model.clone();
     let status_effort = format!("{:?}", provider_request.effort).to_lowercase();
+    let role_effort = request.effort.as_deref().unwrap_or("max");
     let status_role = (mutis_config.enabled || request.plan_id.is_some())
         .then(|| {
             ["lead", "big", "small"]
                 .into_iter()
                 .find(|role| match *role {
-                    "lead" => mutis_config.roles.lead.provider_id == event_provider_id,
-                    "big" => mutis_config.roles.big.provider_id == event_provider_id,
-                    _ => mutis_config.roles.small.provider_id == event_provider_id,
+                    "lead" => mutis_config.roles_for(role_effort).lead.provider_id == event_provider_id,
+                    "big" => mutis_config.roles_for(role_effort).big.provider_id == event_provider_id,
+                    _ => mutis_config.roles_for(role_effort).small.provider_id == event_provider_id,
                 })
                 .map(str::to_owned)
         })
@@ -352,6 +391,15 @@ mod tests {
     }
 
     #[test]
+    fn deepseek_models_get_their_own_avatar_label() {
+        let source = |id: &str, kind: &str| crate::config::ProviderConfig { id: id.into(), kind: kind.into(), ..Default::default() };
+        assert_eq!(avatar_source(&source("openai", "openai_compat"), "deepseek-ai/deepseek-v4"), "deepseek");
+        assert_eq!(avatar_source(&source("deploy-deepseek", "mcp_agent"), "x"), "deepseek");
+        assert_eq!(avatar_source(&source("openai", "openai_compat"), "gpt-5.1"), "openai_compat");
+        assert_eq!(avatar_source(&source("codex-cli", "codex_cli"), "gpt-6-luna"), "codex_cli");
+    }
+
+    #[test]
     fn rules_go_only_on_the_first_user_message() {
         let mut first = request(json!([{"role":"user","content":"làm đi"}]));
         add_first_request_rules(&mut first);
@@ -360,7 +408,7 @@ mod tests {
         // The app states the index status itself, so the AI does not spend a command (and a model call) on it.
         assert!(first.messages[0]
             .content
-            .contains("CHƯA CÓ thư mục .codegraph"));
+            .contains("DOES NOT HAVE a .codegraph folder"));
         let mut later = request(json!([
             {"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}
         ]));
@@ -369,5 +417,19 @@ mod tests {
             .messages
             .iter()
             .all(|m| !m.content.contains(".codegraph")));
+    }
+
+    #[test]
+    fn question_rules_reach_only_the_current_user_message() {
+        let mut turn = request(json!([
+            {"role":"user","content":"first"},
+            {"role":"assistant","content":"reply"},
+            {"role":"user","content":"follow up"}
+        ]));
+        add_question_rules(&mut turn);
+        assert_eq!(turn.messages[0].content, "first");
+        assert_eq!(turn.messages[1].content, "reply");
+        assert!(turn.messages[2].content.starts_with(crate::core::rule::chat_questions::RULE));
+        assert!(turn.messages[2].content.ends_with("follow up"));
     }
 }

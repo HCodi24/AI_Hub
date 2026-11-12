@@ -1,31 +1,23 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
 import { Skeleton } from "@/components/skeleton/skeleton";
-import type { ConnectionTest } from "@/schema/settings.schema";
+import { useProviderConnections } from "@/lib/provider-connections";
 import { settingsText as t } from "@/text/settings";
 import { ProviderForm } from "./provider-form";
 import { useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
 export function ProvidersTab() {
+  const client = useQueryClient();
   const { query, apply } = useSettingsConfig();
   const cli = useQuery({ queryKey: ["cli-status"], queryFn: ({ signal }) => settingsApi.cliStatus(signal) });
   const [selected, setSelected] = useState<string | null>(null); // provider id, "" = new, null = nothing yet
-  const [statuses, setStatuses] = useState<Record<string, ConnectionTest>>({});
   const providers = query.data?.providers || [];
+  const statuses = useProviderConnections(providers);
   const firstId = providers[0]?.id;
   useEffect(() => { if (selected === null && firstId) setSelected(firstId); }, [selected, firstId]);
-  // Check every source once when the tab opens so the dots are meaningful.
-  const ids = providers.map(p => p.id).join(",");
-  useEffect(() => {
-    let cancelled = false;
-    for (const id of ids ? ids.split(",") : []) {
-      void settingsApi.testProvider(id).then(result => { if (!cancelled) setStatuses(current => ({ ...current, [id]: result })); }).catch(() => undefined);
-    }
-    return () => { cancelled = true; };
-  }, [ids]);
   const current = providers.find(p => p.id === selected) || null;
   return <div className={styles.split}>
     <nav className={styles.list} aria-label={t.providers.list}>
@@ -48,7 +40,7 @@ export function ProvidersTab() {
         status={current ? statuses[current.id] : undefined}
         onSaved={(config, id) => { apply(config); setSelected(id); }}
         onDeleted={config => { apply(config); setSelected(config.providers[0]?.id ?? null); }}
-        onTested={(id, result) => setStatuses(state => ({ ...state, [id]: result }))} />}
+        onTested={(id, result) => client.setQueryData(["provider-test", id], result)} />}
     </section>
   </div>;
 }

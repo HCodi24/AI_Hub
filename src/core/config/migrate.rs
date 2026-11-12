@@ -1,6 +1,13 @@
 //! One-way upgrades of config files written by older versions.
 use super::Config;
 
+const LEGACY_WORKER_RULES: &str = concat!(
+    "- Ghi mọi file bằng UTF-8 (không dùng PowerShell Set-Content/Out-File/>); ",
+    "dùng công cụ sửa file hoặc [System.IO.File]::WriteAllText với UTF8.\n",
+    "- Không xoá tính năng có sẵn khi viết lại code.\n",
+    "- Báo cáo rõ phần chưa làm."
+);
+
 pub(super) fn add_codex_cli_model_suggestions(config: &mut Config) {
     for provider in config
         .providers
@@ -88,94 +95,24 @@ pub(super) fn merge_agent_providers(config: &mut Config) {
 }
 
 pub(super) fn migrate_mutis(config: &mut Config) {
-    let mut roles = config.mutis.roles.clone();
-    let find = |kinds: &[&str]| {
-        config
-            .providers
-            .iter()
-            .find(|p| kinds.contains(&p.kind.as_str()))
-            .map(|p| p.id.clone())
-            .unwrap_or_default()
-    };
-    if roles.lead.provider_id.is_empty() {
-        roles.lead.provider_id = if !config.mutis.reviewer_provider_id.is_empty() {
-            config.mutis.reviewer_provider_id.clone()
-        } else if !config.planner_provider_id.is_empty() {
-            config.planner_provider_id.clone()
-        } else {
-            find(&["claude_cli", "anthropic", "codex_cli"])
-        };
+    let previous_english_rules = [
+        crate::core::rule::utf8::RULE,
+        crate::core::rule::keep_features::RULE,
+        crate::core::rule::report_unfinished::RULE,
+    ].join("\n");
+    let previous_global_english_rule = format!(
+        "{previous_english_rules}\n{}",
+        crate::core::rule::english_rules::RULE
+    );
+    let saved_rules = config.mutis.worker_rules.replace("\r\n", "\n");
+    if saved_rules.trim() == LEGACY_WORKER_RULES
+        || saved_rules.trim() == previous_english_rules
+        || saved_rules.trim() == previous_global_english_rule
+    {
+        config.mutis.worker_rules = crate::core::rule::worker_defaults();
     }
-    if roles.lead.effort.is_empty() {
-        roles.lead.effort = "default".into();
-    }
-    if roles.lead.model.is_empty() {
-        roles.lead.model = if !config.mutis.reviewer_model.is_empty() {
-            config.mutis.reviewer_model.clone()
-        } else if !config.planner_model.is_empty() {
-            config.planner_model.clone()
-        } else {
-            config
-                .providers
-                .iter()
-                .find(|p| p.id == roles.lead.provider_id)
-                .and_then(|p| p.models.first())
-                .cloned()
-                .unwrap_or_default()
-        };
-    }
-    if roles.big.provider_id.is_empty() {
-        roles.big.provider_id = find(&["codex_cli"]);
-    }
-    if roles.big.model.is_empty() {
-        roles.big.model = config
-            .providers
-            .iter()
-            .find(|p| p.id == roles.big.provider_id)
-            .and_then(|p| p.models.first())
-            .cloned()
-            .unwrap_or_default();
-    }
-    if roles.big.effort.is_empty() {
-        roles.big.effort = "high".into();
-    }
-    if roles.small.provider_id.is_empty() {
-        roles.small.provider_id = config
-            .providers
-            .iter()
-            .find(|p| p.kind == "openai_compat" && p.agent_capable)
-            .map(|p| p.id.clone())
-            .unwrap_or_else(|| find(&["codex_cli"]));
-    }
-    if roles.small.model.is_empty() {
-        roles.small.model = config
-            .providers
-            .iter()
-            .find(|p| p.id == roles.small.provider_id)
-            .and_then(|p| p.models.first())
-            .cloned()
-            .unwrap_or_default();
-    }
-    if roles.small.effort.is_empty() {
-        roles.small.effort = "default".into();
-    }
-    let fallback_provider = config.providers.first();
-    for role in [&mut roles.lead, &mut roles.big, &mut roles.small] {
-        if role.provider_id.is_empty() {
-            if let Some(provider) = fallback_provider {
-                role.provider_id = provider.id.clone();
-            }
-        }
-        if role.model.is_empty() {
-            role.model = config
-                .providers
-                .iter()
-                .find(|provider| provider.id == role.provider_id)
-                .and_then(|provider| provider.models.first())
-                .cloned()
-                .unwrap_or_default();
-        }
-    }
+    super::muti_high::migrate_roles(config);
+    super::muti_max::migrate_roles(config);
     for rule in &mut config.mutis.routing {
         if rule.role.is_empty() {
             rule.role = match rule.assignee_kind.as_str() {
@@ -187,7 +124,6 @@ pub(super) fn migrate_mutis(config: &mut Config) {
             .into();
         }
     }
-    config.mutis.roles = roles;
     config.planner_provider_id = config.mutis.roles.lead.provider_id.clone();
     config.planner_model = config.mutis.roles.lead.model.clone();
     config.mutis.reviewer_provider_id = config.mutis.roles.lead.provider_id.clone();
@@ -198,6 +134,35 @@ pub(super) fn migrate_mutis(config: &mut Config) {
 mod tests {
     use super::*;
     use crate::core::config::{MutisRoles, ProviderConfig, LEGACY_AGENT_PROVIDER_ID};
+
+    #[test]
+    fn migration_translates_default_rules_and_preserves_custom_rules() {
+        let mut config = Config::seeded();
+        config.mutis.worker_rules = LEGACY_WORKER_RULES.replace("\n", "\r\n");
+        migrate_mutis(&mut config);
+        assert_eq!(config.mutis.worker_rules, crate::core::rule::worker_defaults());
+        let translated = config.mutis.worker_rules.clone();
+        migrate_mutis(&mut config);
+        assert_eq!(config.mutis.worker_rules, translated);
+
+        config.mutis.worker_rules = [
+            crate::core::rule::utf8::RULE,
+            crate::core::rule::keep_features::RULE,
+            crate::core::rule::report_unfinished::RULE,
+        ].join("\r\n");
+        migrate_mutis(&mut config);
+        assert_eq!(config.mutis.worker_rules, crate::core::rule::worker_defaults());
+        assert!(!config.mutis.worker_rules.contains("- Write all rules in English."));
+
+        config.mutis.worker_rules.push_str("\n- Write all rules in English.");
+        migrate_mutis(&mut config);
+        assert_eq!(config.mutis.worker_rules, crate::core::rule::worker_defaults());
+
+        config.mutis.worker_rules = format!("{LEGACY_WORKER_RULES}\nCustom instruction");
+        let custom = config.mutis.worker_rules.clone();
+        migrate_mutis(&mut config);
+        assert_eq!(config.mutis.worker_rules, custom);
+    }
 
     #[test]
     fn legacy_planner_reviewer_and_routing_migrate_to_roles() {
@@ -242,6 +207,18 @@ mod tests {
         assert_eq!(config.mutis.roles.lead.provider_id, "openai");
         assert_eq!(config.mutis.roles.big.provider_id, "openai");
         assert_eq!(config.mutis.roles.small.provider_id, "openai");
+    }
+
+    #[test]
+    fn migration_populates_high_roles_with_codex_and_existing_small_deepseek() {
+        let mut config = Config::seeded();
+        config.mutis.roles.small.provider_id = "deploy-deepseek".into();
+        migrate_mutis(&mut config);
+        assert_eq!(config.mutis.high_roles.lead.provider_id, "codex-cli");
+        assert_eq!(config.mutis.high_roles.lead.model, "gpt-6.1-sol");
+        assert_eq!(config.mutis.high_roles.big.effort, "medium");
+        assert_eq!(config.mutis.high_roles.small.provider_id, "deploy-deepseek");
+        assert_eq!(config.mutis.high_roles.small.effort, "max");
     }
 
     fn legacy_config(agent_key: &str) -> Config {

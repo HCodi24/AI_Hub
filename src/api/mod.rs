@@ -177,9 +177,11 @@ pub fn router(state: AppState) -> Router {
             "/api/chat/{chat_id}/stop",
             post(crate::api::chat::stop_chat),
         )
+        .route("/api/folder-tree", get(crate::api::folder::list_dir))
         .route("/api/pick-folder", post(crate::api::folder::pick_folder))
         .route("/api/mcp/test", post(crate::api::mcp::test))
         .route("/api/pets", get(crate::api::pets::list))
+        .route("/api/pets/import", post(crate::api::pets::import))
         .route("/api/pets/{name}", get(crate::api::pets::sprite).delete(crate::api::pets::remove))
         .route("/api/pets/{name}/install", post(crate::api::pets::install))
         .route("/api/chats", get(crate::api::chat::list_chats))
@@ -217,6 +219,8 @@ pub fn router(state: AppState) -> Router {
             post(crate::api::verify::plan_diff_handler),
         )
         .route("/api/cli-status", get(crate::api::providers::cli_status))
+        .route("/api/providers/{id}/codex", get(crate::api::providers::codex_status)
+            .post(crate::api::providers::codex_action).put(crate::api::providers::codex_settings))
         // Extension catalog and actions.
         .route(
             "/api/extensions",

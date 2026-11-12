@@ -106,9 +106,16 @@ async fn download(url: &str) -> Option<Vec<u8>> {
     (bytes.len() <= MAX_BYTES).then(|| bytes.to_vec())
 }
 
-/// Pets the user can download, and whether each is available.
+/// `displayName` of a pet folder's `pet.json`, when it has a usable one.
+fn display_name(dir: &std::path::Path) -> Option<String> {
+    let meta: Value = serde_json::from_str(&fs::read_to_string(dir.join("pet.json")).ok()?).ok()?;
+    let name = meta["displayName"].as_str()?.trim();
+    (!name.is_empty() && name.chars().count() <= 60).then(|| name.to_owned())
+}
+
+/// Pets the user can download, plus every pet found in the app's pets folder or in Codex's (`~/.codex/pets`).
 pub(crate) async fn list(State(state): State<AppState>) -> Json<Value> {
-    let pets: Vec<Value> = catalog::EXTERNAL
+    let mut pets: Vec<Value> = catalog::EXTERNAL
         .iter()
         .map(|pet| {
             json!({
@@ -116,10 +123,62 @@ pub(crate) async fn list(State(state): State<AppState>) -> Json<Value> {
                 "installed": installed(&state, pet.id).is_some(),
                 // Only a copy downloaded here can be removed here; a Codex install is left alone.
                 "removable": downloaded_file(&state, pet.id).is_some_and(|path| path.is_file()),
+                "custom": false,
             })
         })
         .collect();
+    let codex = dirs::home_dir().map(|home| home.join(".codex").join("pets"));
+    for (root, source) in [(pets_dir(&state), "MutiS"), (codex, "Codex")] {
+        let Some(entries) = root.and_then(|root| fs::read_dir(root).ok()) else { continue };
+        for entry in entries.flatten() {
+            let id = entry.file_name().to_string_lossy().into_owned();
+            let known = pets.iter().any(|pet| pet["id"] == id.as_str());
+            if known || !safe_name(&id) || catalog::sprite(&id).is_some() || !entry.path().is_dir() || installed(&state, &id).is_none() {
+                continue;
+            }
+            pets.push(json!({
+                "id": id, "name": display_name(&entry.path()).unwrap_or_else(|| id.clone()), "provider": "",
+                "source": source, "notice": "", "installed": true, "custom": true,
+                "removable": downloaded_file(&state, &id).is_some_and(|path| path.is_file()),
+            }));
+        }
+    }
     Json(json!({ "pets": pets }))
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct ImportRequest {
+    path: String,
+}
+
+/// Imports the user's own pet folder (`pet.json` + sprite sheet) into the app's pets folder. The folder is read, never changed.
+pub(crate) async fn import(State(state): State<AppState>, Json(request): Json<ImportRequest>) -> ApiResult<Json<Value>> {
+    let bad = |message: &'static str| ApiError::new(StatusCode::BAD_REQUEST, message);
+    let dir = PathBuf::from(request.path.trim());
+    let meta: Value = fs::read_to_string(dir.join("pet.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .ok_or_else(|| bad("Thư mục không có pet.json hợp lệ"))?;
+    let id = meta["id"].as_str().unwrap_or_default();
+    if !safe_name(id) || catalog::sprite(id).is_some() {
+        return Err(bad("Mã pet trong pet.json không hợp lệ (chỉ a-z, 0-9 và -)"));
+    }
+    // The sheet must sit in the same folder: a bare file name, never a path.
+    let file = meta["spritesheetPath"].as_str().filter(|name| std::path::Path::new(name).file_name().is_some_and(|f| f == *name));
+    let bytes = fs::read(dir.join(file.unwrap_or("spritesheet.png")))
+        .ok()
+        .filter(|bytes| bytes.len() <= MAX_BYTES && (is_sheet_png(bytes) || is_webp(bytes)))
+        .ok_or_else(|| bad("Không đọc được ảnh sprite (cần PNG/WebP rộng 1536 px, tối đa 4 MB)"))?;
+    let target = downloaded_file(&state, id).ok_or_else(|| bad("Mã pet không hợp lệ"))?;
+    let name = display_name(&dir).unwrap_or_else(|| id.to_owned());
+    target
+        .parent()
+        .map(fs::create_dir_all)
+        .transpose()
+        .and_then(|_| fs::write(&target, &bytes))
+        .and_then(|_| fs::write(target.with_file_name("pet.json"), json!({"id": id, "displayName": name}).to_string()))
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được pet"))?;
+    Ok(Json(json!({ "id": id, "name": name })))
 }
 
 pub(crate) async fn install(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
@@ -139,13 +198,15 @@ pub(crate) async fn install(State(state): State<AppState>, Path(id): Path<String
 }
 
 pub(crate) async fn remove(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
-    let pet = catalog::external(&id).ok_or_else(not_found)?;
-    if let Some(path) = downloaded_file(&state, pet.id) {
-        // Only the downloaded copy goes: remove the file and its (then empty) folder, never anything under ~/.codex.
-        let _ = fs::remove_file(&path);
-        if let Some(dir) = path.parent() {
-            let _ = fs::remove_dir(dir);
-        }
+    // Only a copy in the app's pets folder goes, never anything under ~/.codex (and never a built-in Codex pet).
+    if catalog::sprite(&id).is_some() {
+        return Err(not_found());
+    }
+    let path = downloaded_file(&state, &id).ok_or_else(not_found)?;
+    let _ = fs::remove_file(&path);
+    let _ = fs::remove_file(path.with_file_name("pet.json"));
+    if let Some(dir) = path.parent() {
+        let _ = fs::remove_dir(dir);
     }
     Ok(Json(json!({ "ok": true })))
 }

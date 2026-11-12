@@ -133,7 +133,8 @@ pub(super) async fn test_provider_uncached(
                 &format!("HTTP {}", r.status()),
             ),
         },
-        "codex_cli" | "claude_cli" => {
+        "codex_cli" => super::codex::test_connection(&state, &id).await,
+        "claude_cli" => {
             let name = if provider.kind == "codex_cli" {
                 "codex"
             } else {

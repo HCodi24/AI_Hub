@@ -36,12 +36,19 @@ impl Provider for DeepSeekAgentProvider {
         events: mpsc::Sender<ProviderEvent>,
         cancel: CancellationToken,
     ) -> Result<()> {
-        if request
+        // Only the message being answered matters: images in earlier turns are simply not sent (this loop sends
+        // text only), so one old screenshot must not make every later question fail.
+        let has_older_images = request
             .messages
             .iter()
-            .any(|message| !message.attachments.is_empty())
-        {
+            .rev()
+            .skip(1)
+            .any(|message| !message.attachments.is_empty());
+        if request.messages.last().is_some_and(|message| !message.attachments.is_empty()) {
             bail!("DeepSeek làm việc chưa hỗ trợ ảnh — hãy dùng nguồn khác");
+        }
+        if has_older_images {
+            emit_text(&events, "log", "Bỏ ảnh ở các tin nhắn trước: nguồn này chưa đọc được ảnh".to_owned()).await?;
         }
         if request.provider.api_key.trim().is_empty() {
             bail!("API key chưa được cấu hình cho nhà cung cấp này");
@@ -71,7 +78,6 @@ impl Provider for DeepSeekAgentProvider {
         let excerpts = parse_edit_only(task);
         // "mcp_agent" = the same loop with MCP tools only (no file tools).
         let files = request.provider.kind != "mcp_agent";
-        let edits_requested = files && can_write && task_asks_edits(task);
         let system = if !files {
             SYSTEM_MCP
         } else {
@@ -125,7 +131,6 @@ impl Provider for DeepSeekAgentProvider {
         let mut steps = 0;
         let mut tokens_in = 0u64;
         let mut tokens_out = 0u64;
-        let mut had_tool = false;
         let mut final_text = String::new();
         let mut failure: Option<anyhow::Error> = None;
         for step in 0..request.mutis.deepseek_max_steps.clamp(5, 40) {
@@ -134,7 +139,10 @@ impl Provider for DeepSeekAgentProvider {
                 break;
             }
             steps = step + 1;
-            let body = json!({"model":request.model,"messages":messages,"tools":tools,"max_tokens":8192,"temperature":0.2,"stream":false});
+            let mut body = json!({"model":request.model,"messages":messages,"tools":tools,"max_tokens":8192,"temperature":0.2,"stream":false});
+            if super::is_deepseek_flash(&request.model) {
+                body["reasoning_effort"] = json!(super::api_reasoning_effort(&request.model, request.effort));
+            }
             let response = super::send_with_retry(
                 &client,
                 &format!("{base}/chat/completions"),
@@ -190,15 +198,20 @@ impl Provider for DeepSeekAgentProvider {
             let content = msg["content"].as_str().unwrap_or_default();
             if calls.is_empty() {
                 final_text = content.trim().to_owned();
-                if final_text.is_empty() || (edits_requested && !had_tool) {
+                // A plain text answer with no tool call is valid (a question, an explanation): only an empty one is a failure.
+                if final_text.is_empty() {
                     failure = Some(anyhow::anyhow!(
                         "DeepSeek trả về rỗng (có thể chạm giới hạn đầu ra) — hãy chia nhỏ việc"
                     ));
                 }
                 break;
             }
-            had_tool = true;
-            messages.push(json!({"role":"assistant","content":if content.is_empty(){Value::Null}else{json!(content)},"tool_calls":calls}));
+            let mut assistant = json!({"role":"assistant","content":if content.is_empty(){Value::Null}else{json!(content)},"tool_calls":calls});
+            // Thinking tool calls must retain reasoning for the next API request.
+            if let Some(reasoning) = msg.get("reasoning_content") {
+                assistant["reasoning_content"] = reasoning.clone();
+            }
+            messages.push(assistant);
             for call in calls {
                 if cancel.is_cancelled() {
                     failure = Some(anyhow::anyhow!("Đã dừng"));
@@ -287,26 +300,4 @@ pub fn parse_edit_only(input: &str) -> Vec<(String, String)> {
         }
     }
     out
-}
-fn task_asks_edits(task: &str) -> bool {
-    let text = task.to_lowercase();
-    [
-        "edit",
-        "modify",
-        "change",
-        "write",
-        "create",
-        "fix",
-        "implement",
-        "sửa",
-        "chỉnh",
-        "ghi",
-        "tạo",
-        "thêm",
-        "xóa",
-        "xoá",
-        "cập nhật",
-    ]
-    .iter()
-    .any(|word| text.contains(word))
 }

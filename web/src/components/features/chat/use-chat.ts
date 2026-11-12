@@ -6,6 +6,7 @@ import { configApi } from "@/apis/config.api";
 import { useChatStore } from "./chat-store";
 import { chatText } from "@/text/chat";
 import { mutisApi } from "@/apis/mutis.api";
+import { rolesFor } from "@/lib/mutis-level";
 import { startCard, cancelActiveCard } from "./card-actions";
 import { useCardStore } from "./card-store";
 import { memoryNotice } from "@/components/features/memory/memory-events";
@@ -22,20 +23,20 @@ export function useChat() {
     const mutis = await mutisApi.get();
     let debate = false;
     try { debate = ["1", "true"].includes(localStorage.getItem("debateMode") || ""); } catch { /* Storage unavailable. */ }
-    if (!direct && !attachments.length && debate) {
+    if (state.settings.folder.trim() && !direct && !attachments.length && debate) {
       await startCard(text, "debate"); await client.invalidateQueries({ queryKey: ["chats"] }); return true;
     }
-    if (!direct && !attachments.length && state.settings.provider_id === "mutis" && mutis.enabled && mutis.auto_plan && !state.settings.dev_chat) {
+    if (state.settings.folder.trim() && !direct && !attachments.length && state.settings.provider_id === "mutis" && mutis.enabled && mutis.auto_plan && !state.settings.dev_chat) {
       await startCard(text, "plan"); await client.invalidateQueries({ queryKey: ["chats"] }); return true;
     }
     let settings = state.settings;
     if (settings.provider_id === "mutis") {
-      const resolved = await mutisApi.resolve(); const lead = resolved.lead.used_provider;
+      const resolved = await mutisApi.resolve(settings.effort); const lead = resolved.lead.used_provider;
       if (!lead) { useChatStore.setState({ error: chatText.selectRequired }); return false; }
-      const role = mutis.roles.lead;
+      const role = rolesFor(mutis, settings.effort)?.lead || mutis.roles.lead;
       settings = { ...settings, provider_id: lead.id, model: role.provider_id === lead.id ? role.model || lead.models[0] || "" : lead.models[0] || "", effort: role.effort };
     }
-    if (!settings.provider_id || !settings.model.trim() || !settings.folder.trim()) {
+    if (!settings.provider_id || !settings.model.trim()) {
       useChatStore.setState({ error: chatText.selectRequired }); return false;
     }
     // Settings requests can finish after the user switches chats or sends another reply.
@@ -46,7 +47,7 @@ export function useChat() {
     const controller = new AbortController(); activeChatAbort = controller;
     try {
       const source = config.data?.providers.find(item => item.id === settings.provider_id);
-      await chatApi.send({ ...settings, file_tools: fileToolsFor(source, settings.permission), folder: settings.folder.trim(), model: settings.model.trim(),
+      await chatApi.send({ ...settings, file_tools: settings.folder.trim() ? fileToolsFor(source, settings.permission) : "none", folder: settings.folder.trim(), model: settings.model.trim(),
         chat_id: current.id, messages: current.messages.slice(0, -1) }, controller.signal, (event, data) => {
         current.event(event, data);
         if (event === "memory") useToast.getState().show(memoryNotice(data, settings.folder));
