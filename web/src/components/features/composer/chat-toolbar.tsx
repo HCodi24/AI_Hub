@@ -15,6 +15,7 @@ import { isAgentSource } from "@/lib/agent-source";
 import { mutisApi } from "@/apis/mutis.api";
 import { ChatPermission } from "./chat-permission";
 import { useShallow } from "zustand/react/shallow";
+import { MutisEfforts } from "./mutis-efforts";
 
 const CLI_MODEL_SUGGESTIONS: Record<string, string[]> = {
   codex_cli: ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"],
@@ -99,17 +100,17 @@ export function ChatToolbar({ config }: { config?: Config }) {
         <strong>{chatText[effort]}</strong>
         <button type="button" className={styles.resetEffort} disabled={streaming} aria-label={`${chatText.effort}: ${chatText[resetEffort]}`} title={`${chatText.effort}: ${chatText[resetEffort]}`} onClick={() => configure({ effort: resetEffort })}><RotateCcw size={18} /></button>
       </div>
-      {isMutis
-        ? <p className={styles.mutisRoles}>ChatGPT-6.1Sol<br />DeepSeek(key)</p>
-        : <ModelMenu models={models} value={settings.model} label={modelLabel} disabled={streaming} open={modelMenuOpen}
-          setOpen={open => { setModelMenuOpen(open); setSourceMenuOpen(false); }} anchor={panel}
-          onPick={model => configure({ model })} />}
       <div className={styles.effortSlider}>
         <input type="range" min={0} max={efforts.length - 1} step={1} value={effortIndex} disabled={streaming} aria-label={chatText.effort} aria-valuetext={chatText[effort]}
           style={{ background: `linear-gradient(to right, var(--effort-fill) ${effortIndex / (efforts.length - 1) * 100}%, var(--color-muted) 0%)` }}
           onChange={event => configure({ effort: efforts[Number(event.target.value)] })} />
         <div className={styles.effortTicks} aria-hidden="true">{efforts.map((effort, index) => <span key={effort} data-filled={index < effortIndex} data-selected={index === effortIndex} />)}</div>
       </div>
+      {isMutis
+        ? mutis.data && <MutisEfforts mutis={mutis.data} level={level} config={config} disabled={streaming} />
+        : <ModelMenu models={models} value={settings.model} label={modelLabel} disabled={streaming} open={modelMenuOpen}
+          setOpen={open => { setModelMenuOpen(open); setSourceMenuOpen(false); }} anchor={panel}
+          onPick={model => configure({ model })} />}
     </div>
   </details>
   {provider && cli && <CliLimits key={provider.id} providerId={provider.id} name={provider.name} />}</>;
