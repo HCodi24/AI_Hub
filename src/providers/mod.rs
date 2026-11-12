@@ -1,6 +1,7 @@
 pub(crate) mod agent;
 pub mod anthropic;
 pub mod claude_cli;
+pub(crate) mod claude;
 pub(crate) mod cli_support;
 pub mod codex_cli;
 pub(crate) mod codex;

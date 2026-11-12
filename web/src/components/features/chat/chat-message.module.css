@@ -34,3 +34,10 @@
 .path { overflow-wrap: anywhere; opacity: 0.8; }
 .choices { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .choices button { min-width: 88px; min-height: 44px; }
+
+.fileName { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.fileStatus { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; height: 16px; border: 1px solid currentColor; border-radius: 3px; font-weight: 700; line-height: 1; }
+.fileStatus[data-status=added] { color: var(--green); }
+.fileStatus[data-status=modified] { color: var(--color-warning); }
+.fileStatus[data-status=deleted] { color: var(--danger); }
+.files li > span:last-child { flex-shrink: 0; }

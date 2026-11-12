@@ -1,5 +1,6 @@
 mod mcp;
 mod codex;
+mod claude;
 mod migrate;
 mod mutis;
 #[path = "mutiHigh/mod.rs"]
@@ -11,6 +12,7 @@ mod store;
 
 pub use mcp::*;
 pub use codex::*;
+pub use claude::*;
 pub use mutis::*;
 pub use provider::*;
 pub use store::*;
@@ -19,6 +21,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default)]
+    pub claude: ClaudeConfig,
     #[serde(default)]
     pub codex: CodexConfig,
     #[serde(default)]
@@ -66,6 +70,7 @@ fn default_folder() -> String {
 impl Config {
     pub fn seeded() -> Self {
         Self {
+            claude: ClaudeConfig::default(),
             codex: CodexConfig::default(),
             memory: Default::default(),
             providers: vec![

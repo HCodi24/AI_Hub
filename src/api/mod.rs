@@ -219,6 +219,8 @@ pub fn router(state: AppState) -> Router {
             post(crate::api::verify::plan_diff_handler),
         )
         .route("/api/cli-status", get(crate::api::providers::cli_status))
+        .route("/api/providers/{id}/claude", get(crate::api::providers::claude_status)
+            .post(crate::api::providers::claude_action).put(crate::api::providers::claude_settings))
         .route("/api/providers/{id}/codex", get(crate::api::providers::codex_status)
             .post(crate::api::providers::codex_action).put(crate::api::providers::codex_settings))
         // Extension catalog and actions.

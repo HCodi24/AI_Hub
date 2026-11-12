@@ -1,6 +1,6 @@
 .entries { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; font-size: var(--font-14); }
 .row, .project { display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 8px; color: var(--text); }
-.row { width: 100%; border: 0; border-radius: 6px; background: transparent; font: inherit; text-align: left; }
+.row { width: 100%; justify-content: flex-start; border: 0; border-radius: 6px; background: transparent; font: inherit; text-align: left; }
 button.row { cursor: pointer; }
 .row svg, .project svg { flex-shrink: 0; }
 .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

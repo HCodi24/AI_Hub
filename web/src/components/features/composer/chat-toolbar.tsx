@@ -13,7 +13,7 @@ import { SourceMenu } from "./source-menu";
 import { ModelMenu, modelLabel as getModelLabel } from "./model-menu";
 import { isAgentSource } from "@/lib/agent-source";
 import { mutisApi } from "@/apis/mutis.api";
-import { PermissionMenu } from "./permission-menu";
+import { ChatPermission } from "./chat-permission";
 import { useShallow } from "zustand/react/shallow";
 
 const CLI_MODEL_SUGGESTIONS: Record<string, string[]> = {
@@ -39,20 +39,13 @@ export function ChatToolbar({ config }: { config?: Config }) {
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     function closeOutside(event: PointerEvent) {
-      if (permissions.current?.open && !permissions.current.contains(event.target as Node)) permissions.current.open = false;
       if (picker.current?.open && !picker.current.contains(event.target as Node)) {
         picker.current.open = false;
         setModelMenuOpen(false);
       }
     }
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      if (permissions.current?.open) {
-        event.preventDefault();
-        permissions.current.open = false;
-        permissions.current.querySelector("summary")?.focus();
-        return;
-      }
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       if (!picker.current?.open) return;
       event.preventDefault();
       picker.current.open = false;
@@ -76,7 +69,9 @@ export function ChatToolbar({ config }: { config?: Config }) {
   }, [config, initialize]);
   function changeProvider(id: string) {
     const next = config?.providers.find((entry) => entry.id === (id === "mutis" ? activeRoles?.lead.provider_id : id));
-    configure({ provider_id: id, model: next?.models[0] || "", file_tools: "none", permission: "write" });
+    const supportsCommands = next?.kind.endsWith("_cli") || isAgentSource(next);
+    configure({ provider_id: id, model: next?.models[0] || "", file_tools: "none",
+      ...(settings.permission === "full" && !supportsCommands ? { permission: "write" as const } : {}) });
   }
   // MutiS: the slider only chooses the level (High = Codex + DeepSeek, Max = all three AIs); the models come from Settings.
   const isMutis = settings.provider_id === "mutis";
@@ -91,8 +86,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
   useEffect(() => {
     if (!streaming && effort !== settings.effort) configure({ effort });
   }, [effort, settings.effort, streaming, configure]);
-  return <><PermissionMenu value={settings.permission} disabled={streaming} cli={!!cli || isAgentSource(provider)} menuRef={permissions}
-    onOpen={() => { if (picker.current) picker.current.open = false; }} onPick={permission => configure({ permission })} />
+  return <><ChatPermission supportsCommands={!!cli || isAgentSource(provider)} menuRef={permissions} otherMenuRef={picker} />
   <details ref={picker} className={styles.picker} onToggle={(event) => {
     if (event.target === event.currentTarget && event.currentTarget.open && permissions.current) permissions.current.open = false;
     if (event.target === event.currentTarget && !event.currentTarget.open) { setModelMenuOpen(false); setSourceMenuOpen(false); }

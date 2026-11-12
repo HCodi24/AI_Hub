@@ -50,21 +50,12 @@ fn extract_https_url(text: &str) -> Option<&str> {
         .unwrap_or(candidate.len());
     Some(candidate[..end].trim_end_matches(['.', ',', ';', ')', ']', '"', '\'']))
 }
-fn allowed_login_url(url: &str) -> bool {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return false;
-    };
-    if scheme != "https" {
-        return false;
-    }
-    let host = rest
-        .split(['/', '?', '#', ':'])
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    ["claude.com", "claude.ai", "anthropic.com"]
-        .iter()
-        .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
+fn allowed_login_url(value: &str) -> bool {
+    reqwest::Url::parse(value).ok().is_some_and(|url| {
+        url.scheme() == "https" && url.username().is_empty() && url.password().is_none()
+            && url.host_str().is_some_and(|host| ["claude.com", "claude.ai", "anthropic.com"].iter()
+                .any(|domain| host == *domain || host.ends_with(&format!(".{domain}"))))
+    })
 }
 fn validate_login_code(code: &str) -> Result<String, &'static str> {
     if code.chars().count() > 512 {
@@ -103,6 +94,10 @@ pub(crate) async fn login_provider_start(
     Path(id): Path<String>,
 ) -> ApiResult<Json<LoginStartResponse>> {
     let provider = login_provider_config(&state, &id).await?;
+    super::claude::ensure_idle(&state).await?;
+    let dir = providers::claude::environment::home(&state.config_path, &provider)
+        .map_err(super::claude::error)?;
+    super::claude::invalidate(&state).await?;
     let path = providers::cli_support::resolve_executable("claude", Some(&provider.executable))
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy Claude Code CLI"))?;
     if let Some(mut old) = state.claude_login.lock().await.take() {
@@ -111,6 +106,7 @@ pub(crate) async fn login_provider_start(
     let args = ["auth", "login", "--claudeai"].map(OsString::from);
     let mut command = providers::cli_support::command_for(&path, &args);
     providers::cli_support::clean_claude_environment(&mut command);
+    command.env("CLAUDE_CONFIG_DIR", &dir).current_dir(&dir);
     #[cfg(windows)]
     command.env("BROWSER", "cmd /c rem");
     #[cfg(not(windows))]
@@ -343,6 +339,7 @@ mod claude_login_tests {
             "http://claude.com/login",
             "https://evilclaude.com/login",
             "https://example.com/?next=claude.com",
+            "https://claude.ai:password@evil.example/login",
         ] {
             assert!(!allowed_login_url(url));
         }

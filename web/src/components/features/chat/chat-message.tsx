@@ -47,7 +47,8 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
       <header><strong>{chatText.edited(message.files.length)}</strong>
         <span className={styles.add}>+{message.files.reduce((sum, file) => sum + file.added, 0)}</span>{" "}
         <span className={styles.remove}>−{message.files.reduce((sum, file) => sum + file.removed, 0)}</span></header>
-      <ul>{message.files.map((file) => <li key={file.path}><span className={styles.path}>{file.path}</span>
+      <ul>{message.files.map((file) => <li key={file.path}><span className={styles.fileName}>
+        <span className={styles.fileStatus} data-status={file.status || "modified"} role="img" aria-label={chatText.fileStatus[file.status || "modified"]} title={chatText.fileStatus[file.status || "modified"]}>{file.status === "added" ? "+" : file.status === "deleted" ? "\u2212" : "\u2022"}</span><span className={styles.path}>{file.path}</span></span>
         <span><span className={styles.add}>+{file.added}</span> <span className={styles.remove}>−{file.removed}</span></span></li>)}</ul>
     </section>}
     {message.diff && <details open><summary>{chatText.diff}</summary><pre className={styles.diff}>{message.diff.split("\n").map((line, index) =>

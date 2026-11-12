@@ -1,4 +1,5 @@
 export const chatText = {
+  fileStatus: { added: "File mới", modified: "File đã sửa", deleted: "File đã xóa" },
   normalChatHint: "Chat bình thường, không gắn với thư mục dự án.",
   treeNoFolder: "Phiên chat này chưa có thư mục làm việc.",
   treeBackendMissing: "Backend đang chạy chưa hỗ trợ cây thư mục. Hãy dùng ‘Build & khởi động lại’ để cập nhật.",
@@ -23,7 +24,7 @@ export const chatText = {
   permissionDescriptions: {
     read: "Chỉ đọc và phân tích nội dung, không thay đổi file.",
     write: "Cho phép sửa file trong thư mục làm việc; chạy lệnh theo cơ chế của nguồn AI.",
-    full: "Cho phép sửa file và chạy lệnh với mức quyền cao nhất nguồn AI hỗ trợ.",
+    full: "Cho phép sửa file và chạy lệnh; vẫn chịu giới hạn sandbox và quyền hệ điều hành của nguồn AI.",
   },
   selectModel: "Chọn model", noModels: "Nguồn AI chưa có model",
   resetEffort: "Đặt mức suy luận về Medium",

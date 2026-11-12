@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import { ChatMessageSchema, type ChatMessage, type ChatRecord, type ChatRequest, type StreamData } from "@/schema/chat.schema";
+import { ChatMessageSchema, PermissionSchema, type ChatMessage, type ChatRecord, type ChatRequest, type StreamData } from "@/schema/chat.schema";
 type Settings = Omit<ChatRequest, "chat_id" | "messages">;
-type ModelSelection = Pick<Settings, "provider_id" | "model">;
+type ModelSelection = Pick<Settings, "provider_id" | "model"> & Partial<Pick<Settings, "permission">>;
 type ChatState = {
   id: string; messages: ChatMessage[]; settings: Settings; streaming: boolean; drawer: boolean;
   status: StreamData; error: string; initialized: boolean;
@@ -20,7 +20,9 @@ function readModelSelection(id: string): ModelSelection | undefined {
     if (typeof value !== "object" || value === null) return;
     const selection = value as Partial<ModelSelection>;
     if (typeof selection.provider_id !== "string" || typeof selection.model !== "string") return;
-    return { provider_id: selection.provider_id, model: selection.model };
+    const permission = PermissionSchema.safeParse(selection.permission);
+    return { provider_id: selection.provider_id, model: selection.model,
+      ...(permission.success ? { permission: permission.data } : {}) };
   } catch { return; }
 }
 function saveModelSelection(id: string, settings: ModelSelection) {
@@ -43,7 +45,8 @@ export const useChatStore = create<ChatState>((set) => ({
     if (state.initialized) return {};
     const selected = readModelSelection(DRAFT_ID);
     return { initialized: true, settings: { ...state.settings, folder,
-      provider_id: selected?.provider_id ?? provider_id, model: selected?.model ?? model } };
+      provider_id: selected?.provider_id ?? provider_id, model: selected?.model ?? model,
+      permission: selected?.permission ?? state.settings.permission } };
   }),
   // Chats created by a plan or debate have no source of their own: keep the one currently selected.
   load: (chat) => {
@@ -53,7 +56,7 @@ export const useChatStore = create<ChatState>((set) => ({
       const settings = {
         provider_id: selected?.provider_id ?? (chat.provider_id || state.settings.provider_id),
         model: selected?.model ?? (chat.provider_id ? chat.model : state.settings.model),
-        folder: chat.folder, permission: chat.permission,
+        folder: chat.folder, permission: selected?.permission ?? chat.permission,
         effort: chat.effort === "default" ? "medium" as const : chat.effort, file_tools: chat.file_tools, dev_chat: chat.dev_chat,
       };
       saveModelSelection(chat.id, settings);

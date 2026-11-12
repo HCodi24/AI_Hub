@@ -1,6 +1,8 @@
 //! Web API for AI sources (providers): editing, model lists, connection tests, Claude sign-in and CLI discovery.
 mod cli;
 mod codex;
+mod claude;
+pub(crate) use claude::{claude_status, claude_action, claude_settings};
 mod connection;
 mod crud;
 mod login;

@@ -143,6 +143,7 @@ fn append_cmd_line(command: &mut Command, command_line: &str) {
 }
 
 pub struct JsonlCommand<'a> {
+    pub config_dir: Option<std::path::PathBuf>,
     pub cli_name: &'static str,
     pub executable_name: &'static str,
     pub missing_message: &'static str,
@@ -189,6 +190,9 @@ pub async fn run_jsonl(
     let mut command = command_for(&path, &command_spec.args);
     if command_spec.executable_name.eq_ignore_ascii_case("claude") {
         clean_claude_environment(&mut command);
+        if let Some(dir) = &command_spec.config_dir {
+            command.env("CLAUDE_CONFIG_DIR", dir);
+        }
     }
     command
         .current_dir(folder)

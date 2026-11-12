@@ -13,13 +13,26 @@ pub struct ClaudeCliProvider;
 impl Provider for ClaudeCliProvider {
     async fn run(
         &self,
-        request: ProviderRequest,
+        mut request: ProviderRequest,
         events: mpsc::Sender<ProviderEvent>,
         cancel: CancellationToken,
     ) -> Result<()> {
         if !cli_support::valid_model(&request.model) {
             bail!("Tên model chỉ được chứa chữ, số, ., _, :, / và -");
         }
+        let config_path = crate::config::config_file_path()?;
+        let settings = super::claude::environment::settings()?;
+        let home = super::claude::environment::home(&config_path, &request.provider)?;
+        let prefix = super::claude::environment::session_prefix(&settings, &request.provider, &request.folder);
+        let native = request.session_id.as_deref().and_then(|id| id.strip_prefix(&prefix)).map(str::to_owned);
+        if request.session_id.is_some() && native.is_none() {
+            let config: crate::config::Config = serde_json::from_slice(&std::fs::read(&config_path)?)?;
+            if request.messages.last().is_some_and(|m| m.content.contains(crate::features::memory::INSTRUCTION)) {
+                let memory = crate::features::memory::memory_context(&config_path, &request.folder, &config.memory);
+                if let Some(message) = request.messages.last_mut() { message.content = format!("{memory}\n\n{}", message.content); }
+            }
+        }
+        request.session_id = native;
         let mut args = vec![
             OsString::from("-p"),
             OsString::from("--output-format"),
@@ -27,6 +40,9 @@ impl Provider for ClaudeCliProvider {
             OsString::from("--verbose"),
             OsString::from("--include-partial-messages"),
         ];
+        args.extend(super::claude::environment::launch_args(&request.mcp));
+        let context = super::claude::sources::project_context(std::path::Path::new(&request.folder), &settings)?;
+        if !context.is_empty() { args.extend([OsString::from("--append-system-prompt"), context.into()]); }
         args.extend(permission_args(request.permission));
         if !request.model.is_empty() {
             args.extend([OsString::from("--model"), OsString::from(&request.model)]);
@@ -70,6 +86,7 @@ impl Provider for ClaudeCliProvider {
         });
         let result = cli_support::run_jsonl(
             cli_support::JsonlCommand {
+                config_dir: Some(home),
                 cli_name: "Claude Code CLI",
                 executable_name: "claude",
                 missing_message: "Chưa cài Claude Code CLI: npm i -g @anthropic-ai/claude-code",
@@ -83,10 +100,18 @@ impl Provider for ClaudeCliProvider {
             cancel.clone(),
             |line| {
                 super::limits::record_claude(&request.provider.id, line);
-                parser
+                let mut parsed = parser
                     .lock()
                     .expect("Claude parser mutex poisoned")
-                    .parse(line)
+                    .parse(line);
+                for event in &mut parsed {
+                    if event.name == "session" {
+                        if let Some(id) = event.data["session_id"].as_str() {
+                            event.data = serde_json::json!({"session_id":format!("{prefix}{id}")});
+                        }
+                    }
+                }
+                parsed
             },
         )
         .await;

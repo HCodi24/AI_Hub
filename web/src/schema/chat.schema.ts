@@ -2,7 +2,7 @@ import { z } from "zod";
 export const PermissionSchema = z.enum(["read", "write", "full"]);
 export const EffortSchema = z.enum(["default", "low", "medium", "high", "xhigh", "max"]);
 export const FileToolsSchema = z.enum(["none", "read", "write"]);
-export const FileChangeSchema = z.object({ path: z.string(), added: z.number(), removed: z.number() });
+export const FileChangeSchema = z.object({ path: z.string(), status: z.enum(["added", "modified", "deleted"]).optional(), added: z.number(), removed: z.number() });
 export const ChatMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]), content: z.string(),
   reasoning: z.string().default(""), logs: z.array(z.string()).default([]), diff: z.string().default(""), files: z.array(FileChangeSchema).default([]),

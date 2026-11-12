@@ -255,23 +255,6 @@ fn newest_codex_install() -> Option<PathBuf> {
     candidates.into_iter().next().map(|(_, path)| path)
 }
 
-pub(crate) async fn cli_probe(
-    name: &str,
-    explicit: &str,
-    limit: Duration,
-) -> Option<(String, String)> {
-    let path = resolve_executable(name, Some(explicit))?;
-    if unsafe_cli_path(&path) {
-        return None;
-    }
-    let text = run_cli_version(&path, limit).await?;
-    let valid = if name == "codex" {
-        text.to_lowercase().contains("codex")
-    } else {
-        text.contains("Claude Code")
-    };
-    valid.then(|| (text, path.to_string_lossy().into_owned()))
-}
 fn unsafe_cli_path(path: &std::path::Path) -> bool {
     let text = path.to_string_lossy().to_lowercase();
     if text.contains("\\program files\\windowsapps\\") {
@@ -312,20 +295,6 @@ pub(crate) async fn run_cli_version(path: &std::path::Path, limit: Duration) -> 
         stdout.trim()
     };
     (!value.is_empty()).then(|| value.chars().take(240).collect())
-}
-
-pub(crate) async fn run_cli_auth_status(path: &std::path::Path, limit: Duration) -> Option<bool> {
-    let mut command =
-        cli_support::command_for(path, &[OsString::from("auth"), OsString::from("status")]);
-    cli_support::clean_claude_environment(&mut command);
-    command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let output = timeout(limit, command.output()).await.ok()?.ok()?;
-    // `claude auth status` exits with code 1 when logged out but still prints the JSON,
-    // so parse stdout regardless of the exit status.
-    cli_support::parse_auth_logged_in(&output.stdout)
 }
 
 pub(crate) async fn probe_cli_info(

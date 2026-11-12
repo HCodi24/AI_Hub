@@ -1,0 +1,157 @@
+diff --git a/web/src/apis/claude.api.ts b/web/src/apis/claude.api.ts
+new file mode 100644
+--- /dev/null
++++ b/web/src/apis/claude.api.ts
+@@ -0,0 +1,21 @@
++import { z } from "zod";
++import { http, parseResponse } from "@/lib/http";
++const StatusSchema = z.object({ connected: z.boolean(), pending: z.boolean(), message: z.string(), project_skills: z.boolean(), project_instructions: z.boolean() });
++export type ClaudeStatus = z.infer<typeof StatusSchema>;
++const path = (id: string) => `/providers/${encodeURIComponent(id)}/claude`;
++export const claudeApi = {
++  async status(id: string, signal?: AbortSignal) { return parseResponse(StatusSchema, await http.get(path(id), signal)); },
++  async action(id: string, action: "cli" | "logout") {
++    return parseResponse(StatusSchema, await (await http.request(path(id), { method: "POST", body: JSON.stringify({ action }) })).json());
++  },
++  async settings(id: string, value: Pick<ClaudeStatus, "project_skills" | "project_instructions">) {
++    return parseResponse(StatusSchema, await (await http.request(path(id), { method: "PUT", body: JSON.stringify(value) })).json());
++  },
++};
++export function safeClaudeLoginUrl(value: string): string | null {
++  try {
++    const url = new URL(value);
++    return url.protocol === "https:" && !url.username && !url.password
++      && ["claude.ai", "claude.com", "anthropic.com"].some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`)) ? url.href : null;
++  } catch { return null; }
++}
+diff --git a/web/src/components/features/settings/claude-connection.tsx b/web/src/components/features/settings/claude-connection.tsx
+new file mode 100644
+--- /dev/null
++++ b/web/src/components/features/settings/claude-connection.tsx
+@@ -0,0 +1,48 @@
++import { useEffect, useRef, useState } from "react";
++import { useQuery, useQueryClient } from "@tanstack/react-query";
++import { claudeApi, type ClaudeStatus } from "@/apis/claude.api";
++import { Button } from "@/components/button/button";
++import { ClaudeLogin } from "./claude-login";
++import styles from "./settings.module.css";
++
++export function ClaudeConnection({ providerId }: { providerId: string }) {
++  const client = useQueryClient();
++  const key = ["claude-connection", providerId];
++  const query = useQuery({ queryKey: key, queryFn: ({ signal }) => claudeApi.status(providerId, signal) });
++  const [busy, setBusy] = useState(false);
++  const [loginBusy, setLoginBusy] = useState(false);
++  const [error, setError] = useState("");
++  const locked = useRef(false);
++  const state = query.data;
++  const disabled = busy || loginBusy || Boolean(state?.pending);
++  useEffect(() => {
++    if (state) client.setQueryData(["provider-test", providerId], { ok: state.connected,
++      status: state.connected ? "connected" : "not_configured", message: state.message, detail: "" });
++  }, [client, providerId, state]);
++  async function run(action: () => Promise<ClaudeStatus>) {
++    if (locked.current || loginBusy) return;
++    locked.current = true; setBusy(true); setError("");
++    try {
++      await client.cancelQueries({ queryKey: key });
++      client.setQueryData(key, await action());
++    } catch (error) { setError(error instanceof Error ? error.message : "Không xử lý được kết nối Claude"); }
++    finally { locked.current = false; setBusy(false); }
++  }
++  const refresh = () => { void client.invalidateQueries({ queryKey: key }); void client.invalidateQueries({ queryKey: ["provider-test", providerId] }); };
++  return <section className={styles.group} aria-label="Kết nối Claude trong MutiS" aria-busy={busy || loginBusy}>
++    <h3>Claude trong MutiS</h3>
++    <p className={styles.note}>Cấu hình riêng cho nguồn Claude này. Chỉ dùng lại xác thực CLI dạng file tương thích; không nhập cấu hình cá nhân.</p>
++    <div className={styles.actions}>
++      <Button disabled={disabled} onClick={() => void run(() => claudeApi.action(providerId, "cli"))}>Tìm Claude CLI</Button>
++      {state?.connected && <Button disabled={disabled} onClick={() => void run(() => claudeApi.action(providerId, "logout"))}>Đăng xuất khỏi MutiS</Button>}
++    </div>
++    <ClaudeLogin providerId={providerId} disabled={busy} onPending={value => { setLoginBusy(value); if (!value) refresh(); }} onDone={refresh} />
++    <p role="status" className={styles.note}>{busy || loginBusy ? "Đang xử lý…" : state?.message || (query.isPending ? "Đang kiểm tra Claude…" : "Chưa kiểm tra được Claude")}</p>
++    <label className={styles.check}><input type="checkbox" checked={state?.project_skills || false} disabled={!state || disabled}
++      onChange={event => { const checked = event.target.checked; if (state) void run(() => claudeApi.settings(providerId, { ...state, project_skills: checked })); }} /><span>Nạp skill của dự án</span></label>
++    <label className={styles.check}><input type="checkbox" checked={state?.project_instructions || false} disabled={!state || disabled}
++      onChange={event => { const checked = event.target.checked; if (state) void run(() => claudeApi.settings(providerId, { ...state, project_instructions: checked })); }} /><span>Nạp hướng dẫn dự án (CLAUDE.md)</span></label>
++    <p className={styles.note}>Áp dụng cho các nguồn Claude. Hướng dẫn gồm CLAUDE.md, CLAUDE.local.md và .claude/rules. Skill được cấp dưới dạng nội dung SKILL.md. Thay đổi tạo phiên mới khi chat tiếp; lịch sử và memory MutiS được giữ.</p>
++    {(error || query.error) && <p role="alert">{error || query.error?.message}</p>}
++  </section>;
++}
+diff --git a/web/src/components/features/settings/claude-login.tsx b/web/src/components/features/settings/claude-login.tsx
+--- a/web/src/components/features/settings/claude-login.tsx
++++ b/web/src/components/features/settings/claude-login.tsx
+@@ -1,5 +1,6 @@
+-import { useState } from "react";
++import { useRef, useState } from "react";
+ import { ExternalLink, LogIn } from "lucide-react";
++import { safeClaudeLoginUrl } from "@/apis/claude.api";
+ import { settingsApi } from "@/apis/settings.api";
+ import { Button } from "@/components/button/button";
+ import { notify } from "@/components/toast/toast";
+@@ -7,24 +8,38 @@
+ import { errorText } from "./use-settings";
+ import styles from "./settings.module.css";
+ /** Claude Code CLI sign-in: opens the login URL, then the user pastes the confirmation code. */
+-export function ClaudeLogin({ providerId, onDone }: { providerId: string; onDone: () => void }) {
++export function ClaudeLogin({ providerId, onDone, disabled = false, onPending }: { providerId: string; onDone: () => void; disabled?: boolean; onPending?: (value: boolean) => void }) {
++  const locked = useRef(false);
+   const [session, setSession] = useState<{ session_id: string; url: string } | null>(null);
+   const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [message, setMessage] = useState(""); const [tail, setTail] = useState("");
+   async function run(action: () => Promise<void>) {
+-    setBusy(true); setMessage("");
+-    try { await action(); } catch (error) { setMessage(errorText(error, t.error)); } finally { setBusy(false); }
++    if (locked.current) return;
++    locked.current = true; setBusy(true); setMessage("");
++    try { await action(); } catch (error) { setMessage(errorText(error, t.error)); } finally { locked.current = false; setBusy(false); }
+   }
+-  if (!session) return <Button disabled={busy} onClick={() => void run(async () => setSession(await settingsApi.loginStart(providerId)))}>
+-    <LogIn size={16} aria-hidden="true" />{t.providers.login}</Button>;
++  if (!session) return <Button disabled={busy || disabled} onClick={() => {
++    if (locked.current) return;
++    const popup = window.open("about:blank", "_blank");
++    if (popup) popup.opener = null;
++    void run(async () => {
++      try {
++        const result = await settingsApi.loginStart(providerId);
++        const url = safeClaudeLoginUrl(result.url);
++        if (!url) { await settingsApi.loginCancel(providerId); throw new Error("Link đăng nhập Claude không hợp lệ"); }
++        setSession({ ...result, url }); onPending?.(true);
++        if (popup) popup.location.href = url;
++      } catch (error) { popup?.close(); throw error; }
++    });
++  }}><LogIn size={16} aria-hidden="true" />Đăng nhập qua web</Button>;
+   return <div className={styles.confirm} role="group" aria-label={t.providers.login}>
+     <a href={session.url} target="_blank" rel="noreferrer">{t.providers.loginOpen} <ExternalLink size={14} aria-hidden="true" /></a>
+     <label>{t.providers.loginCode}<input value={code} autoComplete="off" spellCheck={false} onChange={event => setCode(event.target.value)} /></label>
+     <Button variant="primary" disabled={busy || !code.trim()} onClick={() => void run(async () => {
+       const result = await settingsApi.loginCode(providerId, session.session_id, code.trim());
+       setMessage(result.message); setTail(result.output_tail);
+-      if (result.logged_in) { setSession(null); notify(t.providers.loginDone); onDone(); }
++      if (result.logged_in) { setSession(null); onPending?.(false); notify(t.providers.loginDone); onDone(); }
+     })}>{t.providers.loginSubmit}</Button>
+-    <Button disabled={busy} onClick={() => void run(async () => { await settingsApi.loginCancel(providerId).catch(() => undefined); setSession(null); })}>{t.cancel}</Button>
++    <Button disabled={busy} onClick={() => void run(async () => { await settingsApi.loginCancel(providerId); setSession(null); onPending?.(false); })}>{t.cancel}</Button>
+     {message && <p className={styles.note} role="status">{message}</p>}{tail && <pre className={styles.log}>{tail}</pre>}
+   </div>;
+ }
+diff --git a/web/src/components/features/settings/provider-form.tsx b/web/src/components/features/settings/provider-form.tsx
+--- a/web/src/components/features/settings/provider-form.tsx
++++ b/web/src/components/features/settings/provider-form.tsx
+@@ -4,7 +4,7 @@
+ import { Button } from "@/components/button/button";
+ import type { ConnectionTest, FullConfig, Provider, ProviderInput } from "@/schema/settings.schema";
+ import { settingsText as t } from "@/text/settings";
+-import { ClaudeLogin } from "./claude-login";
++import { ClaudeConnection } from "./claude-connection";
+ import { CodexConnection } from "./codex-connection";
+ import { errorText } from "./use-settings";
+ import styles from "./settings.module.css";
+@@ -80,7 +80,7 @@
+       <Button variant="danger" onClick={() => void act("delete", async () => onDeleted(await settingsApi.deleteProvider(provider.id)))}>{t.delete}</Button>
+       <Button onClick={() => setConfirmDelete(false)}>{t.cancel}</Button></div>}
+     {(note || status) && <p className={styles.note} role="status" title={status?.detail}>{note || status?.message}</p>}
+-    {provider?.kind === "claude_cli" && status && !status.ok && <ClaudeLogin providerId={provider.id} onDone={() => void act("test", () => test(provider.id))} />}
++    {provider?.kind === "claude_cli" && <ClaudeConnection key={provider.id} providerId={provider.id} />}
+     {provider?.kind === "codex_cli" && <CodexConnection key={provider.id} providerId={provider.id} />}
+   </form>;
+ }

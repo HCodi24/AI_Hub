@@ -4,7 +4,7 @@ import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
 import type { ConnectionTest, FullConfig, Provider, ProviderInput } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
-import { ClaudeLogin } from "./claude-login";
+import { ClaudeConnection } from "./claude-connection";
 import { CodexConnection } from "./codex-connection";
 import { errorText } from "./use-settings";
 import styles from "./settings.module.css";
@@ -80,7 +80,7 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested }:
       <Button variant="danger" onClick={() => void act("delete", async () => onDeleted(await settingsApi.deleteProvider(provider.id)))}>{t.delete}</Button>
       <Button onClick={() => setConfirmDelete(false)}>{t.cancel}</Button></div>}
     {(note || status) && <p className={styles.note} role="status" title={status?.detail}>{note || status?.message}</p>}
-    {provider?.kind === "claude_cli" && status && !status.ok && <ClaudeLogin providerId={provider.id} onDone={() => void act("test", () => test(provider.id))} />}
+    {provider?.kind === "claude_cli" && <ClaudeConnection key={provider.id} providerId={provider.id} />}
     {provider?.kind === "codex_cli" && <CodexConnection key={provider.id} providerId={provider.id} />}
   </form>;
 }

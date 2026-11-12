@@ -2,7 +2,6 @@
 use crate::{
     api::{ApiError, ApiResult},
     app::AppState,
-    providers::{self, discovery},
 };
 use axum::{
     extract::{Path, State},
@@ -134,66 +133,7 @@ pub(super) async fn test_provider_uncached(
             ),
         },
         "codex_cli" => super::codex::test_connection(&state, &id).await,
-        "claude_cli" => {
-            let name = if provider.kind == "codex_cli" {
-                "codex"
-            } else {
-                "claude"
-            };
-            match discovery::cli_probe(name, &provider.executable, Duration::from_secs(10)).await {
-                Some((version, path)) if name == "claude" => {
-                    match discovery::run_cli_auth_status(
-                        std::path::Path::new(&path),
-                        Duration::from_secs(10),
-                    )
-                    .await
-                    {
-                        Some(true) => {
-                            connection(true, "connected", &format!("Đã kết nối · {version}"), &path)
-                        }
-                        Some(false) => {
-                            connection(false, "error", "Claude Code chưa đăng nhập", &path)
-                        }
-                        None => {
-                            connection(true, "connected", &format!("Đã kết nối · {version}"), &path)
-                        }
-                    }
-                }
-                Some((version, path)) => connection(
-                    true,
-                    "connected",
-                    &format!("Đã kết nối · {version} · {path}"),
-                    &path,
-                ),
-                None if providers::cli_support::resolve_executable(
-                    name,
-                    Some(&provider.executable),
-                )
-                .is_none() =>
-                {
-                    connection(
-                        false,
-                        "not_configured",
-                        if name == "codex" {
-                            "Chưa cài Codex CLI"
-                        } else {
-                            "Chưa cài Claude Code CLI"
-                        },
-                        if name == "codex" {
-                            "npm i -g @openai/codex"
-                        } else {
-                            "npm i -g @anthropic-ai/claude-code"
-                        },
-                    )
-                }
-                None => connection(
-                    false,
-                    "error",
-                    "Không kết nối được",
-                    "Không chạy được --version trong 10 giây hoặc phản hồi không hợp lệ",
-                ),
-            }
-        }
+        "claude_cli" => super::claude::test_connection(&state, &id).await,
         _ => connection(
             false,
             "error",
