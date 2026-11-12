@@ -460,10 +460,12 @@ pub(crate) async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<R
             logs: Vec::new(),
             diff: String::new(),
             files: Vec::new(),
+            provider: String::new(),
             error: None,
         }],
         session_id: None,
         mutis: config_snapshot.mutis.clone(),
+        mcp: Vec::new(),
     };
     let (sender, mut receiver) = mpsc::channel::<ProviderEvent>(32);
     tokio::spawn(async move {

@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/skeleton/skeleton";
 import { notify } from "@/components/toast/toast";
 import type { AddonChange, AddonHome, AddonKind } from "@/schema/addons.schema";
 import { settingsText as t } from "@/text/settings";
+import { McpSection } from "./mcp-section";
 import { errorText } from "./use-settings";
 import styles from "./settings.module.css";
 type Item = { name: string; detail: string };
@@ -88,6 +89,7 @@ export function AddonsTab() {
         <span className={styles.rowText}><strong>{plugin.id}</strong></span>
         <span className={styles.badge} data-on={plugin.enabled}>{plugin.enabled ? t.addons.inHub : t.addons.disabled}</span></li>)}</ul>
     </section>
+    <McpSection />
     {output && <section aria-label={t.addons.output}><h4>{t.addons.output}</h4><pre className={styles.log} aria-live="polite">{output}</pre></section>}
   </div>;
 }

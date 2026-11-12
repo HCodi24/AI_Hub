@@ -31,6 +31,16 @@
 .history .groupHead { min-height: 36px; gap: 6px; align-items: center; padding: 6px 8px; color: var(--muted); font-size: var(--font-14); font-weight: 550; }
 .history .chatItem { padding-left: 30px; }
 .history button[aria-current] { background: var(--sidebar-hover); font-weight: 550; }
+.chatRow { display: flex; align-items: center; border-radius: 8px; margin-bottom: 2px; }
+.chatRow[data-active], .chatRow:hover, .chatRow:focus-within { background: var(--sidebar-hover); }
+.history .chatRow .chatItem { flex: 1; min-width: 0; margin-bottom: 0; }
+.history .deleteChat { flex: 0 0 36px; width: 36px; padding: 0; margin: 0 4px 0 0; align-items: center; justify-content: center; color: var(--muted); }
+.history .deleteChat:hover:enabled { color: var(--danger); }
+.deleteConfirm { margin: 4px 0 8px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
+.history .deleteConfirm p { padding: 0; margin: 0 0 8px; white-space: normal; overflow-wrap: anywhere; }
+.deleteConfirm > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.history .deleteConfirm button { width: auto; margin: 0; justify-content: center; border: 1px solid var(--border); }
+.history .deleteConfirm button:last-child { color: var(--danger); background: var(--danger-bg); border-color: var(--danger); }
 .preferences { width: 44px; }
 .profile { display: flex; justify-content: center; align-items: center; width: 44px; height: 48px; list-style: none; border-radius: 12px; }
 .profile::-webkit-details-marker { display: none; }

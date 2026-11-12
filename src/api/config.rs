@@ -12,6 +12,9 @@ pub(crate) struct ConfigInput {
     default_folder: Option<String>,
     #[serde(default)]
     theme: Option<String>,
+    /// The whole MCP list when sent; omitted = unchanged.
+    #[serde(default)]
+    mcp_servers: Option<Vec<config::McpServerConfig>>,
     #[serde(default)]
     memory: Option<crate::features::memory::MemoryConfig>,
     // Optional on purpose: a partial update (e.g. the UI saving only the working folder) must NOT reset
@@ -52,6 +55,10 @@ pub(crate) async fn put_config(
     {
         return Err(ApiError::new(StatusCode::BAD_REQUEST, "Giao diện không hợp lệ"));
     }
+    if let Some(servers) = &input.mcp_servers {
+        config::validate_mcp_servers(servers)
+            .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
+    }
     if let Some(memory) = &input.memory {
         memory
             .validate()
@@ -66,6 +73,9 @@ pub(crate) async fn put_config(
     }
     if let Some(theme) = input.theme {
         config.theme = theme;
+    }
+    if let Some(servers) = input.mcp_servers {
+        config.mcp_servers = servers;
     }
     if let Some(minutes) = input.chat_idle_timeout_minutes {
         config.chat_idle_timeout_minutes = minutes;

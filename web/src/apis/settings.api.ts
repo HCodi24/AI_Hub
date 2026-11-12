@@ -1,7 +1,7 @@
 import { http, parseResponse } from "@/lib/http";
 import {
   CliCandidatesSchema, CliStatusSchema, ConnectionTestSchema, FullConfigSchema, LoginResultSchema, LoginStartSchema,
-  ModelsSchema, type MemoryConfig, type ProviderInput,
+  McpToolsSchema, ModelsSchema, type McpServer, type MemoryConfig, type ProviderInput,
 } from "@/schema/settings.schema";
 const send = async (path: string, method: string, body?: unknown) =>
   (await http.request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })).json() as Promise<unknown>;
@@ -9,10 +9,11 @@ const id = (value: string) => encodeURIComponent(value);
 export const settingsApi = {
   async config(signal?: AbortSignal) { return parseResponse(FullConfigSchema, await http.get("/config", signal)); },
   /** Partial update: the server keeps every field that is not sent (default_folder is optional too). */
-  async saveConfig(body: { default_folder: string; chat_idle_timeout_minutes?: number; memory?: MemoryConfig;
-    planner_provider_id?: string; planner_model?: string }) {
+  async saveConfig(body: { default_folder?: string; chat_idle_timeout_minutes?: number; memory?: MemoryConfig;
+    planner_provider_id?: string; planner_model?: string; mcp_servers?: McpServer[] }) {
     return parseResponse(FullConfigSchema, await send("/config", "PUT", body));
   },
+  async testMcp(server: McpServer) { return parseResponse(McpToolsSchema, await send("/mcp/test", "POST", server)).tools; },
   async createProvider(body: ProviderInput) { return parseResponse(FullConfigSchema, await send("/providers", "POST", body)); },
   async updateProvider(provider: string, body: ProviderInput) {
     return parseResponse(FullConfigSchema, await send(`/providers/${id(provider)}`, "PUT", body));

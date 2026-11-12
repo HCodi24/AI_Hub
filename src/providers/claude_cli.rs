@@ -211,7 +211,10 @@ impl ClaudeParser {
                                 // A skill/plugin run shows as its own line in the reply, free of model tokens.
                                 if let Some(skill) = skill_name(block) {
                                     let lead = if self.delta_seen { "\n\n" } else { "" };
-                                    events.push(ProviderEvent::text("delta", format!("{lead}✦ {skill}\n\n")));
+                                    events.push(ProviderEvent::text(
+                                        "delta",
+                                        format!("{lead}✦ {skill}\n\n"),
+                                    ));
                                 }
                             }
                             _ => {}

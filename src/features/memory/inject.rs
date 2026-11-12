@@ -48,6 +48,7 @@ mod tests {
                     messages: messages.clone(),
                     session_id: session.clone(),
                     mutis: Default::default(),
+                    mcp: Vec::new(),
                 };
                 inject(&mut request, "MEMORY_CONTEXT");
                 let cli = matches!(kind, "codex_cli" | "claude_cli");

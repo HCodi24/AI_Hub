@@ -23,3 +23,6 @@ export const MemoryEventSchema = z.object({
 export type MemoryEvent = z.infer<typeof MemoryEventSchema>;
 
 export const MemoryMutationSchema = z.object({ ok: z.boolean() });
+export const MemoryProjectsSchema = z.object({
+    projects: z.array(z.object({ slug: z.string(), path: z.string(), description: z.string().default("") }))
+});

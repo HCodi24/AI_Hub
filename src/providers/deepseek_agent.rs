@@ -1,12 +1,9 @@
+use super::agent::AgentTools;
 use super::{emit_text, Provider, ProviderEvent, ProviderRequest};
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::{
-    collections::BTreeMap,
-    fs,
-    path::{Component, Path, PathBuf},
-};
+use std::path::PathBuf;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -14,6 +11,16 @@ const SYSTEM_WRITE: &str = concat!(
     "You are a coding assistant with file tools. Work only in the supplied folder with the tools. ",
     "Do not run commands. Answer the user's request; make only the changes they asked for, ",
     "then give a concise report."
+);
+const SYSTEM_FULL: &str = concat!(
+    "You are a coding assistant with file tools. Work only in the supplied folder with the tools. ",
+    "You can run commands in the working folder with run_command; prefer small, safe commands; ",
+    "never run destructive commands the user did not ask for. Answer the user's request; make only the changes they asked for, ",
+    "then give a concise report."
+);
+const SYSTEM_MCP: &str = concat!(
+    "You are an assistant with tools provided by MCP servers. Use them when they help; ",
+    "you cannot read or edit files or run commands except through those tools. Answer concisely."
 );
 const SYSTEM_READ: &str = concat!(
     "You are a coding assistant with READ-ONLY file tools (list and read). ",
@@ -56,14 +63,24 @@ impl Provider for DeepSeekAgentProvider {
             .find(|m| m.role == "user")
             .map(|m| m.content.as_str())
             .unwrap_or_default();
-        // Full grants the same file tools as Write; agent mode never runs commands.
+        // Full grants file tools and run_command; Read and Write retain their existing scope.
         let can_write = matches!(
             request.permission,
             super::Permission::Write | super::Permission::Full
         );
         let excerpts = parse_edit_only(task);
-        let edits_requested = can_write && task_asks_edits(task);
-        let system = if can_write { SYSTEM_WRITE } else { SYSTEM_READ };
+        // "mcp_agent" = the same loop with MCP tools only (no file tools).
+        let files = request.provider.kind != "mcp_agent";
+        let edits_requested = files && can_write && task_asks_edits(task);
+        let system = if !files {
+            SYSTEM_MCP
+        } else {
+            match request.permission {
+                super::Permission::Read => SYSTEM_READ,
+                super::Permission::Write => SYSTEM_WRITE,
+                super::Permission::Full => SYSTEM_FULL,
+            }
+        };
         let mut messages = vec![json!({"role":"system","content":system})];
         if excerpts.is_empty() {
             messages.extend(
@@ -89,11 +106,22 @@ impl Provider for DeepSeekAgentProvider {
             }
             messages.push(json!({"role":"user","content":prompt}));
         }
-        let tools = tool_definitions(can_write);
+        let mcp =
+            super::mcp::McpTools::start(&request.mcp, &request.folder, can_write, &events).await;
+        let mut agent_tools = AgentTools::new(
+            root,
+            request.permission,
+            request.mutis.deepseek_max_file_lines,
+            files,
+            mcp,
+        );
+        let tools = agent_tools.openai_definitions();
+        if tools.is_empty() {
+            bail!("Không có công cụ nào dùng được (kiểm tra MCP trong Cài đặt)");
+        }
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
             .build()?;
-        let mut snapshots = BTreeMap::<String, Option<String>>::new();
         let mut steps = 0;
         let mut tokens_in = 0u64;
         let mut tokens_out = 0u64;
@@ -182,62 +210,13 @@ impl Provider for DeepSeekAgentProvider {
                     call["function"]["arguments"].as_str().unwrap_or("{}"),
                 )
                 .unwrap_or(json!({}));
-                let path = args["path"].as_str().unwrap_or(".");
-                if name == "read_file" {
-                    if let Ok(file) = safe_path(&root, path) {
-                        if let Ok(text) = fs::read_to_string(file) {
-                            let total = text.lines().count();
-                            let start = args["start_line"].as_u64().unwrap_or(1).max(1) as usize;
-                            if args["start_line"].is_null()
-                                && args["end_line"].is_null()
-                                && total > request.mutis.deepseek_max_file_lines as usize
-                            {
-                                let _ = emit_text(
-                                    &events,
-                                    "log",
-                                    format!("Cảnh báo: {path} dài {total} dòng"),
-                                )
-                                .await;
-                            }
-                            let end = args["end_line"]
-                                .as_u64()
-                                .map(|v| v as usize)
-                                .unwrap_or(total)
-                                .min(total)
-                                .min(start.saturating_add(399));
-                            let _ = emit_text(&events, "log", format!("Đọc {path} {start}–{end}"))
-                                .await;
-                        }
+                let result = tokio::select! {
+                    _ = cancel.cancelled() => {
+                        failure = Some(anyhow::anyhow!("Đã dừng"));
+                        break;
                     }
-                }
-                if matches!(name, "edit_file" | "write_file") && !can_write {
-                    let _ = emit_text(&events, "log", format!("Từ chối: {path} (chế độ chỉ đọc)"))
-                        .await;
-                    messages.push(json!({
-                        "role": "tool",
-                        "tool_call_id": id,
-                        "content": "error: chế độ chỉ đọc — không được sửa hoặc ghi file"
-                    }));
-                    continue;
-                }
-                if matches!(name, "edit_file" | "write_file") {
-                    match safe_path(&root, path) {
-                        Ok(_) => {
-                            let _ = emit_text(&events, "log", format!("Sửa {path}")).await;
-                        }
-                        Err(error) => {
-                            let _ = emit_text(&events, "log", format!("Từ chối: {path} ({error})"))
-                                .await;
-                        }
-                    }
-                }
-                let result = run_tool(
-                    &root,
-                    name,
-                    &args,
-                    request.mutis.deepseek_max_file_lines,
-                    &mut snapshots,
-                );
+                    result = agent_tools.execute(name, args, &events, &cancel) => result,
+                };
                 messages.push(json!({"role":"tool","tool_call_id":id,"content":result}));
             }
             if failure.is_some() {
@@ -260,13 +239,8 @@ impl Provider for DeepSeekAgentProvider {
             )
             .await?;
         }
-        let diff = make_diff(&root, &snapshots);
-        for (path, before) in &snapshots {
-            let after = fs::read_to_string(root.join(path)).ok();
-            let (added, removed) = line_counts(
-                before.as_deref().unwrap_or(""),
-                after.as_deref().unwrap_or(""),
-            );
+        let diff = agent_tools.diff();
+        for (path, added, removed) in agent_tools.change_summaries() {
             emit_text(
                 &events,
                 "log",
@@ -290,219 +264,6 @@ impl Provider for DeepSeekAgentProvider {
 }
 
 pub struct DeepSeekAgentProvider;
-
-fn tool_definitions(write: bool) -> Value {
-    let s = json!({"type":"string"});
-    let all = json!([
-        {
-            "type": "function",
-            "function": {
-                "name": "list_dir",
-                "description": "List up to 300 entries in a relative directory.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"path": s},
-                    "required": ["path"]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "read_file",
-                "description": concat!(
-                    "Read numbered lines from a text file. At most 400 lines; ",
-                    "use ranges for long files."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": s,
-                        "start_line": {"type": "integer"},
-                        "end_line": {"type": "integer"}
-                    },
-                    "required": ["path"]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "edit_file",
-                "description": "Replace one exact unique occurrence.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"path": s, "old_text": s, "new_text": s},
-                    "required": ["path", "old_text", "new_text"]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "write_file",
-                "description": "Create or overwrite a UTF-8 file.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"path": s, "content": s},
-                    "required": ["path", "content"]
-                }
-            }
-        }
-    ]);
-    // Read-only mode: only list_dir and read_file are offered to the model.
-    if write {
-        return all;
-    }
-    let read_only: Vec<Value> = all
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|tool| {
-            matches!(
-                tool["function"]["name"].as_str(),
-                Some("list_dir" | "read_file")
-            )
-        })
-        .cloned()
-        .collect();
-    json!(read_only)
-}
-
-fn safe_path(root: &Path, raw: &str) -> Result<PathBuf> {
-    if raw.starts_with('/') || raw.starts_with('\\') || raw.as_bytes().get(1) == Some(&b':') {
-        bail!("Đường dẫn phải tương đối và không được chứa ..");
-    }
-    let normalized = raw.replace('\\', "/");
-    if normalized.split('/').any(|part| part == "..") {
-        bail!("Đường dẫn phải tương đối và không được chứa ..");
-    }
-    let rel = Path::new(&normalized);
-    if rel.as_os_str().is_empty()
-        || rel.is_absolute()
-        || rel
-            .components()
-            .any(|c| !matches!(c, Component::Normal(_) | Component::CurDir))
-    {
-        bail!("Đường dẫn phải tương đối và không được chứa ..");
-    }
-    if rel.components().any(|c| {
-        c.as_os_str().to_string_lossy().eq_ignore_ascii_case(".git")
-            || c.as_os_str()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("target")
-            || c.as_os_str()
-                .to_string_lossy()
-                .eq_ignore_ascii_case("node_modules")
-            || c.as_os_str()
-                .to_string_lossy()
-                .eq_ignore_ascii_case(".codegraph")
-    }) {
-        bail!("Đường dẫn thuộc vùng bị cấm");
-    }
-    let candidate = root.join(rel);
-    let mut ancestor = candidate.as_path();
-    let mut suffix = Vec::new();
-    while !ancestor.exists() {
-        suffix.push(
-            ancestor
-                .file_name()
-                .context("Đường dẫn không hợp lệ")?
-                .to_os_string(),
-        );
-        ancestor = ancestor.parent().context("Đường dẫn không hợp lệ")?;
-    }
-    let mut check = ancestor.canonicalize()?;
-    for part in suffix.iter().rev() {
-        check.push(part);
-    }
-    if check != root && !check.starts_with(root) {
-        bail!("Đường dẫn vượt khỏi thư mục chat");
-    }
-    Ok(candidate)
-}
-
-fn run_tool(
-    root: &Path,
-    name: &str,
-    args: &Value,
-    max_lines: u32,
-    snapshots: &mut BTreeMap<String, Option<String>>,
-) -> String {
-    let result = (|| -> Result<String> {
-        let raw = args["path"].as_str().context("Thiếu path")?;
-        let path = safe_path(root, raw)?;
-        let relative = path
-            .strip_prefix(root)?
-            .to_string_lossy()
-            .replace('\\', "/");
-        match name {
-            "list_dir" => {
-                let mut entries = fs::read_dir(&path)?
-                    .filter_map(Result::ok)
-                    .map(|e| {
-                        let typ = if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                            "d"
-                        } else {
-                            "f"
-                        };
-                        format!("{typ} {}", e.file_name().to_string_lossy())
-                    })
-                    .collect::<Vec<_>>();
-                entries.sort();
-                entries.truncate(300);
-                Ok(entries.join("\n"))
-            }
-            "read_file" => {
-                let text = fs::read_to_string(&path)?;
-                let lines = text.lines().collect::<Vec<_>>();
-                let start = args["start_line"].as_u64().unwrap_or(1).max(1) as usize;
-                let end = args["end_line"].as_u64().unwrap_or(lines.len() as u64) as usize;
-                if args["start_line"].is_null()
-                    && args["end_line"].is_null()
-                    && lines.len() > max_lines as usize
-                {
-                    bail!("File dài {} dòng, hãy đọc theo khoảng start_line/end_line (tối đa 400 dòng mỗi lần)",lines.len());
-                }
-                if end < start {
-                    bail!("end_line phải >= start_line");
-                }
-                let end = end.min(lines.len()).min(start.saturating_add(399));
-                let result = lines
-                    .iter()
-                    .enumerate()
-                    .skip(start - 1)
-                    .take(end.saturating_sub(start) + 1)
-                    .map(|(i, l)| format!("{}: {}", i + 1, l))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                Ok(result)
-            }
-            "edit_file" => {
-                let text = fs::read_to_string(&path)?;
-                let old = args["old_text"].as_str().context("Thiếu old_text")?;
-                let new = args["new_text"].as_str().context("Thiếu new_text")?;
-                let updated = exact_replace(&text, old, new)?;
-                snapshots.entry(relative.clone()).or_insert(Some(text));
-                fs::write(&path, updated)?;
-                Ok("edited".into())
-            }
-            "write_file" => {
-                let content = args["content"].as_str().context("Thiếu content")?;
-                snapshots
-                    .entry(relative.clone())
-                    .or_insert_with(|| fs::read_to_string(&path).ok());
-                if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::write(&path, content)?;
-                Ok(format!("wrote {} chars", content.chars().count()))
-            }
-            _ => bail!("Công cụ không tồn tại"),
-        }
-    })();
-    result.unwrap_or_else(|e| format!("error: {e:#}"))
-}
 
 pub fn parse_edit_only(input: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
@@ -548,127 +309,4 @@ fn task_asks_edits(task: &str) -> bool {
     ]
     .iter()
     .any(|word| text.contains(word))
-}
-fn exact_replace(text: &str, old: &str, new: &str) -> Result<String> {
-    let count = text.matches(old).count();
-    if count != 1 {
-        bail!("old_text khớp {count} lần; cần đúng 1 lần");
-    }
-    Ok(text.replacen(old, new, 1))
-}
-fn line_counts(before: &str, after: &str) -> (usize, usize) {
-    fn frequencies(text: &str) -> BTreeMap<&str, usize> {
-        let mut counts = BTreeMap::new();
-        for line in text.lines() {
-            *counts.entry(line).or_insert(0) += 1;
-        }
-        counts
-    }
-    let old = frequencies(before);
-    let new = frequencies(after);
-    let added = new
-        .iter()
-        .map(|(line, count)| count.saturating_sub(old.get(line).copied().unwrap_or(0)))
-        .sum();
-    let removed = old
-        .iter()
-        .map(|(line, count)| count.saturating_sub(new.get(line).copied().unwrap_or(0)))
-        .sum();
-    (added, removed)
-}
-fn make_diff(root: &Path, snapshots: &BTreeMap<String, Option<String>>) -> String {
-    let mut out = String::new();
-    for (path, before) in snapshots {
-        let after = fs::read_to_string(root.join(path)).unwrap_or_default();
-        out.push_str(&format!("--- a/{path}\n+++ b/{path}\n"));
-        let old = before.as_deref().unwrap_or("").lines().collect::<Vec<_>>();
-        let new = after.lines().collect::<Vec<_>>();
-        out.push_str(&format!("@@ -1,{} +1,{} @@\n", old.len(), new.len()));
-        for line in &old {
-            out.push('-');
-            out.push_str(line);
-            out.push('\n');
-        }
-        for line in &new {
-            out.push('+');
-            out.push_str(line);
-            out.push('\n');
-        }
-        if out.len() > 20 * 1024 {
-            out.truncate(20 * 1024);
-            out.push_str("\n...[diff truncated at 20 KB]\n");
-            break;
-        }
-    }
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn rejects_unsafe_paths() {
-        let root = std::env::current_dir().unwrap();
-        for path in [
-            "../escape",
-            "C:\\temp\\x",
-            ".git/config",
-            "target/out",
-            "node_modules/x",
-            ".codegraph/index",
-        ] {
-            assert!(safe_path(&root, path).is_err(), "{path}");
-        }
-    }
-    #[test]
-    fn edit_only_blocks_are_parsed() {
-        assert_eq!(
-            parse_edit_only("Do this\n```FILE: src/lib.rs LINES 1-2\nlet x = 1;\n```"),
-            vec![("src/lib.rs (lines 1-2)".to_owned(), "let x = 1;".to_owned())]
-        );
-    }
-    #[test]
-    fn recognizes_edit_requests() {
-        assert!(task_asks_edits("Sửa hàm này"));
-        assert!(!task_asks_edits("Giải thích hàm này"));
-    }
-    #[test]
-    fn edit_requires_exactly_one_match() {
-        assert_eq!(
-            exact_replace("a b a", "a", "x").unwrap_err().to_string(),
-            "old_text khớp 2 lần; cần đúng 1 lần"
-        );
-        assert_eq!(exact_replace("a b", "a", "x").unwrap(), "x b");
-    }
-    #[test]
-    fn diff_counts_changed_lines() {
-        assert_eq!(line_counts("a\nb\n", "a\nc\n"), (1, 1));
-    }
-}
-
-#[cfg(test)]
-mod tool_set_tests {
-    use super::tool_definitions;
-
-    fn names(write: bool) -> Vec<String> {
-        tool_definitions(write)
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|tool| tool["function"]["name"].as_str().unwrap().to_owned())
-            .collect()
-    }
-
-    #[test]
-    fn read_only_mode_offers_no_editing_tools() {
-        assert_eq!(names(false), ["list_dir", "read_file"]);
-    }
-
-    #[test]
-    fn write_mode_offers_all_four_tools() {
-        assert_eq!(
-            names(true),
-            ["list_dir", "read_file", "edit_file", "write_file"]
-        );
-    }
 }

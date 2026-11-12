@@ -14,11 +14,11 @@ pub enum Permission {
     Read,
     #[default]
     Write,
-    /// Edit files and run commands in the working directory (CLI providers only).
+    /// CLI providers run commands themselves; API sources get run_command.
     Full,
 }
 
-/// File tools an OpenAI-compatible source may use in agent mode (never commands).
+/// File tools an API-key source may use in agent mode.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum FileTools {
@@ -66,6 +66,9 @@ pub struct ChatMessage {
     pub diff: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<crate::features::changes::FileChange>,
+    /// Provider kind that wrote this assistant reply (e.g. `codex_cli`), for its avatar in the UI.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub provider: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -297,21 +300,25 @@ fn unix_time() -> u64 {
 
 /// Decide how a chat message is run for a source:
 /// - `Ok(None)`: normal chat (no file tools);
-/// - `Ok(Some(permission))`: agent mode with read-only (`Read`) or full (`Write`) file tools;
+/// - `Ok(Some(permission))`: read-only (`Read`), file-write (`Write`), or command-enabled (`Full`) agent mode;
 /// - `Err(message)`: the user asked for file tools on a source that does not allow them.
 pub fn agent_permission(
     provider: &crate::config::ProviderConfig,
     file_tools: FileTools,
+    permission: Permission,
 ) -> Result<Option<Permission>, &'static str> {
     if file_tools == FileTools::None {
         return Ok(None);
     }
-    if provider.kind != "openai_compat" || !provider.agent_capable {
+    if provider.kind != "anthropic" && (provider.kind != "openai_compat" || !provider.agent_capable)
+    {
         return Err("Bật «Cho phép AI đọc/sửa file» cho nguồn này trong Cài đặt");
     }
     Ok(Some(match file_tools {
         FileTools::Read => Permission::Read,
-        _ => Permission::Write,
+        FileTools::Write if permission == Permission::Full => Permission::Full,
+        FileTools::Write => Permission::Write,
+        FileTools::None => unreachable!(),
     }))
 }
 
@@ -340,11 +347,19 @@ mod file_tools_tests {
     #[test]
     fn no_file_tools_is_a_normal_chat_for_any_source() {
         assert_eq!(
-            agent_permission(&source("anthropic", false), FileTools::None),
+            agent_permission(
+                &source("anthropic", false),
+                FileTools::None,
+                Permission::Write
+            ),
             Ok(None)
         );
         assert_eq!(
-            agent_permission(&source("openai_compat", true), FileTools::None),
+            agent_permission(
+                &source("openai_compat", true),
+                FileTools::None,
+                Permission::Write
+            ),
             Ok(None)
         );
     }
@@ -353,19 +368,50 @@ mod file_tools_tests {
     fn file_tools_map_to_agent_read_or_write() {
         let deploy = source("openai_compat", true);
         assert_eq!(
-            agent_permission(&deploy, FileTools::Read),
+            agent_permission(&deploy, FileTools::Read, Permission::Write),
             Ok(Some(Permission::Read))
         );
         assert_eq!(
-            agent_permission(&deploy, FileTools::Write),
+            agent_permission(&deploy, FileTools::Write, Permission::Write),
             Ok(Some(Permission::Write))
+        );
+        assert_eq!(
+            agent_permission(&deploy, FileTools::Write, Permission::Full),
+            Ok(Some(Permission::Full))
+        );
+        assert_eq!(
+            agent_permission(&deploy, FileTools::Read, Permission::Full),
+            Ok(Some(Permission::Read))
+        );
+    }
+
+    #[test]
+    fn anthropic_api_is_agent_capable_and_receives_full_permission() {
+        let anthropic = source("anthropic", false);
+        assert_eq!(
+            agent_permission(&anthropic, FileTools::Write, Permission::Full),
+            Ok(Some(Permission::Full))
+        );
+        assert_eq!(
+            agent_permission(&anthropic, FileTools::Read, Permission::Write),
+            Ok(Some(Permission::Read))
         );
     }
 
     #[test]
     fn file_tools_are_refused_when_the_source_is_not_agent_capable() {
-        assert!(agent_permission(&source("openai_compat", false), FileTools::Write).is_err());
-        assert!(agent_permission(&source("codex_cli", true), FileTools::Read).is_err());
+        assert!(agent_permission(
+            &source("openai_compat", false),
+            FileTools::Write,
+            Permission::Write
+        )
+        .is_err());
+        assert!(agent_permission(
+            &source("codex_cli", true),
+            FileTools::Read,
+            Permission::Write
+        )
+        .is_err());
     }
 
     #[test]

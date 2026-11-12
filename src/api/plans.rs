@@ -359,10 +359,12 @@ pub(super) async fn generate_plan(
             logs: Vec::new(),
             diff: String::new(),
             files: Vec::new(),
+            provider: String::new(),
             error: None,
         }],
         session_id: None,
         mutis: cfg.mutis.clone(),
+        mcp: Vec::new(),
     };
     let task_cancel = cancel.clone();
     let job_guard = JobGuard::new(state.active_jobs.clone());

@@ -77,7 +77,14 @@ export const useChatStore = create<ChatState>((set) => ({
         ChatMessageSchema.parse({ role: "assistant", content: "" })] };
   }),
   event: (event, data) => set((state) => {
-    if (event === "status" || event === "heartbeat") return { status: { ...state.status, ...data } };
+    if (event === "heartbeat") return { status: { ...state.status, ...data } };
+    if (event === "status") {
+      const last = state.messages.at(-1);
+      // The reply's provider decides its avatar while it streams (the saved copy has it from the server).
+      const messages = last && data.provider_kind && !last.provider
+        ? [...state.messages.slice(0, -1), { ...last, provider: data.provider_kind }] : state.messages;
+      return { status: { ...state.status, ...data }, messages };
+    }
     const messages = [...state.messages];
     const last = messages[messages.length - 1];
     if (!last) return {};

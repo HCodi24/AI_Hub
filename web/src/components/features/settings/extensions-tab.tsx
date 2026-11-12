@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { extensionsApi } from "@/apis/extensions.api";
 import { Button } from "@/components/button/button";
+import { PetsSection } from "@/components/features/pets/pets-section";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { notify } from "@/components/toast/toast";
 import type { Extension, ExtensionAction } from "@/schema/extensions.schema";
@@ -58,6 +59,7 @@ export function ExtensionsTab({ folder }: { folder: string }) {
         <Button variant="primary" onClick={() => void run(card, pending.action)}>{t.extensions.run}</Button>
         <Button onClick={() => setPending(null)}>{t.cancel}</Button></div>}
     </article>)}
+    <PetsSection />
     <section aria-label={t.extensions.log}><h3>{t.extensions.log}</h3>
       <pre className={styles.log} aria-live="polite">{log.trim() || t.extensions.empty}</pre></section>
   </div>;

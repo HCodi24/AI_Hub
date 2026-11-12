@@ -1,4 +1,15 @@
 export const chatText = {
+  importFile: "Import file", removeFile: "Xóa file đính kèm", attachedFiles: "File đính kèm",
+  imageTooLarge: "Ảnh tối đa 10 MB mỗi file.",
+  fileHint: "Kéo thả ảnh, file văn bản hoặc mã nguồn vào đây, hoặc bấm + để chọn file.",
+  fileTooLarge: "File văn bản tối đa 200 KB mỗi file.", maxFiles: "Mỗi tin nhắn tối đa 5 file đính kèm.",
+  unsupportedFile: "Hiện hỗ trợ ảnh và file văn bản/mã nguồn UTF-8 hoặc UTF-16. Chưa đọc trực tiếp PDF, Word, Excel hay file nén.",
+  emptyFile: "File không có nội dung văn bản.", importingFiles: "Đang đọc file…", dropFiles: "Thả file để đính kèm",
+  quickReply: "Trả lời nhanh",
+  deleteChat: "Xóa chat", deletingChat: "Đang xóa…", cancelDelete: "Hủy",
+  deleteConfirm: "Xóa cuộc trò chuyện này? Lịch sử tin nhắn sẽ bị xóa và không thể hoàn tác.",
+  keepMemory: "Memory vẫn được giữ lại. Bạn có thể xóa riêng trong Bộ nhớ dự án.",
+  deleteFailed: "Không thể xóa cuộc trò chuyện.",
   limitWindowLabels: { "codex · 5h": "Giới hạn 5 giờ", "codex · 7d": "Hàng tuần" },
   permissionHeading: "AI được phép thực hiện những thao tác nào?",
   permissionDescriptions: {

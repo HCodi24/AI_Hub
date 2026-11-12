@@ -71,6 +71,8 @@ pub fn list_projects(config: &Path) -> Vec<Project> {
             let mut p = l.splitn(3, " | ");
             Some(Project { slug: p.next()?.into(), path: p.next()?.into(), description: p.next().unwrap_or("").into() })
         })
+        // Opening the panel registers a folder; only projects with actual notes are worth recalling.
+        .filter(|p| fs::metadata(root.join(&p.slug).join("core.md")).is_ok_and(|m| m.len() > 0))
         .collect()
 }
 /// Another project's `core.md`; the slug must be listed in `projects.txt`.

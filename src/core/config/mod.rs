@@ -1,8 +1,10 @@
+mod mcp;
 mod migrate;
 mod mutis;
 mod provider;
 mod store;
 
+pub use mcp::*;
 pub use mutis::*;
 pub use provider::*;
 pub use store::*;
@@ -31,6 +33,9 @@ pub struct Config {
     /// Interface theme: "light", "dark" or "system"; empty until the user picks one.
     #[serde(default)]
     pub theme: String,
+    /// MCP servers MutiS runs for in-app (API source) agents.
+    #[serde(default)]
+    pub mcp_servers: Vec<McpServerConfig>,
 }
 
 fn default_chat_idle_timeout_minutes() -> u32 {
@@ -114,6 +119,7 @@ impl Config {
             mutis: MutisConfig::default(),
             self_dev: SelfDevConfig::default(),
             theme: String::new(),
+            mcp_servers: Vec::new(),
         }
     }
 }

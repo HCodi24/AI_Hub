@@ -11,6 +11,8 @@ use serde_json::json;
 
 pub mod addons;
 pub mod attachments;
+pub mod mcp;
+pub mod pets;
 pub mod chat;
 pub mod config;
 pub mod debate;
@@ -176,6 +178,10 @@ pub fn router(state: AppState) -> Router {
             post(crate::api::chat::stop_chat),
         )
         .route("/api/pick-folder", post(crate::api::folder::pick_folder))
+        .route("/api/mcp/test", post(crate::api::mcp::test))
+        .route("/api/pets", get(crate::api::pets::list))
+        .route("/api/pets/{name}", get(crate::api::pets::sprite).delete(crate::api::pets::remove))
+        .route("/api/pets/{name}/install", post(crate::api::pets::install))
         .route("/api/chats", get(crate::api::chat::list_chats))
         .route(
             "/api/chats/{chat_id}",

@@ -1,0 +1,19 @@
+/* Sheet: 8 x 9 cells of 192 x 208 px, shown at 36 x 39 px. Rows as in the Codex TUI: 0 = idle, 7 = running. */
+.pet { --w: 36px; --h: 39px; display: inline-block; flex-shrink: 0; width: var(--w); height: var(--h); margin: -8px 0;
+  background-size: calc(var(--w) * 8) calc(var(--h) * var(--rows, 9)); background-repeat: no-repeat; image-rendering: pixelated;
+  animation: idle var(--idle, 6.6s) step-end infinite; }
+.pet[data-busy=true] { animation: running 0.72s steps(6) infinite; }
+/* Idle frame shares of the loop (Codex: 1680, 660, 660, 840, 840, 1920 ms; Clawd is the same, 6x faster). */
+@keyframes idle {
+  0% { background-position: 0 0; }
+  25.45% { background-position: calc(var(--w) * -1) 0; }
+  35.45% { background-position: calc(var(--w) * -2) 0; }
+  45.45% { background-position: calc(var(--w) * -3) 0; }
+  58.18% { background-position: calc(var(--w) * -4) 0; }
+  70.91% { background-position: calc(var(--w) * -5) 0; }
+}
+@keyframes running {
+  from { background-position: 0 calc(var(--h) * -7); }
+  to { background-position: calc(var(--w) * -6) calc(var(--h) * -7); }
+}
+@media (prefers-reduced-motion: reduce) { .pet, .pet[data-busy=true] { animation: none; background-position: 0 0; } }

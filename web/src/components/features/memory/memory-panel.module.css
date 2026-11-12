@@ -1,4 +1,6 @@
 .scopes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
-.scopes button { display: block; width: 100%; text-align: left; overflow-wrap: anywhere; margin-bottom: 8px; }
+.row { display: flex; gap: 6px; align-items: stretch; margin-bottom: 8px; }
+.row > :first-child { flex: 1; min-width: 0; display: block; text-align: left; overflow-wrap: anywhere; align-self: center; }
+.row > button:last-child { flex-shrink: 0; display: grid; place-items: center; padding: 0 10px; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 @media (max-width: 699px) { .scopes { grid-template-columns: minmax(0, 1fr); } }

@@ -1,3 +1,4 @@
+pub(crate) mod agent;
 pub mod anthropic;
 pub mod claude_cli;
 pub(crate) mod cli_support;
@@ -5,6 +6,7 @@ pub mod codex_cli;
 pub mod deepseek_agent;
 pub(crate) mod discovery;
 pub(crate) mod limits;
+pub mod mcp;
 pub mod openai_compat;
 
 use crate::{
@@ -31,6 +33,8 @@ pub struct ProviderRequest {
     pub messages: Vec<ChatMessage>,
     pub session_id: Option<String>,
     pub mutis: MutisConfig,
+    /// MCP servers the in-app agent may use (only API sources that run their own tool loop read this).
+    pub mcp: Vec<crate::config::McpServerConfig>,
 }
 
 pub(crate) fn api_images_with_limit(messages: &mut [ChatMessage]) -> bool {
@@ -132,7 +136,7 @@ pub trait Provider: Send + Sync {
 pub fn for_kind(kind: &str) -> Result<Box<dyn Provider>> {
     match kind {
         "openai_compat" => Ok(Box::new(openai_compat::OpenAiCompatibleProvider)),
-        "deepseek_agent" => Ok(Box::new(deepseek_agent::DeepSeekAgentProvider)),
+        "deepseek_agent" | "mcp_agent" => Ok(Box::new(deepseek_agent::DeepSeekAgentProvider)),
         "anthropic" => Ok(Box::new(anthropic::AnthropicProvider)),
         "codex_cli" => Ok(Box::new(codex_cli::CodexCliProvider)),
         "claude_cli" => Ok(Box::new(claude_cli::ClaudeCliProvider)),

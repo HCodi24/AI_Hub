@@ -23,6 +23,7 @@ function load(file) {
   return module.exports;
 }
 const text = load(path.join(web, "src/text/chat.ts")).chatText;
+require("./test-chat-choices.cjs")(load, web);
 assert.equal(text.newChat, "Chat mới");
 const schema = load(path.join(web, "src/schema/chat.schema.ts"));
 const { useChatStore } = load(path.join(web, "src/components/features/chat/chat-store.ts"));
@@ -70,6 +71,8 @@ async function run() {
   http.request = async () => new Response('data: {}', { headers: { "content-type": "application/json" } });
   await assert.rejects(postSse("/chat", {}, new AbortController().signal, () => {}), { message: text.streamError });
   await require("./test-web-r2.cjs")(load, web);
+  await require("./test-chat-delete.cjs")(load, web);
+  await require("./test-import-file.cjs")(load, web);
   console.log("PASS web contracts: UTF-8/CRLF SSE, missing done, content-type, store events, history defaults, hidden memory");
 }
 run().catch((error) => { console.error(error); process.exitCode = 1; });

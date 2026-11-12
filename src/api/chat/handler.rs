@@ -25,11 +25,17 @@ fn add_first_request_rules(request: &mut ProviderRequest) {
     if request.messages.iter().filter(|m| m.role == "user").count() != 1 {
         return;
     }
-    let indexed = std::path::Path::new(&request.folder).join(".codegraph").is_dir();
+    let indexed = std::path::Path::new(&request.folder)
+        .join(".codegraph")
+        .is_dir();
     if let Some(message) = request.messages.iter_mut().find(|m| m.role == "user") {
-        message.content = format!("{}
+        message.content = format!(
+            "{}
 
-{}", crate::core::rule::first_request_rules(indexed), message.content);
+{}",
+            crate::core::rule::first_request_rules(indexed),
+            message.content
+        );
     }
 }
 
@@ -68,11 +74,25 @@ pub(crate) async fn chat_handler(
             .cloned()
             .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?
     };
-    // File tools = agent mode of the SAME source (list/read/edit/write inside the chat folder, never commands).
-    let agent = chat::agent_permission(&provider_config, request.file_tools)
+    // File tools = agent mode of the SAME source; Full also grants API-key sources run_command.
+    let agent = chat::agent_permission(&provider_config, request.file_tools, request.permission)
         .map_err(|message| ApiError::new(StatusCode::BAD_REQUEST, message))?;
-    if agent.is_some() {
+    if provider_config.kind == "anthropic" {
+        // Anthropic keeps its provider kind; the request-local flag tells it to enter the file-tool loop.
+        provider_config.agent_capable = agent.is_some();
+    } else if agent.is_some() {
         provider_config.kind = "deepseek_agent".into();
+    } else if provider_config.kind == "openai_compat"
+        && state
+            .config
+            .read()
+            .await
+            .mcp_servers
+            .iter()
+            .any(|server| server.enabled)
+    {
+        // MCP servers enabled in the app: this key-based source runs the tool loop (MCP tools only, no file tools).
+        provider_config.kind = "mcp_agent".into();
     }
     let mutis_config = state.config.read().await.mutis.clone();
     let provider = providers::for_kind(&provider_config.kind)
@@ -128,6 +148,7 @@ pub(crate) async fn chat_handler(
         logs: Vec::new(),
         diff: String::new(),
         files: Vec::new(),
+        provider: provider_config.kind.clone(),
         error: None,
         attachments: Vec::new(),
     });
@@ -189,6 +210,15 @@ pub(crate) async fn chat_handler(
             .collect(),
         session_id: record.session_id.clone(),
         mutis: mutis_config.clone(),
+        mcp: state
+            .config
+            .read()
+            .await
+            .mcp_servers
+            .iter()
+            .filter(|server| server.enabled)
+            .cloned()
+            .collect(),
     };
     if memory_config.enabled {
         crate::features::memory::inject(&mut provider_request, &memory_context);
@@ -199,6 +229,7 @@ pub(crate) async fn chat_handler(
     }
     let event_provider_id = provider_request.provider.id.clone();
     let provider_name = provider_request.provider.name.clone();
+    let provider_kind = provider_request.provider.kind.clone();
     let status_model = provider_request.model.clone();
     let status_effort = format!("{:?}", provider_request.effort).to_lowercase();
     let status_role = (mutis_config.enabled || request.plan_id.is_some())
@@ -242,6 +273,7 @@ pub(crate) async fn chat_handler(
             "status",
             &json!({
                 "provider_name": provider_name,
+                "provider_kind": provider_kind,
                 "model": status_model,
                 "effort": status_effort,
                 "role": status_role,
@@ -315,6 +347,7 @@ mod tests {
             messages: serde_json::from_value(messages).unwrap(),
             session_id: None,
             mutis: Default::default(),
+            mcp: Vec::new(),
         }
     }
 
@@ -325,11 +358,16 @@ mod tests {
         assert!(first.messages[0].content.contains(".codegraph"));
         assert!(first.messages[0].content.ends_with("làm đi"));
         // The app states the index status itself, so the AI does not spend a command (and a model call) on it.
-        assert!(first.messages[0].content.contains("CHƯA CÓ thư mục .codegraph"));
+        assert!(first.messages[0]
+            .content
+            .contains("CHƯA CÓ thư mục .codegraph"));
         let mut later = request(json!([
             {"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}
         ]));
         add_first_request_rules(&mut later);
-        assert!(later.messages.iter().all(|m| !m.content.contains(".codegraph")));
+        assert!(later
+            .messages
+            .iter()
+            .all(|m| !m.content.contains(".codegraph")));
     }
 }

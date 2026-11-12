@@ -10,6 +10,7 @@ import { CliLimits } from "./cli-limits";
 import { useQuery } from "@tanstack/react-query";
 import { SourceMenu } from "./source-menu";
 import { ModelMenu, modelLabel as getModelLabel } from "./model-menu";
+import { isAgentSource } from "@/lib/agent-source";
 import { mutisApi } from "@/apis/mutis.api";
 import { PermissionMenu } from "./permission-menu";
 import { cardText as t } from "@/text/cards";
@@ -80,7 +81,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
   const name = settings.provider_id === "mutis" ? t.mutis : provider?.name || chatText.source;
   const modelLabel = getModelLabel(settings.model) || name;
   const effortIndex = Math.max(0, SLIDER_EFFORTS.indexOf(settings.effort));
-  return <><PermissionMenu value={settings.permission} disabled={streaming} cli={!!cli} menuRef={permissions}
+  return <><PermissionMenu value={settings.permission} disabled={streaming} cli={!!cli || isAgentSource(provider)} menuRef={permissions}
     onOpen={() => { if (picker.current) picker.current.open = false; }} onPick={permission => configure({ permission })} />
   <details ref={picker} className={styles.picker} onToggle={(event) => {
     if (event.target === event.currentTarget && event.currentTarget.open && permissions.current) permissions.current.open = false;

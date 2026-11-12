@@ -516,6 +516,7 @@ mod resume_tests {
             logs: vec![],
             diff: String::new(),
             files: Vec::new(),
+            provider: String::new(),
             error: None,
         };
         assert!(super::super::latest_image_paths(&[message], &inside).is_err());

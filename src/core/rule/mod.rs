@@ -15,7 +15,7 @@ pub fn worker_defaults() -> String {
 pub fn first_request_rules(indexed: bool) -> String {
     let status = if indexed { "ĐÃ CÓ" } else { "CHƯA CÓ" };
     format!(
-        "{}\nTrạng thái (app đã kiểm tra sẵn, không cần chạy lệnh để kiểm tra lại): dự án {status} thư mục .codegraph.",
+        "{}\nTrạng thái do ứng dụng MutiS tự kiểm tra (không phải người dùng nói; không cần chạy lệnh kiểm tra lại): dự án {status} thư mục .codegraph.",
         codegraph::RULE
     )
 }

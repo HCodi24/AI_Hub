@@ -6,10 +6,15 @@ export const ProviderSchema = z.object({
 export const MemoryConfigSchema = z.object({
   enabled: z.boolean().default(true), max_scopes_in_prompt: z.number().default(3), max_chars_per_scope: z.number().default(6000),
 });
+export const McpServerSchema = z.object({
+  name: z.string(), command: z.string(), args: z.array(z.string()).default([]),
+  env: z.record(z.string(), z.string()).default({}), enabled: z.boolean().default(true),
+});
+export const McpToolsSchema = z.object({ tools: z.array(z.object({ name: z.string(), description: z.string().default(""), read_only: z.boolean().default(false) })) });
 export const FullConfigSchema = z.object({
   providers: z.array(ProviderSchema), default_folder: z.string().default(""),
   chat_idle_timeout_minutes: z.number().default(10), planner_provider_id: z.string().default(""),
-  planner_model: z.string().default(""), memory: MemoryConfigSchema.default({}),
+  planner_model: z.string().default(""), memory: MemoryConfigSchema.default({}), mcp_servers: z.array(McpServerSchema).default([]),
 }).passthrough();
 export const ConnectionTestSchema = z.object({
   ok: z.boolean(), status: z.string(), message: z.string().default(""), detail: z.string().default(""),
@@ -24,6 +29,7 @@ export const LoginResultSchema = z.object({
 });
 export type Provider = z.infer<typeof ProviderSchema>;
 export type FullConfig = z.infer<typeof FullConfigSchema>;
+export type McpServer = z.infer<typeof McpServerSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
 export type ConnectionTest = z.infer<typeof ConnectionTestSchema>;
 export type ProviderInput = Omit<Provider, "id">;

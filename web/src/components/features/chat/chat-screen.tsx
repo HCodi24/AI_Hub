@@ -22,7 +22,7 @@ export function ChatScreen() {
   useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
   const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, status: s.status, folder: s.settings.folder })));
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { config, chats, send, stop, load } = useChat();
+  const { config, chats, send, stop, load, remove } = useChat();
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
   // Restore the chat that was open before the page reload.
   useEffect(() => {
@@ -37,7 +37,7 @@ export function ChatScreen() {
   const queryError = config.error || chats.error;
   return <><Head><title>{chatText.brand}</title><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
     <a className={styles.skip} href="#chat-main">{chatText.skip}</a>
-    <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} openSettings={() => setSettingsOpen(true)}
+    <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} remove={remove} openSettings={() => setSettingsOpen(true)}
       openDevChat={dev.data?.dev ? () => void openDevChat(config.data?.providers || []) : undefined} />
       <main id="chat-main" className={styles.main}>
         <DevBanner />
@@ -47,7 +47,7 @@ export function ChatScreen() {
           <button onClick={() => { void config.refetch(); void chats.refetch(); }}>{chatText.retry}</button></div>}
         {state.error && <div role="alert" className={styles.error}>{state.error}</div>}
         <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
-          <MessageList />
+          <MessageList send={send} />
         </section>
         <div className={styles.status} role="status" aria-live="polite" aria-atomic="true">
           {state.streaming && <>{chatText.streaming} {state.status.provider_name} {state.status.model}

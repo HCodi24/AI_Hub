@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { PenSquare, Home, History, Search, X, PanelLeftClose, PanelLeftOpen, Settings, Hammer, ChevronDown, ChevronRight, Folder } from "lucide-react";
+import { PenSquare, Home, History, Search, X, PanelLeftClose, PanelLeftOpen, Settings, Hammer, ChevronDown, ChevronRight, Folder, Trash2 } from "lucide-react";
+import { Button } from "@/components/button/button";
+import { useCardStore } from "@/components/features/chat/card-store";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { Skeleton } from "@/components/skeleton/skeleton";
@@ -20,9 +22,19 @@ function groupByFolder(chats: ChatSummary[]) {
 }
 const LOGO = "/app/brand/mutis-logo.svg";
 const LOGO_DARK = "/app/brand/mutis-logo-dark.svg";
-export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; openSettings: () => void; openDevChat?: () => void }) {
+export function Sidebar({ chats, loading, load, remove, openSettings, openDevChat }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; remove: (id: string) => Promise<boolean>; openSettings: () => void; openDevChat?: () => void }) {
   const { id, devChat, drawer, streaming, reset, setDrawer } = useChatStore(useShallow(s => ({ id: s.id, devChat: s.settings.dev_chat, drawer: s.drawer, streaming: s.streaming, reset: s.reset, setDrawer: s.setDrawer })));
   const [collapsed, setCollapsed] = useState(false);
+  const running = useCardStore(s => s.running);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletePending = useRef(false);
+  async function deleteChat(chatId: string) {
+    if (deletePending.current) return;
+    deletePending.current = true; setDeleting(true);
+    try { if (await remove(chatId)) setConfirmDelete(null); }
+    finally { deletePending.current = false; setDeleting(false); }
+  }
   const [width, setWidth] = useState(320);
   const [containerWidth, setContainerWidth] = useState(960);
   const [resizing, setResizing] = useState(false);
@@ -135,8 +147,19 @@ export function Sidebar({ chats, loading, load, openSettings, openDevChat }: { c
                 onClick={() => setClosed(prev => { const next = new Set(prev); if (!next.delete(folder)) next.add(folder); return next; })}>
                 {open ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}
                 <Folder size={16} aria-hidden="true" /><span>{folder ? folderName(folder) : chatText.noFolder}</span></button>
-              {open && items.map((chat) => <button key={chat.id} className={styles.chatItem} disabled={streaming} aria-current={chat.id === id ? "page" : undefined} title={chat.title || chatText.newChat}
-                onClick={() => void load(chat.id)}><span>{chat.title || chatText.newChat}</span></button>)}
+              {open && items.map((chat) => <div key={chat.id}>
+                <div className={styles.chatRow} data-active={chat.id === id || undefined}>
+                  <button className={styles.chatItem} disabled={streaming || deleting} aria-current={chat.id === id ? "page" : undefined} title={chat.title || chatText.newChat}
+                    onClick={() => void load(chat.id)}><span>{chat.title || chatText.newChat}</span></button>
+                  <IconButton className={styles.deleteChat} aria-label={`${chatText.deleteChat}: ${chat.title || chatText.newChat}`} disabled={streaming || Boolean(running) || deleting}
+                    aria-expanded={confirmDelete === chat.id} onClick={() => setConfirmDelete(confirmDelete === chat.id ? null : chat.id)}><Trash2 size={16} /></IconButton>
+                </div>
+                {confirmDelete === chat.id && <div className={styles.deleteConfirm} role="group" aria-label={chatText.deleteChat} aria-busy={deleting}>
+                  <p>{chatText.deleteConfirm}</p><p>{chatText.keepMemory}</p>
+                  <div><Button size="sm" disabled={deleting} onClick={() => setConfirmDelete(null)}>{chatText.cancelDelete}</Button>
+                    <Button size="sm" variant="danger" disabled={streaming || Boolean(running) || deleting} onClick={() => void deleteChat(chat.id)}>{deleting ? chatText.deletingChat : chatText.deleteChat}</Button></div>
+                </div>}
+              </div>)}
             </section>;
           })}
         </nav>

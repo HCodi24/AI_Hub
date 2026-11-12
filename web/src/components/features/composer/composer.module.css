@@ -19,3 +19,12 @@
 .tray img { width: 56px; height: 56px; object-fit: cover; border-radius: var(--radius-small); border: 1px solid var(--border); }
 .tray button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; min-height: 0; padding: 0; line-height: 1; border-radius: 50%; }
 @media (max-width: 767px) { .composer { padding: var(--space-3) var(--space-3) max(var(--space-3), env(safe-area-inset-bottom)); } }
+.recalled { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
+.recalled span { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 6px 4px 10px; border: 1px solid var(--border); border-radius: 999px; font-size: var(--font-13); color: var(--muted); }
+.recalled span > span { display: block; padding: 0; border: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recalled button { width: 20px; height: 20px; min-height: 0; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; }
+.fileHint { margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--font-12); }
+.composer[data-dragging] .box { border-color: var(--accent); outline: 2px dashed var(--accent); outline-offset: 3px; }
+.tray .fileChip { display: inline-flex; align-items: center; gap: var(--space-2); max-width: 240px; min-height: 44px; padding: 8px 14px 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); }
+.fileChip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileChip > svg { flex-shrink: 0; }
