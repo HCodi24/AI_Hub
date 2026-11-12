@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AI Hub</title>
+  <title>MutiS</title>
   <style>
     html, body { height: 100%; margin: 0; }
     body { display: grid; place-items: center; background: #0f172a; color: #f8fafc; font: 15px/1.5 system-ui, "Segoe UI", sans-serif; }
@@ -18,7 +18,7 @@
 <body>
   <main>
     <div class="spinner" id="spinner" aria-hidden="true"></div>
-    <h1 style="font-size:20px;margin:0 0 4px">AI Hub</h1>
+    <h1 style="font-size:20px;margin:0 0 4px">MutiS</h1>
     <p id="status" role="status">Đang khởi động…</p>
     <p id="error" role="alert"></p>
   </main>
@@ -26,7 +26,7 @@
     // The desktop shell calls this when the server could not be started.
     window.showStartError = function (message) {
       document.getElementById("spinner").style.display = "none";
-      document.getElementById("status").textContent = "Không khởi động được AI Hub";
+      document.getElementById("status").textContent = "Không khởi động được MutiS";
       document.getElementById("error").textContent = message;
     };
   </script>

@@ -1,4 +1,4 @@
-//! AI Hub desktop window. It starts the `ai-hub` server (same folder, or `AI_HUB_SERVER`) on a free local port with
+//! MutiS desktop window. It starts the `ai-hub` server (same folder, or `AI_HUB_SERVER`) on a free local port with
 //! `--no-open`, shows its web UI in a WebView2 window, restarts the server if it stops, and stops it on exit.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -160,7 +160,7 @@ fn run_server(app: tauri::AppHandle, server: Arc<Server>) {
             }
         }
         if !wait_ready(port, Duration::from_secs(30)) {
-            start_error(&app, "AI Hub không phản hồi sau 30 giây.");
+            start_error(&app, "MutiS không phản hồi sau 30 giây.");
         } else if let Some(window) = app.get_webview_window("main") {
             if first {
                 if let Ok(target) = url.parse() {
@@ -198,7 +198,7 @@ fn run_server(app: tauri::AppHandle, server: Arc<Server>) {
         }
         restarts.retain(|at| at.elapsed() < Duration::from_secs(60));
         if restarts.len() >= 5 {
-            start_error(&app, "AI Hub dừng liên tục. Hãy mở lại ứng dụng.");
+            start_error(&app, "MutiS dừng liên tục. Hãy mở lại ứng dụng.");
             return;
         }
         restarts.push(Instant::now());
@@ -213,7 +213,7 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("AI Hub")
+                .title("MutiS")
                 // No native title bar: the web UI draws its own window buttons in the top strip.
                 .decorations(false)
                 .inner_size(1280.0, 820.0)
@@ -228,10 +228,10 @@ fn main() {
                     local
                 })
                 .build()?;
-            let open_item = MenuItem::with_id(app, "open", "Mở AI Hub", true, None::<&str>)?;
+            let open_item = MenuItem::with_id(app, "open", "Mở MutiS", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
-            let mut tray = TrayIconBuilder::with_id("main").tooltip("AI Hub").menu(&menu).on_menu_event(
+            let mut tray = TrayIconBuilder::with_id("main").tooltip("MutiS").menu(&menu).on_menu_event(
                 |app, event| match event.id().as_ref() {
                     "open" => show_main(app),
                     "quit" => app.exit(0),
@@ -248,7 +248,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("could not start the AI Hub window");
+        .expect("could not start the MutiS window");
     app.run(move |_app, event| {
         if matches!(event, RunEvent::Exit) {
             stop_server(&server);
