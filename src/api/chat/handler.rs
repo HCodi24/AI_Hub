@@ -25,10 +25,11 @@ fn add_first_request_rules(request: &mut ProviderRequest) {
     if request.messages.iter().filter(|m| m.role == "user").count() != 1 {
         return;
     }
+    let indexed = std::path::Path::new(&request.folder).join(".codegraph").is_dir();
     if let Some(message) = request.messages.iter_mut().find(|m| m.role == "user") {
         message.content = format!("{}
 
-{}", crate::core::rule::first_request_rules(), message.content);
+{}", crate::core::rule::first_request_rules(indexed), message.content);
     }
 }
 
@@ -323,6 +324,8 @@ mod tests {
         add_first_request_rules(&mut first);
         assert!(first.messages[0].content.contains(".codegraph"));
         assert!(first.messages[0].content.ends_with("làm đi"));
+        // The app states the index status itself, so the AI does not spend a command (and a model call) on it.
+        assert!(first.messages[0].content.contains("CHƯA CÓ thư mục .codegraph"));
         let mut later = request(json!([
             {"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}
         ]));

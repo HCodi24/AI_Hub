@@ -85,6 +85,8 @@ pub fn router(state: AppState) -> Router {
             get(crate::api::config::get_config).put(crate::api::config::put_config),
         )
         .route("/api/memory", get(memory::list))
+        .route("/api/memory/projects", get(memory::projects))
+        .route("/api/memory/recall", get(memory::recall))
         .route(
             "/api/memory/{scope}",
             get(memory::get).put(memory::put).delete(memory::delete),

@@ -167,18 +167,30 @@ impl Run {
             persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
             let _ = sse_sender.send(chat::sse_event("error", &event.data)).await;
         }
+        let files_after = crate::features::changes::snapshot(std::path::Path::new(&record.folder)).await;
+        let files = crate::features::changes::changes(&files_before, &files_after);
+        if !files.is_empty() {
+            let _ = sse_sender
+                .send(chat::sse_event("files", &json!({ "files": files })))
+                .await;
+            if let Some(message) = record.messages.last_mut() {
+                message.files = files.clone();
+            }
+        }
         if let Some(message) = record.messages.last_mut() {
             let (clean, block) = crate::features::memory::strip_blocks(&message.content);
             message.content = clean;
             if memory_config.enabled {
                 if let Some(block) = block.filter(|b| b.trim() != "none") {
-                    match serde_json::from_str::<crate::features::memory::Scope>(&block) {
+                    match serde_json::from_str::<crate::features::memory::Update>(&block) {
                         Ok(update) => {
                             if let Ok(store) = crate::features::memory::Store::open(
                                 &task_state.config_path,
                                 &record.folder,
+                                &memory_config,
                             ) {
-                                if let Ok(change) = store.merge(update, &chat_id, &memory_config) {
+                                let paths = files.iter().map(|f| f.path.clone()).collect();
+                                if let Ok(change) = store.merge(update, &chat_id, paths) {
                                     let _ = sse_sender
                                         .send(chat::sse_event("memory", &json!(change)))
                                         .await;
@@ -194,16 +206,6 @@ impl Run {
                         }
                     }
                 }
-            }
-        }
-        let files_after = crate::features::changes::snapshot(std::path::Path::new(&record.folder)).await;
-        let files = crate::features::changes::changes(&files_before, &files_after);
-        if !files.is_empty() {
-            let _ = sse_sender
-                .send(chat::sse_event("files", &json!({ "files": files })))
-                .await;
-            if let Some(message) = record.messages.last_mut() {
-                message.files = files;
             }
         }
         let _ = chat::save_record(&task_state.chats, &mut record);

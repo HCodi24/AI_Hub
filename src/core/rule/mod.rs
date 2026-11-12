@@ -10,6 +10,12 @@ pub fn worker_defaults() -> String {
 }
 
 /// Rules attached to the first coding request of a session.
-pub fn first_request_rules() -> String {
-    codegraph::RULE.to_owned()
+/// `indexed` = the app already checked whether the project has `.codegraph`, so the AI needs no command
+/// (and no extra model call) to find out.
+pub fn first_request_rules(indexed: bool) -> String {
+    let status = if indexed { "ĐÃ CÓ" } else { "CHƯA CÓ" };
+    format!(
+        "{}\nTrạng thái (app đã kiểm tra sẵn, không cần chạy lệnh để kiểm tra lại): dự án {status} thư mục .codegraph.",
+        codegraph::RULE
+    )
 }

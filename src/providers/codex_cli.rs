@@ -65,11 +65,14 @@ impl Provider for CodexCliProvider {
         let mut thread_id = request.session_id.clone();
         let mut final_message = String::new();
         let mut turn_completed = false;
+        // Id of the agent message that produced the last reply text (None = no text yet).
+        let mut text_item: Option<String> = None;
         let mut resume_count = 0;
         loop {
             let parse_message = &mut final_message;
             let parse_thread = &mut thread_id;
             let parse_completed = &mut turn_completed;
+            let parse_text_item = &mut text_item;
             let result = cli_support::run_jsonl(
                 cli_support::JsonlCommand {
                     cli_name: "Codex CLI",
@@ -108,7 +111,7 @@ impl Provider for CodexCliProvider {
                                 .to_owned();
                         }
                     }
-                    parse_codex_line(line)
+                    separate_messages(parse_codex_line(line), line, parse_text_item)
                 },
             )
             .await;
@@ -211,6 +214,26 @@ pub fn codex_args_with_images(
     }
     args.push(OsString::from("-"));
     args
+}
+
+/// Codex sends each agent message as its own item; without a gap they were glued together in the reply.
+fn separate_messages(
+    mut events: Vec<ProviderEvent>,
+    line: &str,
+    last_item: &mut Option<String>,
+) -> Vec<ProviderEvent> {
+    let item = serde_json::from_str::<Value>(line)
+        .ok()
+        .and_then(|value| value["item"]["id"].as_str().map(str::to_owned))
+        .unwrap_or_default();
+    for event in events.iter_mut().filter(|event| event.name == "delta") {
+        if last_item.as_ref().is_some_and(|last| *last != item) {
+            let text = event.data["text"].as_str().unwrap_or_default();
+            *event = ProviderEvent::text("delta", format!("\n\n{text}"));
+        }
+        *last_item = Some(item.clone());
+    }
+    events
 }
 
 fn parse_codex_line(line: &str) -> Vec<ProviderEvent> {
@@ -512,5 +535,28 @@ mod resume_tests {
         // The stdin marker must stay the last, separate argument (not swallowed by the image option).
         assert_eq!(values.last().map(String::as_str), Some("-"));
         let _ = fs::remove_dir_all(root);
+    }
+}
+
+#[cfg(test)]
+mod separator_tests {
+    use super::{parse_codex_line, separate_messages};
+
+    #[test]
+    fn separate_agent_messages_get_a_blank_line_between_them() {
+        let mut last = None;
+        let mut shown = String::new();
+        for line in [
+            r#"{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"A"}}"#,
+            r#"{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"ls"}}"#,
+            r#"{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"B"}}"#,
+        ] {
+            for event in separate_messages(parse_codex_line(line), line, &mut last) {
+                if event.name == "delta" {
+                    shown.push_str(event.data["text"].as_str().unwrap());
+                }
+            }
+        }
+        assert_eq!(shown, "A\n\nB");
     }
 }

@@ -1,4 +1,4 @@
-.settingsDialog.settingsDialog { width: min(1120px, calc(100vw - 32px)); height: min(820px, calc(100dvh - 32px)); padding: 0; overflow: hidden; }
+.settingsDialog.settingsDialog { width: min(1120px, calc(100vw - 32px)); height: min(820px, calc(100dvh - 32px)); padding: 0; border-radius: var(--workspace-radius, 12px); overflow: hidden; }
 .settingsDialog > header { height: 64px; padding: 0 20px; border-bottom: 1px solid var(--border); }
 .settingsDialog > header h2 { margin: 0; font-size: 18px; }
 .settingsDialog > header button { width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--muted); }
