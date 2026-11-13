@@ -25,7 +25,8 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
       : parseChatQuestions(hideDelegation(message.content)).text,
     files: [],
   }, [user, message.content, streaming]);
-  const tokenLine = message.logs.filter((line) => /token|usage|chi phí/i.test(line)).at(-1);
+  /** DeepSeek token logs already live inside the collapsed activity disclosure, so they are not repeated here. */
+  const tokenLine = message.provider === "deepseek" ? undefined : message.logs.filter((line) => /token|usage|chi phí/i.test(line)).at(-1);
   return <article className={styles.message} data-user={user} data-streaming={streaming}>
     <div className={styles.identity}>{user ? <UserRound size={18} aria-hidden="true" /> : <PetAvatar key={message.provider} provider={message.provider} state={petState} />}
       <strong>{user ? chatText.you : PROVIDER_LABELS[message.provider] || chatText.assistant}</strong>
@@ -40,7 +41,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
     {replies}
     {message.attachments.map((attachment) => <a key={attachment.id} href={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} target="_blank" rel="noreferrer"><img className={styles.thumb} alt={chatText.attachments} src={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} /></a>)}
     {message.reasoning && <details><summary>{chatText.reasoning}</summary><MarkdownView source={message.reasoning} /></details>}
-    <ChatActivity logs={message.logs} />
+    <ChatActivity logs={message.logs} provider={message.provider} />
     {!user && streaming && <div className={styles.streamStatus} role="status" aria-live="polite" aria-atomic="true">
       {chatText.streaming} {status?.provider_name} {status?.model}
       {status?.elapsed_s !== undefined && ` · ${status.elapsed_s} ${chatText.seconds}`}

@@ -14,6 +14,13 @@ export const settingsText = {
     cli: "CLI trên máy", cliMissing: "Chưa tìm thấy ở các vị trí đã kiểm tra", cliNoVersion: "Đã cài, không đọc được phiên bản",
     login: "Đăng nhập Claude", loginOpen: "Mở trang đăng nhập", loginCode: "Mã xác nhận", loginSubmit: "Xác nhận",
     loginDone: "Đã đăng nhập Claude Code CLI", selectHint: "Chọn một nguồn bên trái hoặc thêm nguồn mới.",
+    subTabsLabel: "Nhóm nguồn AI", subTabs: { cli: "CLI", login: "Đăng nhập", api: "API key" },
+    cliHint: "Nguồn CLI chạy bằng công cụ đã cài trên máy. Đăng nhập riêng nằm ở tab Đăng nhập.",
+    apiHint: "Nguồn API key dùng base URL và key, không cần cài CLI.",
+    loginNote: "Đăng nhập dùng lại nguồn Codex/Claude CLI đã có. MutiS giữ phiên đăng nhập riêng và không đọc cấu hình cá nhân của bạn.",
+    loginSelectHint: "Chọn một nguồn CLI bên trái để đăng nhập.",
+    loginEmpty: "Chưa có nguồn Codex/Claude CLI nào để đăng nhập.",
+    loginEmptyAction: "Thêm nguồn CLI",
   },
   general: {
     folder: "Thư mục làm việc mặc định", idle: "Dừng lượt chạy khi AI im lặng quá (phút, 0 = không dừng)",

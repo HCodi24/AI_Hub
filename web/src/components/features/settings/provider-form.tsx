@@ -10,14 +10,17 @@ import { errorText } from "./use-settings";
 import styles from "./settings.module.css";
 const KINDS = ["codex_cli", "claude_cli", "openai_compat", "anthropic"] as const;
 const isCli = (kind: string) => kind === "codex_cli" || kind === "claude_cli";
-const blank: ProviderInput = { name: "", kind: "openai_compat", base_url: "", api_key: "", executable: "", models: [], agent_capable: false };
+const blank = (kind: string): ProviderInput => ({ name: "", kind, base_url: "", api_key: "", executable: "", models: [], agent_capable: false });
 type Candidate = { path: string; version: string; source: string };
-export function ProviderForm({ provider, status, onSaved, onDeleted, onTested }: {
+export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
+  allowedKinds = KINDS, defaultKind = "openai_compat", showConnections = true }: {
   provider: Provider | null; status?: ConnectionTest;
   onSaved: (config: FullConfig, id: string) => void; onDeleted: (config: FullConfig) => void;
   onTested: (id: string, result: ConnectionTest) => void;
+  /** Kind options offered for a new source; a saved source keeps its own kind. */
+  allowedKinds?: readonly string[]; defaultKind?: string; showConnections?: boolean;
 }) {
-  const [form, setForm] = useState<ProviderInput>(() => provider ? { ...provider, api_key: "" } : blank);
+  const [form, setForm] = useState<ProviderInput>(() => provider ? { ...provider, api_key: "" } : blank(defaultKind));
   const [models, setModels] = useState(() => (provider?.models || []).join("\n"));
   const [busy, setBusy] = useState(""); const [note, setNote] = useState("");
   const [candidates, setCandidates] = useState<Candidate[] | null>(null); const [confirmDelete, setConfirmDelete] = useState(false);
@@ -43,10 +46,12 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested }:
   });
   const cliName = form.kind === "codex_cli" ? "codex" : "claude";
   const installHint = form.kind === "codex_cli" ? "npm i -g @openai/codex" : "npm i -g @anthropic-ai/claude-code";
+  // Keep the saved kind selectable even when the current category does not offer it.
+  const kinds = allowedKinds.includes(form.kind) ? allowedKinds : [form.kind, ...allowedKinds];
   return <form className={styles.form} onSubmit={event => { event.preventDefault(); void act("save", async () => { await save(); setNote(t.providers.savedProvider); }); }}>
     <label>{t.providers.name}<input required value={form.name} onChange={event => set("name", event.target.value)} /></label>
     <label>{t.providers.kind}<select value={form.kind} disabled={Boolean(provider)} onChange={event => set("kind", event.target.value)}>
-      {KINDS.map(kind => <option key={kind} value={kind}>{t.providers.kinds[kind]}</option>)}</select></label>
+      {kinds.map(kind => <option key={kind} value={kind}>{t.providers.kinds[kind as keyof typeof t.providers.kinds] || kind}</option>)}</select></label>
     {!isCli(form.kind) && <>
       <label>{t.providers.baseUrl}<input value={form.base_url} spellCheck={false} onChange={event => set("base_url", event.target.value)} /></label>
       <label>{t.providers.apiKey}<input type="password" autoComplete="off" value={form.api_key}
@@ -80,7 +85,7 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested }:
       <Button variant="danger" onClick={() => void act("delete", async () => onDeleted(await settingsApi.deleteProvider(provider.id)))}>{t.delete}</Button>
       <Button onClick={() => setConfirmDelete(false)}>{t.cancel}</Button></div>}
     {(note || status) && <p className={styles.note} role="status" title={status?.detail}>{note || status?.message}</p>}
-    {provider?.kind === "claude_cli" && <ClaudeConnection key={provider.id} providerId={provider.id} />}
-    {provider?.kind === "codex_cli" && <CodexConnection key={provider.id} providerId={provider.id} />}
+    {showConnections && provider?.kind === "claude_cli" && <ClaudeConnection key={provider.id} providerId={provider.id} />}
+    {showConnections && provider?.kind === "codex_cli" && <CodexConnection key={provider.id} providerId={provider.id} />}
   </form>;
 }

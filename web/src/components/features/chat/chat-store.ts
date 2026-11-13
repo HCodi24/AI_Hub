@@ -80,6 +80,17 @@ export const useChatStore = create<ChatState>((set) => ({
         ChatMessageSchema.parse({ role: "assistant", content: "" })] };
   }),
   event: (event, data) => set((state) => {
+    if (event === "turn") {
+      const provider = data.provider_kind;
+      if (provider !== "codex_cli" && provider !== "deepseek") return {};
+      const last = state.messages.at(-1);
+      const empty = last?.role === "assistant" && !last.content && !last.reasoning && !last.logs.length &&
+        !last.diff && !last.files.length && !last.attachments.length && last.error == null && last.plan_id == null && last.debate_id == null;
+      const next = ChatMessageSchema.parse({ role: "assistant", content: "", provider });
+      return { messages: empty ? [...state.messages.slice(0, -1), next] : [...state.messages, next],
+        status: { ...state.status, provider_kind: provider, provider_name: data.provider_name || (provider === "deepseek" ? "DeepSeek" : "Codex"),
+          model: data.model || "", idle_s: 0, last_activity: "" } };
+    }
     if (event === "heartbeat") return { status: { ...state.status, ...data } };
     if (event === "status") {
       const last = state.messages.at(-1);

@@ -26,6 +26,17 @@
 .cli p { margin: 0 0 var(--space-3); overflow-wrap: anywhere; }
 .cli small { display: block; }
 .detail { min-width: 0; }
+.providers { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.subTabs { display: flex; flex-wrap: wrap; gap: var(--space-1); padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--color-muted); }
+.subTabs button { flex: 0 1 auto; min-height: 36px; padding: 6px 14px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--muted); font-size: var(--font-13); }
+.subTabs button:hover { color: var(--text); }
+.subTabs button[aria-selected=true] { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 12%); }
+.subTabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.subPanels { min-width: 0; }
+.subPanel { min-width: 0; }
+.subPanel[hidden] { display: none; }
+.subPanel:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-xs); }
+.loginHead { margin: 0; font-size: var(--font-14); overflow-wrap: anywhere; }
 .form { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .form label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-13); color: var(--muted); min-width: 0; }
 .form input, .form select, .form textarea { width: 100%; color: var(--text); font-size: var(--font-14); }
@@ -82,6 +93,8 @@
   .tabs button { gap: 8px; padding: 10px 8px; }
   .panel { padding: 20px 16px; }
   .split { grid-template-columns: 1fr; }
+  .subTabs { gap: 2px; }
+  .subTabs button { flex: 1 1 auto; padding: 6px 10px; }
   .row, .switch { grid-template-columns: 1fr; }
   .row > strong { padding-bottom: 0; }
 }

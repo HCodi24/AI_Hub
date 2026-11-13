@@ -43,6 +43,8 @@ impl Run {
         } = self;
         let _job_guard = job_guard;
         let mut record = record;
+        let first_turn = record.messages.len().saturating_sub(1);
+        let mut delegated = false;
         let mut last_persist = Instant::now();
         let mut last_event_at = Instant::now();
         let mut last_activity = String::new();
@@ -85,6 +87,12 @@ impl Run {
                 event = provider_receiver.recv() => {
                     let Some(event) = event else { break };
                     last_event_at = Instant::now();
+                    if event.name == "turn" {
+                        delegated = true;
+                        last_activity.clear();
+                        received_delta = false;
+                        received_error = false;
+                    }
                     if event.name == "delta" { received_delta = true; }
                     if event.name == "error" { received_error = true; }
                     if event.name == "log" {
@@ -179,10 +187,11 @@ impl Run {
                 message.files = files.clone();
             }
         }
-        if let Some(message) = record.messages.last_mut() {
+        let mut memory_logs = Vec::new();
+        for message in record.messages.iter_mut().skip(first_turn).filter(|m| m.role == "assistant") {
             let (clean, block) = crate::features::memory::strip_blocks(&message.content);
             message.content = clean;
-            if memory_config.enabled {
+            if memory_config.enabled && !(delegated && message.provider == "deepseek") {
                 if let Some(block) = block.filter(|b| b.trim() != "none") {
                     match serde_json::from_str::<crate::features::memory::Update>(&block) {
                         Ok(update) => {
@@ -193,15 +202,19 @@ impl Run {
                             ) {
                                 let paths = files.iter().map(|f| f.path.clone()).collect();
                                 if let Ok(change) = store.merge(update, &chat_id, paths) {
+                                    let value = json!(change);
+                                    memory_logs.push(["scope", "status", "action"].iter()
+                                        .filter_map(|key| value[*key].as_str()).collect::<Vec<_>>().join(" · "));
                                     let _ = sse_sender
-                                        .send(chat::sse_event("memory", &json!(change)))
+                                        .send(chat::sse_event("memory", &value))
                                         .await;
                                 }
                             }
                         }
                         Err(_) => {
                             let text = "Bộ nhớ: khối <memory> không hợp lệ";
-                            message.logs.push(text.into());
+                            // The notification is emitted on the final active turn in both clients.
+                            memory_logs.push(text.to_owned());
                             let _ = sse_sender
                                 .send(chat::sse_event("log", &json!({"text":text})))
                                 .await;
@@ -209,6 +222,9 @@ impl Run {
                     }
                 }
             }
+        }
+        if let Some(message) = record.messages.last_mut() {
+            message.logs.extend(memory_logs);
         }
         let _ = chat::save_record(&task_state.chats, &mut record);
         if log_enabled {

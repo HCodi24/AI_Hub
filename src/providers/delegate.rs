@@ -114,6 +114,15 @@ fn report(task: &Delegation, attempt: usize, result: &WorkerResult) -> String {
     )
 }
 
+/// A new chronological turn: the browser and the saved record start a fresh assistant message for this provider.
+fn turn(provider_kind: &str, model: &str) -> ProviderEvent {
+    ProviderEvent {
+        name: "turn",
+        data: serde_json::json!({ "provider_kind": provider_kind, "model": model,
+            "provider_name": if provider_kind == "deepseek" { "DeepSeek" } else { "Codex" } }),
+    }
+}
+
 fn message(role: &str, content: String) -> ChatMessage {
     ChatMessage {
         debate_id: None, plan_id: None, role: role.into(), content, attachments: Vec::new(), reasoning: String::new(),
@@ -129,6 +138,12 @@ pub struct DelegateProvider {
 impl DelegateProvider {
     /// One Codex turn: every event goes to the chat; returns the reply text and the native session id.
     async fn codex_turn(&self, request: &ProviderRequest, events: &mpsc::Sender<ProviderEvent>, cancel: &CancellationToken) -> Result<(String, Option<String>)> {
+        // The coordinator gets its own turn before the call, so its text never mixes with a worker turn.
+        if cancel.is_cancelled() { return Ok((String::new(), None)); }
+        if events.send(turn("codex_cli", &request.model)).await.is_err() {
+            cancel.cancel();
+            return Ok((String::new(), None));
+        }
         let (sender, mut receiver) = mpsc::channel(32);
         let inner = for_kind("codex_cli")?;
         let (inner_request, inner_cancel) = (request.clone(), cancel.clone());
@@ -149,7 +164,12 @@ impl DelegateProvider {
         Ok((text, session))
     }
 
-    async fn run_worker(&self, request: &ProviderRequest, task: &Delegation, events: &mpsc::Sender<ProviderEvent>, cancel: &CancellationToken) -> WorkerResult {
+    async fn run_worker(&self, request: &ProviderRequest, task: &Delegation, attempt: usize, events: &mpsc::Sender<ProviderEvent>, cancel: &CancellationToken) -> WorkerResult {
+        if cancel.is_cancelled() || events.send(turn("deepseek", &self.model)).await.is_err() {
+            cancel.cancel();
+            return WorkerResult { summary: String::new(), diff: String::new(), error: None };
+        }
+        let _ = events.send(ProviderEvent::text("log", format!("Giao DeepSeek: {} (lần {attempt}/{MAX_ATTEMPTS})", task.title.trim()))).await;
         let mut provider = self.worker.clone();
         provider.kind = "deepseek_agent".into();
         provider.agent_capable = true;
@@ -169,7 +189,13 @@ impl DelegateProvider {
         let mut result = WorkerResult { summary: String::new(), diff: String::new(), error: None };
         while let Some(event) = receiver.recv().await {
             match event.name {
-                "delta" => result.summary.push_str(event.data["text"].as_str().unwrap_or("")),
+                "delta" => {
+                    result.summary.push_str(event.data["text"].as_str().unwrap_or(""));
+                    let _ = events.send(event).await;
+                }
+                "reasoning" => {
+                    let _ = events.send(event).await;
+                }
                 "diff" => {
                     result.diff.push_str(event.data["text"].as_str().unwrap_or(""));
                     let _ = events.send(event).await;
@@ -178,14 +204,24 @@ impl DelegateProvider {
                     let line = event.data["text"].as_str().unwrap_or("");
                     let _ = events.send(ProviderEvent::text("log", format!("DeepSeek: {line}"))).await;
                 }
-                "error" => result.error = event.data["text"].as_str().map(str::to_owned),
+                "error" => {
+                    result.error = event.data["text"].as_str().map(str::to_owned);
+                    // A worker failure stays visible in its own turn; Codex still reviews the report below.
+                    let _ = events.send(event).await;
+                }
                 _ => {}
             }
         }
-        match handle.await {
-            Ok(Err(error)) => result.error = Some(error.to_string()),
-            Err(error) => result.error = Some(error.to_string()),
-            Ok(Ok(())) => {}
+        let failure = match handle.await {
+            Ok(Err(error)) => Some(error.to_string()),
+            Err(error) => Some(error.to_string()),
+            Ok(Ok(())) => None,
+        };
+        if let Some(error) = failure {
+            if result.error.as_deref() != Some(error.as_str()) {
+                let _ = events.send(ProviderEvent::text("error", error.clone())).await;
+            }
+            result.error = Some(error);
         }
         result
     }
@@ -218,14 +254,10 @@ impl super::Provider for DelegateProvider {
                 }
                 *used += 1;
                 let attempt = *used;
-                let _ = events.send(ProviderEvent::text("log", format!("Giao DeepSeek: {} (lần {attempt}/{MAX_ATTEMPTS})", task.title.trim()))).await;
-                let result = self.run_worker(&request, &task, &events, &cancel).await;
+                let result = self.run_worker(&request, &task, attempt, &events, &cancel).await;
                 if cancel.is_cancelled() {
                     return Ok(());
                 }
-                let note = if result.diff.trim().is_empty() { "không sửa file nào" } else { "đã sửa file" };
-                let quoted = truncate_chars(&result.summary, 1500).lines().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n");
-                let _ = events.send(ProviderEvent::text("delta", format!("\n\n**DeepSeek · {} · lần {attempt}/{MAX_ATTEMPTS}** — {note}\n\n{quoted}\n\n", task.title.trim()))).await;
                 reply.push_str(&report(&task, attempt, &result));
                 reply.push_str("\n\n");
             }
