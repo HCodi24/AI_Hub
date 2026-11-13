@@ -13,7 +13,7 @@ import { errorText, useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
 import { effortsFor, effortFor } from "@/constants/chat";
 const ROLES = ["lead", "big", "small"] as const;
-type BoolKey = "auto_plan" | "plan_approval" | "verify_gate" | "auto_review" | "auto_fix" | "retry_api" | "codex_watchdog" | "codex_auto_resume" | "deepseek_agent" | "event_log";
+type BoolKey = "auto_plan" | "plan_approval" | "delegate_checker" | "verify_gate" | "auto_review" | "auto_fix" | "retry_api" | "codex_watchdog" | "codex_auto_resume" | "deepseek_agent" | "event_log";
 type NumKey = "fix_rounds_max" | "retry_attempts" | "retry_base_ms" | "watchdog_minutes" | "resume_max" | "deepseek_max_file_lines" | "deepseek_max_steps" | "debate_rounds";
 /** One switch with the numeric limits that only matter while it is on. */
 const SWITCHES: { key: BoolKey; numbers?: { key: NumKey; min: number; max: number }[] }[] = [
@@ -57,6 +57,7 @@ export function MutisTab() {
             <datalist id={`mutis-models-${role}`}>{modelsOf(providers, value.provider_id).map(m => <option key={m} value={m} />)}</datalist></label>
           <label>{t.mutis.effort}<select value={effortFor(value.model, value.effort, providers.find(p => p.id === value.provider_id)?.kind)} onChange={event => setRole({ effort: event.target.value as typeof value.effort })}>
             {effortsFor(value.model, providers.find(p => p.id === value.provider_id)?.kind).map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>; })}
+      {profile === "high_roles" && <label className={styles.check}><input type="checkbox" checked={draft.delegate_checker} onChange={event => edit({ delegate_checker: event.target.checked })} /><span>{t.mutis.delegate_checker}</span></label>}
     </fieldset>)}
     <fieldset className={styles.group} disabled={off}><legend>{t.mutis.routing}</legend>
       <div className={styles.grid}>{draft.routing.map((rule, index) => <label key={rule.kind}>{t.mutis.kinds[rule.kind] || rule.kind}

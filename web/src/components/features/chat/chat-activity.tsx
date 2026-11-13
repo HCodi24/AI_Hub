@@ -7,15 +7,14 @@ const COMMAND = /^(?:Command|Lệnh):\s*([\s\S]*)$/i;
 
 /** `provider` stays accepted for compatibility; every provider's logs collapse into the same disclosure. */
 export function ChatActivity({ logs }: { logs: string[]; provider?: string }) {
-  if (!logs.length) return null;
   const entries = logs.map(text => ({ text, command: COMMAND.exec(text)?.[1] }));
-  const commands = entries.filter(entry => entry.command !== undefined).length;
   return <details className={styles.activity}>
     <summary className={styles.activitySummary}>
-      <span>{commands ? chatText.ranCommands(commands) : `${chatText.activity} (${entries.length})`}</span>
+      <span>{`${chatText.activity} (${entries.length})`}</span>
       <ChevronRight size={16} aria-hidden="true" />
     </summary>
     <div className={styles.activityList}>
+      {entries.length === 0 && <p className={styles.activityLabel}>{chatText.noActivity}</p>}
       {entries.map((entry, index) => <details key={index} className={styles.activityEntry}>
         <summary className={styles.activitySummary}>
           <span className={styles.activityLabel} title={entry.command ?? entry.text}>

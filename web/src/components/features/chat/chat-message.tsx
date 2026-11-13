@@ -41,7 +41,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
     {replies}
     {message.attachments.map((attachment) => <a key={attachment.id} href={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} target="_blank" rel="noreferrer"><img className={styles.thumb} alt={chatText.attachments} src={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} /></a>)}
     {message.reasoning && <details><summary>{chatText.reasoning}</summary><MarkdownView source={message.reasoning} /></details>}
-    <ChatActivity logs={message.logs} provider={message.provider} />
+    {!user && <ChatActivity logs={message.logs} provider={message.provider} />}
     {!user && streaming && <div className={styles.streamStatus} role="status" aria-live="polite" aria-atomic="true">
       {chatText.streaming} {status?.provider_name} {status?.model}
       {status?.elapsed_s !== undefined && ` · ${status.elapsed_s} ${chatText.seconds}`}

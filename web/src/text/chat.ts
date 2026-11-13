@@ -48,7 +48,7 @@ export const chatText = {
   fileTools: "Công cụ file", none: "Tắt", noCommands: "Nguồn này không chạy lệnh",
   greeting: "Bạn muốn cùng làm gì hôm nay?", intro: "Chọn Chat hoặc một thư mục dự án để bắt đầu cuộc trò chuyện.",
   placeholder: "Nhập tin nhắn…", send: "Gửi tin nhắn", stop: "Dừng", hint: "Enter để gửi · Shift + Enter để xuống dòng",
-  you: "Bạn", assistant: "Trợ lý", activity: "Hoạt động", reasoning: "Suy luận", diff: "Thay đổi file", edited: (count: number) => `Đã sửa ${count} file`,
+  you: "Bạn", assistant: "Trợ lý", activity: "Activity", noActivity: "No activity yet.", reasoning: "Suy luận", diff: "Thay đổi file", edited: (count: number) => `Đã sửa ${count} file`,
   debate: "Tranh luận — mở trong giao diện cũ", plan: "Kế hoạch — mở trong giao diện cũ",
   copy: "Sao chép", copied: "Đã chép", copyError: "Không thể sao chép", code: "Mã nguồn",
   loading: "Đang tải…", streaming: "Đang phản hồi…", stopped: "Đã dừng", empty: "Chưa có cuộc trò chuyện",

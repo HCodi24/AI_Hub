@@ -167,6 +167,7 @@ pub fn apply_setting_change(
         "mutis.event_log" => boolean!(event_log),
         "mutis.auto_plan" => boolean!(auto_plan),
         "mutis.plan_approval" => boolean!(plan_approval),
+        "mutis.delegate_checker" => boolean!(delegate_checker),
         _ if path.starts_with("mutis.roles.") => {
             let mut parts = path.split('.');
             let _ = parts.next();

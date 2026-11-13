@@ -56,6 +56,9 @@ pub struct MutisConfig {
     /// Off = a new plan is approved and run at once, and shown as ordinary chat messages.
     #[serde(default = "default_plan_approval")]
     pub plan_approval: bool,
+    /// MutiS High: an independent checker (the `big` role at max effort) reviews each DeepSeek result before the coordinator judges it.
+    #[serde(default)]
+    pub delegate_checker: bool,
     #[serde(default = "default_routing")]
     pub routing: Vec<RoutingRule>,
     #[serde(default)]
@@ -119,6 +122,7 @@ impl Default for MutisConfig {
             event_log: true,
             auto_plan: false,
             plan_approval: false,
+            delegate_checker: false,
             routing: default_routing(),
             roles: MutisRoles::default(),
             high_roles: MutisRoles::default(),

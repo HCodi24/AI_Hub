@@ -377,6 +377,7 @@ pub(super) async fn generate_plan(
         mutis: cfg.mutis.clone(),
         mcp: Vec::new(),
         write_scope: Vec::new(),
+        checker_session_id: None,
     };
     let task_cancel = cancel.clone();
     let job_guard = JobGuard::new(state.active_jobs.clone());

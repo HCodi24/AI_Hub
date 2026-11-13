@@ -177,6 +177,7 @@ impl DelegateProvider {
             provider, model: self.model.clone(), folder: request.folder.clone(), permission: Permission::Write, effort: Effort::Default,
             messages: vec![message("user", worker_prompt(&request.mutis, task, &preload(&request.folder, &task.files)))], session_id: None, mutis: request.mutis.clone(), mcp: Vec::new(),
             write_scope: task.files.clone(),
+            checker_session_id: None,
         };
         let (sender, mut receiver) = mpsc::channel(32);
         let (inner_cancel, run) = (cancel.clone(), for_kind("deepseek_agent"));

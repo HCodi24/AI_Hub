@@ -91,6 +91,9 @@ pub struct ChatRecord {
     pub messages: Vec<ChatMessage>,
     #[serde(default)]
     pub session_id: Option<String>,
+    /// MutiS High: the independent checker (Codex) keeps its own thread, resumed for every check instead of started anew.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checker_session_id: Option<String>,
     /// CLI sessions of the sources this chat left, so switching back resumes them instead of starting over.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub sessions: std::collections::BTreeMap<String, String>,
@@ -259,6 +262,7 @@ pub fn new_record(request: &ChatRequest) -> ChatRecord {
             .unwrap_or_default(),
         messages: request.messages.clone(),
         session_id: None,
+        checker_session_id: None,
         sessions: Default::default(),
         updated_at: unix_time(),
         plan_task_of: request.task_id.as_ref().and(request.plan_id.clone()),

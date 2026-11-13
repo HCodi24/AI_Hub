@@ -40,6 +40,8 @@ pub struct ProviderRequest {
     pub mcp: Vec<crate::config::McpServerConfig>,
     /// When not empty, the file-tool agent may only edit these files (or create new files next to them).
     pub write_scope: Vec<String>,
+    /// Native thread of the independent checker (see `ChatRecord::checker_session_id`); None = start a new one.
+    pub checker_session_id: Option<String>,
 }
 
 pub(crate) fn is_deepseek_flash(model: &str) -> bool {

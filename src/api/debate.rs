@@ -143,6 +143,7 @@ async fn run_turn(
         mutis: mutis.clone(),
         mcp: Vec::new(),
         write_scope: Vec::new(),
+        checker_session_id: None,
     };
     let (sender, mut receiver) = mpsc::channel::<ProviderEvent>(64);
     let run_cancel = cancel.clone();

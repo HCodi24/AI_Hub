@@ -275,6 +275,7 @@ pub(crate) async fn chat_handler(
             .cloned()
             .collect(),
         write_scope: Vec::new(),
+        checker_session_id: None,
     };
     if memory_config.enabled {
         crate::features::memory::inject(&mut provider_request, &memory_context);
@@ -424,6 +425,7 @@ mod tests {
             mutis: Default::default(),
             mcp: Vec::new(),
             write_scope: Vec::new(),
+            checker_session_id: None,
         }
     }
 
