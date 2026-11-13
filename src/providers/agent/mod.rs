@@ -15,6 +15,20 @@ pub struct AgentTools {
     files: bool,
     mcp: McpTools,
     snapshots: BTreeMap<String, Option<String>>,
+    scope: Vec<String>,
+}
+
+fn normalize(path: &str) -> String {
+    path.replace('\\', "/").trim_start_matches("./").to_lowercase()
+}
+
+/// With a scope, edits are limited to the listed files; `write_file` may also create a NEW file in a listed file's folder.
+fn in_scope(root: &std::path::Path, scope: &[String], path: &str, creating: bool) -> bool {
+    let path = normalize(path);
+    let folder = |p: &str| p.rsplit_once('/').map_or(String::new(), |(dir, _)| dir.to_owned());
+    scope.iter().map(|entry| normalize(entry)).any(|entry| {
+        entry == path || (creating && !root.join(&path).exists() && folder(&entry) == folder(&path))
+    })
 }
 
 impl AgentTools {
@@ -32,7 +46,14 @@ impl AgentTools {
             files,
             mcp,
             snapshots: BTreeMap::new(),
+            scope: Vec::new(),
         }
+    }
+
+    /// Limit file edits to these paths (empty = no limit).
+    pub fn with_scope(mut self, scope: Vec<String>) -> Self {
+        self.scope = scope;
+        self
     }
 
     pub fn openai_definitions(&self) -> Vec<Value> {
@@ -120,6 +141,10 @@ impl AgentTools {
             let _ = emit_text(events, "log", format!("Từ chối: {path} (chế độ chỉ đọc)")).await;
             return "error: chế độ chỉ đọc — không được sửa hoặc ghi file".into();
         }
+        if matches!(name, "edit_file" | "write_file") && !self.scope.is_empty() && !in_scope(&self.root, &self.scope, path, name == "write_file") {
+            let _ = emit_text(events, "log", format!("Từ chối: {path} (ngoài phạm vi được giao)")).await;
+            return format!("error: {path} is outside the files you were given ({}). Edit only those files; write_file may also create a new file next to them.", self.scope.join(", "));
+        }
         if matches!(name, "edit_file" | "write_file") {
             match files::safe_path(&self.root, path) {
                 Ok(_) => {
@@ -159,6 +184,21 @@ impl AgentTools {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn scope_limits_edits_to_listed_files_and_new_files_beside_them() {
+        let root = std::env::temp_dir().join(format!("ai-hub-scope-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("web/src")).unwrap();
+        std::fs::write(root.join("web/src/other.ts"), "x").unwrap();
+        let scope = vec!["web/src/a.tsx".to_owned()];
+        assert!(in_scope(&root, &scope, "./web/src/A.tsx", false));
+        assert!(!in_scope(&root, &scope, "web/src/other.ts", false), "unlisted existing file");
+        assert!(!in_scope(&root, &scope, "web/src/new.tsx", false), "edit_file never creates");
+        assert!(in_scope(&root, &scope, "web/src/new.tsx", true), "new file beside a listed one");
+        assert!(!in_scope(&root, &scope, "web/src/other.ts", true), "write_file over an unlisted existing file");
+        assert!(!in_scope(&root, &scope, "src/new.rs", true), "other folder");
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn definitions_follow_file_and_command_permissions_for_both_apis() {

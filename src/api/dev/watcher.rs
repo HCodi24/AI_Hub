@@ -1,6 +1,6 @@
 //! Background watcher that notices Rust/web changes and optionally auto-rebuilds.
 
-use super::build::run_dev_build;
+use super::build::{npm_build_command, run_dev_build};
 use crate::app::AppState;
 use serde_json::json;
 use std::{
@@ -16,6 +16,7 @@ pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
         let mut old_out = crate::dev::snapshot_web_out(&repo);
         let mut out_changed_at: Option<Instant> = None;
         let mut pending: Option<Instant> = None;
+        let mut pending_web: Option<Instant> = None;
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
             let rust = crate::dev::snapshot(&repo);
@@ -26,6 +27,7 @@ pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
                 let _ = state.dev_events.send(
                     json!({"event":"web_changed","data":{"files":web_changes.len()}}).to_string(),
                 );
+                pending_web = Some(Instant::now() + Duration::from_secs(3));
             }
             old_web = web;
             let out = crate::dev::snapshot_web_out(&repo);
@@ -58,6 +60,15 @@ pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
                 pending = Some(Instant::now() + Duration::from_secs(3));
             }
             old_rust = rust;
+            // Auto-rebuild also covers the UI: without it a web edit never shows until someone clicks "Build giao diện".
+            if pending_web.is_some_and(|at| Instant::now() >= at) {
+                pending_web = None;
+                if state.config.read().await.self_dev.auto_rebuild
+                    && state.active_jobs.load(Ordering::SeqCst) == 0
+                {
+                    let _ = npm_build_command(&repo).output().await;
+                }
+            }
             if pending.is_some_and(|at| Instant::now() >= at) {
                 pending = None;
                 if state.config.read().await.self_dev.auto_rebuild

@@ -16,6 +16,7 @@ import { notify } from "@/components/toast/toast";
 import { createPlanRunner, stopActivePlan } from "./plan-runner";
 import { planRunOrder, planSummary } from "./plan-order";
 import { PlanTaskRow } from "./plan-task";
+import { ChatPlan } from "./chat-plan";
 import { cardText as t } from "@/text/cards";
 import styles from "./plan-card.module.css";
 export function PlanCard({ id }: { id: string }) {
@@ -54,7 +55,7 @@ export function PlanCard({ id }: { id: string }) {
     if (!config.data || !mutis.data) throw new Error(t.wait);
     runner.current = createPlanRunner(mutis.data, config.data.providers); return runner.current;
   }
-  return <section className={styles.card} aria-label={t.plan}><header><strong><Sparkles size={18} aria-hidden="true" /> {t.plan} · {plan.title}</strong><StatusBadge state={plan.error ? "failed" : plan.planning || running === id ? "running" : done === plan.tasks.length && done ? "done" : "draft"} label={plan.error ? t.error : plan.planning ? t.planning : running === id ? t.running : done === plan.tasks.length && done ? t.done : plan.approved ? t.approved : t.draft} /><time>{plan.planning ? `${clock}s` : `${done}/${plan.tasks.length}`}</time></header>
+  const editor = <section className={styles.card} aria-label={t.plan}><header><strong><Sparkles size={18} aria-hidden="true" /> {t.plan} · {plan.title}</strong><StatusBadge state={plan.error ? "failed" : plan.planning || running === id ? "running" : done === plan.tasks.length && done ? "done" : "draft"} label={plan.error ? t.error : plan.planning ? t.planning : running === id ? t.running : done === plan.tasks.length && done ? t.done : plan.approved ? t.approved : t.draft} /><time>{plan.planning ? `${clock}s` : `${done}/${plan.tasks.length}`}</time></header>
     <progress value={done} max={Math.max(1, plan.tasks.length)} aria-label={`${done}/${plan.tasks.length} ${t.done}`} />
     {plan.error && <p role="alert">{plan.error}</p>}
     {plan.planning ? <><pre aria-live="polite">{logs?.join("\n")}</pre><button onClick={() => cancelCard(id)}>{t.cancel}</button></> : <>
@@ -73,4 +74,7 @@ export function PlanCard({ id }: { id: string }) {
         <small>{plan.tasks.reduce((sum, task) => sum + task.tokens, 0).toLocaleString("vi-VN")} token</small>
       </footer></>}
   </section>;
+  const chatStyle = Boolean(mutis.data && !mutis.data.plan_approval && plan.approved && !plan.planning);
+  return chatStyle ? <ChatPlan plan={plan} running={running === id} onStop={() => void stopActivePlan()} editor={editor}
+    provider={providerId => { const p = config.data?.providers.find(item => item.id === providerId); return { name: p?.name || providerId, kind: p?.kind || "" }; }} /> : editor;
 }

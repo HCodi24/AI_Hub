@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, File, Folder } from "lucide-react";
 import { Button } from "@/components/button/button";
+import { ScrollArea } from "@/components/scroll-area";
 import { configApi } from "@/apis/config.api";
 import { chatText } from "@/text/chat";
 import { folderName } from "@/lib/utils";
@@ -56,9 +57,9 @@ export function FolderTree({ folder }: { folder: string }) {
   return <>
     <h2>{chatText.projectTree}</h2>
     <div className={styles.project} title={folder}><Folder size={16} aria-hidden="true" /><strong className={styles.name}>{folderName(folder)}</strong></div>
-    <div className={styles.entries}>
+    <ScrollArea className={styles.entries}>
       {error ? <div role="alert">{error} <Button size="sm" onClick={() => setAttempt(attempt + 1)}>{chatText.retry}</Button></div>
         : root === null ? chatText.loading : root.length ? root.map(e => <Node key={`${folder}/${e.name}`} path={folder} entry={e} depth={0} />) : chatText.treeEmpty}
-    </div>
+    </ScrollArea>
   </>;
 }

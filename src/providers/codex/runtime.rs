@@ -138,7 +138,13 @@ impl Provider for CodexProvider {
                             client.call("turn/start",json!({"threadId":id,"input":[{"type":"text","text":"Continue the unfinished work within the original scope."}]})).await?;
                         } else { break; }
                     }
-                    "error" if params["willRetry"] != true => bail!("Codex báo lỗi; kiểm tra tài khoản, model và kết nối"),
+                    "error" if params["willRetry"] != true => {
+                        let detail = params["error"]["message"].as_str().or(params["message"].as_str()).unwrap_or("");
+                        if detail.contains("not supported when using Codex with a ChatGPT account") {
+                            bail!("Gói ChatGPT hiện tại (ví dụ Free) không dùng được model «{}». Chọn model khác ở thanh chọn model, hoặc đổi model của vai Codex trong Cài đặt › MutiS, hoặc nâng gói.", request.model);
+                        }
+                        bail!("Codex báo lỗi: {}", crate::core::text::truncate_chars(detail, 400))
+                    }
                     _ => {}
                 }
             }

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { PenSquare, Home, History, Search, X, PanelLeftClose, PanelLeftOpen, Settings, Hammer, ChevronDown, ChevronRight, Folder, Trash2 } from "lucide-react";
 import { Button } from "@/components/button/button";
+import { Dialog } from "@/components/dialog/dialog";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { FolderTree } from "@/components/features/chat/folder-tree";
+import { ScrollArea } from "@/components/scroll-area";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { WindowControls } from "@/components/window-controls/window-controls";
 import { ThemeControl } from "@/components/theme-control/theme-control";
@@ -32,6 +34,8 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletePending = useRef(false);
+  const confirmRef = useRef<string | null>(null);
+  confirmRef.current = confirmDelete;
   async function deleteChat(chatId: string) {
     if (deletePending.current) return;
     deletePending.current = true; setDeleting(true);
@@ -95,6 +99,8 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
     if (main) main.inert = true;
     controls()[0]?.focus();
     function key(event: KeyboardEvent) {
+      // The delete confirmation is a native modal dialog: it owns Tab and Escape.
+      if (confirmRef.current) return;
       if (event.key === "Escape") setDrawer(false);
       if (event.key !== "Tab") return;
       const items = controls(); const first = items[0]; const last = items.at(-1);
@@ -139,14 +145,14 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
           {!treeOpen && <IconButton aria-label={chatText.searchChats} aria-expanded={searching} aria-controls="sidebar-search" onClick={() => { setSearching(!searching); setQuery(""); }}><Search size={20} /></IconButton>}
           <div className={styles.close}><IconButton aria-label={chatText.close} onClick={() => setDrawer(false)}><X size={20} /></IconButton></div>
         </div>
-        <button className={styles.newChat} disabled={streaming} onClick={reset}><PenSquare size={21} aria-hidden="true" />{chatText.newChat}</button>
+        <button className={styles.newChat} disabled={streaming} onClick={reset}><PenSquare size={18} aria-hidden="true" />{chatText.newChat}</button>
         {treeOpen ? <section id="sidebar-files" tabIndex={-1} className={styles.files} aria-label={chatText.projectTree}>
           {settingsFolder ? <FolderTree key={settingsFolder} folder={settingsFolder} />
             : <><h2>{chatText.projectTree}</h2><p>{chatText.treeNoFolder}</p></>}
         </section> : <>
         {searching && <input ref={search} id="sidebar-search" className={styles.search} type="search" aria-label={chatText.searchChats} placeholder={chatText.searchChats} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Escape") { event.stopPropagation(); setQuery(""); setSearching(false); panel.current?.querySelector<HTMLButtonElement>('[aria-controls="sidebar-search"]')?.focus(); } }} />}
         <h2>{chatText.recents}</h2>
-        <nav ref={history} id="sidebar-history" tabIndex={-1} className={styles.history} aria-label={chatText.history}>
+        <ScrollArea as="nav" ref={history} id="sidebar-history" tabIndex={-1} className={styles.history} aria-label={chatText.history}>
           {loading && <Skeleton />}{!loading && !filteredChats.length && <p>{query.trim() ? chatText.noChatsFound : chatText.empty}</p>}
           {groupByFolder(filteredChats).map(([folder, items]) => {
             const open = Boolean(query.trim()) || !closed.has(folder);
@@ -160,17 +166,12 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
                   <button className={styles.chatItem} disabled={streaming || deleting} aria-current={chat.id === id ? "page" : undefined} title={chat.title || chatText.newChat}
                     onClick={() => void load(chat.id)}><span>{chat.title || chatText.newChat}</span></button>
                   <IconButton className={styles.deleteChat} aria-label={`${chatText.deleteChat}: ${chat.title || chatText.newChat}`} disabled={streaming || Boolean(running) || deleting}
-                    aria-expanded={confirmDelete === chat.id} onClick={() => setConfirmDelete(confirmDelete === chat.id ? null : chat.id)}><Trash2 size={16} /></IconButton>
+                    aria-haspopup="dialog" onClick={() => setConfirmDelete(chat.id)}><Trash2 size={16} /></IconButton>
                 </div>
-                {confirmDelete === chat.id && <div className={styles.deleteConfirm} role="group" aria-label={chatText.deleteChat} aria-busy={deleting}>
-                  <p>{chatText.deleteConfirm}</p><p>{chatText.keepMemory}</p>
-                  <div><Button size="sm" disabled={deleting} onClick={() => setConfirmDelete(null)}>{chatText.cancelDelete}</Button>
-                    <Button size="sm" variant="danger" disabled={streaming || Boolean(running) || deleting} onClick={() => void deleteChat(chat.id)}>{deleting ? chatText.deletingChat : chatText.deleteChat}</Button></div>
-                </div>}
               </div>)}
             </section>;
           })}
-        </nav>
+        </ScrollArea>
         </>}
       </div>
       <div className={styles.resizeHandle} role="separator" aria-orientation="vertical" aria-label={chatText.resizeSidebar}
@@ -205,5 +206,15 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
           setWidth(event.key === "Home" ? minWidth : event.key === "End" ? maxWidth : Math.max(minWidth, Math.min(maxWidth, sidebarWidth + (event.key === "ArrowRight" ? 16 : -16))));
         }} />
     </aside>
+    {confirmDelete !== null && <Dialog title={chatText.deleteChat} iconClose className={styles.deleteDialog}
+      close={() => { if (!deletePending.current) setConfirmDelete(null); }}>
+      <p>{chatText.deleteConfirm}</p>
+      <p>{chatText.keepMemory}</p>
+      <div className={styles.deleteActions}>
+        <Button size="sm" disabled={deleting} onClick={() => { if (!deletePending.current) setConfirmDelete(null); }}>{chatText.cancelDelete}</Button>
+        <Button size="sm" variant="danger" disabled={streaming || Boolean(running) || deleting}
+          onClick={() => void deleteChat(confirmDelete)}>{deleting ? chatText.deletingChat : chatText.deleteChat}</Button>
+      </div>
+    </Dialog>}
   </>;
 }

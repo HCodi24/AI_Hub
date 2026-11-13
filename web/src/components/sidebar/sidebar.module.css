@@ -22,9 +22,10 @@
 .brand button { color: var(--muted); }
 .newChat, .settings { justify-content: flex-start; gap: 12px; border: 0; background: transparent; min-height: 44px; text-align: left; }
 .newChat { padding: 10px 8px; font-size: var(--font-16); }
+.newChat > svg { flex-shrink: 0; transform: translateY(-6px); }
 .sidebar h2 { margin: 28px 8px 12px; color: var(--muted); font-size: var(--font-14); font-weight: 600; }
 .search { width: 100%; margin-top: 12px; background: var(--sidebar-rail); border-color: var(--sidebar-line); }
-.history { flex: 1; overflow-y: auto; min-height: 0; margin-right: -12px; padding-right: 12px; scrollbar-width: thin; scrollbar-color: var(--sidebar-hover) transparent; }
+.history { flex: 1; overflow-y: auto; min-height: 0; margin-right: -12px; padding-right: 12px; }
 .files { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
 .history p { color: var(--muted); padding: 0 8px; font-size: var(--font-14); }
 .history button { display: flex; justify-content: flex-start; width: 100%; min-height: 44px; border: 0; background: transparent; text-align: left; padding: 10px 8px; margin-bottom: 2px; border-radius: 8px; }
@@ -37,11 +38,9 @@
 .history .chatRow .chatItem { flex: 1; min-width: 0; margin-bottom: 0; }
 .history .deleteChat { flex: 0 0 36px; width: 36px; padding: 0; margin: 0 4px 0 0; align-items: center; justify-content: center; color: var(--muted); }
 .history .deleteChat:hover:enabled { color: var(--danger); }
-.deleteConfirm { margin: 4px 0 8px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
-.history .deleteConfirm p { padding: 0; margin: 0 0 8px; white-space: normal; overflow-wrap: anywhere; }
-.deleteConfirm > div { display: flex; flex-wrap: wrap; gap: 8px; }
-.history .deleteConfirm button { width: auto; margin: 0; justify-content: center; border: 1px solid var(--border); }
-.history .deleteConfirm button:last-child { color: var(--danger); background: var(--danger-bg); border-color: var(--danger); }
+.deleteDialog { width: min(440px, calc(100vw - 32px)); }
+.deleteDialog p { margin: 0 0 8px; white-space: normal; overflow-wrap: anywhere; }
+.deleteActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .preferences { width: 44px; }
 .profile { display: flex; justify-content: center; align-items: center; width: 44px; height: 48px; list-style: none; border-radius: 12px; }
 .profile::-webkit-details-marker { display: none; }

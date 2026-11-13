@@ -53,13 +53,13 @@
 .cardHead { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .badge { font-size: var(--font-12); padding: 2px var(--space-2); border-radius: var(--radius-xs); border: 1px solid var(--border); color: var(--muted); }
 .badge[data-on=true] { color: var(--accent); border-color: var(--accent); }
-.log { margin: 0; padding: var(--space-3); max-height: 320px; overflow: auto; border-radius: var(--radius-small); background: var(--code); font-size: var(--font-12); white-space: pre-wrap; overflow-wrap: anywhere; }
+.log { composes: scrollbar from '../../scroll-area.module.css'; margin: 0; padding: var(--space-3); max-height: 320px; overflow: auto; border-radius: var(--radius-small); background: var(--code); font-size: var(--font-12); white-space: pre-wrap; overflow-wrap: anywhere; }
 .log span[data-diff=add] { color: var(--accent); }
 .log span[data-diff=remove] { color: var(--danger); }
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-4); margin: 0; font-size: var(--font-13); }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
-.tableWrap { overflow-x: auto; }
+.tableWrap { composes: scrollbar from '../../scroll-area.module.css'; overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; font-size: var(--font-13); font-variant-numeric: tabular-nums; }
 .table caption { text-align: left; color: var(--muted); padding: var(--space-2) 0; }
 .table th, .table td { padding: var(--space-2); border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }

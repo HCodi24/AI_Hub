@@ -10,6 +10,10 @@ import { debateReducer, type DebateLive } from "@/components/features/debate/deb
 import { useChatStore } from "./chat-store";
 import { useCardStore } from "./card-store";
 import { planSummary } from "@/components/features/plan/plan-order";
+import { createPlanRunner } from "@/components/features/plan/plan-runner";
+import type { Plan } from "@/schema/plans.schema";
+import type { Mutis } from "@/schema/mutis.schema";
+import type { ProviderSummary } from "@/schema/config.schema";
 import { cardText as t } from "@/text/cards";
 const controllers = new Map<string, AbortController>();
 export function cancelActiveCard() { if (!controllers.size) return false; for (const controller of new Set(controllers.values())) controller.abort(); return true; }
@@ -31,6 +35,7 @@ export async function startCard(request: string, kind: "debate" | "plan", afterD
   let plan = PlanSchema.parse({ id: temp, title: request.slice(0, 72), request, folder: state.settings.folder, planning: true });
   if (kind === "debate") useCardStore.getState().debate(temp, live); else useCardStore.getState().plan(plan);
   let currentId = temp;
+  let autoRun: { plan: Plan; mutis: Mutis; providers: ProviderSummary[] } | undefined;
   const attach = (id: string) => {
     controllers.set(id, controller); currentId = id;
     const now = useChatStore.getState();
@@ -62,6 +67,11 @@ export async function startCard(request: string, kind: "debate" | "plan", afterD
         if (previous) useCardStore.getState().debate(afterDebateId, { ...previous, record: { ...previous.record, ...linked } });
         useCardStore.setState({ confirm: plan.id });
       }
+      // Approval off in settings: approve now and run it once streaming ends (see below).
+      if (!mutis.plan_approval && !afterDebateId && !plan.error && plan.tasks.length) {
+        plan = { ...plan, approved: true }; await plansApi.save(plan); useCardStore.getState().plan(plan);
+        autoRun = { plan, mutis, providers: cfg.providers };
+      }
       useChatStore.setState({ messages: useChatStore.getState().messages.map(m => m.plan_id === plan.id ? { ...m, content: planSummary(plan) } : m) });
     }
   } catch (error) {
@@ -70,4 +80,8 @@ export async function startCard(request: string, kind: "debate" | "plan", afterD
     else useCardStore.getState().plan({ ...plan, planning: false, error: message });
     useChatStore.setState({ error: message });
   } finally { controllers.delete(temp); controllers.delete(currentId); useChatStore.setState({ streaming: false }); }
+  if (autoRun) {
+    try { await createPlanRunner(autoRun.mutis, autoRun.providers).runWholePlan(autoRun.plan); }
+    catch (error) { useChatStore.setState({ error: error instanceof Error ? error.message : t.error }); }
+  }
 }

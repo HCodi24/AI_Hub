@@ -11,6 +11,7 @@ import { startCard, cancelActiveCard } from "./card-actions";
 import { useCardStore } from "./card-store";
 import { memoryNotice } from "@/components/features/memory/memory-events";
 import { useToast } from "@/components/toast/toast";
+const PLAN_MARKER = "[[MUTIS_PLAN]]";
 let activeChatAbort: AbortController | null = null;
 export function useChat() {
   const client = useQueryClient();
@@ -20,32 +21,32 @@ export function useChat() {
   async function send(text: string, direct = false, attachments: { id: string; mime: string }[] = []) {
     const state = useChatStore.getState();
     if (deleting.current || state.streaming || useCardStore.getState().running) return false;
-    const mutis = await mutisApi.get();
     let debate = false;
     try { debate = ["1", "true"].includes(localStorage.getItem("debateMode") || ""); } catch { /* Storage unavailable. */ }
     if (state.settings.folder.trim() && !direct && !attachments.length && debate) {
       await startCard(text, "debate"); await client.invalidateQueries({ queryKey: ["chats"] }); return true;
     }
-    if (state.settings.folder.trim() && !direct && !attachments.length && state.settings.provider_id === "mutis" && mutis.enabled && mutis.auto_plan && !state.settings.dev_chat) {
+    // Only the MutiS source needs its settings before the message is shown.
+    const mutis = state.settings.provider_id === "mutis" ? await mutisApi.get() : undefined;
+    if (mutis && state.settings.folder.trim() && !direct && !attachments.length && mutis.enabled && mutis.auto_plan && !state.settings.dev_chat) {
       await startCard(text, "plan"); await client.invalidateQueries({ queryKey: ["chats"] }); return true;
     }
     let settings = state.settings;
-    if (settings.provider_id === "mutis") {
-      const resolved = await mutisApi.resolve(settings.effort); const lead = resolved.lead.used_provider;
-      if (!lead) { useChatStore.setState({ error: chatText.selectRequired }); return false; }
-      const role = rolesFor(mutis, settings.effort)?.lead || mutis.roles.lead;
-      settings = { ...settings, provider_id: lead.id, model: role.provider_id === lead.id ? role.model || lead.models[0] || "" : lead.models[0] || "", effort: role.effort };
-    }
-    if (!settings.provider_id || !settings.model.trim()) {
+    if (!mutis && (!settings.provider_id || !settings.model.trim())) {
       useChatStore.setState({ error: chatText.selectRequired }); return false;
     }
-    // Settings requests can finish after the user switches chats or sends another reply.
-    const latest = useChatStore.getState();
-    if (deleting.current || latest.id !== state.id || latest.messages !== state.messages || latest.streaming || useCardStore.getState().running) return false;
+    // The message goes on screen at once; everything that waits for the server happens after it, while "streaming" blocks other actions.
     state.begin(text, attachments);
     const current = useChatStore.getState();
     const controller = new AbortController(); activeChatAbort = controller;
     try {
+      if (mutis) {
+        const resolved = await mutisApi.resolve(settings.effort); const lead = resolved.lead.used_provider;
+        if (!lead) throw new Error(chatText.selectRequired);
+        const role = rolesFor(mutis, settings.effort)?.lead || mutis.roles.lead;
+        settings = { ...settings, provider_id: lead.id, model: role.provider_id === lead.id ? role.model || lead.models[0] || "" : lead.models[0] || "", effort: role.effort };
+        if (!settings.model.trim()) throw new Error(chatText.selectRequired);
+      }
       const source = config.data?.providers.find(item => item.id === settings.provider_id);
       await chatApi.send({ ...settings, file_tools: settings.folder.trim() ? fileToolsFor(source, settings.permission) : "none", folder: settings.folder.trim(), model: settings.model.trim(),
         chat_id: current.id, messages: current.messages.slice(0, -1) }, controller.signal, (event, data) => {
@@ -53,6 +54,12 @@ export function useChat() {
         if (event === "memory") useToast.getState().show(memoryNotice(data, settings.folder));
       });
       current.finish();
+      // MutiS High: Codex asks for a plan with this marker (see CHAT_RULE in mutis_high_delegation.rs); the app then plans and runs it on the workers.
+      const reply = useChatStore.getState().messages.at(-1);
+      if (reply?.role === "assistant" && reply.content.includes(PLAN_MARKER) && settings.folder.trim() && !controller.signal.aborted) {
+        useChatStore.setState({ messages: useChatStore.getState().messages.map(m => m === reply ? { ...m, content: reply.content.replace(PLAN_MARKER, "").trim() } : m) });
+        await startCard(text, "plan", undefined, false);
+      }
     } catch (error: unknown) {
       current.finish(controller.signal.aborted ? chatText.stopped : error instanceof Error ? error.message : chatText.requestError);
     } finally { activeChatAbort = null; await client.invalidateQueries({ queryKey: ["chats"] }); }

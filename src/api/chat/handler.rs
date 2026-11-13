@@ -34,7 +34,10 @@ fn avatar_source(provider: &crate::config::ProviderConfig, model: &str) -> Strin
 
 /// First user message of the conversation gets the fixed rules in front of it.
 fn add_first_request_rules(request: &mut ProviderRequest) {
-    if request.messages.iter().filter(|m| m.role == "user").count() != 1 {
+    // The DeepSeek agent has no MCP, so the CodeGraph rule does not apply to it.
+    if request.provider.kind == "deepseek_agent"
+        || request.messages.iter().filter(|m| m.role == "user").count() != 1
+    {
         return;
     }
     let indexed = std::path::Path::new(&request.folder)
@@ -120,8 +123,26 @@ pub(crate) async fn chat_handler(
         provider_config.kind = "mcp_agent".into();
     }
     let mutis_config = state.config.read().await.mutis.clone();
-    let provider = providers::for_kind(&provider_config.kind)
-        .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?;
+    // MutiS High + Codex: the app runs the DeepSeek worker for Codex (see providers::delegate).
+    let role_effort_name = request.effort.as_deref().unwrap_or("max");
+    let delegate_worker = if provider_config.kind == "codex_cli" && mutis_config.enabled && request.plan_id.is_none() && !plain_chat
+        && crate::config::MutisConfig::level_for(role_effort_name) == "high" {
+        let config = state.config.read().await;
+        // High roles may be unset (old configs): fall back to the Max small worker.
+        let high_small = &mutis_config.roles_for(role_effort_name).small;
+        let role = if high_small.provider_id.trim().is_empty() { &mutis_config.roles.small } else { high_small };
+        crate::config::resolve_provider_id(&config.providers, &role.provider_id)
+            .filter(|p| !p.api_key.trim().is_empty())
+            .map(|p| (p.clone(), if role.model.trim().is_empty() { p.models.first().cloned().unwrap_or_default() } else { role.model.clone() }))
+            .filter(|(_, model)| !model.is_empty())
+    } else {
+        None
+    };
+    let provider: Box<dyn providers::Provider> = match &delegate_worker {
+        Some((worker, model)) => Box::new(providers::delegate::DelegateProvider { worker: worker.clone(), model: model.clone() }),
+        None => providers::for_kind(&provider_config.kind)
+            .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?,
+    };
     let switched_source = existing
         .as_ref()
         .is_some_and(|r| r.provider_id != request.provider_id);
@@ -253,6 +274,7 @@ pub(crate) async fn chat_handler(
             .filter(|server| server.enabled)
             .cloned()
             .collect(),
+        write_scope: Vec::new(),
     };
     if memory_config.enabled {
         crate::features::memory::inject(&mut provider_request, &memory_context);
@@ -260,6 +282,20 @@ pub(crate) async fn chat_handler(
     // Plan workers run unattended; interactive chat supports user decision cards on every turn.
     if request.plan_id.is_none() {
         add_question_rules(&mut provider_request);
+        if !plain_chat {
+            let rule = crate::core::rule::mutis_high_delegation::for_chat(
+                mutis_config.enabled,
+                crate::config::MutisConfig::level_for(request.effort.as_deref().unwrap_or("max")),
+                &provider_request.provider.kind,
+                provider_request.mcp.iter().any(|server| server.name.contains("deepseek")),
+                delegate_worker.is_some(),
+            );
+            if !rule.is_empty() {
+                if let Some(message) = provider_request.messages.iter_mut().rev().find(|m| m.role == "user") {
+                    message.content = format!("{rule}\n\n{}", message.content);
+                }
+            }
+        }
     }
     // Plan task workers cannot stop to ask the user, so they skip the first-request rules.
     if request.plan_id.is_none() && !plain_chat {
@@ -387,6 +423,7 @@ mod tests {
             session_id: None,
             mutis: Default::default(),
             mcp: Vec::new(),
+            write_scope: Vec::new(),
         }
     }
 

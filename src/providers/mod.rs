@@ -6,6 +6,7 @@ pub(crate) mod cli_support;
 pub mod codex_cli;
 pub(crate) mod codex;
 pub mod deepseek_agent;
+pub(crate) mod delegate;
 pub(crate) mod discovery;
 pub(crate) mod limits;
 pub mod mcp;
@@ -37,6 +38,8 @@ pub struct ProviderRequest {
     pub mutis: MutisConfig,
     /// App-managed MCP servers for API agents and the isolated Codex adapter.
     pub mcp: Vec<crate::config::McpServerConfig>,
+    /// When not empty, the file-tool agent may only edit these files (or create new files next to them).
+    pub write_scope: Vec<String>,
 }
 
 pub(crate) fn is_deepseek_flash(model: &str) -> bool {

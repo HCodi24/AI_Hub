@@ -321,14 +321,20 @@ pub(super) async fn generate_plan(
         &folder.to_string_lossy(),
         &cfg.memory,
     );
-    let request_context = format!("{memory}\n{request_context}");
+    let delegation_rule = crate::core::rule::mutis_high_delegation::for_coordinator(
+        cfg.mutis.enabled,
+        &level,
+        &planner.kind,
+    );
+    let high_delegation = !delegation_rule.is_empty();
+    let request_context = format!("{delegation_rule}\n{memory}\n{request_context}");
     let prompt = format!(
         concat!(
             "Respond ONLY as JSON: {{\"title\":\"...\",\"tasks\":[",
-            "{{\"id\":1,\"title\":\"...\",\"detail\":\"files + expected result\",",
+            "{{\"id\":1,\"title\":\"...\",\"detail\":\"exact relative file paths + what to change + expected result\",",
             "\"assignee\":\"provider id\",\"depends_on\":[ids],",
             "\"kind\":\"plan|small_edit|code|test|docs|review\"}}]}}. ",
-            "Keep tasks small and avoid editing same file in parallel.\n",
+            "Keep tasks small and avoid editing same file in parallel. Read the relevant files first and name the exact relative file paths (and symbols or line ranges when known) in every code, small_edit and test task detail. Do not add a separate investigation task: put what the worker needs into the task detail.\n",
             "Request:\n{}{}\nWorking folder: {}\nFiles:\n{}\n",
             "Connected workers (id, name, kind, models):\n{}{}"
         ),
@@ -370,6 +376,7 @@ pub(super) async fn generate_plan(
         session_id: None,
         mutis: cfg.mutis.clone(),
         mcp: Vec::new(),
+        write_scope: Vec::new(),
     };
     let task_cancel = cancel.clone();
     let job_guard = JobGuard::new(state.active_jobs.clone());
@@ -477,7 +484,14 @@ pub(super) async fn generate_plan(
                             let old = t["assignee"].as_str().unwrap_or(&planner_id).to_owned();
                             let kind = t["kind"].as_str().unwrap_or("code").to_owned();
                             let valid = connected.iter().any(|p| p.id == old);
-                            let assignee = if cfg.mutis.enabled {
+                            // Preserve High coordinator assignments, including explicit direct-Codex requests.
+                            // Generic kind routing would otherwise send implementation back to Codex.
+                            let assignee = if high_delegation && valid
+                                && [&roles.small.provider_id, &roles.big.provider_id, &roles.lead.provider_id]
+                                    .contains(&&old)
+                            {
+                                old.clone()
+                            } else if cfg.mutis.enabled {
                                 crate::plans::reassign_with_routing(
                                     &kind,
                                     &connected,
@@ -507,7 +521,13 @@ pub(super) async fn generate_plan(
                             );
                             let assigned_provider =
                                 connected.iter().find(|provider| provider.id == assignee);
-                            let routed_role = role.filter(|role| role.provider_id == assignee);
+                            let routed_role = if high_delegation {
+                                [&roles.small, &roles.big, &roles.lead]
+                                    .into_iter()
+                                    .find(|role| role.provider_id == assignee)
+                            } else {
+                                role.filter(|role| role.provider_id == assignee)
+                            };
                             let reassigned_from = if assignee == old { None } else { Some(old) };
                             PlanTask {
                                 id: t["id"].as_u64().unwrap_or(i as u64 + 1) as u32,

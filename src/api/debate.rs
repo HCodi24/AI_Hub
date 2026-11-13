@@ -142,6 +142,7 @@ async fn run_turn(
         session_id: debater.session.clone(),
         mutis: mutis.clone(),
         mcp: Vec::new(),
+        write_scope: Vec::new(),
     };
     let (sender, mut receiver) = mpsc::channel::<ProviderEvent>(64);
     let run_cancel = cancel.clone();

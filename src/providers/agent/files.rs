@@ -177,7 +177,8 @@ pub(super) fn run_tool(
                 let text = fs::read_to_string(&path)?;
                 let old = args["old_text"].as_str().context("Thiếu old_text")?;
                 let new = args["new_text"].as_str().context("Thiếu new_text")?;
-                let updated = exact_replace(&text, old, new)?;
+                let (old, new) = (match_line_endings(&text, old), match_line_endings(&text, new));
+                let updated = exact_replace(&text, &old, &new)?;
                 snapshots.entry(relative).or_insert(Some(text));
                 fs::write(&path, updated)?;
                 Ok("edited".into())
@@ -190,13 +191,27 @@ pub(super) fn run_tool(
                 if let Some(parent) = path.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                fs::write(&path, content)?;
+                // Keep CRLF files CRLF: the model writes LF, which would make every line look changed.
+                let content = match fs::read_to_string(&path) {
+                    Ok(existing) => match_line_endings(&existing, content),
+                    Err(_) => content.to_owned(),
+                };
+                fs::write(&path, &content)?;
                 Ok(format!("wrote {} chars", content.chars().count()))
             }
             _ => bail!("Công cụ không tồn tại: {name}"),
         }
     })();
     result.unwrap_or_else(|error| format!("error: {error:#}"))
+}
+
+/// The model always sends LF; if the file uses CRLF, convert its text so multi-line matches and writes keep the file's endings.
+pub(super) fn match_line_endings(file: &str, text: &str) -> String {
+    if file.contains("\r\n") {
+        text.replace("\r\n", "\n").replace('\n', "\r\n")
+    } else {
+        text.to_owned()
+    }
 }
 
 pub(super) fn exact_replace(text: &str, old: &str, new: &str) -> Result<String> {
@@ -257,6 +272,26 @@ pub(super) fn make_diff(root: &Path, snapshots: &BTreeMap<String, Option<String>
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn crlf_files_accept_lf_edits_and_stay_crlf() {
+        let file = "a
+b
+c
+";
+        let (old, new) = (match_line_endings(file, "a
+b"), match_line_endings(file, "a
+x"));
+        assert_eq!(exact_replace(file, &old, &new).unwrap(), "a
+x
+c
+");
+        assert_eq!(match_line_endings("a
+b
+", "x
+y"), "x
+y");
+    }
+
     use super::*;
 
     #[test]

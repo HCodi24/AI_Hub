@@ -1,8 +1,11 @@
 //! Fixed rules for AI providers. One file per rule; each exposes `RULE`.
 pub mod codegraph;
 pub mod chat_questions;
+pub mod deepseek;
+pub mod deepseek_flash;
 pub mod english_rules;
 pub mod keep_features;
+pub mod mutis_high_delegation;
 pub mod report_unfinished;
 pub mod utf8;
 

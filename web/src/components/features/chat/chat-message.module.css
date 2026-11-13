@@ -8,6 +8,25 @@
 .identity svg { color: var(--accent); }
 .message details { margin-top: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-3); }
 .message summary { cursor: pointer; color: var(--muted); }
+.message .activity { border: 0; padding: 0; }
+.message .activitySummary { display: flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; min-height: 36px; list-style: none; border-radius: 6px; }
+.activitySummary::-webkit-details-marker { display: none; }
+.activitySummary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.activitySummary > svg { flex-shrink: 0; color: var(--muted); }
+.activity[open] > .activitySummary > svg, .activityEntry[open] > .activitySummary > svg { transform: rotate(90deg); }
+.activityList { margin-top: 8px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.message .activityEntry { margin: 0; padding: 0; border: 0; border-radius: 0; }
+.activityEntry + .activityEntry { border-top: 1px solid var(--border); }
+.message .activityEntry > summary { width: 100%; padding: 10px 12px; box-sizing: border-box; }
+.activityEntry > summary:hover { background: var(--color-muted); }
+.activityLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activityLabel code { color: var(--text); font-family: inherit; font-size: inherit; }
+.activityEntry > pre { margin: 0; padding: 0 12px 12px; }
+/* Delegated DeepSeek activity: a plain section, so the global `.message details` box never wraps it. */
+.deepseekActivity { margin-top: var(--space-3); min-width: 0; }
+.deepseekActivity .identity { margin-bottom: var(--space-2); }
+.deepseekLogs { display: flex; flex-direction: column; gap: var(--space-2); border: 1px solid var(--border); border-radius: 14px; padding: var(--space-3); min-width: 0; }
+.deepseekLog { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-small); color: var(--text); min-width: 0; }
 .attachments { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .message[data-user=true] .attachments { justify-content: flex-end; }
 .logs, .diff { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-small); }
@@ -27,18 +46,5 @@
 @media (prefers-reduced-motion: reduce) { .streamStatus::after { animation: none; } }
 .tokens { font-variant-numeric: tabular-nums; }
 @keyframes caret { 50% { opacity: 0; } }
-.files { border: 1px solid var(--border, currentColor); border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-size: var(--font-small); }
-.files header { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
-.files ul { list-style: none; margin: 0; padding: 0; }
-.files li { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
-.path { overflow-wrap: anywhere; opacity: 0.8; }
 .choices { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .choices button { min-width: 88px; min-height: 44px; }
-
-.fileName { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.fileStatus { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; height: 16px; border: 1px solid currentColor; border-radius: 3px; font-weight: 700; line-height: 1; }
-/* File status markers distinguish creation, modification, and deletion. */
-.fileStatus[data-status=added] { color: var(--green); }
-.fileStatus[data-status=modified] { color: var(--color-warning); }
-.fileStatus[data-status=deleted] { color: var(--danger); }
-.files li > span:last-child { flex-shrink: 0; }

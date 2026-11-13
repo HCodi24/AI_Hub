@@ -77,22 +77,28 @@ pub(crate) async fn dev_release(State(state): State<AppState>) -> ApiResult<Resp
     Ok(sse_channel(rx))
 }
 
+/// `npm run build` in web/ (through `cmd /C` on Windows, where npm is a .cmd file).
+pub(super) fn npm_build_command(repo: &std::path::Path) -> tokio::process::Command {
+    let mut cmd = if cfg!(windows) {
+        let mut cmd = tokio::process::Command::new("cmd");
+        cmd.args(["/C", "npm", "run", "build"]);
+        cmd
+    } else {
+        let mut cmd = tokio::process::Command::new("npm");
+        cmd.args(["run", "build"]);
+        cmd
+    };
+    cmd.current_dir(repo.join("web"));
+    cmd
+}
+
 /// Build the React UI (`npm run build` in web/). The dev watcher then sees web/out change and reloads the page.
 pub(crate) async fn dev_web_build(State(state): State<AppState>) -> ApiResult<Response> {
     let repo = dev_repo_path(&state)?;
     let (tx, rx) = mpsc::channel::<String>(64);
     tokio::spawn(async move {
-        let mut cmd = if cfg!(windows) {
-            let mut cmd = tokio::process::Command::new("cmd");
-            cmd.args(["/C", "npm", "run", "build"]);
-            cmd
-        } else {
-            let mut cmd = tokio::process::Command::new("npm");
-            cmd.args(["run", "build"]);
-            cmd
-        };
-        cmd.current_dir(repo.join("web"))
-            .stdout(Stdio::piped())
+        let mut cmd = npm_build_command(&repo);
+        cmd.stdout(Stdio::piped())
             .stderr(Stdio::piped());
         let ok = stream_process(cmd, tx.clone()).await;
         let _ = tx

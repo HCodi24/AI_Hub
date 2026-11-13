@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('../web/node_modules/typescript');
-let sent, planned = false;
+let sent, planned = false, shownBeforeResolve = false;
 const state = {
   id: '00000000-0000-4000-8000-000000000001', messages: [], streaming: false,
   settings: { provider_id: 'p', model: 'model', folder: '', permission: 'write' },
@@ -19,10 +19,11 @@ const mocks = {
   '@/text/chat': { chatText: {} },
   '@/apis/mutis.api': { mutisApi: {
     get: async () => ({ enabled: true, auto_plan: true, roles: { lead: { provider_id: 'p', model: 'model' } } }),
-    resolve: async () => ({ lead: { used_provider: { id: 'p' } } }),
+    resolve: async () => { shownBeforeResolve = state.messages.length === 2; return { lead: { used_provider: { id: 'p' } } }; },
   } },
   './card-actions': { startCard: async () => { planned = true; } },
   './card-store': { useCardStore: { getState: () => ({ running: false }) } },
+  '@/lib/mutis-level': { rolesFor: () => undefined },
   '@/components/features/memory/memory-events': {}, '@/components/toast/toast': {},
 };
 const mod = { exports: {} };
@@ -39,6 +40,7 @@ async function run() {
   state.settings.provider_id = 'mutis';
   assert.equal(await chat.send('Hello again'), true);
   assert.equal(sent.provider_id, 'p');
+  assert.equal(shownBeforeResolve, true, 'the message is on screen before the MutiS source is resolved');
   assert.equal(sent.folder, '');
   assert.equal(planned, false);
   state.settings.folder = 'C:/project';

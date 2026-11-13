@@ -1,4 +1,6 @@
 export const chatText = {
+  openChanges: "Xem thay đổi file", changesTitle: "Thay đổi file", closeChanges: "Đóng thay đổi file",
+  rawDiff: "Nội dung diff", noDiff: "Chưa có nội dung diff cho file này.",
   fileStatus: { added: "File mới", modified: "File đã sửa", deleted: "File đã xóa" },
   normalChatHint: "Chat bình thường, không gắn với thư mục dự án.",
   treeNoFolder: "Phiên chat này chưa có thư mục làm việc.",
@@ -36,7 +38,9 @@ export const chatText = {
   navigation: "Điều hướng", recents: "Gần đây", noFolder: "Chat", openFolder: "Mở thư mục…", chooseFolder: "Chọn thư mục", projectTree: "Cây thư mục", changeFolder: "Đổi thư mục…", treeEmpty: "Thư mục trống", pickFolderFailed: "Không mở được hộp thoại chọn thư mục", searchChats: "Tìm trò chuyện", noChatsFound: "Không tìm thấy trò chuyện", workspaceMenu: "Menu không gian làm việc",
   composerActions: "Thêm ảnh và mở bộ nhớ",
   light: "Sáng", dark: "Tối", system: "Hệ thống", appearance: "Giao diện",
-  brand: "MutiS", beta: "Bản thử nghiệm", newChat: "Chat mới", history: "Lịch sử trò chuyện",
+  ranCommands: (count: number) => `Ran ${count} command${count === 1 ? "" : "s"}`,
+  ranCommand: "Ran", command: "command",
+  brand: "MutiS", beta: "Bản thử nghiệm", newChat: "New chat", history: "Lịch sử trò chuyện",
   local: "Không gian làm việc của bạn", source: "Nguồn AI",
   model: "Model", permission: "Quyền", effort: "Reasoning effort", folder: "Thư mục làm việc",
   read: "Chỉ đọc", write: "Được sửa file", full: "Toàn quyền (chạy lệnh)",

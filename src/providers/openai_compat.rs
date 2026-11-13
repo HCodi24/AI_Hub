@@ -159,7 +159,7 @@ impl Provider for OpenAiCompatibleProvider {
     }
 }
 
-fn openai_message(message: &crate::chat::ChatMessage) -> Result<Value> {
+pub(crate) fn openai_message(message: &crate::chat::ChatMessage) -> Result<Value> {
     if message.attachments.is_empty() {
         return Ok(json!({"role":message.role,"content":message.content}));
     }

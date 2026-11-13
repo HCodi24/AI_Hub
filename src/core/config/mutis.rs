@@ -53,6 +53,9 @@ pub struct MutisConfig {
     /// Sending a message at the MutiS source goes straight to "Chia việc" instead of a normal chat.
     #[serde(default)]
     pub auto_plan: bool,
+    /// Off = a new plan is approved and run at once, and shown as ordinary chat messages.
+    #[serde(default = "default_plan_approval")]
+    pub plan_approval: bool,
     #[serde(default = "default_routing")]
     pub routing: Vec<RoutingRule>,
     #[serde(default)]
@@ -115,11 +118,15 @@ impl Default for MutisConfig {
             fix_rounds_max: 2,
             event_log: true,
             auto_plan: false,
+            plan_approval: false,
             routing: default_routing(),
             roles: MutisRoles::default(),
             high_roles: MutisRoles::default(),
         }
     }
+}
+fn default_plan_approval() -> bool {
+    false
 }
 fn default_worker_rules() -> String {
     crate::core::rule::worker_defaults()

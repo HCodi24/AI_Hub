@@ -24,7 +24,7 @@ export const settingsText = {
     enabled: "Bật MutiS", roles: "Vai trò", maxRoles: "Mức Max — cả 3 AI (Claude, Codex, DeepSeek)", highRoles: "Mức High — chỉ Codex và DeepSeek", levelHint: "Thanh effort của MutiS chọn mức: Max/Extra high dùng 3 AI; các mức thấp hơn dùng Codex + DeepSeek.", role: { lead: "Lập kế hoạch & review", big: "Code lớn", small: "Việc nhỏ" },
     provider: "Nguồn", model: "Model", effort: "Reasoning effort", routing: "Định tuyến mặc định",
     kinds: { small_edit: "Sửa nhỏ", docs: "Tài liệu", code: "Code", test: "Test", plan: "Lập kế hoạch", review: "Review" } as Record<string, string>,
-    switches: "Tự động hoá", auto_plan: "Tự động chia việc", verify_gate: "Cổng kiểm tra sau mỗi task", auto_review: "Review tự động",
+    switches: "Tự động hoá", auto_plan: "Tự động chia việc", plan_approval: "Duyệt kế hoạch trước khi chạy (tắt = tự chạy, hiện như chat thường)", verify_gate: "Cổng kiểm tra sau mỗi task", auto_review: "Review tự động",
     auto_fix: "Tạo task sửa khi review thất bại", fix_rounds_max: "Số vòng sửa tối đa", retry_api: "Thử lại khi API lỗi",
     retry_attempts: "Số lần thử lại", retry_base_ms: "Thời gian chờ cơ sở (ms)", codex_watchdog: "Codex watchdog",
     watchdog_minutes: "Watchdog (phút)", codex_auto_resume: "Tự tiếp tục Codex", resume_max: "Số lần tiếp tục tối đa",

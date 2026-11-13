@@ -13,11 +13,11 @@ import { errorText, useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
 import { effortsFor, effortFor } from "@/constants/chat";
 const ROLES = ["lead", "big", "small"] as const;
-type BoolKey = "auto_plan" | "verify_gate" | "auto_review" | "auto_fix" | "retry_api" | "codex_watchdog" | "codex_auto_resume" | "deepseek_agent" | "event_log";
+type BoolKey = "auto_plan" | "plan_approval" | "verify_gate" | "auto_review" | "auto_fix" | "retry_api" | "codex_watchdog" | "codex_auto_resume" | "deepseek_agent" | "event_log";
 type NumKey = "fix_rounds_max" | "retry_attempts" | "retry_base_ms" | "watchdog_minutes" | "resume_max" | "deepseek_max_file_lines" | "deepseek_max_steps" | "debate_rounds";
 /** One switch with the numeric limits that only matter while it is on. */
 const SWITCHES: { key: BoolKey; numbers?: { key: NumKey; min: number; max: number }[] }[] = [
-  { key: "auto_plan" }, { key: "verify_gate" }, { key: "auto_review" },
+  { key: "auto_plan" }, { key: "plan_approval" }, { key: "verify_gate" }, { key: "auto_review" },
   { key: "auto_fix", numbers: [{ key: "fix_rounds_max", min: 0, max: 5 }] },
   { key: "retry_api", numbers: [{ key: "retry_attempts", min: 1, max: 5 }, { key: "retry_base_ms", min: 100, max: 60000 }] },
   { key: "codex_watchdog", numbers: [{ key: "watchdog_minutes", min: 1, max: 60 }] },

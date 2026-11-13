@@ -69,6 +69,8 @@ export function createPlanRunner(config: Mutis, providers: ProviderSummary[], se
           if (event === "log") { task.log.push(data.text || ""); const usage = /^Token: vào (\d+).*?ra (\d+)/u.exec(data.text || ""); if (usage) task.tokens += Number(usage[1]) + Number(usage[2]); }
           progress(plan);
         });
+        // A coding task that changed no file did not do its job, whatever the AI said.
+        if (!failed && !ctx.signal.aborted && ["code", "small_edit"].includes(task.kind) && !task.diff.trim()) { failed = true; task.log.push(t.noChange); }
         task.status = ctx.signal.aborted ? t.halted : failed ? t.failed : t.complete;
       } catch (error) { failed = true; task.status = ctx.signal.aborted ? t.halted : t.failed; task.log.push(error instanceof Error ? error.message : t.error); }
       task.summary = hideMemory(task.summary); await ctx.save(plan);

@@ -1,11 +1,24 @@
-import { memo, useMemo } from "react";
+import { forwardRef, memo, useMemo, type HTMLAttributes, type Ref } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/empty-state/empty-state";
+import { ScrollArea } from "@/components/scroll-area";
 import { ChatMessage } from "./chat-message";
 import { useChatStore } from "./chat-store";
 import { QuickReplies, type SendReply } from "./quick-replies";
 import { parseChatQuestions } from "@/lib/chat-questions";
 import { ChatQuestions } from "./chat-questions";
+
+/** Virtuoso scroller adapter: renders the shared themed ScrollArea and drops Virtuoso's context prop. */
+const Scroller = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { context?: unknown }>(function Scroller(
+  { context: _context, ...props },
+  ref,
+) {
+  return <ScrollArea ref={ref as Ref<HTMLElement>} {...props} />;
+});
+
+/** Stable module-level components map so Virtuoso does not remount its scroller on every render. */
+const SCROLL_COMPONENTS = { Scroller };
+
 const MessageRow = memo(function MessageRow({ index, send }: { index: number; send: SendReply }) {
   const message = useChatStore(s => s.messages[index]);
   const id = useChatStore(s => s.id);
@@ -23,5 +36,6 @@ export const MessageList = memo(function MessageList({ send }: { send: SendReply
   const count = useChatStore(s => s.messages.length);
   const id = useChatStore(s => s.id);
   return count ? <Virtuoso key={id} totalCount={count} followOutput="auto" initialTopMostItemIndex={{ index: count - 1, align: "end" }}
+    components={SCROLL_COMPONENTS}
     itemContent={index => <MessageRow index={index} send={send} />} /> : <EmptyState />;
 });
