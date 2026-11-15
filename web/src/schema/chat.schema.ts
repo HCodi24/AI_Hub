@@ -27,8 +27,16 @@ export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;
 export const TaskRowSchema = z.object({ title: z.string(), state: z.string(), attempt: z.number().default(0), check: z.string().nullish() });
 export type TaskRow = z.infer<typeof TaskRowSchema>;
+/** Live checker card of one Luna check: start, progress, error or done (done removes the card). */
+export const CheckerActivitySchema = z.object({
+  id: z.string(), phase: z.enum(["start", "progress", "error", "done"]),
+  title: z.string().default(""), attempt: z.number().default(0),
+  model: z.string().default(""), provider_name: z.string().default("Luna"), text: z.string().default(""),
+});
+export type CheckerActivity = z.infer<typeof CheckerActivitySchema>;
 export const StreamDataSchema = z.object({
   tasks: z.array(TaskRowSchema).optional(),
+  checker_activity: CheckerActivitySchema.optional(),
   text: z.string().optional(), message: z.string().optional(), provider_name: z.string().optional(), provider_kind: z.string().optional(), model: z.string().optional(),
   effort: z.string().optional(), role: z.string().nullish(), elapsed_s: z.number().optional(),
   idle_s: z.number().optional(), last_activity: z.string().optional(), scope: z.string().optional(),

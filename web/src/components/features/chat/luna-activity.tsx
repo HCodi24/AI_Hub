@@ -1,0 +1,43 @@
+import { PetAvatar } from "@/components/features/pets/pet-avatar";
+import { chatText } from "@/text/chat";
+import { ChatActivity } from "./chat-activity";
+import { useChatStore, type LiveChecker } from "./chat-store";
+import styles from "./chat-message.module.css";
+
+/** Vietnamese wording of the live Luna cards (kept local: the shared chat text has no live-checker strings). */
+const text = {
+  title: "Luna đang kiểm tra",
+  stopped: "Đã dừng",
+  attempt: (attempt: number) => `lần ${attempt}`,
+} as const;
+
+/** One live check drawn exactly like a running chat message: pet + name + status, collapsed Activity, status line. */
+function CheckerCard({ card }: { card: LiveChecker }) {
+  const state = card.state === "running" ? "working" : card.state === "failed" ? "failed" : "idle";
+  return <article className={styles.message} data-streaming={card.state === "running"} data-checker-id={card.id}>
+    <div className={styles.identity}>
+      {/* Luna is a Codex source, so it wears the Codex pet. */}
+      <PetAvatar provider="codex_cli" state={state} />
+      <strong>{card.provider_name || "Luna"}</strong>
+      <span className={styles.petStatus} data-state={state} role="status">
+        {state !== "idle" ? <>· {chatText.petStatus[state]}</> : <>· {text.stopped}</>}
+      </span>
+    </div>
+    <ChatActivity logs={card.progress} />
+    {card.state === "running" && <div className={styles.streamStatus} role="status" aria-live="polite" aria-atomic="true">
+      {card.title}{card.attempt > 0 && ` · ${text.attempt(card.attempt)}`}{card.model && ` · ${card.model}`}
+    </div>}
+  </article>;
+}
+
+/** Live Luna checks shown beside the conversation, outside the collapsed Activity list of any message. */
+export function LunaActivityView({ checkers }: { checkers: LiveChecker[] }) {
+  if (!checkers.length) return null;
+  return <section aria-label={text.title} aria-live="polite">
+    {checkers.map(card => <CheckerCard key={card.id} card={card} />)}
+  </section>;
+}
+
+export function LunaActivity() {
+  return <LunaActivityView checkers={useChatStore(state => state.checkers)} />;
+}

@@ -28,8 +28,11 @@ const PROTOCOL_RULE: &str = concat!(
     "```\n",
     "- The worker has no context beyond the block: name exact files (and symbols or line ranges) and put everything it needs in the instructions. Never create a separate investigation task for the worker.\n",
     "- Plan ALL tasks of the job in this one reply, one block each, in order. Add \"depends_on\":[\"title of another task\"] only when a task needs that task's result: independent tasks start at once, one after another, while earlier ones are still being checked, and you hear back once when all are done.\n",
+    "- The worker cannot run commands: never put running tests, builds or type checks in its instructions or acceptance. The independent checker (Luna) runs them and its verdict is part of the report; when there is no checker you run them yourself after the report.\n",
     "- After the blocks, stop. The app runs the worker and sends you its real report (changed files, diff, summary), plus the project's own checks when they are enabled.\n",
-    "- Review the report against your acceptance criteria and the diff. If it passes, say so and continue. If it fails or changed nothing, answer with another block with the SAME title and concrete corrections. The app counts attempts per title (4 at most) and then tells you to implement the task yourself.\n",
+    "- Add \"hard\":true to a block when the task needs real reasoning (logic, algorithms, layout decisions, an unknown cause): the app then gives it to a stronger second checker model (Luna 2) instead of DeepSeek. DeepSeek is for mechanical edits whose exact change you can describe.\n",
+    "- Review the report against your acceptance criteria and the diff. If it passes, say so and continue. If it fails or changed nothing, answer with another block with the SAME title and concrete corrections.\n",
+    "- The app counts attempts per title and climbs by itself when a checker exists: DeepSeek twice (Luna checks), then Luna fixes it and Luna 2 checks; a hard task gets Luna 2 twice (Luna checks). When those are spent it tells you to implement the task yourself and verify it (the user then judges the result). Without a checker DeepSeek gets 4 attempts.\n",
     "- Questions, explanations and tiny one-line edits do not need the worker: answer or edit directly. If the user explicitly asks you to code directly, do that."
 );
 
@@ -60,7 +63,7 @@ mod tests {
         assert_eq!(for_chat(true, "high", "codex_cli", false, false), CHAT_RULE);
         assert_eq!(for_chat(true, "high", "codex_cli", false, true), PROTOCOL_RULE);
         assert_eq!(for_chat(true, "max", "codex_cli", false, true), "");
-        assert!(PROTOCOL_RULE.contains("```mutis-delegate") && PROTOCOL_RULE.contains("4 at most"));
+        assert!(PROTOCOL_RULE.contains("```mutis-delegate") && PROTOCOL_RULE.contains("\"hard\":true") && PROTOCOL_RULE.contains("Luna 2"));
         assert!(PROTOCOL_RULE.lines().count() >= 10, "escapes must stay \\n, not literal newlines inside strings");
     }
 

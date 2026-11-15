@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import Head from "next/head";
 import { useShallow } from "zustand/react/shallow";
 import { MessageList } from "./message-list";
@@ -17,16 +17,22 @@ import { Toast, useToast } from "@/components/toast/toast";
 import { setRunnerMemoryHandler } from "@/components/features/plan/plan-runner";
 import { memoryNotice } from "@/components/features/memory/memory-events";
 import { SettingsDialog } from "@/components/features/settings/settings-dialog";
+import { DashboardDialog } from "./dashboard-dialog";
 import { DevBanner, RESUME_KEY } from "@/components/features/dev/dev-banner";
 import { openDevChat } from "@/components/features/dev/dev-chat";
 import { useQuery } from "@tanstack/react-query";
 import { devApi } from "@/apis/dev.api";
+// Descendants that own their own behaviour: clicks inside them never open the large Dashboard dialog.
+const INTERACTIVE = "a, button, input, select, textarea, summary, details, label, [role='button'], [role='link'], [contenteditable='true'], [tabindex]:not([tabindex='-1'])";
 export function ChatScreen() {
   const dropTarget = useRef<HTMLElement>(null);
   useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
   const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, folder: s.settings.folder })));
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // Persisted in localStorage (shared across chats and tabs); the card shows recorded token reports of the current chat.
+  // Local only: opening the large Dashboard dialog never touches chat state or the dashboard preference.
+  const [dashboardOpen, setDashboardOpen] = useState(false);
+  // Persisted in localStorage (shared across chats and tabs); the frame shows the cumulative chart of
+  // the current chat, while the dialog adds the totals, tables, notes and backend history.
   const [dashboardEnabled, setDashboardEnabled] = useDashboardPreference();
   const { config, chats, send, stop, load, remove } = useChat();
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
@@ -41,6 +47,25 @@ export function ChatScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
   const queryError = config.error || chats.error;
+  // Clicks on the frame itself (chart, legend, padding) open the large Dashboard dialog. Nested
+  // interactive descendants keep their own behaviour: details/summary, buttons, links and inputs never open it.
+  const onDashboardClick = (event: MouseEvent<HTMLElement>) => {
+    // Text nodes and other non-element targets resolve through their parent element, so the chart title,
+    // SVG paths/circles, the legend text and the frame padding all reach the frame itself.
+    const target = event.target;
+    const node = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+    // Only descendants of the frame can exempt the click; the frame itself (text, SVG, padding) opens it.
+    const hit = node && event.currentTarget.contains(node) ? node.closest(INTERACTIVE) : null;
+    if (hit && hit !== event.currentTarget) return;
+    setDashboardOpen(true);
+  };
+  // Enter/Space only when the frame itself is the event target, so nested controls keep their keys.
+  const onDashboardKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    setDashboardOpen(true);
+  };
   return <><Head><title>{chatText.brand}</title><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
     <a className={styles.skip} href="#chat-main">{chatText.skip}</a>
     <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} remove={remove} openSettings={() => setSettingsOpen(true)}
@@ -53,7 +78,7 @@ export function ChatScreen() {
           <button onClick={() => { void config.refetch(); void chats.refetch(); }}>{chatText.retry}</button></div>}
         {state.error && <div role="alert" className={styles.error}>{state.error}</div>}
         <div className={styles.workspace} data-dashboard={dashboardEnabled ? "on" : undefined}>
-          {dashboardEnabled && <aside className={styles.dashboard} aria-label="Dashboard"><TokenDashboard /></aside>}
+          {dashboardEnabled && <aside className={styles.dashboard} aria-label={chatText.dashboard.open} tabIndex={0} aria-haspopup="dialog" onClick={onDashboardClick} onKeyDown={onDashboardKeyDown}><TokenDashboard compact /></aside>}
           <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
             <MessageList send={send} />
           </section>
@@ -62,5 +87,6 @@ export function ChatScreen() {
         <Composer dropTarget={dropTarget} config={config.data} streaming={state.streaming} send={send} stop={stop} />
       </main>
     </div>{settingsOpen && <SettingsDialog folder={state.folder} close={() => setSettingsOpen(false)}
-      dashboardEnabled={dashboardEnabled} onDashboardEnabledChange={setDashboardEnabled} />}<Toast /></>;
+      dashboardEnabled={dashboardEnabled} onDashboardEnabledChange={setDashboardEnabled} />}
+    {dashboardOpen && <DashboardDialog close={() => setDashboardOpen(false)} />}<Toast /></>;
 }

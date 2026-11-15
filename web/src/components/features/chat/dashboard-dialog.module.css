@@ -1,0 +1,16 @@
+/* Same outer dimensions as the Settings dialog: zero padding, 64px header, responsive bounds. */
+.dashboardDialog.dashboardDialog { width: min(1120px, calc(100vw - 32px)); height: min(820px, calc(100dvh - 32px)); padding: 0; border-radius: var(--workspace-radius, 12px); overflow: hidden; background: #fff; color: #0f172a; }
+.dashboardDialog > header { height: 64px; padding: 0 20px; border-bottom: 1px solid var(--border); background: #fff; color: #0f172a; }
+.dashboardDialog > header h2 { margin: 0; font-size: 18px; }
+.dashboardDialog > header button { width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: #475569; }
+.dashboardDialog > header button:hover { background: #f1f5f9; color: #0f172a; }
+/* White body in both themes; it scrolls vertically inside the remaining height so the full dashboard
+   (chart, totals, exact table, notes and backend history) stays reachable in the large dialog. */
+.body { height: calc(100% - 64px); min-height: 0; overflow-y: auto; overflow-x: hidden; background: #fff; padding: 20px 24px 28px; box-sizing: border-box; }
+/* The full dashboard keeps its own spacing; the chart is capped so it stays readable at dialog width. */
+.body > section { gap: var(--space-3); }
+.body svg { max-width: 640px; }
+@media (max-width: 540px) {
+  .dashboardDialog.dashboardDialog { width: calc(100vw - 16px); max-width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }
+  .body { padding: 16px; }
+}

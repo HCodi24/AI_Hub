@@ -1,16 +1,54 @@
-﻿/* The existing gutter has a white card in both themes. */
+/* The existing gutter has a white card in both themes. */
 .dashboard { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3); color: #0f172a; font-size: var(--font-12); }
 .title { margin: 0; font-size: var(--font-13); overflow-wrap: anywhere; }
 .empty, .total, .note { margin: 0; color: #3f4b5f; overflow-wrap: anywhere; line-height: 1.4; }
 .total { font-variant-numeric: tabular-nums; }
-.chart { display: block; width: 100%; height: auto; min-width: 0; overflow: visible; font-size: 13px; }
+/* Main chart: cumulative tokens per model in reply order, safe in the narrow sidebar. */
+.models { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.modelsTitle { margin: 0; font-size: var(--font-12); font-weight: 600; overflow-wrap: anywhere; }
+.chart { display: block; width: 100%; height: auto; min-width: 0; overflow: visible; font-size: 11px; }
 .chart text { fill: currentColor; }
 .legend { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
 .legend li { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .legend svg { flex: none; }
-.legend span { overflow-wrap: anywhere; }
+.legendName { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.legendValue { flex: none; font-variant-numeric: tabular-nums; color: #3f4b5f; }
 .details { min-width: 0; }
-.details summary { cursor: pointer; }
+.details summary { cursor: pointer; overflow-wrap: anywhere; }
 .tableWrap { max-width: 100%; overflow-x: auto; margin: var(--space-2) 0; }
 .tableWrap table { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: inherit; }
-.tableWrap th, .tableWrap td { padding: 4px; border: 1px solid #cbd5e1; text-align: left; overflow-wrap: anywhere; }
+.tableWrap th, .tableWrap td { padding: 4px; border: 1px solid #cbd5e1; text-align: left; }
+/* Digits never wrap; long model names wrap instead, and the wrapper scrolls horizontally. */
+.tableWrap td { white-space: nowrap; }
+.tableWrap th[scope="row"] { overflow-wrap: anywhere; word-break: break-word; }
+/* Display options: KPI tiles, ranking bars, stacked reply columns, donut overview. */
+.seg { display: inline-flex; align-self: flex-start; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; }
+.seg button { padding: 4px 10px; border: 0; background: transparent; color: #3f4b5f; font: inherit; cursor: pointer; }
+.seg .segOn { background: #f1f5f9; color: #0f172a; font-weight: 600; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: var(--space-2); }
+.tile { display: flex; flex-direction: column; background: #f1f5f9; border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.tile small, .tile span { color: #3f4b5f; }
+.tile b { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rank { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.rank li { display: grid; grid-template-columns: minmax(70px, 110px) 1fr auto; gap: 8px; align-items: center; }
+.track { height: 10px; border-radius: 5px; background: #f1f5f9; overflow: hidden; }
+.track i { display: block; height: 100%; border-radius: 5px; }
+.legendRow { display: flex; gap: 12px; margin: 0; padding: 0; list-style: none; color: #3f4b5f; }
+.legendRow li { display: flex; align-items: center; gap: 5px; }
+.legendRow i, .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.swatch { margin-right: 6px; }
+.donutWrap { display: flex; justify-content: center; }
+/* Gutter card: readable at a glance without opening the dialog. */
+.hero { display: flex; flex-direction: column; }
+.hero b { font-size: 28px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.hero span { color: #3f4b5f; }
+.split { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #f1f5f9; }
+.split i { display: block; height: 100%; }
+.compact .rank li { grid-template-columns: 1fr auto; row-gap: 3px; }
+.compact .rank .track { grid-column: 1 / -1; grid-row: 2; }
+.compact .rank li > :last-child { grid-column: 2; grid-row: 1; }
+.axisTitle { font-size: 11px; }
+.chart text { fill: #64748b; }
+.legend .swatch { flex: none; margin: 0; width: 10px; height: 10px; border-radius: 2px; }
+.compact .legendName { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legendValue { font-weight: 600; color: #0f172a; }

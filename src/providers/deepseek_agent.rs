@@ -28,6 +28,37 @@ const SYSTEM_READ: &str = concat!(
     "Explore the folder as needed and answer the user's question concisely."
 );
 
+const KEEP_HISTORY_CHARS: usize = 240_000;
+
+/// Where the chats (and the worker sessions inside them) live; None only when the config location is unknown.
+fn chats_root() -> Option<PathBuf> {
+    crate::config::config_file_path().ok().and_then(|path| crate::chat::config_chat_dir(&path).ok())
+}
+
+/// A stop can land between an assistant's tool calls and their results; the API rejects a history that ends like that.
+fn drop_unanswered_calls(history: &mut Vec<Value>) {
+    let Some(at) = history.iter().rposition(|m| m["tool_calls"].as_array().is_some_and(|calls| !calls.is_empty())) else { return };
+    let calls = history[at]["tool_calls"].as_array().map_or(0, Vec::len);
+    let answers = history[at + 1..].iter().take_while(|m| m["role"] == "tool").count();
+    if answers < calls {
+        history.truncate(at);
+    }
+}
+
+/// The newest part of a conversation that fits the budget, starting at a user message (a tool result needs the call before it).
+fn trim_history(history: &[Value]) -> Vec<Value> {
+    let (mut total, mut start) = (0, history.len());
+    for (index, message) in history.iter().enumerate().rev() {
+        total += message.to_string().len();
+        if total > KEEP_HISTORY_CHARS {
+            break;
+        }
+        start = index;
+    }
+    let from = history[start..].iter().position(|m| m["role"] == "user").map_or(history.len(), |at| start + at);
+    history[from..].to_vec()
+}
+
 #[async_trait]
 impl Provider for DeepSeekAgentProvider {
     async fn run(
@@ -118,6 +149,20 @@ impl Provider for DeepSeekAgentProvider {
                 prompt.push_str(&format!("\n--- {path} ---\n{lines}\n"));
             }
             messages.push(json!({"role":"user","content":prompt}));
+        }
+        let session_key = request.session_id.clone().filter(|id| id.starts_with(super::worker_session::PREFIX));
+        let root_dir = chats_root();
+        if let (Some(key), Some(dir)) = (&session_key, &root_dir) {
+            let prior = super::worker_session::load(dir, key);
+            if !prior.is_empty() {
+                let mut newest = messages.pop().unwrap_or_default();
+                if let Some(text) = newest["content"].as_str() {
+                    newest["content"] = json!(format!("{text}\nThis is the same session: the conversation above is your earlier work in this chat. Files may have changed since you read them (by you, another task or the coordinator): re-read a file only when you need its exact current text."));
+                }
+                emit_text(&events, "log", format!("Giữ phiên DeepSeek: {} tin cũ", prior.len())).await?;
+                messages.extend(prior);
+                messages.push(newest);
+            }
         }
         // Only the explicit "mcp_agent" source may use MCP; the normal DeepSeek agent never does.
         let mcp_servers = if files { &[][..] } else { &request.mcp[..] };
@@ -290,6 +335,14 @@ impl Provider for DeepSeekAgentProvider {
                 "DeepSeek dùng hết {steps} bước công cụ mà chưa kết luận — việc quá rộng hoặc nó tìm file chưa ra; nói rõ file/đường dẫn cần sửa hoặc tăng số bước trong Cài đặt MutiS"
             ));
         }
+        if let (Some(key), Some(dir)) = (session_key, root_dir) {
+            let mut history = messages[1..].to_vec();
+            if !final_text.is_empty() {
+                history.push(json!({"role":"assistant","content":final_text}));
+            }
+            drop_unanswered_calls(&mut history);
+            super::worker_session::save(&dir, &key, &trim_history(&history));
+        }
         if !final_text.is_empty() {
             emit_text(&events, "delta", final_text).await?;
         }
@@ -358,7 +411,30 @@ fn strip_dsml(content: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_dsml;
+    use super::{drop_unanswered_calls, strip_dsml, trim_history, KEEP_HISTORY_CHARS};
+    use serde_json::json;
+
+    #[test]
+    fn a_stop_between_tool_calls_and_results_leaves_no_dangling_call() {
+        let call = |id: &str| json!({"id":id,"function":{"name":"read_file"}});
+        let mut cut = vec![json!({"role":"user","content":"a"}), json!({"role":"assistant","tool_calls":[call("1"), call("2")]}), json!({"role":"tool","tool_call_id":"1","content":"x"})];
+        drop_unanswered_calls(&mut cut);
+        assert_eq!(cut.len(), 1);
+        let mut whole = vec![json!({"role":"user","content":"a"}), json!({"role":"assistant","tool_calls":[call("1")]}), json!({"role":"tool","tool_call_id":"1","content":"x"})];
+        drop_unanswered_calls(&mut whole);
+        assert_eq!(whole.len(), 3);
+    }
+
+    #[test]
+    fn history_is_trimmed_from_the_front_and_starts_at_a_user_message() {
+        let small = vec![json!({"role":"user","content":"a"}), json!({"role":"assistant","content":"b"})];
+        assert_eq!(trim_history(&small), small);
+        let big = "x".repeat(KEEP_HISTORY_CHARS / 2);
+        let long = vec![json!({"role":"user","content":"old"}), json!({"role":"assistant","content":big}), json!({"role":"tool","content":big}), json!({"role":"user","content":"new"}), json!({"role":"assistant","content":"ok"})];
+        let kept = trim_history(&long);
+        assert_eq!(kept[0]["content"], "new");
+        assert_eq!(kept.len(), 2);
+    }
 
     #[test]
     fn leaked_tool_markup_is_not_an_answer() {

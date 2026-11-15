@@ -25,9 +25,44 @@ function groupByFolder(chats: ChatSummary[]) {
 }
 const LOGO = "/app/brand/mutis-logo.svg";
 const LOGO_DARK = "/app/brand/mutis-logo-dark.svg";
+// Dedicated MutiS sidebar preference keys: one for the collapsed rail, one for the closed history groups.
+const COLLAPSED_KEY = "mutis-sidebar-collapsed";
+const CLOSED_GROUPS_KEY = "mutis-sidebar-closed-groups";
+/** Reads a JSON preference; missing storage, blocked storage or malformed JSON all yield undefined. */
+function readStored(key: string): unknown {
+  try {
+    if (typeof window === "undefined") return undefined;
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) return undefined;
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+/** Writes a JSON preference; unavailable or full storage keeps the in-memory value only. */
+function writeStored(key: string, value: unknown) {
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* Storage unavailable: keep the in-memory preference. */
+  }
+}
+/** Only a real boolean counts as a saved collapse preference. */
+function parseCollapsed(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+/** Only an array of strings counts as saved closed groups; non-string entries are dropped. */
+function parseClosedGroups(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is string => typeof item === "string");
+}
 export function Sidebar({ chats, loading, load, remove, openSettings, openDevChat }: { chats: ChatSummary[]; loading: boolean; load: (id: string) => Promise<void>; remove: (id: string) => Promise<boolean>; openSettings: () => void; openDevChat?: () => void }) {
   const { id, devChat, drawer, streaming, reset, setDrawer } = useChatStore(useShallow(s => ({ id: s.id, devChat: s.settings.dev_chat, drawer: s.drawer, streaming: s.streaming, reset: s.reset, setDrawer: s.setDrawer })));
   const [collapsed, setCollapsed] = useState(false);
+  // Persistence stays off until the mount effect has restored the saved preferences,
+  // so the initial defaults can never overwrite them (also under StrictMode double effects).
+  const [restored, setRestored] = useState(false);
   const running = useCardStore(s => s.running);
   const settingsFolder = useChatStore(s => s.settings.folder);
   const [treeOpen, setTreeOpen] = useState(false);
@@ -57,6 +92,23 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
   const history = useRef<HTMLElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const filteredChats = chats.filter(chat => chat.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  // Restore saved preferences after mount: the server and the first client render keep the defaults,
+  // so hydration matches and no browser API runs during render.
+  useEffect(() => {
+    const savedCollapsed = parseCollapsed(readStored(COLLAPSED_KEY));
+    if (savedCollapsed !== undefined) setCollapsed(savedCollapsed);
+    const savedClosed = parseClosedGroups(readStored(CLOSED_GROUPS_KEY));
+    if (savedClosed) setClosed(new Set(savedClosed));
+    setRestored(true);
+  }, []);
+  useEffect(() => {
+    if (!restored) return;
+    writeStored(COLLAPSED_KEY, collapsed);
+  }, [collapsed, restored]);
+  useEffect(() => {
+    if (!restored) return;
+    writeStored(CLOSED_GROUPS_KEY, [...closed]);
+  }, [closed, restored]);
   useEffect(() => {
     const container = panel.current?.parentElement;
     if (!container) return;

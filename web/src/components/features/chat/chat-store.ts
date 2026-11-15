@@ -1,12 +1,44 @@
 import { create } from "zustand";
-import { ChatMessageSchema, PermissionSchema, type ChatMessage, type ChatRecord, type ChatRequest, type StreamData, type TaskRow } from "@/schema/chat.schema";
+import { ChatMessageSchema, PermissionSchema, type ChatMessage, type ChatRecord, type ChatRequest, type CheckerActivity, type StreamData, type TaskRow } from "@/schema/chat.schema";
 type Settings = Omit<ChatRequest, "chat_id" | "messages">;
 type ModelSelection = Pick<Settings, "provider_id" | "model"> & Partial<Pick<Settings, "permission">>;
+/** One live Luna card: a check that is running (or failed) beside the conversation, never inside a chat message. */
+export type LiveChecker = {
+  id: string; title: string; attempt: number; model: string; provider_name: string;
+  state: "running" | "failed" | "stopped";
+  /** Latest meaningful checker lines, oldest first, bounded. */
+  progress: string[];
+};
+/** Retained progress lines per card: enough to see what Luna is doing, never an unbounded log. */
+const MAX_CHECKER_PROGRESS = 6;
+/** Applies one `checker_activity` event to the cards: start/progress/error merge by id, done removes only that card. */
+export function applyCheckerActivity(cards: LiveChecker[], activity: CheckerActivity): LiveChecker[] {
+  if (activity.phase === "done") return cards.filter(card => card.id !== activity.id);
+  const index = cards.findIndex(card => card.id === activity.id);
+  const base: LiveChecker = index >= 0 ? cards[index] : {
+    id: activity.id, title: activity.title, attempt: activity.attempt, model: activity.model,
+    provider_name: activity.provider_name || "Luna", state: "running", progress: [],
+  };
+  const next: LiveChecker = {
+    ...base,
+    title: activity.title || base.title, attempt: activity.attempt || base.attempt,
+    model: activity.model || base.model, provider_name: activity.provider_name || base.provider_name,
+    state: activity.phase === "error" ? "failed" : base.state === "failed" ? "failed" : "running",
+  };
+  if (activity.text) next.progress = [...base.progress, activity.text].slice(-MAX_CHECKER_PROGRESS);
+  return index >= 0 ? cards.map((card, at) => at === index ? next : card) : [...cards, next];
+}
+/** A card still running when the stream ends will never move again: mark it instead of leaving it spinning. */
+function stopCheckers(cards: LiveChecker[]): LiveChecker[] {
+  return cards.map(card => card.state === "running" ? { ...card, state: "stopped" } : card);
+}
 type ChatState = {
   id: string; messages: ChatMessage[]; settings: Settings; streaming: boolean; drawer: boolean;
   status: StreamData; error: string; initialized: boolean;
   /** Live task board of a MutiS High delegation (not saved with the chat). */
   tasks: TaskRow[];
+  /** Live Luna checks, keyed by the checker's own id and independent of messages, status and tasks. */
+  checkers: LiveChecker[];
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
   load: (chat: ChatRecord) => void; reset: () => void;
@@ -37,7 +69,7 @@ function rememberActiveChat(id: string) {
   } catch { /* Storage unavailable. */ }
 }
 export const useChatStore = create<ChatState>((set) => ({
-  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false, tasks: [],
+  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false, tasks: [], checkers: [],
   configure: (settings) => set((state) => {
     const next = { ...state.settings, ...settings };
     saveModelSelection(state.id || DRAFT_ID, next);
@@ -62,7 +94,7 @@ export const useChatStore = create<ChatState>((set) => ({
         effort: chat.effort === "default" ? "medium" as const : chat.effort, file_tools: chat.file_tools, dev_chat: chat.dev_chat,
       };
       saveModelSelection(chat.id, settings);
-      return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], error: "", drawer: false, initialized: true };
+      return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], checkers: [], error: "", drawer: false, initialized: true };
     });
   },
   reset: () => {
@@ -70,14 +102,14 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => {
       const settings = { ...state.settings, dev_chat: false };
       saveModelSelection(DRAFT_ID, settings);
-      return { id: "", messages: [], status: {}, tasks: [], error: "", drawer: false, settings };
+      return { id: "", messages: [], status: {}, tasks: [], checkers: [], error: "", drawer: false, settings };
     });
   },
   begin: (text, attachments = []) => set((state) => {
     const id = state.id || crypto.randomUUID();
     rememberActiveChat(id);
     if (!state.id) saveModelSelection(id, state.settings);
-    return { id, streaming: true, status: {}, tasks: [], error: "",
+    return { id, streaming: true, status: {}, tasks: [], checkers: [], error: "",
       messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text, attachments }),
         ChatMessageSchema.parse({ role: "assistant", content: "" })] };
   }),
@@ -96,6 +128,11 @@ export const useChatStore = create<ChatState>((set) => ({
     }
     if (event === "heartbeat") return { status: { ...state.status, ...data } };
     if (event === "tasks") return { tasks: data.tasks ?? [] };
+    // Live Luna cards are handled before any trailing-message update: a checker event never touches the
+    // streaming worker's message, and a worker event never touches a card.
+    if (event === "checker_activity") {
+      return data.checker_activity ? { checkers: applyCheckerActivity(state.checkers, data.checker_activity) } : {};
+    }
     if (event === "status") {
       const last = state.messages.at(-1);
       // The reply's provider decides its avatar while it streams (the saved copy has it from the server).
@@ -124,6 +161,7 @@ export const useChatStore = create<ChatState>((set) => ({
   // A row still waiting or busy when the stream ends will never move again (stopped, or the connection dropped).
   finish: (error = "") => set((state) => ({ streaming: false, error,
     tasks: state.tasks.map(task => ["waiting", "coding", "checking", "fixing"].includes(task.state) ? { ...task, state: "stopped" } : task),
+    checkers: stopCheckers(state.checkers),
     messages: state.messages.map((message, index) => error && index === state.messages.length - 1 ? { ...message, error } : message) })),
   setDrawer: (drawer) => set({ drawer }),
 }));

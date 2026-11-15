@@ -1,9 +1,21 @@
-.board { margin: 0 var(--space-4) var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); min-width: 0; }
+/* The board sits between the workspace and the composer, so it is a flex item of the
+   column-flex main panel: `flex: 0 0 auto` keeps its content height instead of being
+   squeezed by the workspace, and the explicit width centers it inside the same
+   820px message envelope (ChatMessage max-width minus its horizontal padding). */
+.board { box-sizing: border-box; flex: 0 0 auto; width: calc(100% - 2 * var(--space-6)); max-width: calc(820px - 2 * var(--space-6)); margin: 0 auto var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); min-width: 0; }
 .title { font-size: var(--font-13); }
 .board ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.board li { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.board small { color: var(--muted); white-space: nowrap; }
+/* Icon column stays a fixed 16px; the name and the status share the remaining width and wrap. */
+.board li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start; gap: var(--space-1) var(--space-2); min-width: 0; }
+.board li > svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; }
+.name { min-width: 0; overflow-wrap: anywhere; }
+.board small { color: var(--muted); white-space: normal; overflow-wrap: anywhere; min-width: 0; }
 .board li[data-state="done"] svg { color: var(--accent); }
 .board li[data-state="failed"] svg { color: var(--danger); }
 .board li[data-state="failed"] small { color: var(--danger); }
+/* Narrow panels: the status moves below the name so long names and long status text never overflow. */
+@media (max-width: 767px) {
+  .board { width: calc(100% - 2 * var(--space-4)); max-width: calc(820px - 2 * var(--space-4)); }
+  .board li { grid-template-columns: 16px minmax(0, 1fr); }
+  .board small { grid-column: 2; }
+}

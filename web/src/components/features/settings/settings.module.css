@@ -89,6 +89,28 @@
 .finding p { margin: 0; font-size: var(--font-13); }
 .finding[data-severity=high] { border-left-color: var(--danger); }
 .finding[data-severity=medium] { border-left-color: var(--color-warning); }
+/* Development tab: single-column page of compact cards. All rules are dev-scoped so other tabs keep their layout. */
+.devPage { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.devCard { padding: var(--space-4); gap: var(--space-3); }
+/* Two classes so the card title wins over the shared `.panel h3` rule. */
+.devCard .devCardTitle { margin: 0; font-size: var(--font-15); font-weight: 600; }
+.devFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-4); margin: 0; min-width: 0; }
+.devFact { display: grid; gap: 2px; min-width: 0; }
+.devFactWide { grid-column: 1 / -1; }
+.devFact dt { color: var(--muted); font-size: var(--font-12); }
+.devFact dd { margin: 0; font-size: var(--font-13); overflow-wrap: anywhere; }
+.devRow { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; min-width: 0; }
+.devRow > .actions { flex: 1 1 auto; min-width: 0; }
+.devRow > .actions button { max-width: 100%; white-space: normal; text-align: center; }
+.devDanger { margin-left: auto; padding-left: var(--space-4); border-left: 1px solid var(--border); }
+.devCommit { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-13); color: var(--muted); min-width: 0; }
+.devCommitRow { display: flex; gap: var(--space-2); align-items: center; min-width: 0; }
+.devCommitRow input { flex: 1 1 auto; width: 100%; min-width: 0; color: var(--text); font-size: var(--font-14); }
+.devCommitRow button { flex: 0 0 auto; white-space: normal; }
+.devSwitch { margin-top: var(--space-1); padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.devOutput { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.devOutput h4 { margin: 0; }
+.devOutput .log { max-height: 360px; }
 @media (max-width: 767px) {
   .layout { grid-template-columns: 180px minmax(0, 1fr); }
   .tabs { padding: 16px 8px; }
@@ -99,6 +121,11 @@
   .subTabs button { flex: 1 1 auto; padding: 6px 10px; }
   .row, .switch { grid-template-columns: 1fr; }
   .row > strong { padding-bottom: 0; }
+  .devFacts { grid-template-columns: minmax(0, 1fr); }
+  .devRow { flex-direction: column; align-items: stretch; }
+  .devDanger { margin-left: 0; padding-left: 0; padding-top: var(--space-3); border-left: 0; border-top: 1px solid var(--border); }
+  .devCommitRow { flex-direction: column; align-items: stretch; }
+  .devCommitRow button { width: 100%; }
 }
 @media (max-width: 540px) {
   .settingsDialog.settingsDialog { width: calc(100vw - 16px); max-width: calc(100vw - 16px); height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }

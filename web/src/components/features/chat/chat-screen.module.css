@@ -1,10 +1,22 @@
 .shell { height: 100dvh; display: flex; overflow: hidden; background: var(--surface); }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100%; background: var(--bg); }
-.workspace { position: relative; container-type: inline-size; flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
+/* Isolated local stacking context: the card and the message scroller are ordered only against
+   each other, so their z-index values never leak into dialogs, toasts or other app layers. */
+.workspace { position: relative; isolation: isolate; container-type: inline-size; flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
 /* Out of flow: the card lives in the left gutter and never affects message layout.
-   Width is bounded by the space left of a conservative centered 860px envelope. */
-.dashboard { display: none; position: absolute; top: 12px; bottom: 12px; left: 12px; width: min(240px, max(0px, calc((100cqw - 860px) / 2 - 24px))); max-width: 240px; min-width: 0; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: var(--radius); }
-.messages { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+   Width is bounded by the space left of a conservative centered 860px envelope.
+   Height follows the compact chart content instead of stretching to the workspace bottom;
+   max-height keeps the 12px top/bottom clearance and lets overflow-y scroll taller content.
+   Local z-index 1 keeps the visible card above the full-width message scroller (z-index 0),
+   so its text, chart and padding receive the pointer events that open the Dashboard dialog.
+   pointer-events: auto keeps the card hit-testable even if an ancestor ever disables them. */
+.dashboard { display: none; position: absolute; z-index: 1; top: 12px; left: 12px; height: auto; max-height: calc(100% - 24px); width: min(240px, max(0px, calc((100cqw - 860px) / 2 - 24px))); max-width: 240px; min-width: 0; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; pointer-events: auto; }
+/* The frame opens the detailed Dashboard dialog; nested controls keep their own cursor. */
+.dashboard :is(a, button, summary, label) { cursor: pointer; }
+.dashboard :is(input, select, textarea) { cursor: auto; }
+.dashboard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Explicit local z-index 0: the scroller stays below the gutter card but keeps its own scrolling. */
+.messages { position: relative; z-index: 0; flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .messages > div { flex: 1; min-height: 0; overflow-y: auto; }
 .error { background: var(--danger-bg); color: var(--danger); padding: var(--space-3); overflow-wrap: anywhere; }
 .error button { margin-left: var(--space-3); }

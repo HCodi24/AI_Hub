@@ -91,7 +91,8 @@ export const settingsText = {
     confirm: (name: string, source: string) => `Tải ${name} từ ${source}?`, none: "Chưa có pet nào để tải.",
   },
   dev: {
-    off: "Chế độ phát triển đang tắt. Chạy MutiS với --dev để dùng.", repo: "Repo", path: "Đường dẫn", branch: "Nhánh",
+    off: "Chế độ phát triển đang tắt. Chạy MutiS với --dev để dùng.", repo: "Repo", repoGit: "Repo & Git", buildTools: "Build & kiểm tra",
+    path: "Đường dẫn", branch: "Nhánh",
     changed: "File thay đổi", lastCommit: "Commit cuối", detached: "(detached)", diff: "Xem diff", noDiff: "Không có diff được theo dõi.",
     untracked: "File chưa theo dõi", truncated: "Diff đã giới hạn ở 200 KB.", checkpoint: "Tạo checkpoint", reset: "Khôi phục về checkpoint",
     confirmReset: "Bỏ mọi thay đổi chưa commit và quay về commit cuối?", commit: "Commit", commitMessage: "Nội dung commit",

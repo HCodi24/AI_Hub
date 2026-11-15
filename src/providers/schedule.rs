@@ -115,6 +115,44 @@ fn fix_task(task: &Delegation, severe: &[&Issue]) -> Delegation {
     }
 }
 
+/// Who edits and who checks. Luna is the independent checker's Codex thread; Luna 2 is a second Codex thread (max effort).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Actor {
+    DeepSeek,
+    Luna,
+    Luna2,
+}
+
+impl Actor {
+    pub(super) fn name(self) -> &'static str {
+        match self {
+            Actor::DeepSeek => "DeepSeek",
+            Actor::Luna => "Luna",
+            Actor::Luna2 => "Luna 2",
+        }
+    }
+}
+
+/// (editor, checker) of one attempt. With a checker and a coordinator that can edit the task climbs a ladder:
+/// DeepSeek twice (Luna checks), then Luna fixes it and Luna 2 checks; a `hard` task starts with Luna 2 (Luna checks).
+/// Without that, DeepSeek does every attempt.
+pub(super) fn route(hard: bool, attempt: usize, escalate: bool) -> (Actor, Actor) {
+    match (escalate, hard, attempt) {
+        (true, true, _) => (Actor::Luna2, Actor::Luna),
+        (true, false, 3..) => (Actor::Luna, Actor::Luna2),
+        _ => (Actor::DeepSeek, Actor::Luna),
+    }
+}
+
+/// Attempts a task may use before the coordinator takes it over.
+pub(super) fn limit(hard: bool, escalate: bool) -> usize {
+    match (escalate, hard) {
+        (true, true) => 2,
+        (true, false) => 3,
+        _ => MAX_ATTEMPTS,
+    }
+}
+
 /// One line of the live task board shown in the chat.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Row {
@@ -149,6 +187,10 @@ pub(super) trait Backend: Send + Sync + 'static {
     /// Shows the whole task board; called only from the round loop.
     async fn board(&self, rows: &[Row]);
     fn path_problems(&self, task: &Delegation) -> Vec<String>;
+    /// Escalation needs someone to check and a coordinator that can finish the task.
+    fn can_escalate(&self) -> bool {
+        self.has_checker() && self.can_edit()
+    }
 }
 
 #[derive(Default)]
@@ -236,10 +278,12 @@ impl<B: Backend> Round<'_, B> {
 
     async fn run_task(&mut self, task: Delegation) {
         let title = key(&task.title);
-        if self.attempts.get(&title).copied().unwrap_or(0) >= MAX_ATTEMPTS {
-            self.out.reports.push(format!("The attempt limit ({MAX_ATTEMPTS}/{MAX_ATTEMPTS}) for \"{}\" is spent. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
+        let escalate = self.backend.can_escalate();
+        let max = limit(task.hard, escalate);
+        if self.attempts.get(&title).copied().unwrap_or(0) >= max {
+            self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
             self.state.insert(title, State::Failed);
-            self.mark(&task.title, self.spent_state(), MAX_ATTEMPTS, None).await;
+            self.mark(&task.title, self.spent_state(), max, None).await;
             return;
         }
         let problems = self.backend.path_problems(&task);
@@ -261,15 +305,16 @@ impl<B: Backend> Round<'_, B> {
                 return;
             }
             match auto_retry_reason(&work) {
-                Some(why) if auto < MAX_AUTO_RETRIES && attempt < MAX_ATTEMPTS => {
+                Some(why) if auto < MAX_AUTO_RETRIES && attempt < max => {
                     auto += 1;
-                    self.backend.say(format!("Tự giao lại DeepSeek ({auto}/{MAX_AUTO_RETRIES}): {}", truncate_chars(&why, 160))).await;
+                    self.backend.say(format!("Tự giao lại {} ({auto}/{MAX_AUTO_RETRIES}): {}", route(task.hard, attempt, escalate).0.name(), truncate_chars(&why, 160))).await;
                     feedback = Some(why);
                 }
                 _ => break (attempt, work),
             }
         };
-        self.out.reports.push(report(&task, attempt, auto, &work));
+        let (editor, checker) = route(task.hard, attempt, escalate);
+        self.out.reports.push(report(&task, editor.name(), attempt, max, auto, &work));
         if auto_retry_reason(&work).is_some() {
             self.state.insert(title, State::Failed);
             self.mark(&task.title, self.spent_state(), attempt, None).await;
@@ -281,7 +326,7 @@ impl<B: Backend> Round<'_, B> {
             self.mark(&task.title, "done", attempt, None).await;
             return;
         };
-        self.backend.say(format!("Luna kiểm tra: {} (lần {attempt})", task.title.trim())).await;
+        self.backend.say(format!("{} kiểm tra: {} (lần {attempt})", checker.name(), task.title.trim())).await;
         self.state.insert(title.clone(), State::Checking);
         self.mark(&task.title, "checking", attempt, None).await;
         self.pending += 1;
@@ -306,7 +351,8 @@ impl<B: Backend> Round<'_, B> {
         let severe: Vec<&Issue> = check.issues.iter().filter(|i| i.is_severe()).collect();
         self.out.minor.extend(check.issues.iter().filter(|i| !i.is_severe()).map(|i| format!("{}: {} ({})", task.title.trim(), i.problem, i.file)));
         if check.verdict == Verdict::Fail && !severe.is_empty() {
-            if self.attempts.get(&title).copied().unwrap_or(0) < MAX_ATTEMPTS {
+            let max = limit(task.hard, self.backend.can_escalate());
+            if self.attempts.get(&title).copied().unwrap_or(0) < max {
                 self.state.remove(&title);
                 let mut fix = fix_task(&task, &severe);
                 // The finding may sit in a file the coordinator did not list; the worker could not touch it and the attempts would be wasted.
@@ -327,7 +373,7 @@ impl<B: Backend> Round<'_, B> {
                 self.queue.push_back(fix);
                 self.mark(&task.title, "fixing", attempt, Some(shown)).await;
             } else {
-                self.out.reports.push(format!("The attempt limit ({MAX_ATTEMPTS}/{MAX_ATTEMPTS}) for \"{}\" is spent and the check still fails. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
+                self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent and the check still fails. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
                 self.state.insert(title, State::Failed);
                 self.mark(&task.title, self.spent_state(), attempt, Some(shown)).await;
             }
@@ -395,7 +441,7 @@ mod tests {
     use tokio::sync::Notify;
 
     fn task(title: &str, deps: &[&str]) -> Delegation {
-        Delegation { title: title.into(), files: vec!["a.rs".into()], instructions: "do it".into(), acceptance: vec![], depends_on: deps.iter().map(|d| d.to_string()).collect() }
+        Delegation { title: title.into(), files: vec!["a.rs".into()], instructions: "do it".into(), acceptance: vec![], depends_on: deps.iter().map(|d| d.to_string()).collect(), hard: false }
     }
     fn fail_high() -> CheckResult {
         CheckResult { verdict: Verdict::Fail, issues: vec![Issue { severity: "high".into(), file: "a.rs".into(), problem: "wrong".into(), fix: "right".into() }], notes: String::new(), error: None }
@@ -518,11 +564,36 @@ mod tests {
         let fake = Fake { checker: true, ..Default::default() };
         fake.checks.lock().unwrap().insert("A".into(), VecDeque::from(vec![fail_high(); 10]));
         let (fake, out, attempts) = run(fake, vec![task("A", &[])]).await;
-        assert_eq!(fake.lines().iter().filter(|l| l.starts_with("work:")).count(), MAX_ATTEMPTS);
-        assert_eq!(attempts["a"], MAX_ATTEMPTS);
-        assert!(out.reports.last().unwrap().contains("attempt limit"));
+        // DeepSeek twice, then Luna's fix: the third failed check hands the task to the coordinator.
+        assert_eq!(fake.lines().iter().filter(|l| l.starts_with("work:")).count(), 3);
+        assert_eq!(attempts["a"], 3);
+        assert!(out.reports.last().unwrap().contains("attempt limit (3/3)"));
         // The fake can edit, so the spent task is handed to the coordinator instead of showing a bare failure.
         assert_eq!(fake.boards.lock().unwrap().last().unwrap(), "A:takeover");
+    }
+
+    #[tokio::test]
+    async fn a_hard_task_gets_two_attempts_and_without_a_checker_every_task_keeps_four() {
+        let fake = Fake { checker: true, ..Default::default() };
+        fake.checks.lock().unwrap().insert("A".into(), VecDeque::from(vec![fail_high(); 10]));
+        let hard = Delegation { hard: true, ..task("A", &[]) };
+        let (fake, out, attempts) = run(fake, vec![hard]).await;
+        assert_eq!((fake.lines().iter().filter(|l| l.starts_with("work:")).count(), attempts["a"]), (2, 2));
+        assert!(out.reports.last().unwrap().contains("attempt limit (2/2)"));
+        // No checker, or a coordinator that cannot edit: nobody to climb to, so the old four DeepSeek attempts stay.
+        let (fake, _, attempts) = run(Fake { empty: vec!["A".into()], ..Default::default() }, vec![Delegation { hard: true, ..task("A", &[]) }]).await;
+        assert!(attempts["a"] <= MAX_ATTEMPTS && fake.lines().iter().all(|l| l.starts_with("work:")));
+        assert_eq!(limit(true, false), MAX_ATTEMPTS);
+        assert_eq!(limit(false, false), MAX_ATTEMPTS);
+    }
+
+    #[test]
+    fn the_ladder_is_deepseek_twice_then_luna_fixes_and_luna_2_checks_and_hard_tasks_start_with_luna_2() {
+        use Actor::*;
+        assert_eq!([1, 2, 3].map(|n| route(false, n, true)), [(DeepSeek, Luna), (DeepSeek, Luna), (Luna, Luna2)]);
+        assert_eq!([1, 2].map(|n| route(true, n, true)), [(Luna2, Luna), (Luna2, Luna)]);
+        assert_eq!([1, 3, 4].map(|n| route(true, n, false)), [(DeepSeek, Luna); 3]);
+        assert_eq!(route(false, 4, false), (DeepSeek, Luna));
     }
 
     #[tokio::test]

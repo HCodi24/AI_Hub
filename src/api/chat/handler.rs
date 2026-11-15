@@ -152,7 +152,7 @@ pub(crate) async fn chat_handler(
         (None, None)
     };
     let provider: Box<dyn providers::Provider> = match &delegate_worker {
-        Some((worker, model)) => Box::new(providers::delegate::DelegateProvider { worker: worker.clone(), model: model.clone(), checker: delegate_checker.clone(), checker_note: checker_note.clone() }),
+        Some((worker, model)) => Box::new(providers::delegate::DelegateProvider { worker: worker.clone(), model: model.clone(), checker: delegate_checker.clone(), checker_note: checker_note.clone(), chat_id: request.chat_id.clone() }),
         None => providers::for_kind(&provider_config.kind)
             .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?,
     };

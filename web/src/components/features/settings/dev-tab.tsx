@@ -7,6 +7,7 @@ import { Switch } from "@/components/button/switch";
 import { notify } from "@/components/toast/toast";
 import type { DevDiff } from "@/schema/dev.schema";
 import { settingsText as t } from "@/text/settings";
+import { cn } from "@/lib/utils";
 import { errorText } from "./use-settings";
 import styles from "./settings.module.css";
 const field = (data: unknown, key: string): unknown => typeof data === "object" && data !== null ? (data as Record<string, unknown>)[key] : undefined;
@@ -41,41 +42,57 @@ export function DevTab() {
     await devApi.run(kind, abort.current.signal, (event, data) => { const text = line(event, data); if (text) setOutput(current => `${current}${text}\n`); });
   });
   const r = repo.data;
-  return <div className={styles.form}>
-    <section className={styles.group} aria-label={t.dev.repo}><h3>{t.dev.repo}</h3>
+  return <div className={styles.devPage}>
+    <section className={cn(styles.group, styles.devCard)} aria-label={t.dev.repoGit}>
+      <h3 className={styles.devCardTitle}>{t.dev.repoGit}</h3>
       {repo.isPending && <Skeleton />}{repo.error && <p role="alert">{repo.error.message}</p>}
-      {r && <dl className={styles.facts}><dt>{t.dev.path}</dt><dd>{r.path}</dd><dt>{t.dev.branch}</dt><dd>{r.branch || t.dev.detached}</dd>
-        <dt>{t.dev.changed}</dt><dd>{r.changed_files}</dd><dt>{t.dev.lastCommit}</dt><dd>{r.last_commit.hash} · {r.last_commit.subject} · {r.last_commit.author}</dd></dl>}
-      <div className={styles.actions}>
-        <Button disabled={Boolean(busy)} onClick={() => void act("diff", async () => setDiff(await devApi.diff()))}>{t.dev.diff}</Button>
-        <Button disabled={Boolean(busy)} onClick={() => void act("checkpoint", async () => {
-          const result = await devApi.checkpoint(); notify(result.skipped ? result.message || t.dev.noChange : t.dev.checkpointDone(result.hash));
-        })}>{t.dev.checkpoint}</Button>
-        <Button variant="danger" disabled={Boolean(busy)} onClick={() => setConfirmReset(true)}>{t.dev.reset}</Button>
+      {r && <dl className={styles.devFacts}>
+        <div className={cn(styles.devFact, styles.devFactWide)}><dt>{t.dev.path}</dt><dd>{r.path}</dd></div>
+        <div className={styles.devFact}><dt>{t.dev.branch}</dt><dd>{r.branch || t.dev.detached}</dd></div>
+        <div className={styles.devFact}><dt>{t.dev.changed}</dt><dd>{r.changed_files}</dd></div>
+        <div className={cn(styles.devFact, styles.devFactWide)}><dt>{t.dev.lastCommit}</dt><dd>{r.last_commit.hash} · {r.last_commit.subject} · {r.last_commit.author}</dd></div>
+      </dl>}
+      <div className={styles.devRow}>
+        <div className={styles.actions}>
+          <Button disabled={Boolean(busy)} onClick={() => void act("diff", async () => setDiff(await devApi.diff()))}>{t.dev.diff}</Button>
+          <Button disabled={Boolean(busy)} onClick={() => void act("checkpoint", async () => {
+            const result = await devApi.checkpoint(); notify(result.skipped ? result.message || t.dev.noChange : t.dev.checkpointDone(result.hash));
+          })}>{t.dev.checkpoint}</Button>
+        </div>
+        <div className={styles.devDanger}>
+          <Button variant="danger" disabled={Boolean(busy)} onClick={() => setConfirmReset(true)}>{t.dev.reset}</Button>
+        </div>
       </div>
       {confirmReset && <div className={styles.confirm} role="group"><p>{t.dev.confirmReset}</p>
         <Button variant="danger" onClick={() => { setConfirmReset(false); void act("reset", async () => { await devApi.reset(); setDiff(null); notify(t.dev.done); }); }}>{t.dev.reset}</Button>
         <Button onClick={() => setConfirmReset(false)}>{t.cancel}</Button></div>}
-      <label>{t.dev.commitMessage}<span className={styles.inline}><input value={message} onChange={event => setMessage(event.target.value)} />
+      <label className={styles.devCommit}>{t.dev.commitMessage}<span className={styles.devCommitRow}><input value={message} onChange={event => setMessage(event.target.value)} />
         <Button disabled={Boolean(busy) || !message.trim()} onClick={() => void act("commit", async () => {
           const result = await devApi.commit(message.trim()); setMessage(""); notify(result.hash ? `${t.dev.commit} ${result.hash}` : result.message || t.dev.done);
         })}>{t.dev.commit}</Button></span></label>
     </section>
-    {diff && <section aria-label={t.dev.diff}><p className={styles.pre}>{diff.stat || t.dev.noDiff}</p>
+    {diff && <section className={styles.devOutput} aria-label={t.dev.diff}><p className={styles.pre}>{diff.stat || t.dev.noDiff}</p>
       {diff.untracked.length > 0 && <p className={styles.pre}>{t.dev.untracked}:{"\n"}{diff.untracked.join("\n")}</p>}
       <pre className={styles.log}>{diff.diff.split("\n").map((text, index) => <span key={index}
         data-diff={text.startsWith("+") && !text.startsWith("+++") ? "add" : text.startsWith("-") && !text.startsWith("---") ? "remove" : undefined}>{text}{"\n"}</span>)}</pre>
       {diff.truncated && <p className={styles.note}>{t.dev.truncated}</p>}</section>}
-    <section className={styles.group}><div className={styles.actions}>
-      <Button disabled={Boolean(busy)} onClick={() => void stream("test")}>{t.dev.test}</Button>
-      <Button disabled={Boolean(busy)} onClick={() => void stream("release")}>{t.dev.release}</Button>
-      <Button disabled={Boolean(busy)} onClick={() => void stream("web-build")}>{t.dev.webBuild}</Button>
-      <Button variant="primary" disabled={Boolean(busy)} onClick={() => void stream("rebuild")}>{t.dev.rebuild}</Button>
-      {busy && <Button variant="danger" onClick={() => abort.current?.abort()}>{t.extensions.stop}</Button>}</div>
-      <label className={styles.check}><Switch checked={settings.data?.auto_rebuild ?? false} disabled={!settings.data}
+    <section className={cn(styles.group, styles.devCard)} aria-label={t.dev.buildTools}>
+      <h3 className={styles.devCardTitle}>{t.dev.buildTools}</h3>
+      <div className={styles.devRow}>
+        <div className={styles.actions}>
+          <Button disabled={Boolean(busy)} onClick={() => void stream("web-build")}>{t.dev.webBuild}</Button>
+          <Button variant="primary" disabled={Boolean(busy)} onClick={() => void stream("rebuild")}>{t.dev.rebuild}</Button>
+        </div>
+        {busy && <Button variant="danger" onClick={() => abort.current?.abort()}>{t.extensions.stop}</Button>}
+      </div>
+      <div className={styles.actions}>
+        <Button disabled={Boolean(busy)} onClick={() => void stream("test")}>{t.dev.test}</Button>
+        <Button disabled={Boolean(busy)} onClick={() => void stream("release")}>{t.dev.release}</Button>
+      </div>
+      <label className={cn(styles.check, styles.devSwitch)}><Switch checked={settings.data?.auto_rebuild ?? false} disabled={!settings.data}
         onChange={event => void devApi.saveSettings(event.target.checked).then(value => client.setQueryData(["dev-settings"], value)).catch(error => notify(errorText(error, t.error)))} />
         <span>{t.dev.autoRebuild}</span></label>
-      {(busy || output) && <><h3>{t.dev.output}{busy ? ` · ${t.dev.running}` : ""}</h3><pre className={styles.log} aria-live="polite">{output}</pre></>}
+      {(busy || output) && <div className={styles.devOutput}><h4>{t.dev.output}{busy ? ` · ${t.dev.running}` : ""}</h4><pre className={styles.log} aria-live="polite">{output}</pre></div>}
     </section>
   </div>;
 }

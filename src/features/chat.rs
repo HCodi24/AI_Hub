@@ -232,6 +232,7 @@ impl ChatStore {
     }
 
     pub fn delete(&self, id: &str) -> Result<bool> {
+        crate::providers::worker_session::remove_chat(&self.directory, id);
         let path = self.file_path(id);
         if !path.exists() {
             return Ok(false);

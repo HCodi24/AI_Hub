@@ -8,6 +8,7 @@ pub(crate) mod codex;
 pub mod deepseek_agent;
 pub(crate) mod delegate;
 pub(crate) mod schedule;
+pub(crate) mod worker_session;
 pub(crate) mod discovery;
 pub(crate) mod limits;
 pub mod mcp;
@@ -185,6 +186,16 @@ pub fn retry_delay(base_ms: u64, retry_index: u32, jitter_ms: u64) -> std::time:
     )
 }
 
+/// `a: b: c` from an error and its sources (reqwest's own text stops at "error sending request").
+fn error_chain(error: &dyn std::error::Error) -> String {
+    let (mut text, mut source) = (error.to_string(), error.source());
+    while let Some(cause) = source {
+        text.push_str(&format!(": {cause}"));
+        source = cause.source();
+    }
+    text
+}
+
 pub async fn send_with_retry(
     client: &reqwest::Client,
     url: &str,
@@ -207,14 +218,16 @@ pub async fn send_with_retry(
         }
         let result = tokio::select! { _ = cancel.cancelled() => bail!("cancelled"), result = builder.send() => result };
         let retryable = match &result {
-            Err(error) => error.is_connect() || error.is_timeout(),
+            // A connection the server drops mid-request is `is_request`, not `is_connect`: it is just as transient.
+            Err(error) => error.is_connect() || error.is_timeout() || error.is_request(),
             Ok(response) => retryable_status(response.status()),
         };
         if !retryable || retry >= max_retries {
-            return result.context("Không thể gửi yêu cầu API");
+            // The cause (timeout, connection reset, TLS...) must reach the user: the context alone hides it.
+            return result.map_err(|error| anyhow::anyhow!("Không thể gửi yêu cầu API: {}", error_chain(&error)));
         }
         let reason = match &result {
-            Err(error) => error.to_string(),
+            Err(error) => error_chain(error),
             Ok(response) => format!("HTTP {}", response.status()),
         };
         retry += 1;
