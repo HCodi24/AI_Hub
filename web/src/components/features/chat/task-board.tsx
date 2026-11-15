@@ -4,7 +4,7 @@ import { chatText } from "@/text/chat";
 import { useChatStore } from "./chat-store";
 import styles from "./task-board.module.css";
 
-const ICONS = { waiting: Circle, coding: Loader2, checking: Loader2, fixing: Loader2, done: CheckCircle2, failed: XCircle, takeover: ArrowRightCircle, skipped: MinusCircle } as const;
+const ICONS = { waiting: Circle, coding: Loader2, checking: Loader2, fixing: Loader2, done: CheckCircle2, failed: XCircle, takeover: ArrowRightCircle, skipped: MinusCircle, stopped: MinusCircle } as const;
 const BUSY = new Set(["coding", "checking", "fixing"]);
 
 /** Live progress of the tasks Codex handed over: who is coding, what is being checked, what is being fixed. */

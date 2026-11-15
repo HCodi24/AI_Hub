@@ -121,7 +121,9 @@ export const useChatStore = create<ChatState>((set) => ({
     messages[messages.length - 1] = message;
     return { messages };
   }),
+  // A row still waiting or busy when the stream ends will never move again (stopped, or the connection dropped).
   finish: (error = "") => set((state) => ({ streaming: false, error,
+    tasks: state.tasks.map(task => ["waiting", "coding", "checking", "fixing"].includes(task.state) ? { ...task, state: "stopped" } : task),
     messages: state.messages.map((message, index) => error && index === state.messages.length - 1 ? { ...message, error } : message) })),
   setDrawer: (drawer) => set({ drawer }),
 }));

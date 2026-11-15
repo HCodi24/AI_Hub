@@ -48,18 +48,20 @@ export function MutisTab() {
   if (query.error) return <p role="alert">{query.error.message}</p>;
   const providers = config.data?.providers || [];
   const edit = (patch: Partial<Mutis>) => setDraft(current => current && ({ ...current, ...patch }));
-  const off = !draft.enabled;
-  async function save() {
-    if (!draft) return;
+  async function save(next: Mutis | null = draft) {
+    if (!next) return;
     setBusy(true);
-    try { client.setQueryData(["mutis"], await mutisApi.put(draft)); notify(t.saved); }
+    try { client.setQueryData(["mutis"], await mutisApi.put(next)); notify(t.saved); }
     catch (error) { notify(errorText(error, t.error)); } finally { setBusy(false); }
   }
+  // A switch applies at once like the switches of the other tabs; it saves the last saved settings plus that one change, never other unsaved edits.
+  function toggle(patch: Partial<Mutis>) {
+    edit(patch);
+    if (query.data) void save({ ...query.data, ...patch });
+  }
   return <form className={styles.form} onSubmit={event => { event.preventDefault(); void save(); }}>
-    <label className={styles.check}><Switch checked={draft.enabled} onChange={event => edit({ enabled: event.target.checked })} />
-      <span><strong>{t.mutis.enabled}</strong></span></label>
     <p>{t.mutis.levelHint}</p>
-    {(["roles", "high_roles"] as const).map(profile => <fieldset key={profile} className={styles.group} disabled={off}><legend>{profile === "roles" ? t.mutis.maxRoles : t.mutis.highRoles}</legend>
+    {(["roles", "high_roles"] as const).map(profile => <fieldset key={profile} className={styles.group}><legend>{profile === "roles" ? t.mutis.maxRoles : t.mutis.highRoles}</legend>
       {ROLES.map(role => { const value = draft[profile][role];
         const setRole = (patch: Partial<typeof value>) => edit({ [profile]: { ...draft[profile], [role]: { ...value, ...patch } } });
         return <div key={role} className={styles.row}><strong>{t.mutis.role[role]}</strong>
@@ -70,18 +72,18 @@ export function MutisTab() {
           <label>{t.mutis.effort}<select value={effortFor(value.model, value.effort, providers.find(p => p.id === value.provider_id)?.kind)} onChange={event => setRole({ effort: event.target.value as typeof value.effort })}>
             {effortsFor(value.model, providers.find(p => p.id === value.provider_id)?.kind).map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>; })}
       {profile === "high_roles" && <>
-        <label className={styles.check}><Switch checked={draft.delegate_checker} onChange={event => edit({ delegate_checker: event.target.checked })} /><span>{t.mutis.delegate_checker}</span></label>
+        <label className={styles.check}><Switch checked={draft.delegate_checker} onChange={event => toggle({ delegate_checker: event.target.checked })} /><span>{t.mutis.delegate_checker}</span></label>
         <CheckerRow providers={providers} value={draft.high_checker} enabled={draft.delegate_checker} change={patch => edit({ high_checker: { ...draft.high_checker, ...patch } })} />
       </>}
     </fieldset>)}
-    <fieldset className={styles.group} disabled={off}><legend>{t.mutis.routing}</legend>
+    <fieldset className={styles.group}><legend>{t.mutis.routing}</legend>
       <div className={styles.grid}>{draft.routing.map((rule, index) => <label key={rule.kind}>{t.mutis.kinds[rule.kind] || rule.kind}
         <select value={rule.role} onChange={event => edit({ routing: draft.routing.map((item, i) => i === index ? { ...item, role: event.target.value } : item) })}>
           {ROLES.map(role => <option key={role} value={role}>{t.mutis.role[role]}</option>)}</select></label>)}</div>
     </fieldset>
-    <fieldset className={styles.group} disabled={off}><legend>{t.mutis.switches}</legend>
+    <fieldset className={styles.group}><legend>{t.mutis.switches}</legend>
       {SWITCHES.map(item => <div key={item.key} className={styles.switch}>
-        <label className={styles.check}><Switch checked={draft[item.key]} onChange={event => edit({ [item.key]: event.target.checked })} /><span>{t.mutis[item.key]}</span></label>
+        <label className={styles.check}><Switch checked={draft[item.key]} onChange={event => toggle({ [item.key]: event.target.checked })} /><span>{t.mutis[item.key]}</span></label>
         {item.numbers?.map(number => <label key={number.key}>{t.mutis[number.key]}<input type="number" min={number.min} max={number.max}
           value={draft[number.key]} disabled={!draft[item.key]} onChange={event => edit({ [number.key]: Number(event.target.value) })} /></label>)}
       </div>)}

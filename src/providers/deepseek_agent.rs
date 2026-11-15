@@ -145,6 +145,8 @@ impl Provider for DeepSeekAgentProvider {
         let mut tokens_reasoning = 0u64;
         let mut final_text = String::new();
         let mut failure: Option<anyhow::Error> = None;
+        // Set once a reply was cut off while thinking: later steps think at low effort instead of failing the task.
+        let mut cut_off = false;
         let max_steps = request.mutis.deepseek_max_steps.clamp(5, 40);
         for step in 0..max_steps {
             if cancel.is_cancelled() {
@@ -156,7 +158,7 @@ impl Provider for DeepSeekAgentProvider {
             if can_write && files && max_steps >= 8 && step + 4 == max_steps && agent_tools.change_summaries().is_empty() {
                 messages.push(json!({"role":"user","content":"Only 4 steps are left and you have not changed any file. Stop exploring now: make the edit with edit_file or write_file, or report exactly what blocks you."}));
             }
-            let mut body = json!({"model":request.model,"messages":messages,"tools":tools,"max_tokens":8192,"temperature":0.2,"stream":false});
+            let mut body = json!({"model":request.model,"messages":messages,"tools":tools,"temperature":0.2,"stream":false});
             // Last allowed step: forbid more tool calls so the model must report what it did instead of ending silently.
             if step + 1 == max_steps {
                 body["tool_choice"] = json!("none");
@@ -166,7 +168,7 @@ impl Provider for DeepSeekAgentProvider {
                 body["messages"] = json!(last);
             }
             if super::is_deepseek_flash(&request.model) {
-                body["reasoning_effort"] = json!(super::api_reasoning_effort(&request.model, request.effort));
+                body["reasoning_effort"] = json!(if cut_off { Some("low") } else { super::api_reasoning_effort(&request.model, request.effort) });
             }
             let response = super::send_with_retry(
                 &client,
@@ -222,19 +224,25 @@ impl Provider for DeepSeekAgentProvider {
             tokens_reasoning = tokens_reasoning
                 .saturating_add(usage["completion_tokens_details"]["reasoning_tokens"].as_u64().unwrap_or(0));
             let msg = &value["choices"][0]["message"];
+            let finish_reason = value["choices"][0]["finish_reason"].as_str().unwrap_or("");
+            // Reasoning tokens count toward the host's output cap: a long think can still end the reply with no content and no tool call.
+            let empty_reply = msg.is_null() || (msg["tool_calls"].as_array().map_or(true, Vec::is_empty) && strip_dsml(msg["content"].as_str().unwrap_or_default()).is_empty());
+            if empty_reply && finish_reason == "length" && !cut_off {
+                cut_off = true;
+                messages.push(json!({"role":"user","content":"Your last reply was cut off while thinking. Think briefly, then make the next tool call or answer."}));
+                continue;
+            }
             if msg.is_null() {
                 failure = Some(anyhow::anyhow!(
                     "DeepSeek trả về rỗng (có thể chạm giới hạn đầu ra) — hãy chia nhỏ việc"
                 ));
                 break;
             }
-            let finish_reason = value["choices"][0]["finish_reason"].as_str().unwrap_or("");
             let calls = msg["tool_calls"].as_array().cloned().unwrap_or_default();
             let content = msg["content"].as_str().unwrap_or_default();
             if calls.is_empty() {
                 // Drop leaked tool-call markup (`<｜DSML｜function_calls>...`); it is not an answer.
-                let visible = content.find("DSML").map_or(content, |at| content[..at].trim_end_matches(|c: char| c == '<' || c.is_whitespace()));
-                final_text = visible.trim().to_owned();
+                final_text = strip_dsml(content).to_owned();
                 // A plain text answer with no tool call is valid (a question, an explanation): only an empty one is a failure.
                 if final_text.is_empty() {
                     failure = Some(anyhow::anyhow!(
@@ -341,4 +349,21 @@ pub fn parse_edit_only(input: &str) -> Vec<(String, String)> {
         }
     }
     out
+}
+
+/// The answer part of a reply: leaked tool-call markup (`<｜DSML｜function_calls>...`) is not an answer.
+fn strip_dsml(content: &str) -> &str {
+    content.find("DSML").map_or(content, |at| &content[..at]).trim_end_matches(|c: char| c == '<' || c == '｜' || c.is_whitespace()).trim_start()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_dsml;
+
+    #[test]
+    fn leaked_tool_markup_is_not_an_answer() {
+        assert_eq!(strip_dsml("Done.\n<｜DSML｜function_calls>x"), "Done.");
+        assert_eq!(strip_dsml("<｜DSML｜function_calls>x"), "");
+        assert_eq!(strip_dsml("  plain  "), "plain");
+    }
 }

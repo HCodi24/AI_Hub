@@ -215,6 +215,22 @@ impl ChatStore {
         fs::write(&path, json).with_context(|| format!("Could not save chat {}", path.display()))
     }
 
+    /// Append this chat's current cumulative token totals to its own history file, if they changed.
+    pub fn record_token_usage(
+        &self,
+        chat: &ChatRecord,
+    ) -> Result<Option<crate::features::token_usage::TokenSnapshot>> {
+        crate::features::token_usage::record(&self.directory, chat)
+    }
+
+    /// The latest token snapshots of one chat; a chat without history returns an empty list.
+    pub fn token_history(
+        &self,
+        id: &str,
+    ) -> Result<Vec<crate::features::token_usage::TokenSnapshot>> {
+        crate::features::token_usage::history(&self.directory, id)
+    }
+
     pub fn delete(&self, id: &str) -> Result<bool> {
         let path = self.file_path(id);
         if !path.exists() {

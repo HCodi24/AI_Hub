@@ -5,4 +5,4 @@ mod request;
 mod run;
 
 pub(crate) use handler::chat_handler;
-pub(crate) use history::{delete_chat, get_chat, list_chats, stop_chat};
+pub(crate) use history::{delete_chat, get_chat, list_chats, stop_chat, token_history};

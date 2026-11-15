@@ -60,6 +60,24 @@ pub(crate) async fn get_chat(
         .map(Json)
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy chat"))
 }
+/// Read-only: the recorded token snapshots of one chat (latest 500), never creates or repairs files.
+pub(crate) async fn token_history(
+    State(state): State<AppState>,
+    Path(chat_id): Path<String>,
+) -> ApiResult<Json<Vec<crate::features::token_usage::TokenSnapshot>>> {
+    if !chat::valid_id(&chat_id) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "chat_id không hợp lệ",
+        ));
+    }
+    state.chats.token_history(&chat_id).map(Json).map_err(|_| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Không thể đọc lịch sử token của chat",
+        )
+    })
+}
 pub(crate) async fn delete_chat(
     State(state): State<AppState>,
     Path(chat_id): Path<String>,

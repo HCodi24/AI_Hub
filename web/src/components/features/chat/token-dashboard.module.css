@@ -1,20 +1,16 @@
-/* Compact card inside the existing left gutter: readable at ~200px, never widens the chat. */
+﻿/* The existing gutter has a white card in both themes. */
 .dashboard { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; padding: var(--space-3); color: #0f172a; font-size: var(--font-12); }
-.title { margin: 0; font-size: var(--font-13); color: #0f172a; overflow-wrap: anywhere; }
-.empty { margin: 0; color: #3f4b5f; overflow-wrap: anywhere; }
-.total { margin: 0; color: #1f2937; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.legend { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; color: #3f4b5f; }
+.title { margin: 0; font-size: var(--font-13); overflow-wrap: anywhere; }
+.empty, .total, .note { margin: 0; color: #3f4b5f; overflow-wrap: anywhere; line-height: 1.4; }
+.total { font-variant-numeric: tabular-nums; }
+.chart { display: block; width: 100%; height: auto; min-width: 0; overflow: visible; font-size: 13px; }
+.chart text { fill: currentColor; }
+.legend { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
 .legend li { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
-.swatch { width: 10px; height: 10px; border-radius: 2px; border: 1px solid #0f172a; flex: none; }
-.swatch[data-kind="input"], .segment[data-kind="input"] { background: #1d4ed8; }
-/* Output is striped as well as a different colour, so colour alone never carries the meaning. */
-.swatch[data-kind="output"], .segment[data-kind="output"] { background: repeating-linear-gradient(45deg, #b45309 0 3px, #f8fafc 3px 6px); }
-.models { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
-.model { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.name { color: #0f172a; font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
-.bar { display: flex; width: 100%; min-width: 0; height: 10px; border-radius: 3px; overflow: hidden; background: #e2e8f0; border: 1px solid #94a3b8; box-sizing: border-box; }
-.segment { display: block; height: 100%; min-width: 0; }
-.counts { display: flex; flex-wrap: wrap; gap: var(--space-2); color: #1f2937; font-variant-numeric: tabular-nums; }
-.counts [data-kind="input"] { color: #1d4ed8; }
-.counts [data-kind="output"] { color: #92400e; }
-.note { margin: 0; color: #3f4b5f; line-height: 1.35; overflow-wrap: anywhere; }
+.legend svg { flex: none; }
+.legend span { overflow-wrap: anywhere; }
+.details { min-width: 0; }
+.details summary { cursor: pointer; }
+.tableWrap { max-width: 100%; overflow-x: auto; margin: var(--space-2) 0; }
+.tableWrap table { border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: inherit; }
+.tableWrap th, .tableWrap td { padding: 4px; border: 1px solid #cbd5e1; text-align: left; overflow-wrap: anywhere; }

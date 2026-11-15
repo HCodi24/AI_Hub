@@ -189,6 +189,10 @@ pub fn router(state: AppState) -> Router {
             "/api/chats/{chat_id}",
             get(crate::api::chat::get_chat).delete(crate::api::chat::delete_chat),
         )
+        .route(
+            "/api/chats/{chat_id}/token-history",
+            get(crate::api::chat::token_history),
+        )
         // Codex vs Claude debate ("⚖ Tranh luận").
         .route(
             "/api/debates",

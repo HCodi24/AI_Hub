@@ -10,6 +10,7 @@ import { Composer } from "@/components/features/composer/composer";
 import { ChatHeader } from "@/components/features/composer/chat-toolbar";
 import { ACTIVE_CHAT_KEY, useChatStore } from "./chat-store";
 import { useChat } from "./use-chat";
+import { useDashboardPreference } from "./use-dashboard-preference";
 import { chatText } from "@/text/chat";
 import styles from "./chat-screen.module.css";
 import { Toast, useToast } from "@/components/toast/toast";
@@ -25,8 +26,8 @@ export function ChatScreen() {
   useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
   const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, folder: s.settings.folder })));
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // Local-only for now: the toggle is not persisted; the card shows recorded token reports of the current chat.
-  const [dashboardEnabled, setDashboardEnabled] = useState(false);
+  // Persisted in localStorage (shared across chats and tabs); the card shows recorded token reports of the current chat.
+  const [dashboardEnabled, setDashboardEnabled] = useDashboardPreference();
   const { config, chats, send, stop, load, remove } = useChat();
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
   // Restore the chat that was open before the page reload.

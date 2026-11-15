@@ -46,6 +46,8 @@ assert.deepEqual(parsed.tasks.map(t => t.state), ["coding"]);
 const store = load(src("components/features/chat/chat-store.ts"), { "@/schema/chat.schema": schema }).useChatStore;
 store.getState().event("tasks", parsed);
 assert.equal(store.getState().tasks.length, 1);
+store.getState().finish();
+assert.equal(store.getState().tasks[0].state, "stopped", "a row still busy when the stream ends is shown as stopped");
 store.getState().begin("next request");
 assert.equal(store.getState().tasks.length, 0, "a new request starts with an empty board");
 console.log("PASS task board: states, retries, Luna verdicts, busy rows and store events");

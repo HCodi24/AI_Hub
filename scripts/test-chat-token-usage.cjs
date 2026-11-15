@@ -111,25 +111,136 @@ const record = schema.ChatRecordSchema.parse({ id: "8e4e00a4-60ef-4a76-b49c-86d2
 assert.deepEqual(record.messages.map(m => m.model), ["gpt-5", ""]);
 assert.equal(chatTokenUsage(record.messages).models[0].model, "gpt-5");
 
+// --- API schema: valid rows, invalid rows, duplicate models, timestamp order/range, malformed bodies.
+const httpModule = load(src("lib/http.ts"));
+let requested = [];
+let body = [];
+const api = load(src("apis/chat.api.ts"), {
+  "@/lib/http": { ...httpModule, http: { get: async (url) => { requested.push(url); return body; } } },
+  "@/lib/sse": { postSse: async () => undefined },
+  "@/schema/chat.schema": schema,
+});
+const { TokenHistorySchema } = api;
+const row = (model, input, output) => ({ model, input, output, total: input + output });
+const sampleAt = (at, models) => ({ at, models });
+const valid = [sampleAt(1000, [row("b", 1, 2), row("a", 3, 4)]), sampleAt(2000, [row("a", 5, 6)])];
+const parsedHistory = TokenHistorySchema.parse(valid);
+assert.deepEqual(parsedHistory.map(s => s.at), [1000, 2000]);
+assert.deepEqual(parsedHistory[0].models.map(r => r.model), ["a", "b"], "rows are sorted by model identity");
+assert.deepEqual(parsedHistory[0].models[0], { model: "a", input: 3, output: 4, total: 7 });
+assert.deepEqual(TokenHistorySchema.parse([]), [], "an empty history is valid");
+assert.deepEqual(TokenHistorySchema.parse([sampleAt(0, [row("", 0, 0)])])[0].models[0],
+  { model: "", input: 0, output: 0, total: 0 }, "zero counts and the unknown model are valid");
+for (const [name, value] of [
+  ["negative input", [sampleAt(1, [{ model: "m", input: -1, output: 2, total: 1 }])]],
+  ["fractional output", [sampleAt(1, [{ model: "m", input: 1, output: 1.5, total: 2.5 }])]],
+  ["total mismatch", [sampleAt(1, [{ model: "m", input: 1, output: 2, total: 4 }])]],
+  ["missing total", [sampleAt(1, [{ model: "m", input: 1, output: 2 }])]],
+  ["non-string model", [sampleAt(1, [{ model: 7, input: 1, output: 2, total: 3 }])]],
+  ["no rows", [sampleAt(1, [])]],
+  ["duplicate models", [sampleAt(1, [row("m", 1, 2), row("m", 3, 4)])]],
+  ["duplicate unknown models", [sampleAt(1, [row("", 1, 2), row("", 3, 4)])]],
+  ["repeated timestamp", [sampleAt(2000, [row("m", 1, 2)]), sampleAt(2000, [row("m", 1, 2)])]],
+  ["descending timestamps", [sampleAt(2000, [row("m", 1, 2)]), sampleAt(1000, [row("m", 1, 2)])]],
+  ["negative timestamp", [sampleAt(-1, [row("m", 1, 2)])]],
+  ["fractional timestamp", [sampleAt(1.5, [row("m", 1, 2)])]],
+  ["timestamp beyond the JS Date range", [sampleAt(8640000000000001, [row("m", 1, 2)])]],
+  ["null sample", [null]],
+  ["missing models", [{ at: 1 }]],
+]) assert.equal(TokenHistorySchema.safeParse(value).success, false, `must reject ${name}`);
+assert.equal(TokenHistorySchema.safeParse([sampleAt(8640000000000000, [row("m", 1, 2)])]).success, true,
+  "the largest representable JS Date timestamp is accepted");
+for (const malformed of [null, undefined, {}, "[]", 42, [{}], [{ at: "1", models: [row("m", 1, 2)] }]])
+  assert.equal(TokenHistorySchema.safeParse(malformed).success, false, `must reject malformed body ${String(JSON.stringify(malformed))}`);
+
+async function apiRequestScenarios() {
+  requested = [];
+  body = valid;
+  const result = await api.chatApi.tokenHistory("chat id/1");
+  assert.deepEqual(requested, ["/chats/chat%20id%2F1/token-history"], "the chat id is encoded in the history URL");
+  assert.deepEqual(result.map(s => s.at), [1000, 2000]);
+  for (const malformed of [null, {}, [{ at: 1, models: [] }], [{ at: 8640000000000001, models: [row("m", 1, 2)] }]]) {
+    body = malformed;
+    await assert.rejects(() => api.chatApi.tokenHistory("c"), error => error instanceof httpModule.ApiError,
+      `a malformed body must throw instead of becoming []: ${String(JSON.stringify(malformed))}`);
+  }
+  body = [];
+  assert.deepEqual(await api.chatApi.tokenHistory("c"), [], "an empty history is not an error");
+}
+
+// --- Backend snapshots rendered by the card: two points of the same three models.
+const baseline = { at: 1700000000000, models: usage.models.map(({model,input,output,total}) => ({model,input,output,total})) };
+const next = { at: baseline.at + 5000, models: baseline.models.map(r => ({...r, output: r.output + 1, total: r.total + 1})) };
+
 // --- Rendered card: Vietnamese labels, exact numbers, textual equivalents and the honest empty state.
 const React = fromWeb("react");
 const { renderToStaticMarkup } = fromWeb("react-dom/server");
 const chatText = load(src("text/chat.ts")).chatText;
 const { TokenDashboardView } = load(src("components/features/chat/token-dashboard.tsx"), {
-  "@/text/chat": { chatText }, "./chat-store": { useChatStore: () => [] },
+  "@/text/chat": { chatText }, "./chat-store": { useChatStore: () => [] }, "./use-token-timeline": { useTokenTimeline: () => [] },
 });
-const render = list => renderToStaticMarkup(React.createElement(TokenDashboardView, { messages: list }));
+const render = (list, samples = [], status = "ready") => renderToStaticMarkup(React.createElement(TokenDashboardView, { messages: list, samples, status }));
 const emptyHtml = render([]);
 assert.ok(emptyHtml.includes("Token phiên chat"), "title is always shown");
 assert.ok(emptyHtml.includes("Chưa có dữ liệu token."), "honest empty state");
 assert.ok(!emptyHtml.includes("Tổng đã ghi"), "no fabricated totals without reports");
-const cardHtml = render(messages);
-for (const wanted of ["Token phiên chat", "Tổng đã ghi: vào 1.264, ra 54", ">Vào<", ">Ra<", "gpt-5", "Không rõ model",
-  "Vào 1.212", "Ra 48", "gpt-5: vào 1.212, ra 48", "Không rõ model: vào 45, ra 3", "không phải tổng chi phí đầy đủ"])
-  assert.ok(cardHtml.includes(wanted), `missing ${wanted}`);
-assert.ok(!cardHtml.includes("no-report"), "messages without a report never appear");
-assert.equal((cardHtml.match(/data-kind="input"/g) || []).length, 7, "legend swatch plus one segment and one count per model");
-assert.equal((cardHtml.match(/data-kind="output"/g) || []).length, 7, "output is striped, never colour-only");
+assert.ok(emptyHtml.includes(chatText.tokenDashboard.historyEmpty), "ready + empty history is reported as empty");
+assert.ok(!emptyHtml.includes(chatText.tokenDashboard.waiting), "a ready empty history is not loading");
+assert.ok(!emptyHtml.includes('<svg'), "no chart without samples");
+// Loading, ready-empty and error stay distinct even when the messages carry no reports.
+const emptyLoading = render([], [], "loading");
+assert.ok(emptyLoading.includes(chatText.tokenDashboard.waiting), "loading is shown without reports");
+assert.ok(!emptyLoading.includes(chatText.tokenDashboard.historyEmpty), "loading is not reported as empty");
+assert.ok(!emptyLoading.includes(chatText.tokenDashboard.historyError), "loading is not reported as an error");
+assert.ok(!emptyLoading.includes('<svg'), "no chart while loading");
+const emptyError = render([], [], "error");
+assert.ok(emptyError.includes(chatText.tokenDashboard.historyError), "a failure is shown without reports");
+assert.ok(!emptyError.includes(chatText.tokenDashboard.waiting), "a failure is not reported as loading");
+assert.ok(!emptyError.includes(chatText.tokenDashboard.historyEmpty), "a failure is not reported as empty");
+assert.ok(!emptyError.includes('<svg'), "no chart without samples");
+assert.equal((emptyError.match(new RegExp(chatText.tokenDashboard.historyError, "g")) || []).length, 1, "the error note is not duplicated");
+assert.equal((emptyHtml.match(new RegExp(chatText.tokenDashboard.historyEmpty, "g")) || []).length, 1, "the empty note is not duplicated");
+// Backend samples stay visible even when the current message logs have no reports.
+const serverOnly = render([], [baseline, next]);
+assert.ok(serverOnly.includes(chatText.tokenDashboard.empty), "the local empty state is still honest");
+assert.ok(!serverOnly.includes("Tổng đã ghi"), "no fabricated totals from server samples");
+assert.match(serverOnly, /<svg/);
+assert.equal((serverOnly.match(/<circle/g) || []).length, 6, "server samples are plotted without local reports");
+assert.match(serverOnly, /<table/);
+assert.ok(serverOnly.includes("gpt-5"), "the legend lists the server models");
+assert.ok(!/NaN|Infinity/.test(serverOnly));
+const serverOnlyError = render([], [baseline, next], "error");
+assert.match(serverOnlyError, /<svg/, "a failure keeps the retained chart");
+assert.equal((serverOnlyError.match(/<circle/g) || []).length, 6, "retained points survive a failure");
+assert.ok(serverOnlyError.includes(chatText.tokenDashboard.historyError), "the failure is still announced");
+assert.equal((serverOnlyError.match(new RegExp(chatText.tokenDashboard.historyError, "g")) || []).length, 1, "one error note only");
+const serverOnlyLoading = render([], [baseline], "loading");
+assert.match(serverOnlyLoading, /<svg/, "samples stay visible while a refresh is in flight");
+assert.ok(!serverOnlyLoading.includes(chatText.tokenDashboard.waiting), "no loading note when samples exist");
+const cardHtml = render(messages, [baseline, next]);
+for (const wanted of [chatText.tokenDashboard.title, chatText.tokenDashboard.timeAxis,
+  chatText.tokenDashboard.total("1.264", "54"), ">Vào<", ">Ra<", "gpt-5", "Không rõ model",
+  "gpt-5: vào 1.212, ra 48", "Không rõ model: vào 45, ra 3", chatText.tokenDashboard.note])
+  assert.ok(cardHtml.includes(wanted), 'missing ' + wanted);
+assert.ok(!cardHtml.includes("no-report"));
+assert.match(cardHtml, /<svg/);
+assert.match(cardHtml, /d="M[^"]*H[^"]*V/);
+assert.equal((cardHtml.match(/<circle/g) || []).length, 6);
+assert.ok(!/NaN|Infinity/.test(cardHtml));
+assert.match(cardHtml, /<table/);
+const single = render(messages, [baseline]);
+assert.equal((single.match(/<circle/g) || []).length, 3);
+assert.ok(!/NaN|Infinity/.test(single));
+const zeroHtml = render([assistant("m-zero", ["Token: vào 0, ra 0"])], [{at: baseline.at, models: [{model:"m-zero",input:0,output:0,total:0}]}]);
+assert.match(zeroHtml, /<circle/);
+assert.ok(!/NaN|Infinity/.test(zeroHtml));
+const waiting = render(messages, [], "loading");
+assert.ok(waiting.includes(chatText.tokenDashboard.waiting));
+assert.ok(!waiting.includes('<svg'));
+const late = render(messages, [baseline, {at: next.at, models: [...next.models, {model: "late", input:1,output:1,total:2}]}]);
+assert.equal((late.match(/<circle/g) || []).length, 7, 'late model has no invented earlier point');
+const collision = render(messages, [{at:baseline.at, models:[{model:"",input:0,output:0,total:0},{model:"unknown",input:1,output:0,total:1}]}]);
+assert.equal((collision.match(/<circle/g) || []).length, 2);
 
 // --- Store: status stamps the streaming reply, heartbeat never relabels, turn carries the event model.
 const { useChatStore } = load(src("components/features/chat/chat-store.ts"), { "@/schema/chat.schema": schema });
@@ -161,4 +272,13 @@ const screen = fs.readFileSync(src("components/features/chat/chat-screen.tsx"), 
 assert.match(screen, /import \{ TokenDashboard \} from "\.\/token-dashboard";/);
 assert.match(screen, /<aside className=\{styles\.dashboard\}[^>]*><TokenDashboard \/><\/aside>/, "the aside must render the token chart");
 
-console.log("PASS chat token usage: anchored reports, last snapshot, unknown models, zero counts, cache/reasoning exclusion, schema, store stamping and dashboard mount");
+// --- API request scenarios run last so the final PASS only prints after every awaited check.
+async function main() {
+  await apiRequestScenarios();
+  console.log("PASS chat token usage: anchored reports, last snapshot, unknown models, zero counts, cache/reasoning exclusion, schema, API request scenarios, store stamping and dashboard mount");
+}
+
+main().catch(error => {
+  console.error(error && error.stack ? error.stack : error);
+  process.exitCode = 1;
+});

@@ -114,6 +114,13 @@ pub(super) fn persist_event(
         }
         "log" => {
             message.logs.push(text.to_owned());
+            // A valid token report is the only log that produces a token observation; the
+            // cumulative totals are recorded right away, independent of the event-log settings.
+            if crate::features::token_usage::is_token_report(text) {
+                if let Err(error) = store.record_token_usage(record) {
+                    eprintln!("Could not record token usage: {error:#}");
+                }
+            }
             true
         }
         "diff" => {
@@ -267,5 +274,83 @@ mod tests {
         assert_eq!(saved.messages[1].model, "", "a missing turn model clears the stale one");
         std::fs::remove_file(directory.join(format!("{id}.json"))).unwrap();
         std::fs::remove_dir(directory).unwrap();
+    }
+
+    fn token_store() -> (std::path::PathBuf, ChatStore, String, ChatRecord, Instant) {
+        let directory = std::env::temp_dir().join(format!("mutis-tokens-{}", uuid::Uuid::new_v4()));
+        let store = ChatStore::new(directory.clone());
+        let id = uuid::Uuid::new_v4().to_string();
+        let record: ChatRecord = serde_json::from_value(serde_json::json!({
+            "id": id, "title": "token event test", "provider_id": "codex", "model": "test",
+            "folder": "", "updated_at": 0, "messages": [{"role":"user","content":"task"}]
+        }))
+        .unwrap();
+        (directory, store, id, record, Instant::now())
+    }
+
+    #[test]
+    fn a_valid_token_log_records_history_without_the_frontend() {
+        let (directory, store, id, mut record, mut last) = token_store();
+        persist_event(&store, &mut record, &ProviderEvent { name: "turn", data: serde_json::json!({"provider_kind":"codex_cli","model":"gpt-5-codex"}) }, &mut last);
+        persist_event(&store, &mut record, &ProviderEvent { name: "log", data: serde_json::json!({"text":"Token: vào 1200 (cache 300), ra 45 (suy luận 10)"}) }, &mut last);
+        let history = store.token_history(&id).unwrap();
+        assert_eq!(history.len(), 1, "the backend records the observation itself");
+        assert_eq!(history[0].models.len(), 1);
+        assert_eq!(history[0].models[0].model, "gpt-5-codex");
+        assert_eq!((history[0].models[0].input, history[0].models[0].output), (1200, 45));
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn unrelated_logs_never_create_token_history() {
+        let (directory, store, id, mut record, mut last) = token_store();
+        persist_event(&store, &mut record, &ProviderEvent { name: "turn", data: serde_json::json!({"provider_kind":"codex_cli","model":"gpt-5-codex"}) }, &mut last);
+        for text in ["Read file", "Token: vào1, ra2", "Token: vào 1, ra 2, chi phí $x", "Completed"] {
+            persist_event(&store, &mut record, &ProviderEvent { name: "log", data: serde_json::json!({ "text": text }) }, &mut last);
+        }
+        assert!(store.token_history(&id).unwrap().is_empty());
+        assert!(!directory.join("token-usage").exists(), "no file for logs that are not reports");
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn spaced_dollar_reports_record_and_the_last_report_replaces_the_earlier_one() {
+        let (directory, store, id, mut record, mut last) = token_store();
+        persist_event(&store, &mut record, &ProviderEvent { name: "turn", data: serde_json::json!({"provider_kind":"codex_cli","model":"gpt-5-codex"}) }, &mut last);
+        // `\$?\s*` in the frontend regex: whitespace after the dollar sign is valid.
+        persist_event(&store, &mut record, &ProviderEvent { name: "log", data: serde_json::json!({"text":"Token: vào 10, ra 5, chi phí $ 0.12"}) }, &mut last);
+        let first = store.token_history(&id).unwrap();
+        assert_eq!(first.len(), 1, "a spaced-dollar report is a valid observation");
+        assert_eq!((first[0].models[0].input, first[0].models[0].output), (10, 5));
+        // A later report of the same message replaces the totals instead of adding to them.
+        persist_event(&store, &mut record, &ProviderEvent { name: "log", data: serde_json::json!({"text":"Token: vào 20, ra 6, chi phí $ 0.24"}) }, &mut last);
+        let history = store.token_history(&id).unwrap();
+        assert_eq!(history.len(), 2, "the earlier snapshot stays appended");
+        assert_eq!((history[0].models[0].input, history[0].models[0].output), (10, 5));
+        assert_eq!(
+            (history[1].models[0].input, history[1].models[0].output),
+            (20, 6),
+            "the last valid report of the message wins"
+        );
+        assert!(history[1].at > history[0].at);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn stored_totals_are_cumulative_and_never_added_snapshots() {
+        let (directory, store, id, mut record, mut last) = token_store();
+        persist_event(&store, &mut record, &ProviderEvent { name: "turn", data: serde_json::json!({"provider_kind":"codex_cli","model":"gpt-5-codex"}) }, &mut last);
+        persist_event(&store, &mut record, &ProviderEvent { name: "log", data: serde_json::json!({"text":"Token: vào 10, ra 5"}) }, &mut last);
+        persist_event(&store, &mut record, &ProviderEvent { name: "log", data: serde_json::json!({"text":"Token: vào 30, ra 7"}) }, &mut last);
+        let history = store.token_history(&id).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!((history[0].models[0].input, history[0].models[0].output), (10, 5));
+        assert_eq!(
+            (history[1].models[0].input, history[1].models[0].output),
+            (30, 7),
+            "the last report of the message replaces the earlier one instead of being added"
+        );
+        assert!(history[1].at > history[0].at);
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }
