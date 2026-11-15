@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Loader2, PlugZap, Search, Trash2 } from "lucide-react";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
+import { Switch } from "@/components/button/switch";
 import type { ConnectionTest, FullConfig, Provider, ProviderInput } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
 import { ClaudeConnection } from "./claude-connection";
@@ -69,7 +70,7 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
         {candidate.path} · {candidate.version} · {candidate.source}</button>)}</div>
       : <p className={styles.note}>{t.providers.notFound(installHint)} <Button size="sm" onClick={() => void navigator.clipboard.writeText(installHint)}>{t.providers.copy}</Button></p>)}
     <label>{t.providers.models}<textarea rows={4} spellCheck={false} value={models} onChange={event => setModels(event.target.value)} /></label>
-    {form.kind === "openai_compat" && <label className={styles.check}><input type="checkbox" checked={form.agent_capable}
+    {form.kind === "openai_compat" && <label className={styles.check}><Switch checked={form.agent_capable}
       onChange={event => set("agent_capable", event.target.checked)} /><span>{t.providers.agent} <small>{t.providers.agentHint}</small></span></label>}
     <div className={styles.actions}>
       <Button type="submit" variant="primary" disabled={Boolean(busy)}>{busy === "save" && <Loader2 size={16} className="spin" aria-hidden="true" />}{t.save}</Button>

@@ -41,8 +41,8 @@
 .form label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-13); color: var(--muted); min-width: 0; }
 .form input, .form select, .form textarea { width: 100%; color: var(--text); font-size: var(--font-14); }
 .form textarea { min-height: 0; resize: vertical; font-family: var(--font-mono); font-size: var(--font-13); }
-.form label.check { flex-direction: row; align-items: flex-start; gap: var(--space-2); color: var(--text); font-size: var(--font-14); }
-.form label.check input { width: auto; margin-top: 3px; }
+.form label.check { flex-direction: row; align-items: center; gap: var(--space-2); color: var(--text); font-size: var(--font-14); }
+.check { display: flex; flex-direction: row; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--text); font-size: var(--font-14); min-width: 0; }
 .check small { color: var(--muted); }
 .inline { display: flex; gap: var(--space-2); align-items: center; }
 .inline input { flex: 1; min-width: 0; }
@@ -64,6 +64,8 @@
 .cardHead { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .badge { font-size: var(--font-12); padding: 2px var(--space-2); border-radius: var(--radius-xs); border: 1px solid var(--border); color: var(--muted); }
 .badge[data-on=true] { color: var(--accent); border-color: var(--accent); }
+.mcpSwitch { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-width: 0; max-width: 100%; font-size: var(--font-12); color: var(--muted); overflow-wrap: anywhere; }
+.mcpSwitch[data-on=true] { color: var(--accent); }
 .log { composes: scrollbar from '../../scroll-area.module.css'; margin: 0; padding: var(--space-3); max-height: 320px; overflow: auto; border-radius: var(--radius-small); background: var(--code); font-size: var(--font-12); white-space: pre-wrap; overflow-wrap: anywhere; }
 .log span[data-diff=add] { color: var(--accent); }
 .log span[data-diff=remove] { color: var(--danger); }

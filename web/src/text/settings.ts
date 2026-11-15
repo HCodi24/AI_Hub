@@ -1,7 +1,8 @@
 export const settingsText = {
   title: "Cài đặt", open: "Cài đặt",
-  tabs: { providers: "Nguồn AI", general: "Chung", mutis: "MutiS", addons: "Plugin & Skill", extensions: "Tiện ích", dev: "Phát triển" },
+  tabs: { providers: "Nguồn AI", general: "Chung", mutis: "MutiS", addons: "Plugin & Skill", extensions: "Tiện ích", dev: "Phát triển", dashboard: "Dashboard" },
   save: "Lưu", saved: "Đã lưu", delete: "Xoá", cancel: "Hủy", loading: "Đang tải…", error: "Có lỗi xảy ra",
+  dashboard: { enabled: "Hiển thị Dashboard" },
   providers: {
     list: "Danh sách nguồn", add: "Thêm nguồn", newName: "Nguồn mới", name: "Tên hiển thị", kind: "Loại nguồn",
     kinds: { codex_cli: "Codex CLI", claude_cli: "Claude Code CLI", openai_compat: "OpenAI-compatible (DeepSeek…)", anthropic: "Anthropic API" },
@@ -28,7 +29,7 @@ export const settingsText = {
     memoryChars: "Giới hạn ký tự mỗi scope (1000–20000)",
   },
   mutis: {
-    enabled: "Bật MutiS", roles: "Vai trò", maxRoles: "Mức Max — cả 3 AI (Claude, Codex, DeepSeek)", highRoles: "Mức High — chỉ Codex và DeepSeek", levelHint: "Thanh effort của MutiS chọn mức: Max/Extra high dùng 3 AI; các mức thấp hơn dùng Codex + DeepSeek.", role: { lead: "Lập kế hoạch & review", big: "Code lớn", small: "Việc nhỏ" },
+    enabled: "Bật MutiS", roles: "Vai trò", maxRoles: "Mức Max — cả 3 AI (Claude, Codex, DeepSeek)", highRoles: "Mức High — chỉ Codex và DeepSeek", checkerRole: "Người kiểm tra (Luna)", levelHint: "Thanh effort của MutiS chọn mức: Max/Extra high dùng 3 AI; các mức thấp hơn dùng Codex + DeepSeek.", role: { lead: "Lập kế hoạch & review", big: "Code lớn", small: "Việc nhỏ" },
     provider: "Nguồn", model: "Model", effort: "Reasoning effort", routing: "Định tuyến mặc định",
     kinds: { small_edit: "Sửa nhỏ", docs: "Tài liệu", code: "Code", test: "Test", plan: "Lập kế hoạch", review: "Review" } as Record<string, string>,
     switches: "Tự động hoá", auto_plan: "Tự động chia việc", plan_approval: "Duyệt kế hoạch trước khi chạy (tắt = tự chạy, hiện như chat thường)", delegate_checker: "Người kiểm tra độc lập (Luna Max) cho kết quả của DeepSeek — chỉ ở mức High", verify_gate: "Cổng kiểm tra sau mỗi task", auto_review: "Review tự động",
@@ -37,7 +38,11 @@ export const settingsText = {
     watchdog_minutes: "Watchdog (phút)", codex_auto_resume: "Tự tiếp tục Codex", resume_max: "Số lần tiếp tục tối đa",
     deepseek_agent: "Giao việc nhỏ cho nguồn ở chế độ agent", deepseek_max_file_lines: "Ngưỡng số dòng file",
     deepseek_max_steps: "Số bước agent tối đa", event_log: "Ghi nhật ký sự kiện", verify_command: "Lệnh kiểm tra",
-    verify_commandHint: "Để trống để tự nhận diện", verify_ignore: "Bỏ qua khi quét mã hoá (mỗi dòng một glob)",
+    verify_commandHint: "Để trống để tự nhận diện",
+    verifyProject: "Lệnh kiểm tra của dự án đang mở", verifyProjectNoFolder: "Mở một thư mục làm việc trong chat để đặt lệnh kiểm tra riêng cho dự án đó.",
+    verifyDetected: "Tự nhận diện được", verifyNone: "Không tự nhận diện được lệnh nào: dự án này ở trạng thái «chưa kiểm tra được» cho tới khi bạn nhập lệnh.",
+    verifyProjectCommand: "Lệnh kiểm tra riêng của dự án", verifyProjectHint: "Để trống = dùng lệnh chung ở trên hoặc tự nhận diện",
+    verifyConfirmDetected: "Xác nhận lệnh tự nhận diện", verifyProjectSaved: "Đã lưu lệnh kiểm tra của dự án", verifyProjectRemoved: "Đã xóa lệnh riêng của dự án", verifyClear: "Xóa lệnh riêng", verify_ignore: "Bỏ qua khi quét mã hoá (mỗi dòng một glob)",
     reviewer: "Nguồn review", reviewerModel: "Model review", debate: "Tranh luận", debate_rounds: "Số vòng (1–3)",
     debate_judge_model: "Model trọng tài", debateJudgeHint: "Để trống = model của Claude", worker_rules: "Quy tắc cho worker",
     diagnosis: "Chẩn đoán bằng AI", diagnose: "Chẩn đoán", diagnosing: "Đang chẩn đoán…", diagnoseFailed: "Chẩn đoán thất bại",

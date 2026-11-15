@@ -2,6 +2,7 @@ import { Sparkles } from "lucide-react";
 import { Button } from "@/components/button/button";
 import { StatusBadge } from "@/components/status-badge/status-badge";
 import { Skeleton } from "@/components/skeleton/skeleton";
+import { Switch } from "@/components/button/switch";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { plansApi } from "@/apis/plans.api";
@@ -70,7 +71,7 @@ export function PlanCard({ id }: { id: string }) {
         {confirm && <div role="group" aria-label={t.confirm(plan.tasks.length - done)}><p>{t.confirm(plan.tasks.length - done)}</p><button disabled={busy || invalid} onClick={() => void action(async () => { const approved = { ...plan, approved: true }; await save(approved); useCardStore.setState({ confirm: null }); await getRunner().runWholePlan(approved); })}>{t.run}</button><button onClick={() => useCardStore.setState({ confirm: null })}>{t.preview}</button></div>}
         <button disabled={busy || !mutis.data?.enabled || !mutis.data.verify_gate} onClick={() => void action(async () => { const report = await plansApi.verify(plan.folder, new AbortController().signal, notify); notify(report.summary_lines.join(" · ")); })}>{t.verify}</button>
         <button disabled={busy} onClick={() => void action(() => startCard(plan.request, "plan", undefined, false))}>{t.replan}</button>
-        <label><input type="checkbox" checked={plan.auto_continue} disabled={busy} onChange={event => edit(p => { p.auto_continue = event.target.checked; })} />{t.autoContinue}</label>
+        <label><Switch checked={plan.auto_continue} disabled={busy} onChange={event => edit(p => { p.auto_continue = event.target.checked; })} />{t.autoContinue}</label>
         <small>{plan.tasks.reduce((sum, task) => sum + task.tokens, 0).toLocaleString("vi-VN")} token</small>
       </footer></>}
   </section>;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { claudeApi, type ClaudeStatus } from "@/apis/claude.api";
 import { Button } from "@/components/button/button";
+import { Switch } from "@/components/button/switch";
 import { ClaudeLogin } from "./claude-login";
 import styles from "./settings.module.css";
 
@@ -38,9 +39,9 @@ export function ClaudeConnection({ providerId }: { providerId: string }) {
     </div>
     <ClaudeLogin providerId={providerId} disabled={busy} onPending={value => { setLoginBusy(value); if (!value) refresh(); }} onDone={refresh} />
     <p role="status" className={styles.note}>{busy || loginBusy ? "Đang xử lý…" : state?.message || (query.isPending ? "Đang kiểm tra Claude…" : "Chưa kiểm tra được Claude")}</p>
-    <label className={styles.check}><input type="checkbox" checked={state?.project_skills || false} disabled={!state || disabled}
+    <label className={styles.check}><Switch checked={state?.project_skills || false} disabled={!state || disabled}
       onChange={event => { const checked = event.target.checked; if (state) void run(() => claudeApi.settings(providerId, { ...state, project_skills: checked })); }} /><span>Nạp skill của dự án</span></label>
-    <label className={styles.check}><input type="checkbox" checked={state?.project_instructions || false} disabled={!state || disabled}
+    <label className={styles.check}><Switch checked={state?.project_instructions || false} disabled={!state || disabled}
       onChange={event => { const checked = event.target.checked; if (state) void run(() => claudeApi.settings(providerId, { ...state, project_instructions: checked })); }} /><span>Nạp hướng dẫn dự án (CLAUDE.md)</span></label>
     <p className={styles.note}>Áp dụng cho các nguồn Claude. Hướng dẫn gồm CLAUDE.md, CLAUDE.local.md và .claude/rules. Skill được cấp dưới dạng nội dung SKILL.md. Thay đổi tạo phiên mới khi chat tiếp; lịch sử và memory MutiS được giữ.</p>
     {(error || query.error) && <p role="alert">{error || query.error?.message}</p>}

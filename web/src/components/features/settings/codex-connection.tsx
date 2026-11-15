@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { codexApi, safeCodexLoginUrl } from "@/apis/codex.api";
 import { Button } from "@/components/button/button";
+import { Switch } from "@/components/button/switch";
 import styles from "./settings.module.css";
 
 export function CodexConnection({ providerId }: { providerId: string }) {
@@ -68,9 +69,9 @@ export function CodexConnection({ providerId }: { providerId: string }) {
       Codex riêng của MutiS chưa có sandbox Windows nên chưa ghi được file (chỉ đọc). Bấm «Thiết lập sandbox» rồi chọn Có ở hộp thoại quyền quản trị của Windows; việc này chỉ làm một lần.</p>}
     <p className={styles.note} role="status">{busy ? "Đang xử lý…" : state?.message || (query.isPending ? "Đang kiểm tra Codex…" : "Chưa kiểm tra được Codex")}</p>
     {state?.pending && url && <a href={url} target="_blank" rel="noopener noreferrer">Mở trang đăng nhập</a>}
-    <label className={styles.check}><input type="checkbox" checked={state?.project_skills || false} disabled={!state || busy || state.pending}
+    <label className={styles.check}><Switch checked={state?.project_skills || false} disabled={!state || busy || state.pending}
       onChange={event => void update("project_skills", event.target.checked)} /><span>Nạp skill của dự án</span></label>
-    <label className={styles.check}><input type="checkbox" checked={state?.project_instructions || false} disabled={!state || busy || state.pending}
+    <label className={styles.check}><Switch checked={state?.project_instructions || false} disabled={!state || busy || state.pending}
       onChange={event => void update("project_instructions", event.target.checked)} /><span>Nạp hướng dẫn dự án (AGENTS.md)</span></label>
     <p className={styles.note}>Hai tùy chọn áp dụng cho các nguồn Codex trong MutiS. Thay đổi sẽ tạo ngữ cảnh Codex mới khi chat tiếp; lịch sử và memory của app được giữ.</p>
     {(error || query.error) && <p role="alert">{error || query.error?.message}</p>}

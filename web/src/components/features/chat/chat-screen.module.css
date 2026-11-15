@@ -1,11 +1,21 @@
 .shell { height: 100dvh; display: flex; overflow: hidden; background: var(--surface); }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100%; background: var(--bg); }
-.messages { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.workspace { position: relative; container-type: inline-size; flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
+/* Out of flow: the card lives in the left gutter and never affects message layout.
+   Width is bounded by the space left of a conservative centered 860px envelope. */
+.dashboard { display: none; position: absolute; top: 12px; bottom: 12px; left: 12px; width: min(240px, max(0px, calc((100cqw - 860px) / 2 - 24px))); max-width: 240px; min-width: 0; box-sizing: border-box; overflow-x: hidden; overflow-y: auto; background: #fff; border: 1px solid var(--border); border-radius: var(--radius); }
+.messages { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .messages > div { flex: 1; min-height: 0; overflow-y: auto; }
 .error { background: var(--danger-bg); color: var(--danger); padding: var(--space-3); overflow-wrap: anywhere; }
 .error button { margin-left: var(--space-3); }
 .skip { position: fixed; top: -100px; left: var(--space-4); z-index: var(--z-skip); padding: var(--space-3); background: var(--surface); }
 .skip:focus { top: var(--space-4); }
+/* Reveal the dashboard only when the workspace itself is wide enough to leave a
+   gutter beside the centered message envelope. Viewport width is not used because
+   the sidebar changes how much width the workspace actually gets. */
+@container (min-width: 1040px) {
+  .dashboard { display: block; }
+}
 @media (min-width: 768px) {
   .shell { --workspace-top: 48px; --workspace-radius: 12px; padding: 0 3px 3px 0; }
   .main { margin-top: var(--workspace-top); height: calc(100% - var(--workspace-top)); border: 1px solid var(--border); border-left: 0; border-radius: 0 var(--workspace-radius) var(--workspace-radius) 0; overflow: hidden; }

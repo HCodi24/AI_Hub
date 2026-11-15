@@ -7,6 +7,7 @@ export const ChatMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]), content: z.string(),
   reasoning: z.string().default(""), logs: z.array(z.string()).default([]), diff: z.string().default(""), files: z.array(FileChangeSchema).default([]),
   error: z.string().nullish(), debate_id: z.string().nullish(), plan_id: z.string().nullish(), provider: z.string().default(""),
+  model: z.string().default(""),
   attachments: z.array(z.object({ id: z.string(), mime: z.string(), path: z.string().default("") })).default([]),
 });
 export const ChatSummarySchema = z.object({ id: z.string().uuid(), title: z.string(), updated_at: z.number(), dev_chat: z.boolean().default(false), folder: z.string().default("") });
@@ -24,7 +25,10 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatRecord = z.infer<typeof ChatRecordSchema>;
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;
+export const TaskRowSchema = z.object({ title: z.string(), state: z.string(), attempt: z.number().default(0), check: z.string().nullish() });
+export type TaskRow = z.infer<typeof TaskRowSchema>;
 export const StreamDataSchema = z.object({
+  tasks: z.array(TaskRowSchema).optional(),
   text: z.string().optional(), message: z.string().optional(), provider_name: z.string().optional(), provider_kind: z.string().optional(), model: z.string().optional(),
   effort: z.string().optional(), role: z.string().nullish(), elapsed_s: z.number().optional(),
   idle_s: z.number().optional(), last_activity: z.string().optional(), scope: z.string().optional(),

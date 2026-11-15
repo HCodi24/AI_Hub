@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
+import { Switch } from "@/components/button/switch";
 import { notify } from "@/components/toast/toast";
 import type { McpServer } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
@@ -41,7 +42,7 @@ export function McpSection() {
       {servers.map(server => <li key={server.name}>
         <span className={styles.rowText}><strong>{server.name}</strong><small title={[server.command, ...server.args].join(" ")}>{[server.command, ...server.args].join(" ")}</small>
           {tested[server.name] && <small role="status">{tested[server.name]}</small>}</span>
-        <label className={styles.badge} data-on={server.enabled}><input type="checkbox" checked={server.enabled}
+        <label className={styles.mcpSwitch} data-on={server.enabled}><Switch checked={server.enabled}
           onChange={event => void save(servers.map(item => item.name === server.name ? { ...item, enabled: event.target.checked } : item))} /> {t.mcp.enabled}</label>
         <Button size="sm" disabled={Boolean(busy)} onClick={() => void test(server)}>{busy === server.name ? t.mcp.testing : t.mcp.test}</Button>
         <Button size="sm" variant="ghost" aria-label={`${t.mcp.remove} ${server.name}`} onClick={() => void save(servers.filter(item => item.name !== server.name))}><Trash2 size={16} aria-hidden="true" /></Button>

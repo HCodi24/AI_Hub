@@ -51,6 +51,8 @@ export const chatText = {
   you: "Bạn", assistant: "Trợ lý", activity: "Activity", noActivity: "No activity yet.", reasoning: "Suy luận", diff: "Thay đổi file", edited: (count: number) => `Đã sửa ${count} file`,
   debate: "Tranh luận — mở trong giao diện cũ", plan: "Kế hoạch — mở trong giao diện cũ",
   copy: "Sao chép", copied: "Đã chép", copyError: "Không thể sao chép", code: "Mã nguồn",
+  taskBoard: { title: "Tiến độ các task", attempt: (n: number) => `lần ${n}`,
+    states: { waiting: "Chờ", coding: "DeepSeek đang code", checking: "Luna đang kiểm", fixing: "DeepSeek đang sửa", done: "Xong", failed: "Lỗi", takeover: "Sol tiếp quản", skipped: "Bỏ qua" } },
   loading: "Đang tải…", streaming: "Đang phản hồi…", stopped: "Đã dừng", empty: "Chưa có cuộc trò chuyện",
   menu: "Mở lịch sử", close: "Đóng lịch sử", theme: "Đổi giao diện sáng / tối",
   requestError: "Không thể thực hiện yêu cầu", invalidData: "Dữ liệu phản hồi không hợp lệ",
@@ -58,4 +60,11 @@ export const chatText = {
   selectRequired: "Hãy chọn nguồn AI và model.", memory: "Bộ nhớ dự án",
   retry: "Thử lại", notFound: "Không tìm thấy trang", home: "Về trang chat", attachments: "Ảnh đã gửi", attachImage: "Đính kèm ảnh", removeImage: "Xóa ảnh", maxImages: "Mỗi tin nhắn tối đa 5 ảnh",
   tokens: "Token", seconds: "giây", idle: "Chờ hoạt động", skip: "Đến nội dung chat",
+  tokenDashboard: {
+    title: "Token phiên chat", input: "Vào", output: "Ra", unknownModel: "Không rõ model",
+    empty: "Chưa có dữ liệu token.",
+    note: "Chỉ tính các báo cáo token đã ghi trong phản hồi. Báo cáo cũ thiếu model được gộp vào “Không rõ model”; token của worker ẩn hoặc không báo cáo không được tính, nên đây không phải tổng chi phí đầy đủ.",
+    total: (input: string, output: string) => `Tổng đã ghi: vào ${input}, ra ${output}`,
+    modelRow: (model: string, input: string, output: string) => `${model}: vào ${input}, ra ${output}`,
+  },
 } as const;

@@ -29,6 +29,7 @@ export const MutisSchema = z.object({
     debate_rounds: z.number().default(2),
     debate_judge_model: z.string().default(""),
     verify_command: z.string().default(""),
+    verify_commands: z.record(z.string()).default({}),
     verify_ignore: z.array(z.string()).default([]),
     reviewer_provider_id: z.string().default(""),
     reviewer_model: z.string().default(""),
@@ -39,6 +40,8 @@ export const MutisSchema = z.object({
         small: RoleSchema
     }),
     high_roles: z.object({ lead: RoleSchema, big: RoleSchema, small: RoleSchema }).default({ lead: { provider_id: "", model: "", effort: "default" }, big: { provider_id: "", model: "", effort: "default" }, small: { provider_id: "", model: "", effort: "default" } }),
+    /** Who the High-level independent checker is (a Codex source; max effort by default). */
+    high_checker: RoleSchema.default({ provider_id: "", model: "", effort: "max" }),
     routing: z.array(z.object({
         kind: z.string(),
         role: z.string().default(""),

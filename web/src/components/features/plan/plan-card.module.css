@@ -3,7 +3,6 @@
 .card header { justify-content: space-between; }
 .card label { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; min-width: 0; }
 .card input, .card textarea, .card select { width: 100%; min-width: 0; max-width: 100%; }
-.card input[type=checkbox] { width: auto; }
 .card label:has(input[type=checkbox]) { flex-direction: row; align-items: center; gap: var(--space-2); }
 .card button { margin: 4px; max-width: 100%; }
 .card fieldset { min-width: 0; border: 0; padding: 8px; }

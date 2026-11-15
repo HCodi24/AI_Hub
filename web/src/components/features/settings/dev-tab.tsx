@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { devApi } from "@/apis/dev.api";
 import { Button } from "@/components/button/button";
 import { Skeleton } from "@/components/skeleton/skeleton";
+import { Switch } from "@/components/button/switch";
 import { notify } from "@/components/toast/toast";
 import type { DevDiff } from "@/schema/dev.schema";
 import { settingsText as t } from "@/text/settings";
@@ -71,7 +72,7 @@ export function DevTab() {
       <Button disabled={Boolean(busy)} onClick={() => void stream("web-build")}>{t.dev.webBuild}</Button>
       <Button variant="primary" disabled={Boolean(busy)} onClick={() => void stream("rebuild")}>{t.dev.rebuild}</Button>
       {busy && <Button variant="danger" onClick={() => abort.current?.abort()}>{t.extensions.stop}</Button>}</div>
-      <label className={styles.check}><input type="checkbox" checked={settings.data?.auto_rebuild ?? false} disabled={!settings.data}
+      <label className={styles.check}><Switch checked={settings.data?.auto_rebuild ?? false} disabled={!settings.data}
         onChange={event => void devApi.saveSettings(event.target.checked).then(value => client.setQueryData(["dev-settings"], value)).catch(error => notify(errorText(error, t.error)))} />
         <span>{t.dev.autoRebuild}</span></label>
       {(busy || output) && <><h3>{t.dev.output}{busy ? ` · ${t.dev.running}` : ""}</h3><pre className={styles.log} aria-live="polite">{output}</pre></>}

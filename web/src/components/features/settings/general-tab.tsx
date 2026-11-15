@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
 import { Skeleton } from "@/components/skeleton/skeleton";
+import { Switch } from "@/components/button/switch";
 import { notify } from "@/components/toast/toast";
 import type { MemoryConfig } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
@@ -33,7 +34,7 @@ export function GeneralTab() {
     <label>{t.general.folder}<input required value={folder} spellCheck={false} onChange={event => setFolder(event.target.value)} /></label>
     <label>{t.general.idle}<input type="number" min={0} max={1440} value={idle} onChange={event => setIdle(Number(event.target.value))} /></label>
     <fieldset className={styles.group}><legend>{t.general.memory}</legend>
-      <label className={styles.check}><input type="checkbox" checked={memory.enabled}
+      <label className={styles.check}><Switch checked={memory.enabled}
         onChange={event => setMemory({ ...memory, enabled: event.target.checked })} /><span>{t.general.memoryEnabled}</span></label>
       <label>{t.general.memoryScopes}<input type="number" min={1} max={10} value={memory.max_scopes_in_prompt} disabled={!memory.enabled}
         onChange={event => setMemory({ ...memory, max_scopes_in_prompt: Number(event.target.value) })} /></label>

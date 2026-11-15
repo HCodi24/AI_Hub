@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Blocks, Boxes, Hammer, Puzzle, SlidersHorizontal, Users } from "lucide-react";
+import { Blocks, Boxes, Hammer, LayoutDashboard, Puzzle, SlidersHorizontal, Users } from "lucide-react";
 import { Dialog } from "@/components/dialog/dialog";
 import { ScrollArea } from "@/components/scroll-area";
+import { Switch } from "@/components/button/switch";
 import { settingsText as t } from "@/text/settings";
 import { AddonsTab } from "./addons-tab";
 import { DevTab } from "./dev-tab";
@@ -13,9 +14,16 @@ import styles from "./settings.module.css";
 const TABS = [
   { id: "providers", icon: Boxes }, { id: "general", icon: SlidersHorizontal }, { id: "mutis", icon: Users },
   { id: "addons", icon: Puzzle }, { id: "extensions", icon: Blocks }, { id: "dev", icon: Hammer },
+  { id: "dashboard", icon: LayoutDashboard },
 ] as const;
 type TabId = typeof TABS[number]["id"];
-export function SettingsDialog({ folder, close }: { folder: string; close: () => void }) {
+type SettingsDialogProps = {
+  folder: string;
+  close: () => void;
+  dashboardEnabled: boolean;
+  onDashboardEnabledChange: (enabled: boolean) => void;
+};
+export function SettingsDialog({ folder, close, dashboardEnabled, onDashboardEnabledChange }: SettingsDialogProps) {
   const [tab, setTab] = useState<TabId>("providers");
   return <Dialog title={t.title} close={close} wide className={styles.settingsDialog} iconClose>
     <div className={styles.layout}>
@@ -28,6 +36,10 @@ export function SettingsDialog({ folder, close }: { folder: string; close: () =>
       {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab />}{tab === "mutis" && <MutisTab />}
       {tab === "addons" && <AddonsTab />}
       {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "dev" && <DevTab />}
+      {tab === "dashboard" && <form className={styles.form}>
+        <label className={styles.check}><Switch checked={dashboardEnabled}
+          onChange={event => onDashboardEnabledChange(event.target.checked)} /><span>{t.dashboard.enabled}</span></label>
+      </form>}
     </ScrollArea>
     </div>
   </Dialog>;

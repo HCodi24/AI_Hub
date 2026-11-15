@@ -3,17 +3,22 @@
 //! Codex ends a turn with fenced `mutis-delegate` JSON blocks (see `core::rule::mutis_high_delegation`). The app runs
 //! each block on the worker, then resumes the same Codex thread with the worker's report. The app, not Codex, counts
 //! the attempts per task and tells Codex to take a task over once the limit is spent.
+use super::schedule::{check_text, parse_check, run_round, Backend, CheckResult, Row};
 use super::{for_kind, ProviderEvent, ProviderRequest};
 use crate::chat::{ChatMessage, Effort, Permission};
 use crate::config::{MutisConfig, ProviderConfig};
+use crate::core::rule::mutis_checker;
 use crate::core::text::truncate_chars;
 use anyhow::{anyhow, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 pub const MAX_ATTEMPTS: usize = 4;
+/// Empty or failed worker runs the app repeats by itself (they still count as attempts) before the coordinator hears about them.
+pub(super) const MAX_AUTO_RETRIES: usize = 2;
 /// Guard against a Codex that keeps delegating: the number of Codex turns in one chat reply.
 const MAX_ROUNDS: usize = 12;
 const FENCE: &str = "```mutis-delegate";
@@ -26,6 +31,9 @@ pub struct Delegation {
     pub instructions: String,
     #[serde(default)]
     pub acceptance: Vec<String>,
+    /// Titles of tasks whose result this one needs; it starts only after they passed their check. Independent tasks start at once.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
 }
 
 /// Valid delegations in the text, plus a message for every block that did not parse.
@@ -73,7 +81,7 @@ fn preload(folder: &str, files: &[String]) -> String {
     }).collect()
 }
 
-fn worker_prompt(mutis: &MutisConfig, task: &Delegation, preloaded: &str) -> String {
+fn worker_prompt(mutis: &MutisConfig, task: &Delegation, preloaded: &str, feedback: Option<&str>) -> String {
     let mut parts = Vec::new();
     if mutis.enabled && !mutis.worker_rules.trim().is_empty() {
         parts.push(mutis.worker_rules.clone());
@@ -89,17 +97,35 @@ fn worker_prompt(mutis: &MutisConfig, task: &Delegation, preloaded: &str) -> Str
     if !preloaded.is_empty() {
         parts.push(format!("Current content of the small listed files (already read for you; do not read them again):\n{preloaded}"));
     }
+    if let Some(why) = feedback {
+        parts.push(format!("The previous attempt failed: {why}. Do not investigate again: make the edit now, only in the listed files."));
+    }
     parts.push("Make the edits yourself with the file tools; investigating without editing is a failed task. End with the files you changed and anything left undone.".into());
     parts.join("\n")
 }
 
-struct WorkerResult {
-    summary: String,
-    diff: String,
-    error: Option<String>,
+pub(super) struct WorkerResult {
+    pub(super) summary: String,
+    pub(super) diff: String,
+    pub(super) error: Option<String>,
+    /// Edits the scope refused (outside the listed files).
+    pub(super) refused: Vec<String>,
 }
 
-fn report(task: &Delegation, attempt: usize, result: &WorkerResult) -> String {
+/// Why the app can tell, without the coordinator, that a worker run produced nothing usable. None = changed something.
+pub(super) fn auto_retry_reason(result: &WorkerResult) -> Option<String> {
+    if !result.diff.trim().is_empty() {
+        return None;
+    }
+    let mut why = result.error.as_deref().map_or("it changed no file".to_owned(), |e| format!("it failed with: {}", truncate_chars(e, 300)));
+    if !result.refused.is_empty() {
+        why.push_str(&format!("; edits refused as outside the listed files: {}", truncate_chars(&result.refused.join("; "), 300)));
+    }
+    Some(why)
+}
+
+pub(super) fn report(task: &Delegation, attempt: usize, auto: usize, result: &WorkerResult) -> String {
+    let auto_note = if auto > 0 { format!("The app already re-ran the worker {auto} time(s) before this report because a run changed no file or failed.\n") } else { String::new() };
     let changed = if result.diff.trim().is_empty() {
         "NONE - the worker did not change any file".to_owned()
     } else {
@@ -107,32 +133,225 @@ fn report(task: &Delegation, attempt: usize, result: &WorkerResult) -> String {
     };
     let status = result.error.as_deref().map_or("finished".to_owned(), |e| format!("ERROR: {e}"));
     format!(
-        "DeepSeek worker report for \"{}\" (attempt {attempt}/{MAX_ATTEMPTS}):\nStatus: {status}\nFiles changed: {changed}\nWorker summary:\n{}\n\nReview this against your acceptance criteria. If it passes, say so and continue. If it fails, answer with another mutis-delegate block with the SAME title and concrete corrections ({} attempts left).",
+        "DeepSeek worker report for \"{}\" (attempt {attempt}/{MAX_ATTEMPTS}, {} attempts left for this task):\n{auto_note}Status: {status}\nFiles changed: {changed}\nWorker summary:\n{}",
         task.title.trim(),
-        truncate_chars(&result.summary, 3000),
         MAX_ATTEMPTS - attempt,
+        truncate_chars(&result.summary, 3000),
     )
 }
 
+/// Closes every report sent to the coordinator.
+const REVIEW_INSTRUCTION: &str = "Review every result above against your acceptance criteria and the diffs. If a task passes, say so and continue. If a task fails, answer with another mutis-delegate block with the SAME title and concrete corrections; the attempts left are shown in its report.";
+
 /// A new chronological turn: the browser and the saved record start a fresh assistant message for this provider.
-fn turn(provider_kind: &str, model: &str) -> ProviderEvent {
+fn turn(provider_kind: &str, model: &str, name: &str) -> ProviderEvent {
     ProviderEvent {
         name: "turn",
-        data: serde_json::json!({ "provider_kind": provider_kind, "model": model,
-            "provider_name": if provider_kind == "deepseek" { "DeepSeek" } else { "Codex" } }),
+        data: serde_json::json!({ "provider_kind": provider_kind, "model": model, "provider_name": name }),
     }
+}
+
+fn is_token_line(line: &str) -> bool {
+    line.starts_with("Token:")
+}
+
+/// A worker log line as shown in the chat; token lines stay unprefixed because the token table and task_end only match them at the start.
+fn worker_log(line: &str) -> String {
+    if is_token_line(line) { line.to_owned() } else { format!("DeepSeek: {line}") }
 }
 
 fn message(role: &str, content: String) -> ChatMessage {
     ChatMessage {
         debate_id: None, plan_id: None, role: role.into(), content, attachments: Vec::new(), reasoning: String::new(),
-        logs: Vec::new(), diff: String::new(), files: Vec::new(), provider: String::new(), error: None,
+        logs: Vec::new(), diff: String::new(), files: Vec::new(), provider: String::new(), model: String::new(), error: None,
     }
 }
 
 pub struct DelegateProvider {
     pub worker: ProviderConfig,
     pub model: String,
+    /// The independent checker (a Codex source, its model and effort), when the option is on and configured.
+    pub checker: Option<(ProviderConfig, String, Effort)>,
+    /// Shown once in the chat when the option is on but the checker cannot run (what to set in the High section).
+    pub checker_note: Option<String>,
+}
+
+/// What one round needs to talk to the worker and the checker; shared by the round loop and the checker's task.
+struct Live {
+    worker: ProviderConfig,
+    model: String,
+    folder: String,
+    mutis: MutisConfig,
+    events: mpsc::Sender<ProviderEvent>,
+    cancel: CancellationToken,
+    checker: Option<(ProviderConfig, String, Effort)>,
+    /// The checker's own Codex thread: resumed for every check, kept in the chat record between messages.
+    checker_session: Mutex<Option<String>>,
+    /// The checker's last "Token:" log line, held until `announce_check` shows it in the Luna turn.
+    checker_tokens: Mutex<Option<String>>,
+    /// Whether the coordinator may edit files, i.e. can take a task over when the attempts run out.
+    can_edit: bool,
+}
+
+#[async_trait::async_trait]
+impl Backend for Live {
+    async fn work(&self, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult {
+        let events = &self.events;
+        if self.cancel.is_cancelled() || events.send(turn("deepseek", &self.model, "DeepSeek")).await.is_err() {
+            self.cancel.cancel();
+            return WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
+        }
+        let _ = events.send(ProviderEvent::text("log", format!("Giao DeepSeek: {} (lần {attempt}/{MAX_ATTEMPTS})", task.title.trim()))).await;
+        let mut provider = self.worker.clone();
+        provider.kind = "deepseek_agent".into();
+        provider.agent_capable = true;
+        let worker_request = ProviderRequest {
+            provider, model: self.model.clone(), folder: self.folder.clone(), permission: Permission::Write, effort: Effort::Default,
+            messages: vec![message("user", worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback))], session_id: None, mutis: self.mutis.clone(), mcp: Vec::new(),
+            write_scope: task.files.clone(),
+            checker_session_id: None,
+        };
+        let (sender, mut receiver) = mpsc::channel(32);
+        let (inner_cancel, run) = (self.cancel.clone(), for_kind("deepseek_agent"));
+        let handle = tokio::spawn(async move {
+            match run {
+                Ok(provider) => provider.run(worker_request, sender, inner_cancel).await,
+                Err(error) => Err(error),
+            }
+        });
+        let mut result = WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
+        while let Some(event) = receiver.recv().await {
+            match event.name {
+                "delta" => {
+                    result.summary.push_str(event.data["text"].as_str().unwrap_or(""));
+                    let _ = events.send(event).await;
+                }
+                "reasoning" => {
+                    let _ = events.send(event).await;
+                }
+                "diff" => {
+                    result.diff.push_str(event.data["text"].as_str().unwrap_or(""));
+                    let _ = events.send(event).await;
+                }
+                "log" => {
+                    let line = event.data["text"].as_str().unwrap_or("");
+                    // The agent logs "Từ chối: <path> (ngoài phạm vi được giao)" when the scope stops an edit.
+                    if line.contains("ngoài phạm vi") {
+                        result.refused.push(line.trim_start_matches("Từ chối: ").to_owned());
+                    }
+                    // The token table and task_end only match lines that start with "Token:", so those stay unprefixed.
+                    let line = worker_log(line);
+                    let _ = events.send(ProviderEvent::text("log", line)).await;
+                }
+                "error" => {
+                    result.error = event.data["text"].as_str().map(str::to_owned);
+                    // A worker failure stays visible in its own turn; the coordinator still gets it in the report.
+                    let _ = events.send(event).await;
+                }
+                _ => {}
+            }
+        }
+        let failure = match handle.await {
+            Ok(Err(error)) => Some(error.to_string()),
+            Err(error) => Some(error.to_string()),
+            Ok(Ok(())) => None,
+        };
+        if let Some(error) = failure {
+            if result.error.as_deref() != Some(error.as_str()) {
+                let _ = events.send(ProviderEvent::text("error", error.clone())).await;
+            }
+            result.error = Some(error);
+        }
+        result
+    }
+
+    fn has_checker(&self) -> bool {
+        self.checker.is_some()
+    }
+
+    async fn check(&self, task: &Delegation, _attempt: usize, work: &WorkerResult) -> CheckResult {
+        let Some((provider, model, effort)) = self.checker.clone() else { return CheckResult::unclear("no checker is configured") };
+        let session = self.checker_session.lock().unwrap().clone();
+        let request = ProviderRequest {
+            provider, model, folder: self.folder.clone(), permission: Permission::Read, effort,
+            messages: vec![message("user", mutis_checker::prompt(&task.title, &task.files, &task.acceptance, &work.summary, &work.diff))],
+            session_id: session, mutis: self.mutis.clone(), mcp: Vec::new(), write_scope: Vec::new(), checker_session_id: None,
+        };
+        let inner = match for_kind("codex_cli") {
+            Ok(inner) => inner,
+            Err(error) => return CheckResult::unclear(&error.to_string()),
+        };
+        let (sender, mut receiver) = mpsc::channel(32);
+        let cancel = self.cancel.clone();
+        let handle = tokio::spawn(async move { inner.run(request, sender, cancel).await });
+        let (mut text, mut error) = (String::new(), None::<String>);
+        // Nothing the checker streams reaches the chat; the round loop announces the finished verdict.
+        while let Some(event) = receiver.recv().await {
+            match event.name {
+                "delta" => text.push_str(event.data["text"].as_str().unwrap_or("")),
+                "session" => {
+                    if let Some(id) = event.data["session_id"].as_str() {
+                        *self.checker_session.lock().unwrap() = Some(id.to_owned());
+                    }
+                }
+                "log" => {
+                    // Keep only the token line so Luna's usage reaches the token table.
+                    if let Some(line) = event.data["text"].as_str().filter(|line| is_token_line(line)) {
+                        *self.checker_tokens.lock().unwrap() = Some(line.to_owned());
+                    }
+                }
+                "error" => error = event.data["text"].as_str().map(str::to_owned),
+                _ => {}
+            }
+        }
+        match handle.await {
+            Ok(Err(failure)) => error = Some(failure.to_string()),
+            Err(failure) => error = Some(failure.to_string()),
+            Ok(Ok(())) => {}
+        }
+        match error {
+            Some(error) if text.trim().is_empty() => CheckResult::unclear(&error),
+            _ => parse_check(&text),
+        }
+    }
+
+    async fn say(&self, line: String) {
+        let _ = self.events.send(ProviderEvent::text("log", line)).await;
+    }
+
+    async fn announce_check(&self, task: &Delegation, attempt: usize, check: &CheckResult) {
+        let model = self.checker.as_ref().map_or("", |(_, model, _)| model.as_str());
+        if self.events.send(turn("codex_cli", model, "Luna")).await.is_err() {
+            self.cancel.cancel();
+            return;
+        }
+        let session = self.checker_session.lock().unwrap().clone();
+        if let Some(id) = session {
+            let _ = self.events.send(ProviderEvent { name: "checker_session", data: serde_json::json!({ "session_id": id }) }).await;
+        }
+        let _ = self.events.send(ProviderEvent::text("delta", format!("**Luna kiểm tra**\n\n{}\n", check_text(task, attempt, check)))).await;
+        let tokens = self.checker_tokens.lock().unwrap().take();
+        if let Some(line) = tokens {
+            let _ = self.events.send(ProviderEvent::text("log", line)).await;
+        }
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel.is_cancelled()
+    }
+
+    fn can_edit(&self) -> bool {
+        self.can_edit
+    }
+
+    async fn board(&self, rows: &[Row]) {
+        let tasks: Vec<_> = rows.iter().map(|row| serde_json::json!({ "title": row.title, "state": row.state, "attempt": row.attempt, "check": row.check })).collect();
+        let _ = self.events.send(ProviderEvent { name: "tasks", data: serde_json::json!({ "tasks": tasks }) }).await;
+    }
+
+    fn path_problems(&self, task: &Delegation) -> Vec<String> {
+        check_files(&self.folder, &task.files)
+    }
 }
 
 impl DelegateProvider {
@@ -140,7 +359,7 @@ impl DelegateProvider {
     async fn codex_turn(&self, request: &ProviderRequest, events: &mpsc::Sender<ProviderEvent>, cancel: &CancellationToken) -> Result<(String, Option<String>)> {
         // The coordinator gets its own turn before the call, so its text never mixes with a worker turn.
         if cancel.is_cancelled() { return Ok((String::new(), None)); }
-        if events.send(turn("codex_cli", &request.model)).await.is_err() {
+        if events.send(turn("codex_cli", &request.model, "Codex")).await.is_err() {
             cancel.cancel();
             return Ok((String::new(), None));
         }
@@ -164,76 +383,43 @@ impl DelegateProvider {
         Ok((text, session))
     }
 
-    async fn run_worker(&self, request: &ProviderRequest, task: &Delegation, attempt: usize, events: &mpsc::Sender<ProviderEvent>, cancel: &CancellationToken) -> WorkerResult {
-        if cancel.is_cancelled() || events.send(turn("deepseek", &self.model)).await.is_err() {
-            cancel.cancel();
-            return WorkerResult { summary: String::new(), diff: String::new(), error: None };
+    /// The project's own checks, run once after the whole round (never beside a worker that is still editing).
+    async fn project_checks(&self, request: &ProviderRequest, events: &mpsc::Sender<ProviderEvent>) -> Option<String> {
+        if !request.mutis.effective(request.mutis.verify_gate) {
+            return None;
         }
-        let _ = events.send(ProviderEvent::text("log", format!("Giao DeepSeek: {} (lần {attempt}/{MAX_ATTEMPTS})", task.title.trim()))).await;
-        let mut provider = self.worker.clone();
-        provider.kind = "deepseek_agent".into();
-        provider.agent_capable = true;
-        let worker_request = ProviderRequest {
-            provider, model: self.model.clone(), folder: request.folder.clone(), permission: Permission::Write, effort: Effort::Default,
-            messages: vec![message("user", worker_prompt(&request.mutis, task, &preload(&request.folder, &task.files)))], session_id: None, mutis: request.mutis.clone(), mcp: Vec::new(),
-            write_scope: task.files.clone(),
-            checker_session_id: None,
-        };
-        let (sender, mut receiver) = mpsc::channel(32);
-        let (inner_cancel, run) = (cancel.clone(), for_kind("deepseek_agent"));
-        let handle = tokio::spawn(async move {
-            match run {
-                Ok(provider) => provider.run(worker_request, sender, inner_cancel).await,
-                Err(error) => Err(error),
-            }
-        });
-        let mut result = WorkerResult { summary: String::new(), diff: String::new(), error: None };
-        while let Some(event) = receiver.recv().await {
-            match event.name {
-                "delta" => {
-                    result.summary.push_str(event.data["text"].as_str().unwrap_or(""));
-                    let _ = events.send(event).await;
-                }
-                "reasoning" => {
-                    let _ = events.send(event).await;
-                }
-                "diff" => {
-                    result.diff.push_str(event.data["text"].as_str().unwrap_or(""));
-                    let _ = events.send(event).await;
-                }
-                "log" => {
-                    let line = event.data["text"].as_str().unwrap_or("");
-                    let _ = events.send(ProviderEvent::text("log", format!("DeepSeek: {line}"))).await;
-                }
-                "error" => {
-                    result.error = event.data["text"].as_str().map(str::to_owned);
-                    // A worker failure stays visible in its own turn; Codex still reviews the report below.
-                    let _ = events.send(event).await;
-                }
-                _ => {}
-            }
-        }
-        let failure = match handle.await {
-            Ok(Err(error)) => Some(error.to_string()),
-            Err(error) => Some(error.to_string()),
-            Ok(Ok(())) => None,
-        };
-        if let Some(error) = failure {
-            if result.error.as_deref() != Some(error.as_str()) {
-                let _ = events.send(ProviderEvent::text("error", error.clone())).await;
-            }
-            result.error = Some(error);
-        }
-        result
+        let folder = std::path::Path::new(&request.folder);
+        let command = crate::verify::command_for(&request.mutis, folder);
+        let _ = events.send(ProviderEvent::text("log", "Kiểm tra dự án sau khi các task xong…".to_owned())).await;
+        let (sender, mut lines) = mpsc::channel::<String>(64);
+        // `verify::run` stops its command when the receiver is gone, so the lines are drained, not dropped.
+        let drain = tokio::spawn(async move { while lines.recv().await.is_some() {} });
+        let report = crate::verify::run(folder, &command, &request.mutis.verify_ignore, sender).await;
+        let _ = drain.await;
+        let state = if report.unverified { "NOT VERIFIED (no check command for this project)" } else if report.ok { "OK" } else { "FAILED" };
+        let _ = events.send(ProviderEvent::text("log", format!("Kiểm tra dự án: {state}"))).await;
+        Some(format!("Project checks, run once after all tasks of this round: {state}\n{}\n\n", report.summary_lines.join("\n")))
     }
 }
 
 #[async_trait::async_trait]
 impl super::Provider for DelegateProvider {
     async fn run(&self, mut request: ProviderRequest, events: mpsc::Sender<ProviderEvent>, cancel: CancellationToken) -> Result<()> {
+        let live = Arc::new(Live {
+            worker: self.worker.clone(), model: self.model.clone(), folder: request.folder.clone(), mutis: request.mutis.clone(),
+            events: events.clone(), cancel: cancel.clone(), checker: self.checker.clone(),
+            checker_session: Mutex::new(request.checker_session_id.clone()),
+            checker_tokens: Mutex::new(None),
+            can_edit: request.permission != Permission::Read,
+        });
         let mut attempts: HashMap<String, usize> = HashMap::new();
+        let mut note = self.checker_note.clone();
         for _ in 0..MAX_ROUNDS {
             let (text, session) = self.codex_turn(&request, &events, &cancel).await?;
+            // The option is on but the checker cannot run: say so once, in the coordinator's activity, instead of silently skipping it.
+            if let Some(note) = note.take() {
+                let _ = events.send(ProviderEvent::text("log", note)).await;
+            }
             if session.is_some() {
                 request.session_id = session;
             }
@@ -242,26 +428,23 @@ impl super::Provider for DelegateProvider {
                 return Ok(());
             }
             let mut reply = errors.iter().map(|e| format!("Problem: {e}. Resend it as valid JSON.\n")).collect::<String>();
-            for task in tasks {
-                let used = attempts.entry(task.title.trim().to_lowercase()).or_insert(0);
-                if *used >= MAX_ATTEMPTS {
-                    reply.push_str(&format!("The attempt limit ({MAX_ATTEMPTS}/{MAX_ATTEMPTS}) for \"{}\" is spent. Implement it yourself now and verify the result.\n\n", task.title.trim()));
-                    continue;
-                }
-                let problems = check_files(&request.folder, &task.files);
-                if !problems.is_empty() {
-                    reply.push_str(&format!("Path check failed for \"{}\": the worker was NOT run and this is not counted as an attempt. {}. Resend the block with correct paths.\n\n", task.title.trim(), problems.join("; ")));
-                    continue;
-                }
-                *used += 1;
-                let attempt = *used;
-                let result = self.run_worker(&request, &task, attempt, &events, &cancel).await;
-                if cancel.is_cancelled() {
-                    return Ok(());
-                }
-                reply.push_str(&report(&task, attempt, &result));
+            let outcome = run_round(&live, tasks, &mut attempts).await;
+            if cancel.is_cancelled() {
+                return Ok(());
+            }
+            for item in &outcome.reports {
+                reply.push_str(item);
                 reply.push_str("\n\n");
             }
+            if !outcome.minor.is_empty() {
+                reply.push_str(&format!("Minor findings of the checker (not sent to the worker; decide whether any matters):\n- {}\n\n", outcome.minor.join("\n- ")));
+            }
+            if outcome.changed {
+                if let Some(checks) = self.project_checks(&request, &events).await {
+                    reply.push_str(&checks);
+                }
+            }
+            reply.push_str(REVIEW_INSTRUCTION);
             request.messages.push(message("assistant", text));
             request.messages.push(message("user", reply));
         }
@@ -273,6 +456,13 @@ impl super::Provider for DelegateProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn worker_token_lines_stay_unprefixed_so_the_token_table_counts_them() {
+        assert_eq!(worker_log("Token: vào 10 (cache 2), ra 3 (suy luận 0)"), "Token: vào 10 (cache 2), ra 3 (suy luận 0)");
+        assert_eq!(worker_log("Sửa a.rs"), "DeepSeek: Sửa a.rs");
+        assert!(is_token_line("Token: vào 1, ra 2") && !is_token_line("DeepSeek: Token: vào 1, ra 2"));
+    }
 
     #[test]
     fn extracts_valid_blocks_and_reports_broken_ones() {
@@ -287,13 +477,25 @@ mod tests {
 
     #[test]
     fn report_flags_a_worker_that_changed_nothing() {
-        let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![] };
-        let idle = WorkerResult { summary: "I only read files".into(), diff: String::new(), error: None };
-        let text = report(&task, 2, &idle);
-        assert!(text.contains("attempt 2/4") && text.contains("NONE") && text.contains("(2 attempts left)"));
-        let edited = WorkerResult { summary: "done".into(), diff: "+ new line".into(), error: Some("boom".into()) };
-        let text = report(&task, 4, &edited);
-        assert!(text.contains("ERROR: boom") && text.contains("+ new line") && text.contains("(0 attempts left)"));
+        let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![] };
+        let idle = WorkerResult { summary: "I only read files".into(), diff: String::new(), error: None, refused: Vec::new() };
+        let text = report(&task, 2, 1, &idle);
+        assert!(text.contains("attempt 2/4") && text.contains("NONE") && text.contains("2 attempts left"));
+        let edited = WorkerResult { summary: "done".into(), diff: "+ new line".into(), error: Some("boom".into()), refused: Vec::new() };
+        let text = report(&task, 4, 0, &edited);
+        assert!(text.contains("ERROR: boom") && text.contains("+ new line") && text.contains("0 attempts left"));
+    }
+
+    #[test]
+    fn app_retries_only_runs_that_changed_nothing() {
+        let run = |diff: &str, error: Option<&str>, refused: &[&str]| WorkerResult {
+            summary: String::new(), diff: diff.into(), error: error.map(String::from), refused: refused.iter().map(|s| s.to_string()).collect(),
+        };
+        assert!(auto_retry_reason(&run("+x", None, &[])).is_none());
+        assert!(auto_retry_reason(&run("+x", Some("late error"), &[])).is_none(), "a partial change goes to the coordinator");
+        assert_eq!(auto_retry_reason(&run("", None, &[])).as_deref(), Some("it changed no file"));
+        let why = auto_retry_reason(&run("", Some("boom"), &["a.rs (ngoài phạm vi được giao)"])).unwrap();
+        assert!(why.contains("failed with: boom") && why.contains("a.rs"));
     }
 
     #[test]
@@ -310,10 +512,11 @@ mod tests {
 
     #[test]
     fn worker_prompt_carries_the_task_files_and_criteria() {
-        let task = Delegation { title: "T".into(), files: vec!["a.rs".into(), "b.rs".into()], instructions: "change x".into(), acceptance: vec!["builds".into()] };
-        let prompt = worker_prompt(&MutisConfig::default(), &task, "FILE: a.rs\nfn a() {}\n```\n");
+        let task = Delegation { title: "T".into(), files: vec!["a.rs".into(), "b.rs".into()], instructions: "change x".into(), acceptance: vec!["builds".into()], depends_on: vec![] };
+        let prompt = worker_prompt(&MutisConfig::default(), &task, "FILE: a.rs\nfn a() {}\n```\n", None);
         assert!(prompt.contains("Task: T") && prompt.contains("Files: a.rs, b.rs") && prompt.contains("- builds"));
-        assert!(prompt.contains("FILE: a.rs") && !worker_prompt(&MutisConfig::default(), &task, "").contains("already read"));
+        assert!(prompt.contains("FILE: a.rs") && !worker_prompt(&MutisConfig::default(), &task, "", Some("it changed no file")).contains("already read"));
+        assert!(worker_prompt(&MutisConfig::default(), &task, "", Some("it changed no file")).contains("previous attempt failed: it changed no file"));
     }
 
     #[test]

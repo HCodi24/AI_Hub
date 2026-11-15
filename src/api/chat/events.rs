@@ -47,12 +47,17 @@ pub(super) fn persist_event(
     event: &ProviderEvent,
     last_persist: &mut Instant,
 ) {
-    if event.name == "session" {
+    if matches!(event.name, "session" | "checker_session") {
         if let Some(session_id) = event.data["session_id"]
             .as_str()
             .or_else(|| event.data["text"].as_str())
         {
-            record.session_id = Some(session_id.to_owned());
+            // The checker's thread is kept apart from the coordinator's so each resumes its own conversation.
+            if event.name == "checker_session" {
+                record.checker_session_id = Some(session_id.to_owned());
+            } else {
+                record.session_id = Some(session_id.to_owned());
+            }
             persist_clean(store, record);
             *last_persist = Instant::now();
         }
@@ -63,9 +68,12 @@ pub(super) fn persist_event(
         let Some(kind) = event.data["provider_kind"].as_str().and_then(turn_provider) else {
             return;
         };
+        // The turn's own model, never the previous turn's: a missing model stays unknown (empty).
+        let model = event.data["model"].as_str().unwrap_or_default().to_owned();
         if record.messages.last().is_some_and(is_empty_placeholder) {
             if let Some(message) = record.messages.last_mut() {
                 message.provider = kind.to_owned();
+                message.model = model;
             }
         } else {
             record.messages.push(ChatMessage {
@@ -78,6 +86,7 @@ pub(super) fn persist_event(
                 diff: String::new(),
                 files: Vec::new(),
                 provider: kind.to_owned(),
+                model,
                 error: None,
                 attachments: Vec::new(),
             });
@@ -159,6 +168,7 @@ mod tests {
         send("turn", serde_json::json!({"provider_kind":"codex_cli"}));
         send("delta", serde_json::json!({"text":"Delegate.<memory>none</memory>"}));
         send("session", serde_json::json!({"session_id":"session"}));
+        send("checker_session", serde_json::json!({"session_id":"checker"}));
         send("turn", serde_json::json!({"provider_kind":"deepseek"}));
         send("log", serde_json::json!({"text":"Read file"}));
         send("delta", serde_json::json!({"text":"Worker result"}));
@@ -175,11 +185,86 @@ mod tests {
         assert_eq!(saved.messages[1].content, "Delegate.");
         assert!(record.messages[1].content.contains("<memory>"));
         assert_eq!(saved.session_id.as_deref(), Some("session"));
+        assert_eq!(saved.checker_session_id.as_deref(), Some("checker"), "the checker keeps its own thread id");
         assert_eq!(saved.messages[2].content, "Worker result");
         assert_eq!(saved.messages[2].diff, "+change");
         assert_eq!(saved.messages[2].error.as_deref(), Some("Worker failed"));
         assert!(saved.messages[3].error.is_none());
         assert_eq!(saved.messages[3].content, "Review");
+        assert!(
+            saved.messages.iter().all(|message| message.model.is_empty()),
+            "turns without a model stay unknown instead of borrowing one"
+        );
+        std::fs::remove_file(directory.join(format!("{id}.json"))).unwrap();
+        std::fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn each_turn_keeps_its_own_model_and_a_missing_model_stays_unknown() {
+        let directory = std::env::temp_dir().join(format!("mutis-models-{}", uuid::Uuid::new_v4()));
+        let store = ChatStore::new(directory.clone());
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut record: ChatRecord = serde_json::from_value(serde_json::json!({
+            "id": id, "title": "model test", "provider_id": "codex", "model": "test", "folder": "",
+            "updated_at": 0, "messages": [{"role":"user","content":"task"}]
+        }))
+        .unwrap();
+        let mut last = Instant::now();
+        let mut send = |name: &'static str, data: serde_json::Value| {
+            persist_event(&store, &mut record, &ProviderEvent { name, data }, &mut last);
+        };
+        send("turn", serde_json::json!({"provider_kind":"codex_cli","model":"gpt-5-codex"}));
+        send("delta", serde_json::json!({"text":"First"}));
+        send("turn", serde_json::json!({"provider_kind":"deepseek","model":"deepseek-chat"}));
+        send("delta", serde_json::json!({"text":"Second"}));
+        // A turn event without a model must not inherit the previous turn's identity.
+        send("turn", serde_json::json!({"provider_kind":"codex_cli"}));
+        send("delta", serde_json::json!({"text":"Third"}));
+        send("log", serde_json::json!({"text":"Completed"}));
+
+        let saved = store.get(&id).unwrap().unwrap();
+        assert_eq!(saved.messages.len(), 4);
+        assert_eq!(
+            saved.messages.iter().skip(1).map(|m| m.model.as_str()).collect::<Vec<_>>(),
+            ["gpt-5-codex", "deepseek-chat", ""],
+            "models persist per message and a missing turn model stays empty"
+        );
+        assert_eq!(saved.messages[1].content, "First");
+        assert_eq!(saved.messages[2].content, "Second");
+        assert_eq!(saved.messages[3].content, "Third");
+        assert_eq!(saved.messages[1].provider, "codex_cli");
+        assert_eq!(saved.messages[2].provider, "deepseek");
+        std::fs::remove_file(directory.join(format!("{id}.json"))).unwrap();
+        std::fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn reused_placeholder_takes_the_new_turn_model_and_never_the_old_one() {
+        let directory = std::env::temp_dir().join(format!("mutis-reuse-{}", uuid::Uuid::new_v4()));
+        let store = ChatStore::new(directory.clone());
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut record: ChatRecord = serde_json::from_value(serde_json::json!({
+            "id": id, "title": "reuse test", "provider_id": "codex", "model": "test", "folder": "",
+            "updated_at": 0,
+            "messages": [
+                {"role":"user","content":"task"},
+                {"role":"assistant","content":"","model":"stale-model"}
+            ]
+        }))
+        .unwrap();
+        let mut last = Instant::now();
+        persist_event(
+            &store,
+            &mut record,
+            &ProviderEvent {
+                name: "turn",
+                data: serde_json::json!({"provider_kind":"codex_cli"}),
+            },
+            &mut last,
+        );
+        let saved = store.get(&id).unwrap().unwrap();
+        assert_eq!(saved.messages.len(), 2, "the empty placeholder is reused");
+        assert_eq!(saved.messages[1].model, "", "a missing turn model clears the stale one");
         std::fs::remove_file(directory.join(format!("{id}.json"))).unwrap();
         std::fs::remove_dir(directory).unwrap();
     }

@@ -5,6 +5,7 @@ pub mod deepseek;
 pub mod deepseek_flash;
 pub mod english_rules;
 pub mod keep_features;
+pub mod mutis_checker;
 pub mod mutis_high_delegation;
 pub mod report_unfinished;
 pub mod utf8;

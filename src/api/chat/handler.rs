@@ -138,8 +138,21 @@ pub(crate) async fn chat_handler(
     } else {
         None
     };
+    // The optional independent checker: the High section's "checker" role, which must be a Codex source (it keeps and resumes its own thread).
+    let (delegate_checker, checker_note) = if delegate_worker.is_some() && mutis_config.delegate_checker {
+        let role = &mutis_config.high_checker;
+        let config = state.config.read().await;
+        let found = crate::config::resolve_provider_id(&config.providers, &role.provider_id).filter(|p| p.kind == "codex_cli").and_then(|p| {
+            let model = if role.model.trim().is_empty() { p.models.first().cloned().unwrap_or_default() } else { role.model.trim().to_owned() };
+            (!model.is_empty()).then(|| (p.clone(), model, chat::parse_effort(&role.effort).unwrap_or(chat::Effort::Max)))
+        });
+        let note = found.is_none().then(|| "Luna chưa chạy: vào Cài đặt › MutiS › Mức High, mục «Người kiểm tra», chọn nguồn Codex CLI và model.".to_owned());
+        (found, note)
+    } else {
+        (None, None)
+    };
     let provider: Box<dyn providers::Provider> = match &delegate_worker {
-        Some((worker, model)) => Box::new(providers::delegate::DelegateProvider { worker: worker.clone(), model: model.clone() }),
+        Some((worker, model)) => Box::new(providers::delegate::DelegateProvider { worker: worker.clone(), model: model.clone(), checker: delegate_checker.clone(), checker_note: checker_note.clone() }),
         None => providers::for_kind(&provider_config.kind)
             .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?,
     };
@@ -155,6 +168,10 @@ pub(crate) async fn chat_handler(
         let prefix = providers::codex::session_prefix(&settings, &provider_config, &folder);
         if !record.session_id.as_deref().is_some_and(|id| id.starts_with(&prefix)) {
             record.session_id = None;
+        }
+        // The checker is Codex too, so its thread belongs to the same Codex home as the coordinator's.
+        if !record.checker_session_id.as_deref().is_some_and(|id| id.starts_with(&prefix)) {
+            record.checker_session_id = None;
         }
     }
     record.provider_id = request.provider_id.clone();
@@ -202,6 +219,7 @@ pub(crate) async fn chat_handler(
         diff: String::new(),
         files: Vec::new(),
         provider: avatar_source(&provider_config, &request.model),
+        model: request.model.clone(),
         error: None,
         attachments: Vec::new(),
     });
@@ -275,7 +293,7 @@ pub(crate) async fn chat_handler(
             .cloned()
             .collect(),
         write_scope: Vec::new(),
-        checker_session_id: None,
+        checker_session_id: record.checker_session_id.clone(),
     };
     if memory_config.enabled {
         crate::features::memory::inject(&mut provider_request, &memory_context);
@@ -292,6 +310,7 @@ pub(crate) async fn chat_handler(
                 delegate_worker.is_some(),
             );
             if !rule.is_empty() {
+                let rule = if delegate_checker.is_some() { format!("{rule}\n{}", crate::core::rule::mutis_checker::NOTE) } else { rule.to_owned() };
                 if let Some(message) = provider_request.messages.iter_mut().rev().find(|m| m.role == "user") {
                     message.content = format!("{rule}\n\n{}", message.content);
                 }

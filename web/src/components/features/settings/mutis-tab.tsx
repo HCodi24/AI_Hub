@@ -3,12 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { mutisApi } from "@/apis/mutis.api";
 import { Button } from "@/components/button/button";
 import { Skeleton } from "@/components/skeleton/skeleton";
+import { Switch } from "@/components/button/switch";
 import { notify } from "@/components/toast/toast";
 import type { Mutis } from "@/schema/mutis.schema";
 import type { Provider } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
 import { MutisDiagnosis } from "./mutis-diagnosis";
 import { MutisStats } from "./mutis-stats";
+import { VerifyProject } from "./verify-project";
 import { errorText, useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
 import { effortsFor, effortFor } from "@/constants/chat";
@@ -26,6 +28,16 @@ const SWITCHES: { key: BoolKey; numbers?: { key: NumKey; min: number; max: numbe
   { key: "event_log" },
 ];
 const modelsOf = (providers: Provider[], id: string) => providers.find(p => p.id === id)?.models || [];
+/** The High-level independent checker: Codex sources only, because the checker keeps and resumes its own Codex thread. */
+function CheckerRow({ providers, value, enabled, change }: { providers: Provider[]; value: Mutis["high_checker"]; enabled: boolean; change: (patch: Partial<Mutis["high_checker"]>) => void }) {
+  return <div className={styles.row} aria-disabled={!enabled}><strong>{t.mutis.checkerRole}</strong>
+    <label>{t.mutis.provider}<select disabled={!enabled} value={value.provider_id} onChange={event => change({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" })}>
+      <option value="" />{providers.filter(p => p.kind === "codex_cli").map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+    <label>{t.mutis.model}<input disabled={!enabled} list="mutis-models-checker" value={value.model} onChange={event => change({ model: event.target.value })} />
+      <datalist id="mutis-models-checker">{modelsOf(providers, value.provider_id).map(m => <option key={m} value={m} />)}</datalist></label>
+    <label>{t.mutis.effort}<select disabled={!enabled} value={effortFor(value.model, value.effort, "codex_cli")} onChange={event => change({ effort: event.target.value as Mutis["high_checker"]["effort"] })}>
+      {effortsFor(value.model, "codex_cli").map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>;
+}
 export function MutisTab() {
   const client = useQueryClient();
   const { query: config } = useSettingsConfig();
@@ -44,7 +56,7 @@ export function MutisTab() {
     catch (error) { notify(errorText(error, t.error)); } finally { setBusy(false); }
   }
   return <form className={styles.form} onSubmit={event => { event.preventDefault(); void save(); }}>
-    <label className={styles.check}><input type="checkbox" checked={draft.enabled} onChange={event => edit({ enabled: event.target.checked })} />
+    <label className={styles.check}><Switch checked={draft.enabled} onChange={event => edit({ enabled: event.target.checked })} />
       <span><strong>{t.mutis.enabled}</strong></span></label>
     <p>{t.mutis.levelHint}</p>
     {(["roles", "high_roles"] as const).map(profile => <fieldset key={profile} className={styles.group} disabled={off}><legend>{profile === "roles" ? t.mutis.maxRoles : t.mutis.highRoles}</legend>
@@ -57,7 +69,10 @@ export function MutisTab() {
             <datalist id={`mutis-models-${role}`}>{modelsOf(providers, value.provider_id).map(m => <option key={m} value={m} />)}</datalist></label>
           <label>{t.mutis.effort}<select value={effortFor(value.model, value.effort, providers.find(p => p.id === value.provider_id)?.kind)} onChange={event => setRole({ effort: event.target.value as typeof value.effort })}>
             {effortsFor(value.model, providers.find(p => p.id === value.provider_id)?.kind).map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>; })}
-      {profile === "high_roles" && <label className={styles.check}><input type="checkbox" checked={draft.delegate_checker} onChange={event => edit({ delegate_checker: event.target.checked })} /><span>{t.mutis.delegate_checker}</span></label>}
+      {profile === "high_roles" && <>
+        <label className={styles.check}><Switch checked={draft.delegate_checker} onChange={event => edit({ delegate_checker: event.target.checked })} /><span>{t.mutis.delegate_checker}</span></label>
+        <CheckerRow providers={providers} value={draft.high_checker} enabled={draft.delegate_checker} change={patch => edit({ high_checker: { ...draft.high_checker, ...patch } })} />
+      </>}
     </fieldset>)}
     <fieldset className={styles.group} disabled={off}><legend>{t.mutis.routing}</legend>
       <div className={styles.grid}>{draft.routing.map((rule, index) => <label key={rule.kind}>{t.mutis.kinds[rule.kind] || rule.kind}
@@ -66,12 +81,13 @@ export function MutisTab() {
     </fieldset>
     <fieldset className={styles.group} disabled={off}><legend>{t.mutis.switches}</legend>
       {SWITCHES.map(item => <div key={item.key} className={styles.switch}>
-        <label className={styles.check}><input type="checkbox" checked={draft[item.key]} onChange={event => edit({ [item.key]: event.target.checked })} /><span>{t.mutis[item.key]}</span></label>
+        <label className={styles.check}><Switch checked={draft[item.key]} onChange={event => edit({ [item.key]: event.target.checked })} /><span>{t.mutis[item.key]}</span></label>
         {item.numbers?.map(number => <label key={number.key}>{t.mutis[number.key]}<input type="number" min={number.min} max={number.max}
           value={draft[number.key]} disabled={!draft[item.key]} onChange={event => edit({ [number.key]: Number(event.target.value) })} /></label>)}
       </div>)}
       <label>{t.mutis.verify_command}<input value={draft.verify_command} placeholder={t.mutis.verify_commandHint} spellCheck={false}
         onChange={event => edit({ verify_command: event.target.value })} /></label>
+      <VerifyProject />
       <label>{t.mutis.verify_ignore}<textarea rows={2} spellCheck={false} value={draft.verify_ignore.join("\n")}
         onChange={event => edit({ verify_ignore: event.target.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean) })} /></label>
       <div className={styles.grid}>

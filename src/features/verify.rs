@@ -21,7 +21,11 @@ pub struct ResultReport {
     pub summary_lines: Vec<String>,
     pub checks: Vec<Check>,
     pub duration_ms: u64,
+    /// True when no build/test command was found or set: only the encoding scans ran, so `ok` proves nothing about the code.
+    pub unverified: bool,
 }
+
+const UNVERIFIED: &str = "Không có lệnh kiểm tra cho thư mục này: chưa kiểm tra được (cần scripts/verify.ps1, Cargo.toml, package.json hoặc lệnh trong Cài đặt)";
 
 pub async fn run(
     folder: &Path,
@@ -37,14 +41,14 @@ pub async fn run(
     } else {
         detect(folder)
     };
-    if commands.is_empty() {
-        let _ = tx
-            .send("Không có lệnh kiểm tra cho thư mục này".into())
-            .await;
+    // No command is not a pass: nothing ran, so the report says "not verified" and `unverified` is set for callers.
+    let unverified = commands.is_empty();
+    if unverified {
+        let _ = tx.send(UNVERIFIED.into()).await;
         checks.push(Check {
             name: "verify".into(),
             ok: true,
-            detail: "Không có lệnh kiểm tra cho thư mục này".into(),
+            detail: UNVERIFIED.into(),
         });
     }
     for (name, command) in commands {
@@ -105,7 +109,7 @@ pub async fn run(
             format!(
                 "{}: {} — {}",
                 c.name,
-                if c.ok { "ĐẠT" } else { "LỖI" },
+                if c.detail == UNVERIFIED { "CHƯA KIỂM TRA" } else if c.ok { "ĐẠT" } else { "LỖI" },
                 c.detail.lines().last().unwrap_or("")
             )
         })
@@ -119,7 +123,25 @@ pub async fn run(
         summary_lines,
         checks,
         duration_ms: started.elapsed().as_millis() as u64,
+        unverified,
     }
+}
+
+/// Key of a project folder in `mutis.verify_commands`: forward slashes, no trailing slash, lower-case on Windows.
+pub fn folder_key(folder: &Path) -> String {
+    let key = folder.to_string_lossy().replace('\\', "/");
+    let key = key.trim_end_matches('/');
+    if cfg!(windows) { key.to_lowercase() } else { key.to_owned() }
+}
+
+/// The command this folder is verified with: its own saved one, else the global one ("" = auto-detect).
+pub fn command_for(mutis: &crate::config::MutisConfig, folder: &Path) -> String {
+    mutis.verify_commands.get(&folder_key(folder)).filter(|c| !c.trim().is_empty()).cloned().unwrap_or_else(|| mutis.verify_command.clone())
+}
+
+/// What auto-detection would run in this folder, as (name, command).
+pub fn detected_commands(folder: &Path) -> Vec<(String, String)> {
+    detect(folder).into_iter().map(|(name, command)| (name.to_owned(), command)).collect()
 }
 
 fn detect(folder: &Path) -> Vec<(&'static str, String)> {
@@ -490,6 +512,27 @@ fn next_action(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn saved_command_wins_over_global_and_blank_falls_back() {
+        let mut mutis = crate::config::MutisConfig::default();
+        mutis.verify_command = "global".into();
+        let folder = Path::new("C:/Work/App/");
+        assert_eq!(command_for(&mutis, folder), "global");
+        mutis.verify_commands.insert(folder_key(folder), "npm test".into());
+        assert_eq!(command_for(&mutis, Path::new("C:\\Work\\App")), "npm test", "slashes and a trailing slash do not matter");
+        mutis.verify_commands.insert(folder_key(folder), "  ".into());
+        assert_eq!(command_for(&mutis, folder), "global");
+    }
+    #[test]
+    fn a_folder_without_commands_is_unverified_not_passed() {
+        let root = std::env::temp_dir().join(format!("ai-hub-unverified-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::channel(64);
+        let report = tokio::runtime::Runtime::new().unwrap().block_on(run(&root, "", &[], tx));
+        assert!(report.unverified && report.ok, "nothing failed, but nothing was proven either");
+        assert!(report.summary_lines[0].contains("CHƯA KIỂM TRA") && !report.summary_lines[0].contains("ĐẠT"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn auto_detect_prefers_script_over_cargo() {
         let root = std::env::temp_dir().join(format!("ai-hub-verify-{}", std::process::id()));

@@ -1,0 +1,36 @@
+/* Shared pill switch: 40x24 track, 18px white thumb inset 3px, blue when on.
+ * Doubled class keeps the fixed size above generic `.form input` / `.card input` rules. */
+.switch.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 24px;
+  min-width: 40px;
+  min-height: 24px;
+  max-width: 40px;
+  max-height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background-color: #6b7280;
+  background-image: radial-gradient(circle at center, #fff 0 9px, transparent 9px);
+  background-repeat: no-repeat;
+  background-size: 18px 18px;
+  background-position: 3px center;
+  box-shadow: none;
+  cursor: pointer;
+  vertical-align: middle;
+  transition: background-color var(--duration-fast) var(--ease-out), background-position var(--duration-fast) var(--ease-out);
+}
+.switch.switch:checked { background-color: #3b78da; background-position: 19px center; }
+.switch.switch:hover:enabled { background-color: #5b6472; }
+.switch.switch:checked:hover:enabled { background-color: #2f66bd; }
+.switch.switch:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+.switch.switch:disabled, fieldset:disabled .switch.switch { cursor: default; opacity: .5; }
+@media (prefers-reduced-motion: reduce) {
+  .switch.switch { transition: none; }
+}

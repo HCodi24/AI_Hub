@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import Head from "next/head";
 import { useShallow } from "zustand/react/shallow";
 import { MessageList } from "./message-list";
+import { TaskBoard } from "./task-board";
+import { TokenDashboard } from "./token-dashboard";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { Spinner } from "@/components/spinner/spinner";
 import { Composer } from "@/components/features/composer/composer";
@@ -23,6 +25,8 @@ export function ChatScreen() {
   useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
   const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, folder: s.settings.folder })));
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Local-only for now: the toggle is not persisted; the card shows recorded token reports of the current chat.
+  const [dashboardEnabled, setDashboardEnabled] = useState(false);
   const { config, chats, send, stop, load, remove } = useChat();
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
   // Restore the chat that was open before the page reload.
@@ -47,10 +51,15 @@ export function ChatScreen() {
         {queryError && <div role="alert" className={styles.error}>{queryError.message}
           <button onClick={() => { void config.refetch(); void chats.refetch(); }}>{chatText.retry}</button></div>}
         {state.error && <div role="alert" className={styles.error}>{state.error}</div>}
-        <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
-          <MessageList send={send} />
-        </section>
+        <div className={styles.workspace} data-dashboard={dashboardEnabled ? "on" : undefined}>
+          {dashboardEnabled && <aside className={styles.dashboard} aria-label="Dashboard"><TokenDashboard /></aside>}
+          <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
+            <MessageList send={send} />
+          </section>
+        </div>
+        <TaskBoard />
         <Composer dropTarget={dropTarget} config={config.data} streaming={state.streaming} send={send} stop={stop} />
       </main>
-    </div>{settingsOpen && <SettingsDialog folder={state.folder} close={() => setSettingsOpen(false)} />}<Toast /></>;
+    </div>{settingsOpen && <SettingsDialog folder={state.folder} close={() => setSettingsOpen(false)}
+      dashboardEnabled={dashboardEnabled} onDashboardEnabledChange={setDashboardEnabled} />}<Toast /></>;
 }

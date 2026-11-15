@@ -69,6 +69,9 @@ pub struct ChatMessage {
     /// Provider kind that wrote this assistant reply (e.g. `codex_cli`), for its avatar in the UI.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub provider: String,
+    /// Model that wrote this assistant reply, kept per message so the Dashboard can show it. Empty = unknown (old chats).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub model: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -472,6 +475,62 @@ mod plan_task_chat_tests {
         assert!(ids.contains(&normal.id) && ids.contains(&plan_only.id));
         assert!(!ids.contains(&task.id));
         let _ = std::fs::remove_dir_all(directory);
+    }
+}
+
+#[cfg(test)]
+mod message_model_tests {
+    use super::*;
+
+    #[test]
+    fn old_message_json_without_model_loads_with_an_empty_model() {
+        let message: ChatMessage =
+            serde_json::from_str(r#"{"role":"assistant","content":"old reply"}"#).unwrap();
+        assert_eq!(message.model, "");
+        assert_eq!(message.content, "old reply");
+    }
+
+    #[test]
+    fn old_chat_record_json_without_model_loads_with_empty_models() {
+        let record: ChatRecord = serde_json::from_value(serde_json::json!({
+            "id": "c", "title": "t", "provider_id": "p", "model": "m", "folder": "f",
+            "updated_at": 0,
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hello"}
+            ]
+        }))
+        .unwrap();
+        assert_eq!(record.messages[0].model, "");
+        assert_eq!(record.messages[1].model, "");
+    }
+
+    #[test]
+    fn empty_model_is_not_written_but_a_real_model_roundtrips() {
+        let unknown = ChatMessage {
+            debate_id: None,
+            plan_id: None,
+            role: "assistant".into(),
+            content: "hi".into(),
+            attachments: Vec::new(),
+            reasoning: String::new(),
+            logs: Vec::new(),
+            diff: String::new(),
+            files: Vec::new(),
+            provider: String::new(),
+            model: String::new(),
+            error: None,
+        };
+        let json = serde_json::to_value(&unknown).unwrap();
+        assert!(json.get("model").is_none(), "unknown model stays out of the JSON");
+        let known = ChatMessage {
+            model: "claude-sonnet-4".into(),
+            ..unknown
+        };
+        let json = serde_json::to_value(&known).unwrap();
+        assert_eq!(json["model"], "claude-sonnet-4");
+        let back: ChatMessage = serde_json::from_value(json).unwrap();
+        assert_eq!(back.model, "claude-sonnet-4");
     }
 }
 

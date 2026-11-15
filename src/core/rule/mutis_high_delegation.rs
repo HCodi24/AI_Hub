@@ -27,7 +27,8 @@ const PROTOCOL_RULE: &str = concat!(
     "{\"title\":\"short unique task name\",\"files\":[\"exact/path.ext\"],\"instructions\":\"what to change, with names, line ranges and expected behaviour\",\"acceptance\":[\"a condition you can check in the diff\"]}\n",
     "```\n",
     "- The worker has no context beyond the block: name exact files (and symbols or line ranges) and put everything it needs in the instructions. Never create a separate investigation task for the worker.\n",
-    "- After the blocks, stop. The app runs the worker and sends you its real report (changed files, diff, summary).\n",
+    "- Plan ALL tasks of the job in this one reply, one block each, in order. Add \"depends_on\":[\"title of another task\"] only when a task needs that task's result: independent tasks start at once, one after another, while earlier ones are still being checked, and you hear back once when all are done.\n",
+    "- After the blocks, stop. The app runs the worker and sends you its real report (changed files, diff, summary), plus the project's own checks when they are enabled.\n",
     "- Review the report against your acceptance criteria and the diff. If it passes, say so and continue. If it fails or changed nothing, answer with another block with the SAME title and concrete corrections. The app counts attempts per title (4 at most) and then tells you to implement the task yourself.\n",
     "- Questions, explanations and tiny one-line edits do not need the worker: answer or edit directly. If the user explicitly asks you to code directly, do that."
 );

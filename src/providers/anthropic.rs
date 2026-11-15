@@ -341,6 +341,7 @@ mod image_builder_tests {
             diff: String::new(),
             files: Vec::new(),
             provider: String::new(),
+            model: String::new(),
             error: None,
         };
         let blocks = anthropic_content(&message).unwrap();

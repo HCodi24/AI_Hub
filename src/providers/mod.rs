@@ -7,6 +7,7 @@ pub mod codex_cli;
 pub(crate) mod codex;
 pub mod deepseek_agent;
 pub(crate) mod delegate;
+pub(crate) mod schedule;
 pub(crate) mod discovery;
 pub(crate) mod limits;
 pub mod mcp;

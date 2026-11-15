@@ -1,10 +1,12 @@
 import { create } from "zustand";
-import { ChatMessageSchema, PermissionSchema, type ChatMessage, type ChatRecord, type ChatRequest, type StreamData } from "@/schema/chat.schema";
+import { ChatMessageSchema, PermissionSchema, type ChatMessage, type ChatRecord, type ChatRequest, type StreamData, type TaskRow } from "@/schema/chat.schema";
 type Settings = Omit<ChatRequest, "chat_id" | "messages">;
 type ModelSelection = Pick<Settings, "provider_id" | "model"> & Partial<Pick<Settings, "permission">>;
 type ChatState = {
   id: string; messages: ChatMessage[]; settings: Settings; streaming: boolean; drawer: boolean;
   status: StreamData; error: string; initialized: boolean;
+  /** Live task board of a MutiS High delegation (not saved with the chat). */
+  tasks: TaskRow[];
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
   load: (chat: ChatRecord) => void; reset: () => void;
@@ -35,7 +37,7 @@ function rememberActiveChat(id: string) {
   } catch { /* Storage unavailable. */ }
 }
 export const useChatStore = create<ChatState>((set) => ({
-  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false,
+  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false, tasks: [],
   configure: (settings) => set((state) => {
     const next = { ...state.settings, ...settings };
     saveModelSelection(state.id || DRAFT_ID, next);
@@ -60,7 +62,7 @@ export const useChatStore = create<ChatState>((set) => ({
         effort: chat.effort === "default" ? "medium" as const : chat.effort, file_tools: chat.file_tools, dev_chat: chat.dev_chat,
       };
       saveModelSelection(chat.id, settings);
-      return { id: chat.id, messages: chat.messages, settings, status: {}, error: "", drawer: false, initialized: true };
+      return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], error: "", drawer: false, initialized: true };
     });
   },
   reset: () => {
@@ -68,14 +70,14 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => {
       const settings = { ...state.settings, dev_chat: false };
       saveModelSelection(DRAFT_ID, settings);
-      return { id: "", messages: [], status: {}, error: "", drawer: false, settings };
+      return { id: "", messages: [], status: {}, tasks: [], error: "", drawer: false, settings };
     });
   },
   begin: (text, attachments = []) => set((state) => {
     const id = state.id || crypto.randomUUID();
     rememberActiveChat(id);
     if (!state.id) saveModelSelection(id, state.settings);
-    return { id, streaming: true, status: {}, error: "",
+    return { id, streaming: true, status: {}, tasks: [], error: "",
       messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text, attachments }),
         ChatMessageSchema.parse({ role: "assistant", content: "" })] };
   }),
@@ -86,17 +88,23 @@ export const useChatStore = create<ChatState>((set) => ({
       const last = state.messages.at(-1);
       const empty = last?.role === "assistant" && !last.content && !last.reasoning && !last.logs.length &&
         !last.diff && !last.files.length && !last.attachments.length && last.error == null && last.plan_id == null && last.debate_id == null;
-      const next = ChatMessageSchema.parse({ role: "assistant", content: "", provider });
+      // A new turn starts a fresh reply: the placeholder's previous identity is dropped, never inferred from settings.
+      const next = ChatMessageSchema.parse({ role: "assistant", content: "", provider, model: data.model || "" });
       return { messages: empty ? [...state.messages.slice(0, -1), next] : [...state.messages, next],
         status: { ...state.status, provider_kind: provider, provider_name: data.provider_name || (provider === "deepseek" ? "DeepSeek" : "Codex"),
           model: data.model || "", idle_s: 0, last_activity: "" } };
     }
     if (event === "heartbeat") return { status: { ...state.status, ...data } };
+    if (event === "tasks") return { tasks: data.tasks ?? [] };
     if (event === "status") {
       const last = state.messages.at(-1);
       // The reply's provider decides its avatar while it streams (the saved copy has it from the server).
-      const messages = last && data.provider_kind && !last.provider
-        ? [...state.messages.slice(0, -1), { ...last, provider: data.provider_kind }] : state.messages;
+      const provider = data.provider_kind && last && !last.provider ? data.provider_kind : undefined;
+      // The model is stamped on the reply that is actually streaming; heartbeats never relabel it.
+      const model = data.model && last?.role === "assistant" ? data.model : undefined;
+      const messages = last && (provider || model)
+        ? [...state.messages.slice(0, -1), { ...last, ...(provider ? { provider } : {}), ...(model ? { model } : {}) }]
+        : state.messages;
       return { status: { ...state.status, ...data }, messages };
     }
     const messages = [...state.messages];

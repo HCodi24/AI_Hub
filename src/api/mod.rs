@@ -215,6 +215,10 @@ pub fn router(state: AppState) -> Router {
         // Verification and plan diff routes.
         .route("/api/verify", post(crate::api::verify::verify_handler))
         .route(
+            "/api/verify/commands",
+            get(crate::api::verify::verify_commands_get).put(crate::api::verify::verify_commands_put),
+        )
+        .route(
             "/api/plan-diff",
             post(crate::api::verify::plan_diff_handler),
         )

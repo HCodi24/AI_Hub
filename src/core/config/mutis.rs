@@ -36,6 +36,9 @@ pub struct MutisConfig {
     pub verify_gate: bool,
     #[serde(default)]
     pub verify_command: String,
+    /// Verify command per project folder (key from `verify::folder_key`); wins over `verify_command`.
+    #[serde(default)]
+    pub verify_commands: std::collections::BTreeMap<String, String>,
     #[serde(default = "default_verify_ignore")]
     pub verify_ignore: Vec<String>,
     #[serde(default)]
@@ -56,9 +59,12 @@ pub struct MutisConfig {
     /// Off = a new plan is approved and run at once, and shown as ordinary chat messages.
     #[serde(default = "default_plan_approval")]
     pub plan_approval: bool,
-    /// MutiS High: an independent checker (the `big` role at max effort) reviews each DeepSeek result before the coordinator judges it.
+    /// MutiS High: an independent checker reviews each DeepSeek result before the coordinator judges it.
     #[serde(default)]
     pub delegate_checker: bool,
+    /// Who the checker is (a Codex source and model; effort defaults to max). Used only at the High level.
+    #[serde(default = "default_high_checker")]
+    pub high_checker: MutisRole,
     #[serde(default = "default_routing")]
     pub routing: Vec<RoutingRule>,
     #[serde(default)]
@@ -113,6 +119,7 @@ impl Default for MutisConfig {
             debate_judge_model: String::new(),
             verify_gate: false,
             verify_command: String::new(),
+            verify_commands: Default::default(),
             verify_ignore: default_verify_ignore(),
             auto_review: false,
             reviewer_provider_id: String::new(),
@@ -123,11 +130,15 @@ impl Default for MutisConfig {
             auto_plan: false,
             plan_approval: false,
             delegate_checker: false,
+            high_checker: default_high_checker(),
             routing: default_routing(),
             roles: MutisRoles::default(),
             high_roles: MutisRoles::default(),
         }
     }
+}
+fn default_high_checker() -> MutisRole {
+    MutisRole { provider_id: String::new(), model: String::new(), effort: "max".into() }
 }
 fn default_plan_approval() -> bool {
     false
@@ -211,5 +222,14 @@ mod level_tests {
         for effort in ["default", "low", "medium", "high"] { assert_eq!(config.roles_for(effort).lead.provider_id, "high"); }
         assert_eq!(MutisConfig::level_for("xhigh"), "max");
         assert_eq!(MutisConfig::level_for("medium"), "high");
+    }
+
+    #[test]
+    fn the_checker_role_defaults_to_max_effort_and_old_configs_get_it() {
+        assert_eq!(MutisConfig::default().high_checker.effort, "max");
+        let old: MutisConfig = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert!(old.high_checker.provider_id.is_empty() && old.high_checker.effort == "max");
+        let set: MutisConfig = serde_json::from_str(r#"{"enabled":true,"high_checker":{"provider_id":"codex-cli","model":"gpt-6-luna","effort":"xhigh"}}"#).unwrap();
+        assert_eq!((set.high_checker.provider_id.as_str(), set.high_checker.effort.as_str()), ("codex-cli", "xhigh"));
     }
 }

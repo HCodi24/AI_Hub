@@ -371,6 +371,7 @@ pub(super) async fn generate_plan(
             diff: String::new(),
             files: Vec::new(),
             provider: String::new(),
+            model: String::new(),
             error: None,
         }],
         session_id: None,
