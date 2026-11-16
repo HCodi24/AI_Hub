@@ -64,6 +64,9 @@ pub struct MutisConfig {
     /// MutiS High: an independent checker reviews each DeepSeek result before the coordinator judges it.
     #[serde(default)]
     pub delegate_checker: bool,
+    /// MutiS High: whether DeepSeek may be given layout and styling work (.css/.html...). Off = such tasks go to Luna 2, or back to the coordinator.
+    #[serde(default)]
+    pub deepseek_ui: bool,
     /// Who the checker is (a Codex source and model; effort defaults to max). Used only at the High level.
     #[serde(default = "default_high_checker")]
     pub high_checker: MutisRole,
@@ -132,6 +135,7 @@ impl Default for MutisConfig {
             auto_plan: false,
             plan_approval: false,
             delegate_checker: false,
+            deepseek_ui: false,
             high_checker: default_high_checker(),
             routing: default_routing(),
             roles: MutisRoles::default(),

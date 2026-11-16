@@ -33,22 +33,22 @@ fn avatar_source(provider: &crate::config::ProviderConfig, model: &str) -> Strin
 }
 
 /// First user message of the conversation gets the fixed rules in front of it.
-fn add_first_request_rules(request: &mut ProviderRequest) {
+async fn add_first_request_rules(request: &mut ProviderRequest) {
     // The DeepSeek agent has no MCP, so the CodeGraph rule does not apply to it.
     if request.provider.kind == "deepseek_agent"
         || request.messages.iter().filter(|m| m.role == "user").count() != 1
     {
         return;
     }
-    let indexed = std::path::Path::new(&request.folder)
-        .join(".codegraph")
-        .is_dir();
+    let folder = std::path::Path::new(&request.folder);
+    let indexed = folder.join(".codegraph").is_dir();
+    let synced = indexed && crate::features::extensions::sync_index(folder).await;
     if let Some(message) = request.messages.iter_mut().find(|m| m.role == "user") {
         message.content = format!(
             "{}
 
 {}",
-            crate::core::rule::first_request_rules(indexed),
+            crate::core::rule::first_request_rules(indexed, synced),
             message.content
         );
     }
@@ -311,6 +311,7 @@ pub(crate) async fn chat_handler(
             );
             if !rule.is_empty() {
                 let rule = if delegate_checker.is_some() { format!("{rule}\n{}", crate::core::rule::mutis_checker::NOTE) } else { rule.to_owned() };
+                let rule = if delegate_worker.is_some() && !mutis_config.deepseek_ui { format!("{rule}\n{}", crate::core::rule::mutis_high_delegation::NO_UI_NOTE) } else { rule };
                 if let Some(message) = provider_request.messages.iter_mut().rev().find(|m| m.role == "user") {
                     message.content = format!("{rule}\n\n{}", message.content);
                 }
@@ -319,7 +320,7 @@ pub(crate) async fn chat_handler(
     }
     // Plan task workers cannot stop to ask the user, so they skip the first-request rules.
     if request.plan_id.is_none() && !plain_chat {
-        add_first_request_rules(&mut provider_request);
+        add_first_request_rules(&mut provider_request).await;
     }
     let event_provider_id = provider_request.provider.id.clone();
     let provider_name = provider_request.provider.name.clone();
@@ -457,10 +458,10 @@ mod tests {
         assert_eq!(avatar_source(&source("codex-cli", "codex_cli"), "gpt-6-luna"), "codex_cli");
     }
 
-    #[test]
-    fn rules_go_only_on_the_first_user_message() {
+    #[tokio::test]
+    async fn rules_go_only_on_the_first_user_message() {
         let mut first = request(json!([{"role":"user","content":"làm đi"}]));
-        add_first_request_rules(&mut first);
+        add_first_request_rules(&mut first).await;
         assert!(first.messages[0].content.contains(".codegraph"));
         assert!(first.messages[0].content.ends_with("làm đi"));
         // The app states the index status itself, so the AI does not spend a command (and a model call) on it.
@@ -470,7 +471,7 @@ mod tests {
         let mut later = request(json!([
             {"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}
         ]));
-        add_first_request_rules(&mut later);
+        add_first_request_rules(&mut later).await;
         assert!(later
             .messages
             .iter()

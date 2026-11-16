@@ -16,8 +16,8 @@ function CheckerCard({ card }: { card: LiveChecker }) {
   const state = card.state === "running" ? "working" : card.state === "failed" ? "failed" : "idle";
   return <article className={styles.message} data-streaming={card.state === "running"} data-checker-id={card.id}>
     <div className={styles.identity}>
-      {/* Luna is a Codex source, so it wears the Codex pet. */}
-      <PetAvatar provider="codex_cli" state={state} />
+      {/* Luna is a Codex source: it wears the pet chosen for its model. */}
+      <PetAvatar provider="codex_cli" model={card.model} state={state} />
       <strong>{card.provider_name || "Luna"}</strong>
       <span className={styles.petStatus} data-state={state} role="status">
         {state !== "idle" ? <>· {chatText.petStatus[state]}</> : <>· {text.stopped}</>}

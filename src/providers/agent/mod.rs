@@ -113,29 +113,12 @@ impl AgentTools {
             return format!("error: Công cụ không tồn tại: {name}");
         }
 
+        if name == "read_files" {
+            return self.read_files(&args, events).await;
+        }
         let path = args["path"].as_str().unwrap_or(".");
         if name == "read_file" {
-            if let Ok(file) = files::safe_path(&self.root, path) {
-                if let Ok(text) = fs::read_to_string(file) {
-                    let total = text.lines().count();
-                    let start = args["start_line"].as_u64().unwrap_or(1).max(1) as usize;
-                    if args["start_line"].is_null()
-                        && args["end_line"].is_null()
-                        && total > self.max_file_lines as usize
-                    {
-                        let _ =
-                            emit_text(events, "log", format!("Cảnh báo: {path} dài {total} dòng"))
-                                .await;
-                    }
-                    let end = args["end_line"]
-                        .as_u64()
-                        .map(|value| value as usize)
-                        .unwrap_or(total)
-                        .min(total)
-                        .min(start.saturating_add(399));
-                    let _ = emit_text(events, "log", format!("Đọc {path} {start}–{end}")).await;
-                }
-            }
+            self.log_read(events, path, &args).await;
         }
         if matches!(name, "edit_file" | "write_file") && self.permission == Permission::Read {
             let _ = emit_text(events, "log", format!("Từ chối: {path} (chế độ chỉ đọc)")).await;
@@ -162,6 +145,38 @@ impl AgentTools {
             self.max_file_lines,
             &mut self.snapshots,
         )
+    }
+
+    /// The "Đọc path a–b" line of one read (and the warning for a long file read without a range).
+    async fn log_read(&self, events: &mpsc::Sender<ProviderEvent>, path: &str, args: &Value) {
+        let Ok(file) = files::safe_path(&self.root, path) else { return };
+        let Ok(text) = fs::read_to_string(file) else { return };
+        let total = text.lines().count();
+        let start = args["start_line"].as_u64().unwrap_or(1).max(1) as usize;
+        if args["start_line"].is_null() && args["end_line"].is_null() && total > self.max_file_lines as usize {
+            let _ = emit_text(events, "log", format!("Cảnh báo: {path} dài {total} dòng")).await;
+        }
+        let end = args["end_line"].as_u64().map(|value| value as usize).unwrap_or(total).min(total).min(start.saturating_add(399));
+        let _ = emit_text(events, "log", format!("Đọc {path} {start}–{end}")).await;
+    }
+
+    /// Several reads in one tool call, so one step (one model round trip) can read everything the task needs.
+    async fn read_files(&mut self, args: &Value, events: &mpsc::Sender<ProviderEvent>) -> String {
+        const MAX_BATCH: usize = 8;
+        let Some(list) = args["files"].as_array().filter(|list| !list.is_empty()) else {
+            return "error: Thiếu files (danh sách {path, start_line, end_line})".into();
+        };
+        let mut parts = Vec::new();
+        for entry in list.iter().take(MAX_BATCH) {
+            let path = entry["path"].as_str().unwrap_or(".");
+            self.log_read(events, path, entry).await;
+            let text = files::run_tool(&self.root, "read_file", entry, self.max_file_lines, &mut self.snapshots);
+            parts.push(format!("=== {path} ===\n{text}"));
+        }
+        if list.len() > MAX_BATCH {
+            parts.push(format!("(only the first {MAX_BATCH} files were read: ask again for the others)"));
+        }
+        parts.join("\n\n")
     }
 
     pub fn diff(&self) -> String {
@@ -221,17 +236,18 @@ mod tests {
         };
         assert_eq!(
             openai_names(read.openai_definitions()),
-            vec!["list_dir", "read_file"]
+            vec!["list_dir", "read_file", "read_files"]
         );
         assert_eq!(
             openai_names(write.openai_definitions()),
-            vec!["list_dir", "read_file", "edit_file", "write_file"]
+            vec!["list_dir", "read_file", "read_files", "edit_file", "write_file"]
         );
         assert_eq!(
             openai_names(full.openai_definitions()),
             vec![
                 "list_dir",
                 "read_file",
+                "read_files",
                 "edit_file",
                 "write_file",
                 "run_command"
@@ -246,12 +262,43 @@ mod tests {
             vec![
                 "list_dir",
                 "read_file",
+                "read_files",
                 "edit_file",
                 "write_file",
                 "run_command"
             ]
         );
         assert!(mcp_only.anthropic_definitions().is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_files_reads_several_files_in_one_call_and_a_long_file_is_cut_not_refused() {
+        let dir = std::env::temp_dir().join(format!("ai-hub-read-files-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.txt"), "one
+two
+").unwrap();
+        std::fs::write(dir.join("long.txt"), "x
+".repeat(30)).unwrap();
+        let root = dir.canonicalize().unwrap();
+        let (events, mut receiver) = mpsc::channel(32);
+        let mcp = McpTools::start(&[], ".", false, &events).await;
+        let mut tools = AgentTools::new(root, Permission::Write, 10, true, mcp);
+        let cancel = CancellationToken::new();
+        let answer = tools.execute("read_files", serde_json::json!({"files":[{"path":"a.txt"},{"path":"long.txt"},{"path":"missing.txt"}]}), &events, &cancel).await;
+        assert!(answer.contains("=== a.txt ===
+1: one
+2: two"), "{answer}");
+        assert!(answer.contains("showing 1-10") && answer.contains("start_line=11"), "{answer}");
+        assert!(answer.contains("=== missing.txt ===
+error:"), "one bad file must not hide the others: {answer}");
+        assert!(tools.execute("read_files", serde_json::json!({"files":[]}), &events, &cancel).await.starts_with("error:"));
+        let mut logs = Vec::new();
+        while let Ok(event) = receiver.try_recv() {
+            logs.push(event.data["text"].as_str().unwrap_or("").to_owned());
+        }
+        assert!(logs.iter().any(|line| line == "Đọc a.txt 1–2"), "{logs:?}");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[tokio::test]

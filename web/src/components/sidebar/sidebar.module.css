@@ -12,7 +12,7 @@
 .railBottom { margin-top: auto; padding-top: 16px; }
 .collapse { margin-bottom: 12px; }
 .menuLabels { position: absolute; top: 0; left: 84px; height: 48px; display: flex; align-items: center; gap: 24px; color: var(--muted); font-size: var(--font-14); }
-.collapseButton { width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; background: transparent; color: var(--muted); }
+.collapseButton { width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 12px; background: transparent; color: var(--muted); }
 .railButton { width: 44px; height: 44px; padding: 0; border-radius: 12px; color: var(--muted); }
 .railButton.active { background: var(--sidebar-hover); color: var(--text); }
 .sidebar button:hover:enabled, .profile:hover { background: var(--sidebar-hover); }

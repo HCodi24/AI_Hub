@@ -24,7 +24,10 @@ pub fn prompt(title: &str, files: &[String], acceptance: &[String], summary: &st
             "A failing check that this diff causes is a high issue. If a command cannot run (missing tool, no permission), say so in notes: that alone is not a FAIL.\n\n",
             "Task: {title}\nFiles: {files}\nAcceptance criteria:\n{criteria}\n\nWorker summary:\n{summary}\n\nDiff of this task:\n{diff}\n\n",
             "Reply with ONLY this JSON: {{\"verdict\":\"PASS\" or \"FAIL\",\"issues\":[{{\"severity\":\"high|medium|low\",\"file\":\"\",\"problem\":\"\",\"fix\":\"\"}}],\"notes\":\"\"}}. ",
-            "Use high or medium only for a defect that makes the task fail its acceptance criteria; use low for style or optional improvements."
+            "Use high or medium only for a defect that makes the task fail its acceptance criteria; use low for style or optional improvements.\n",
+            "Write the values of notes, problem and fix in Vietnamese, even when the task instructions are in English. ",
+            "Keep the JSON keys, the verdict PASS or FAIL and the severity high, medium or low exactly as shown; ",
+            "keep file paths, commands, model names and literal tool or error output verbatim."
         ),
         testing = testing, title = title.trim(), files = files.join(", "), criteria = criteria,
         summary = crate::core::text::truncate_chars(summary, 2000), diff = crate::core::text::truncate_chars(diff, 12000),
@@ -42,5 +45,16 @@ mod tests {
         assert!(text.contains("ONLY this JSON") && text.contains("\"verdict\""));
         assert!(text.contains("you run the tests") && text.contains("- npm test"));
         assert!(prompt("T", &[], &[], "", "", &[]).contains("none given") && prompt("T", &[], &[], "", "", &[]).contains("Find the project's own"));
+    }
+
+    #[test]
+    fn prompt_asks_for_vietnamese_prose_but_keeps_the_json_contract() {
+        let text = prompt("T", &["a.rs".into()], &["builds".into()], "done", "+line", &[]);
+        assert!(text.contains("Write the values of notes, problem and fix in Vietnamese"));
+        assert!(text.contains("even when the task instructions are in English"));
+        // The machine contract is untouched: keys, verdict tokens and severity values stay English.
+        assert!(text.contains("\"verdict\":\"PASS\" or \"FAIL\"") && text.contains("\"severity\":\"high|medium|low\""));
+        assert!(text.contains("Keep the JSON keys, the verdict PASS or FAIL and the severity high, medium or low exactly as shown"));
+        assert!(text.contains("keep file paths, commands, model names and literal tool or error output verbatim"));
     }
 }

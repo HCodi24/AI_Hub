@@ -25,7 +25,11 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export type ChatRecord = z.infer<typeof ChatRecordSchema>;
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;
-export const TaskRowSchema = z.object({ title: z.string(), state: z.string(), attempt: z.number().default(0), check: z.string().nullish() });
+export const TaskRowSchema = z.object({
+  title: z.string(), state: z.string(), attempt: z.number().default(0), check: z.string().nullish(),
+  actor: z.string().nullish(), model: z.string().nullish(),
+  checker: z.string().nullish(), checker_model: z.string().nullish(),
+});
 export type TaskRow = z.infer<typeof TaskRowSchema>;
 /** Live checker card of one Luna check: start, progress, error or done (done removes the card). */
 export const CheckerActivitySchema = z.object({

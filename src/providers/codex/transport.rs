@@ -20,7 +20,7 @@ impl Client {
     pub async fn start(executable: &Path, home: &Path, folder: &Path) -> Result<Self> {
         let profile = home.join("profile");
         std::fs::create_dir_all(&profile)?;
-        let args = super::environment::launch_args(folder);
+        let args = super::environment::launch_args(folder, super::environment::has_plugins(home));
         let mut command = super::super::cli_support::command_for(executable, &args);
         let injected = command
             .as_std()

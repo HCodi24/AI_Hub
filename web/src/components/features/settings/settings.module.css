@@ -94,7 +94,7 @@
 .devCard { padding: var(--space-4); gap: var(--space-3); }
 /* Two classes so the card title wins over the shared `.panel h3` rule. */
 .devCard .devCardTitle { margin: 0; font-size: var(--font-15); font-weight: 600; }
-.devFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3) var(--space-4); margin: 0; min-width: 0; }
+.devFacts { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3) var(--space-4); margin: 0; min-width: 0; }
 .devFact { display: grid; gap: 2px; min-width: 0; }
 .devFactWide { grid-column: 1 / -1; }
 .devFact dt { color: var(--muted); font-size: var(--font-12); }
@@ -134,3 +134,4 @@
   .tabs button { font-size: var(--font-13); }
   .panel .panelTitle { margin-bottom: 20px; }
 }
+.banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--color-muted); font-size: var(--font-14); }

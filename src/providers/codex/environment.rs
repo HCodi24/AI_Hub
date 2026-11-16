@@ -55,7 +55,12 @@ pub fn project_root(folder: &Path) -> PathBuf {
         .to_path_buf()
 }
 
-pub fn launch_args(folder: &Path) -> Vec<OsString> {
+/// Codex plugins are off unless the user installed some into AI Hub's own Codex home (Settings › Add-ons).
+pub fn has_plugins(home: &Path) -> bool {
+    std::fs::read_dir(home.join("plugins/cache")).is_ok_and(|mut entries| entries.next().is_some())
+}
+
+pub fn launch_args(folder: &Path, plugins: bool) -> Vec<OsString> {
     let root = project_root(folder);
     let configs = [
         "cli_auth_credentials_store=\"file\"".to_owned(),
@@ -65,7 +70,7 @@ pub fn launch_args(folder: &Path) -> Vec<OsString> {
         "skills.include_instructions=false".into(),
         "skills.bundled.enabled=false".into(),
         "features.apps=false".into(),
-        "features.plugins=false".into(),
+        format!("features.plugins={plugins}"),
         "memories.use_memories=false".into(),
         "mcp_servers={}".into(),
         format!(
@@ -265,10 +270,14 @@ mod tests {
         let instructions = project_context(&root, &settings).unwrap();
         assert!(!instructions.contains("SKILL_MARKER"));
         assert!(instructions.contains("INSTRUCTION_MARKER"));
-        let args = launch_args(&root)
+        let args = launch_args(&root, false)
             .into_iter()
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
+        assert!(args.contains(&"features.plugins=false".to_owned()));
+        assert!(launch_args(&root, true)
+            .iter()
+            .any(|arg| arg == "features.plugins=true"));
         assert!(args.contains(&"project_doc_max_bytes=0".to_owned()));
         assert!(args.contains(&"skills.include_instructions=false".to_owned()));
     }

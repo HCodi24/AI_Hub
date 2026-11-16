@@ -1,13 +1,14 @@
-//! "Plugin & Skill": what Claude Code and Codex load when AI Hub runs them, and copying the user's own Claude Code
+//! "Plugin & Skill": what Claude Code loads when AI Hub runs it, and copying the user's own Claude Code
 //! add-ons into AI Hub's separate Claude config.
 //!
-//! Three homes exist on a machine:
+//! Two homes exist on a machine:
 //! - `personal`: the user's own Claude Code (`~/.claude` + `~/.claude.json`);
-//! - `hub`: AI Hub's Claude Code (`<data>/claude-config`), a separate login, so it starts with no add-ons;
-//! - Codex (`~/.codex/config.toml`), which AI Hub runs as-is, so everything there is already loaded.
+//! - `hub`: AI Hub's Claude Code (`<data>/claude-config`), a separate login, so it starts with no add-ons.
 //!
-//! Listing only reads files. Changes go through the CLIs themselves (`claude plugin|mcp`, `codex mcp`) so their config
-//! formats stay theirs; only skill folders are copied directly. Secrets (env values, headers) are never returned.
+//! Codex is not listed: AI Hub runs it with its own home, with plugins, apps and MCP switched off, so the user's `~/.codex` is never loaded.
+//!
+//! Listing only reads files. Changes go through the CLI itself (`claude plugin|mcp`) so its config
+//! formats stay its own; only skill folders are copied directly. Secrets (env values, headers) are never returned.
 
 use anyhow::{bail, Context, Result};
 use serde::Serialize;
@@ -42,7 +43,6 @@ pub struct Home {
 pub struct Overview {
     pub personal: Home,
     pub hub: Home,
-    pub codex: Home,
 }
 
 /// Plugin ids look like `name@marketplace`; skill and MCP names are plain. Anything else is refused (they reach a
@@ -140,77 +140,6 @@ fn mcp_summary(server: &Value) -> String {
     parts.join(" ").trim().to_owned()
 }
 
-/// Codex keeps plugins and MCP servers as `[plugins."id"]` / `[mcp_servers.name]` tables in config.toml. Only the
-/// table names and a few plain keys are needed, so a small line reader is enough (no TOML dependency).
-pub fn codex_home(dir: &Path) -> Home {
-    let text = std::fs::read_to_string(dir.join("config.toml")).unwrap_or_default();
-    let mut plugins: Vec<Plugin> = Vec::new();
-    let mut mcp: Vec<McpServer> = Vec::new();
-    #[derive(PartialEq)]
-    enum Section {
-        Plugin,
-        Mcp,
-        Other,
-    }
-    let mut section = Section::Other;
-    for line in text.lines().map(str::trim) {
-        if let Some(header) = line
-            .strip_prefix('[')
-            .and_then(|rest| rest.strip_suffix(']'))
-        {
-            let unquote = |name: &str| {
-                name.trim()
-                    .trim_matches(|c| c == '"' || c == '\'')
-                    .to_owned()
-            };
-            section = Section::Other;
-            if let Some(name) = header.strip_prefix("plugins.") {
-                plugins.push(Plugin {
-                    id: unquote(name),
-                    enabled: true,
-                    ..Default::default()
-                });
-                section = Section::Plugin;
-            } else if let Some(name) = header.strip_prefix("mcp_servers.") {
-                // `[mcp_servers.x.env]` belongs to server x; it holds secrets and is skipped.
-                if !name.contains('.') {
-                    mcp.push(McpServer {
-                        name: unquote(name),
-                        summary: String::new(),
-                    });
-                    section = Section::Mcp;
-                }
-            }
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let (key, value) = (key.trim(), value.trim());
-        match section {
-            Section::Plugin if key == "enabled" => {
-                if let Some(plugin) = plugins.last_mut() {
-                    plugin.enabled = value == "true";
-                }
-            }
-            Section::Mcp if matches!(key, "command" | "url") => {
-                if let Some(server) = mcp.last_mut() {
-                    server.summary = value.trim_matches(|c| c == '"' || c == '\'').to_owned();
-                }
-            }
-            _ => {}
-        }
-    }
-    plugins.sort_by(|a, b| a.id.cmp(&b.id));
-    mcp.sort_by(|a, b| a.name.cmp(&b.name));
-    Home {
-        path: dir.to_string_lossy().into_owned(),
-        plugins,
-        skills: Vec::new(),
-        mcp,
-    }
-}
-
 pub fn personal_claude_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".claude"))
 }
@@ -220,7 +149,6 @@ pub fn overview(hub_dir: &Path) -> Overview {
     Overview {
         personal: claude_home(&home.join(".claude"), &home.join(".claude.json")),
         hub: claude_home(hub_dir, &hub_dir.join(".claude.json")),
-        codex: codex_home(&home.join(".codex")),
     }
 }
 
@@ -275,9 +203,95 @@ pub fn remove_skill(hub_dir: &Path, name: &str) -> Result<()> {
     std::fs::remove_dir_all(dir).with_context(|| format!("Không xoá được skill «{name}»"))
 }
 
+/// `owner/repo` or `https://github.com/owner/repo[.git]` -> `https://github.com/owner/repo`. Anything else is
+/// refused: the link reaches `git clone` and the plugin CLIs, so only plain GitHub repositories are accepted.
+pub fn github_source(link: &str) -> Result<String> {
+    let link = link.trim().trim_end_matches('/');
+    let path = link.strip_prefix("https://github.com/").unwrap_or(link);
+    let path = path.strip_suffix(".git").unwrap_or(path);
+    let parts: Vec<&str> = path.split('/').collect();
+    let part_ok = |part: &&str| {
+        !part.is_empty()
+            && part.len() <= 100
+            && !part.starts_with(['-', '.'])
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+    };
+    if parts.len() != 2 || !parts.iter().all(part_ok) {
+        bail!("Chỉ nhận link GitHub dạng owner/repo hoặc https://github.com/owner/repo");
+    }
+    Ok(format!("https://github.com/{path}"))
+}
+
+#[derive(Serialize, Default, Clone, Debug, PartialEq)]
+pub struct LinkPlugin {
+    pub name: String,
+    pub description: String,
+}
+
+/// A marketplace found in a downloaded repository, for one CLI.
+#[derive(Serialize, Default, Clone, Debug, PartialEq)]
+pub struct LinkMarketplace {
+    pub name: String,
+    pub plugins: Vec<LinkPlugin>,
+}
+
+#[derive(Serialize, Default, Clone, Debug, PartialEq)]
+pub struct LinkFound {
+    pub claude: Option<LinkMarketplace>,
+    pub codex: Option<LinkMarketplace>,
+}
+
+fn marketplace_at(file: &Path) -> Option<LinkMarketplace> {
+    let json = read_json(file);
+    let name = json["name"].as_str().filter(|name| valid_name(name))?;
+    let plugins = json["plugins"]
+        .as_array()?
+        .iter()
+        .filter_map(|plugin| {
+            let name = plugin["name"].as_str().filter(|name| valid_name(name))?;
+            let text = |key: &str| plugin[key].as_str().unwrap_or_default();
+            let description = if text("description").is_empty() { text("category") } else { text("description") };
+            Some(LinkPlugin { name: name.to_owned(), description: description.chars().take(300).collect() })
+        })
+        .collect::<Vec<_>>();
+    (!plugins.is_empty()).then(|| LinkMarketplace { name: name.to_owned(), plugins })
+}
+
+/// Which CLIs a downloaded repository can be installed into: Claude Code reads `.claude-plugin/marketplace.json`,
+/// Codex reads `.agents/plugins/marketplace.json`.
+pub fn inspect_checkout(dir: &Path) -> LinkFound {
+    LinkFound {
+        claude: marketplace_at(&dir.join(".claude-plugin/marketplace.json")),
+        codex: marketplace_at(&dir.join(".agents/plugins/marketplace.json")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn links_are_limited_to_plain_github_repositories() {
+        for good in ["owner/repo", "https://github.com/owner/repo", "https://github.com/o-w.n/re_po.git/"] {
+            assert!(github_source(good).unwrap().starts_with("https://github.com/"));
+        }
+        for bad in ["", "owner", "a/b/c", "-x/repo", "../repo", "http://github.com/o/r", "https://evil.com/o/r", "o/r --upload-pack=x", "file:///c/x"] {
+            assert!(github_source(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn checkout_shows_the_marketplaces_each_cli_can_install() {
+        let dir = temp("link");
+        std::fs::create_dir_all(dir.join(".claude-plugin")).unwrap();
+        std::fs::write(dir.join(".claude-plugin/marketplace.json"), r#"{"name":"mk","plugins":[{"name":"a","description":"A"},{"name":"../bad"}]}"#).unwrap();
+        let found = inspect_checkout(&dir);
+        assert_eq!(found.claude.unwrap().plugins, vec![LinkPlugin { name: "a".into(), description: "A".into() }]);
+        assert!(found.codex.is_none());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
 
     fn temp(name: &str) -> PathBuf {
         let dir =
@@ -344,36 +358,6 @@ mod tests {
         assert_eq!(home.plugins[1].version, "5.3.3");
         assert_eq!(home.mcp[0].summary, "codegraph serve --mcp");
         assert_eq!(home.mcp[1].summary, "https://example.test/mcp");
-        assert!(!serde_json::to_string(&home).unwrap().contains("secret"));
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn codex_home_reads_plugin_and_mcp_tables() {
-        let dir = temp("codex");
-        std::fs::write(
-            dir.join("config.toml"),
-            "model = \"gpt\"\n[plugins.\"pdf@openai-primary-runtime\"]\nenabled = true\n\
-             [plugins.\"off@personal\"]\nenabled = false\n[mcp_servers.codegraph]\ncommand = \"codegraph\"\n\
-             args = [\"serve\"]\n[mcp_servers.codegraph.env]\nTOKEN = \"secret\"\n[mcp_servers.web]\nurl = 'https://x.test'\n",
-        )
-        .unwrap();
-        let home = codex_home(&dir);
-        assert_eq!(home.plugins.len(), 2);
-        assert!(!home.plugins[0].enabled && home.plugins[0].id == "off@personal");
-        assert_eq!(
-            home.mcp,
-            vec![
-                McpServer {
-                    name: "codegraph".into(),
-                    summary: "codegraph".into()
-                },
-                McpServer {
-                    name: "web".into(),
-                    summary: "https://x.test".into()
-                }
-            ]
-        );
         assert!(!serde_json::to_string(&home).unwrap().contains("secret"));
         let _ = std::fs::remove_dir_all(dir);
     }

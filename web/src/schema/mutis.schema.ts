@@ -12,6 +12,7 @@ export const MutisSchema = z.object({
     auto_plan: z.boolean().default(true),
     plan_approval: z.boolean().default(false),
     delegate_checker: z.boolean().default(false),
+    deepseek_ui: z.boolean().default(false),
     verify_gate: z.boolean().default(false),
     auto_review: z.boolean().default(false),
     auto_fix: z.boolean().default(false),

@@ -174,7 +174,7 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
       <div className={styles.menuLabels}><span>File</span><span>Edit</span><span>View</span></div>
       <WindowControls />
       <div className={styles.rail}>
-        <div className={styles.collapse}><IconButton className={styles.collapseButton} aria-label={collapsed ? chatText.expandSidebar : chatText.collapseSidebar} aria-expanded={!collapsed} aria-controls="sidebar-content" onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}</IconButton></div>
+        <div className={styles.collapse}><IconButton className={styles.collapseButton} aria-label={collapsed ? chatText.expandSidebar : chatText.collapseSidebar} aria-expanded={!collapsed} aria-controls="sidebar-content" onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelLeftOpen size={23} /> : <PanelLeftClose size={23} />}</IconButton></div>
         <nav className={styles.railNav} aria-label={chatText.navigation}>
           <IconButton className={cn(styles.railButton, !id && !devChat && styles.active)} aria-label={chatText.home} disabled={streaming} onClick={reset}><Home size={23} /></IconButton>
           <IconButton className={cn(styles.railButton, !treeOpen && styles.active)} aria-label={chatText.history} aria-pressed={!treeOpen} aria-controls="sidebar-history" onClick={() => { setTreeOpen(false); setCollapsed(false); requestAnimationFrame(() => history.current?.focus()); }}><History size={23} /></IconButton>

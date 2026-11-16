@@ -37,6 +37,9 @@ pub struct Delegation {
     /// The coordinator marks a task it expects to be too hard for DeepSeek: Luna 2 codes it, Luna checks it.
     #[serde(default)]
     pub hard: bool,
+    /// The coordinator marks a tiny low-risk change (a few lines of styling or text): Luna does not check it, the coordinator reads the diff.
+    #[serde(default)]
+    pub trivial: bool,
 }
 
 /// Valid delegations in the text, plus a message for every block that did not parse.
@@ -54,6 +57,42 @@ pub fn extract(text: &str) -> (Vec<Delegation>, Vec<String>) {
         rest = &body[end..];
     }
     (tasks, errors)
+}
+
+/// Style and markup files by extension. Component files (.tsx, .jsx, .vue, .svelte) are NOT listed: the same file holds layout
+/// changes and plain data wiring, so the coordinator judges those (see `NO_UI_NOTE`).
+fn is_ui_file(path: &str) -> bool {
+    const UI: [&str; 5] = ["css", "scss", "sass", "less", "html"];
+    path.rsplit_once('.').is_some_and(|(_, ext)| UI.iter().any(|ui| ext.eq_ignore_ascii_case(ui)))
+}
+
+/// With the "DeepSeek may do UI" switch off, a task with UI files never runs on DeepSeek: it becomes `hard` (Luna 2) when
+/// the ladder exists, otherwise it goes back to the coordinator. Returns the tasks to run, notes for the coordinator and chat log lines.
+fn guard_ui(tasks: Vec<Delegation>, ui_allowed: bool, escalate: bool) -> (Vec<Delegation>, Vec<String>, Vec<String>) {
+    if ui_allowed {
+        return (tasks, Vec::new(), Vec::new());
+    }
+    let (mut kept, mut notes, mut logs, mut dropped) = (Vec::new(), Vec::new(), Vec::new(), Vec::<String>::new());
+    let key = |title: &str| title.trim().to_lowercase();
+    for mut task in tasks {
+        let blocked_by = task.depends_on.iter().find(|dep| dropped.contains(&key(dep))).cloned();
+        if let Some(dep) = blocked_by {
+            notes.push(format!("Task \"{}\" was not run: it depends on \"{dep}\", which you must implement yourself first (UI is off for DeepSeek). Resend it afterwards.", task.title.trim()));
+            dropped.push(key(&task.title));
+        } else if !task.hard && task.files.iter().any(|file| is_ui_file(file)) {
+            if escalate {
+                logs.push(format!("Giao diện: {} chuyển cho Luna 2 (DeepSeek không được làm giao diện)", task.title.trim()));
+                task.hard = true;
+                kept.push(task);
+            } else {
+                notes.push(format!("Task \"{}\" has UI files and DeepSeek may not do UI (setting). Implement it yourself.", task.title.trim()));
+                dropped.push(key(&task.title));
+            }
+        } else {
+            kept.push(task);
+        }
+    }
+    (kept, notes, logs)
 }
 
 /// Paths Codex named must be real before a worker run is spent: an existing file, or a new file in an existing folder.
@@ -89,6 +128,8 @@ fn worker_prompt(mutis: &MutisConfig, task: &Delegation, preloaded: &str, feedba
     if mutis.enabled && !mutis.worker_rules.trim().is_empty() {
         parts.push(mutis.worker_rules.clone());
     }
+    // Applied at runtime, so existing configurations and sessions get the language rule too.
+    parts.push(crate::core::rule::mutis_high_delegation::VIETNAMESE_RULE.to_owned());
     parts.push(format!("Task: {}", task.title.trim()));
     if !task.files.is_empty() {
         parts.push(format!("Files: {}", task.files.join(", ")));
@@ -127,16 +168,22 @@ pub(super) fn auto_retry_reason(result: &WorkerResult) -> Option<String> {
     Some(why)
 }
 
+/// The report the coordinator reads. The headings are Vietnamese (the app's own prose); the actor name, the task title,
+/// the attempt numbers, the diff and the original error text stay verbatim.
 pub(super) fn report(task: &Delegation, who: &str, attempt: usize, max: usize, auto: usize, result: &WorkerResult) -> String {
-    let auto_note = if auto > 0 { format!("The app already re-ran the worker {auto} time(s) before this report because a run changed no file or failed.\n") } else { String::new() };
-    let changed = if result.diff.trim().is_empty() {
-        "NONE - the worker did not change any file".to_owned()
+    let auto_note = if auto > 0 {
+        format!("Ứng dụng đã tự chạy lại worker {auto} lần trước báo cáo này vì một lần chạy không đổi file nào hoặc bị lỗi.\n")
     } else {
-        format!("yes, diff:\n{}", truncate_chars(&result.diff, 6000))
+        String::new()
     };
-    let status = result.error.as_deref().map_or("finished".to_owned(), |e| format!("ERROR: {e}"));
+    let changed = if result.diff.trim().is_empty() {
+        "KHÔNG - worker không thay đổi file nào".to_owned()
+    } else {
+        format!("có, diff:\n{}", truncate_chars(&result.diff, 6000))
+    };
+    let status = result.error.as_deref().map_or("đã xong".to_owned(), |e| format!("LỖI: {e}"));
     format!(
-        "{who} worker report for \"{}\" (attempt {attempt}/{max}, {} attempts left for this task):\n{auto_note}Status: {status}\nFiles changed: {changed}\nWorker summary:\n{}",
+        "Báo cáo của worker {who} cho \"{}\" (lần {attempt}/{max}, còn {} lần cho task này):\n{auto_note}Trạng thái: {status}\nCác file đã đổi: {changed}\nTóm tắt của worker:\n{}",
         task.title.trim(),
         max.saturating_sub(attempt),
         truncate_chars(&result.summary, 3000),
@@ -516,8 +563,18 @@ impl Backend for Live {
         self.can_edit
     }
 
+    fn actor_model(&self, actor: Actor) -> Option<String> {
+        match actor {
+            Actor::DeepSeek => Some(self.model.clone()),
+            Actor::Luna | Actor::Luna2 => self.checker.as_ref().map(|(_, model, _)| model.clone()),
+        }
+    }
+
     async fn board(&self, rows: &[Row]) {
-        let tasks: Vec<_> = rows.iter().map(|row| serde_json::json!({ "title": row.title, "state": row.state, "attempt": row.attempt, "check": row.check })).collect();
+        let tasks: Vec<_> = rows.iter().map(|row| serde_json::json!({
+            "title": row.title, "state": row.state, "attempt": row.attempt, "check": row.check,
+            "actor": row.actor, "model": row.model, "checker": row.checker, "checker_model": row.checker_model,
+        })).collect();
         let _ = self.events.send(ProviderEvent { name: "tasks", data: serde_json::json!({ "tasks": tasks }) }).await;
     }
 
@@ -599,10 +656,17 @@ impl super::Provider for DelegateProvider {
                 request.session_id = session;
             }
             let (tasks, errors) = extract(&text);
-            if cancel.is_cancelled() || (tasks.is_empty() && errors.is_empty()) {
+            let (tasks, ui_notes, ui_logs) = guard_ui(tasks, request.mutis.deepseek_ui, live.can_escalate());
+            for line in ui_logs {
+                let _ = events.send(ProviderEvent::text("log", line)).await;
+            }
+            if cancel.is_cancelled() || (tasks.is_empty() && errors.is_empty() && ui_notes.is_empty()) {
                 return Ok(());
             }
             let mut reply = errors.iter().map(|e| format!("Problem: {e}. Resend it as valid JSON.\n")).collect::<String>();
+            for note in &ui_notes {
+                reply.push_str(&format!("{note}\n\n"));
+            }
             let outcome = run_round(&live, tasks, &mut attempts).await;
             if cancel.is_cancelled() {
                 return Ok(());
@@ -640,6 +704,31 @@ mod tests {
     }
 
     #[test]
+    fn ui_tasks_never_go_to_deepseek_while_the_switch_is_off() {
+        let task = |title: &str, files: &[&str], deps: &[&str]| Delegation {
+            title: title.into(), files: files.iter().map(|f| f.to_string()).collect(), instructions: "i".into(), acceptance: vec![],
+            depends_on: deps.iter().map(|d| d.to_string()).collect(), hard: false, trivial: false,
+        };
+        assert!(is_ui_file("web/src/a.CSS") && is_ui_file("x.scss") && is_ui_file("page.html") && !is_ui_file("web/src/a.tsx") && !is_ui_file("web/src/a.ts") && !is_ui_file("src/a.rs") && !is_ui_file("Makefile"));
+        let tasks = || vec![task("logic", &["src/a.rs"], &[]), task("layout", &["web/a.css", "src/b.rs"], &[]), task("after", &["src/c.rs"], &["Layout"])];
+        // Switch on: untouched.
+        let (kept, notes, logs) = guard_ui(tasks(), true, true);
+        assert_eq!((kept.len(), notes.len(), logs.len()), (3, 0, 0));
+        assert!(kept.iter().all(|t| !t.hard));
+        // Off with a ladder: the UI task becomes hard (Luna 2); the others stay on DeepSeek.
+        let (kept, notes, logs) = guard_ui(tasks(), false, true);
+        assert_eq!(kept.iter().map(|t| (t.title.as_str(), t.hard)).collect::<Vec<_>>(), [("logic", false), ("layout", true), ("after", false)]);
+        assert!(notes.is_empty() && logs.len() == 1);
+        // Off with no ladder: the UI task and what depends on it go back to the coordinator.
+        let (kept, notes, _) = guard_ui(tasks(), false, false);
+        assert_eq!(kept.iter().map(|t| t.title.as_str()).collect::<Vec<_>>(), ["logic"]);
+        assert_eq!(notes.len(), 2);
+        // A task the coordinator already marked hard is left alone.
+        let hard = Delegation { hard: true, ..task("layout", &["a.css"], &[]) };
+        assert_eq!(guard_ui(vec![hard], false, false).0.len(), 1);
+    }
+
+    #[test]
     fn extracts_valid_blocks_and_reports_broken_ones() {
         let text = "Plan.\n```mutis-delegate\n{\"title\":\"A\",\"files\":[\"src/a.rs\"],\"instructions\":\"do a\",\"acceptance\":[\"x\"]}\n```\nand\n```mutis-delegate\n{not json}\n```\n```mutis-delegate\n{\"title\":\"B\",\"instructions\":\"do b\"}\n```";
         let (tasks, errors) = extract(text);
@@ -652,13 +741,31 @@ mod tests {
 
     #[test]
     fn report_flags_a_worker_that_changed_nothing() {
-        let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false };
+        let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
         let idle = WorkerResult { summary: "I only read files".into(), diff: String::new(), error: None, refused: Vec::new() };
         let text = report(&task, "DeepSeek", 2, 4, 1, &idle);
-        assert!(text.contains("attempt 2/4") && text.contains("NONE") && text.contains("2 attempts left"));
+        assert!(text.contains("lần 2/4") && text.contains("KHÔNG") && text.contains("còn 2 lần"));
         let edited = WorkerResult { summary: "done".into(), diff: "+ new line".into(), error: Some("boom".into()), refused: Vec::new() };
         let text = report(&task, "DeepSeek", 4, 4, 0, &edited);
-        assert!(text.contains("ERROR: boom") && text.contains("+ new line") && text.contains("0 attempts left"));
+        assert!(text.contains("LỖI: boom") && text.contains("+ new line") && text.contains("còn 0 lần"));
+    }
+
+    #[test]
+    fn report_headings_are_vietnamese_and_keep_the_evidence() {
+        let task = Delegation { title: "Sửa đăng nhập".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
+        let edited = WorkerResult { summary: "đã sửa".into(), diff: "+ let a = 1;".into(), error: None, refused: Vec::new() };
+        let text = report(&task, "Luna 2", 1, 3, 2, &edited);
+        // App-generated headings are Vietnamese.
+        assert!(text.contains("Báo cáo của worker Luna 2"), "{text}");
+        assert!(text.contains("Trạng thái: đã xong") && text.contains("Các file đã đổi: có, diff:"));
+        assert!(text.contains("Tóm tắt của worker:") && text.contains("Ứng dụng đã tự chạy lại worker 2 lần"));
+        // Identifiers, the attempt counter and the evidence stay verbatim.
+        assert!(text.contains("\"Sửa đăng nhập\"") && text.contains("lần 1/3") && text.contains("còn 2 lần"));
+        assert!(text.contains("+ let a = 1;") && text.contains("đã sửa"));
+        // No English heading survives.
+        for old in ["worker report", "Status:", "Files changed:", "Worker summary:", "attempts left", "NONE -"] {
+            assert!(!text.contains(old), "old English label {old} in {text}");
+        }
     }
 
     #[test]
@@ -687,11 +794,30 @@ mod tests {
 
     #[test]
     fn worker_prompt_carries_the_task_files_and_criteria() {
-        let task = Delegation { title: "T".into(), files: vec!["a.rs".into(), "b.rs".into()], instructions: "change x".into(), acceptance: vec!["builds".into()], depends_on: vec![], hard: false };
+        let task = Delegation { title: "T".into(), files: vec!["a.rs".into(), "b.rs".into()], instructions: "change x".into(), acceptance: vec!["builds".into()], depends_on: vec![], hard: false, trivial: false };
         let prompt = worker_prompt(&MutisConfig::default(), &task, "FILE: a.rs\nfn a() {}\n```\n", None);
         assert!(prompt.contains("Task: T") && prompt.contains("Files: a.rs, b.rs") && prompt.contains("- builds"));
         assert!(prompt.contains("FILE: a.rs") && !worker_prompt(&MutisConfig::default(), &task, "", Some("it changed no file")).contains("already read"));
         assert!(worker_prompt(&MutisConfig::default(), &task, "", Some("it changed no file")).contains("previous attempt failed: it changed no file"));
+    }
+
+    #[test]
+    fn worker_prompt_requires_vietnamese_prose_even_with_english_instructions() {
+        let task = Delegation {
+            title: "T".into(),
+            files: vec!["a.rs".into()],
+            instructions: "change x".into(),
+            acceptance: vec![],
+            depends_on: vec![],
+            hard: false,
+            trivial: false,
+        };
+        let prompt = worker_prompt(&MutisConfig::default(), &task, "", None);
+        // Applied at runtime, so a saved configuration without the rule still receives it.
+        assert!(prompt.contains(crate::core::rule::mutis_high_delegation::VIETNAMESE_RULE));
+        assert!(prompt.contains("user-facing word in Vietnamese") && prompt.contains("even when the task instructions are in English"));
+        // The English task text and the internal instructions are untouched.
+        assert!(prompt.contains("Instructions:\nchange x") && prompt.contains("Make the edits yourself with the file tools"));
     }
 
     #[test]
@@ -710,7 +836,7 @@ mod tests {
 
     #[test]
     fn a_check_keeps_one_identity_from_start_to_verdict() {
-        let task = Delegation { title: " Fix Login ".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false };
+        let task = Delegation { title: " Fix Login ".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
         // The same check keeps its id in `check` and `announce_check`; a retry and another task never collide.
         assert_eq!(check_id(&task, 1), "fix login#1");
         assert_eq!(check_id(&task, 1), check_id(&task, 1));
@@ -721,7 +847,7 @@ mod tests {
 
     #[test]
     fn checker_activity_carries_luna_identity_and_never_a_chat_turn() {
-        let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false };
+        let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
         let event = checker_activity("a#1", "start", &task, 1, "gpt-5-codex", "");
         assert_eq!(event.name, "checker_activity");
         assert!(event.data.get("id").is_none());

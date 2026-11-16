@@ -6,5 +6,5 @@ pub const RULE: &str = concat!(
     "- The user agrees: build .codegraph, read it, and only then start working.\n",
     "- The user declines: work as usual, do not ask again.\n",
     "- Read .codegraph only once at the start of the session, do not re-read it on every turn.\n",
-    "- Only if you forgot its content, or the code has changed a lot: ask the user whether they want to rebuild .codegraph and read it again. If they agree, build and read it again; if they decline, continue with what you already know."
+    "- The app syncs the index itself before this request; the status line says whether that worked. Never ask the user to rebuild because the code changed. Only if the status says the sync failed and the results look wrong, tell the user the index may be out of date."
 );

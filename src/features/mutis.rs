@@ -168,6 +168,7 @@ pub fn apply_setting_change(
         "mutis.auto_plan" => boolean!(auto_plan),
         "mutis.plan_approval" => boolean!(plan_approval),
         "mutis.delegate_checker" => boolean!(delegate_checker),
+        "mutis.deepseek_ui" => boolean!(deepseek_ui),
         _ if path.starts_with("mutis.roles.") => {
             let mut parts = path.split('.');
             let _ = parts.next();

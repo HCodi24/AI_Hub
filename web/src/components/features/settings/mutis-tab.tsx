@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { mutisApi } from "@/apis/mutis.api";
 import { Button } from "@/components/button/button";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { Switch } from "@/components/button/switch";
 import { notify } from "@/components/toast/toast";
-import type { Mutis } from "@/schema/mutis.schema";
+import { MutisSchema, type Mutis } from "@/schema/mutis.schema";
 import type { Provider } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
 import { MutisDiagnosis } from "./mutis-diagnosis";
@@ -13,13 +13,14 @@ import { MutisStats } from "./mutis-stats";
 import { VerifyProject } from "./verify-project";
 import { errorText, useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
+import { useSettingsAutosave } from "./use-settings-autosave";
 import { effortsFor, effortFor } from "@/constants/chat";
 const ROLES = ["lead", "big", "small"] as const;
-type BoolKey = "auto_plan" | "plan_approval" | "delegate_checker" | "verify_gate" | "auto_review" | "auto_fix" | "retry_api" | "codex_watchdog" | "codex_auto_resume" | "deepseek_agent" | "event_log";
+type BoolKey = "auto_plan" | "plan_approval" | "delegate_checker" | "deepseek_ui" | "verify_gate" | "auto_review" | "auto_fix" | "retry_api" | "codex_watchdog" | "codex_auto_resume" | "deepseek_agent" | "event_log";
 type NumKey = "fix_rounds_max" | "retry_attempts" | "retry_base_ms" | "watchdog_minutes" | "resume_max" | "deepseek_max_file_lines" | "deepseek_max_steps" | "debate_rounds";
 /** One switch with the numeric limits that only matter while it is on. */
 const SWITCHES: { key: BoolKey; numbers?: { key: NumKey; min: number; max: number }[] }[] = [
-  { key: "auto_plan" }, { key: "plan_approval" }, { key: "verify_gate" }, { key: "auto_review" },
+  { key: "auto_plan" }, { key: "plan_approval" }, { key: "deepseek_ui" }, { key: "verify_gate" }, { key: "auto_review" },
   { key: "auto_fix", numbers: [{ key: "fix_rounds_max", min: 0, max: 5 }] },
   { key: "retry_api", numbers: [{ key: "retry_attempts", min: 1, max: 5 }, { key: "retry_base_ms", min: 100, max: 60000 }] },
   { key: "codex_watchdog", numbers: [{ key: "watchdog_minutes", min: 1, max: 60 }] },
@@ -29,61 +30,59 @@ const SWITCHES: { key: BoolKey; numbers?: { key: NumKey; min: number; max: numbe
 ];
 const modelsOf = (providers: Provider[], id: string) => providers.find(p => p.id === id)?.models || [];
 /** The High-level independent checker: Codex sources only, because the checker keeps and resumes its own Codex thread. */
-function CheckerRow({ providers, value, enabled, change }: { providers: Provider[]; value: Mutis["high_checker"]; enabled: boolean; change: (patch: Partial<Mutis["high_checker"]>) => void }) {
+function CheckerRow({ providers, value, enabled, change }: { providers: Provider[]; value: Mutis["high_checker"]; enabled: boolean; change: (patch: Partial<Mutis["high_checker"]>, immediate?: boolean) => void }) {
   return <div className={styles.row} aria-disabled={!enabled}><strong>{t.mutis.checkerRole}</strong>
-    <label>{t.mutis.provider}<select disabled={!enabled} value={value.provider_id} onChange={event => change({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" })}>
+    <label>{t.mutis.provider}<select disabled={!enabled} value={value.provider_id} onChange={event => change({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
       <option value="" />{providers.filter(p => p.kind === "codex_cli").map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
     <label>{t.mutis.model}<input disabled={!enabled} list="mutis-models-checker" value={value.model} onChange={event => change({ model: event.target.value })} />
       <datalist id="mutis-models-checker">{modelsOf(providers, value.provider_id).map(m => <option key={m} value={m} />)}</datalist></label>
-    <label>{t.mutis.effort}<select disabled={!enabled} value={effortFor(value.model, value.effort, "codex_cli")} onChange={event => change({ effort: event.target.value as Mutis["high_checker"]["effort"] })}>
+    <label>{t.mutis.effort}<select disabled={!enabled} value={effortFor(value.model, value.effort, "codex_cli")} onChange={event => change({ effort: event.target.value as Mutis["high_checker"]["effort"] }, true)}>
       {effortsFor(value.model, "codex_cli").map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>;
 }
 export function MutisTab() {
   const client = useQueryClient();
   const { query: config } = useSettingsConfig();
   const query = useQuery({ queryKey: ["mutis"], queryFn: ({ signal }) => mutisApi.get(signal) });
-  const [draft, setDraft] = useState<Mutis | null>(null); const [busy, setBusy] = useState(false);
-  useEffect(() => { if (query.data) setDraft(query.data); }, [query.data]);
-  if (query.isPending || !draft) return <Skeleton card />;
+  const autosave = useSettingsAutosave<Mutis>({ key: "ai-hub:settings:mutis", initial: query.data ?? MutisSchema.parse({ enabled: false }),
+    validate: (value): value is Mutis => MutisSchema.safeParse(value).success,
+    save: async value => { const saved = await mutisApi.put(value); client.setQueryData(["mutis"], saved); return saved; },
+    onError: error => notify(errorText(error, t.error)) });
+  const { draft, busy } = autosave;
+  const hydrate = autosave.hydrate;
+  useEffect(() => { if (query.data) hydrate(query.data); }, [query.data, hydrate]);
+  if (query.isPending && !query.data) return <Skeleton card />;
   if (query.error) return <p role="alert">{query.error.message}</p>;
   const providers = config.data?.providers || [];
-  const edit = (patch: Partial<Mutis>) => setDraft(current => current && ({ ...current, ...patch }));
-  async function save(next: Mutis | null = draft) {
-    if (!next) return;
-    setBusy(true);
-    try { client.setQueryData(["mutis"], await mutisApi.put(next)); notify(t.saved); }
-    catch (error) { notify(errorText(error, t.error)); } finally { setBusy(false); }
-  }
-  // A switch applies at once like the switches of the other tabs; it saves the last saved settings plus that one change, never other unsaved edits.
-  function toggle(patch: Partial<Mutis>) {
-    edit(patch);
-    if (query.data) void save({ ...query.data, ...patch });
-  }
-  return <form className={styles.form} onSubmit={event => { event.preventDefault(); void save(); }}>
+  const edit = (patch: Partial<Mutis>, immediate = false) => autosave.update(current => ({ ...current, ...patch }), immediate);
+  return <form className={styles.form} onSubmit={event => { event.preventDefault(); void autosave.flush(); }}>
     <p>{t.mutis.levelHint}</p>
     {(["roles", "high_roles"] as const).map(profile => <fieldset key={profile} className={styles.group}><legend>{profile === "roles" ? t.mutis.maxRoles : t.mutis.highRoles}</legend>
       {ROLES.map(role => { const value = draft[profile][role];
-        const setRole = (patch: Partial<typeof value>) => edit({ [profile]: { ...draft[profile], [role]: { ...value, ...patch } } });
+        const setRole = (patch: Partial<typeof value>, immediate = false) => autosave.update(current => ({
+          ...current, [profile]: { ...current[profile], [role]: { ...current[profile][role], ...patch } }
+        }), immediate);
         return <div key={role} className={styles.row}><strong>{t.mutis.role[role]}</strong>
-          <label>{t.mutis.provider}<select value={value.provider_id} onChange={event => setRole({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" })}>
+          <label>{t.mutis.provider}<select value={value.provider_id} onChange={event => setRole({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
             <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
           <label>{t.mutis.model}<input list={`mutis-models-${role}`} value={value.model} onChange={event => setRole({ model: event.target.value })} />
             <datalist id={`mutis-models-${role}`}>{modelsOf(providers, value.provider_id).map(m => <option key={m} value={m} />)}</datalist></label>
-          <label>{t.mutis.effort}<select value={effortFor(value.model, value.effort, providers.find(p => p.id === value.provider_id)?.kind)} onChange={event => setRole({ effort: event.target.value as typeof value.effort })}>
+          <label>{t.mutis.effort}<select value={effortFor(value.model, value.effort, providers.find(p => p.id === value.provider_id)?.kind)} onChange={event => setRole({ effort: event.target.value as typeof value.effort }, true)}>
             {effortsFor(value.model, providers.find(p => p.id === value.provider_id)?.kind).map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>; })}
       {profile === "high_roles" && <>
-        <label className={styles.check}><Switch checked={draft.delegate_checker} onChange={event => toggle({ delegate_checker: event.target.checked })} /><span>{t.mutis.delegate_checker}</span></label>
-        <CheckerRow providers={providers} value={draft.high_checker} enabled={draft.delegate_checker} change={patch => edit({ high_checker: { ...draft.high_checker, ...patch } })} />
+        <label className={styles.check}><Switch checked={draft.delegate_checker} onChange={event => edit({ delegate_checker: event.target.checked }, true)} /><span>{t.mutis.delegate_checker}</span></label>
+        <CheckerRow providers={providers} value={draft.high_checker} enabled={draft.delegate_checker} change={(patch, immediate) => autosave.update(current => ({ ...current, high_checker: { ...current.high_checker, ...patch } }), immediate)} />
       </>}
     </fieldset>)}
     <fieldset className={styles.group}><legend>{t.mutis.routing}</legend>
       <div className={styles.grid}>{draft.routing.map((rule, index) => <label key={rule.kind}>{t.mutis.kinds[rule.kind] || rule.kind}
-        <select value={rule.role} onChange={event => edit({ routing: draft.routing.map((item, i) => i === index ? { ...item, role: event.target.value } : item) })}>
+        <select value={rule.role} onChange={event => autosave.update(current => ({
+          ...current, routing: current.routing.map((item, i) => i === index ? { ...item, role: event.target.value } : item)
+        }), true)}>
           {ROLES.map(role => <option key={role} value={role}>{t.mutis.role[role]}</option>)}</select></label>)}</div>
     </fieldset>
     <fieldset className={styles.group}><legend>{t.mutis.switches}</legend>
       {SWITCHES.map(item => <div key={item.key} className={styles.switch}>
-        <label className={styles.check}><Switch checked={draft[item.key]} onChange={event => toggle({ [item.key]: event.target.checked })} /><span>{t.mutis[item.key]}</span></label>
+        <label className={styles.check}><Switch checked={draft[item.key]} onChange={event => edit({ [item.key]: event.target.checked }, true)} /><span>{t.mutis[item.key]}</span></label>
         {item.numbers?.map(number => <label key={number.key}>{t.mutis[number.key]}<input type="number" min={number.min} max={number.max}
           value={draft[number.key]} disabled={!draft[item.key]} onChange={event => edit({ [number.key]: Number(event.target.value) })} /></label>)}
       </div>)}
@@ -93,7 +92,7 @@ export function MutisTab() {
       <label>{t.mutis.verify_ignore}<textarea rows={2} spellCheck={false} value={draft.verify_ignore.join("\n")}
         onChange={event => edit({ verify_ignore: event.target.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean) })} /></label>
       <div className={styles.grid}>
-        <label>{t.mutis.reviewer}<select value={draft.reviewer_provider_id} onChange={event => edit({ reviewer_provider_id: event.target.value, reviewer_model: modelsOf(providers, event.target.value)[0] || "" })}>
+        <label>{t.mutis.reviewer}<select value={draft.reviewer_provider_id} onChange={event => edit({ reviewer_provider_id: event.target.value, reviewer_model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
           <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
         <label>{t.mutis.reviewerModel}<input list="mutis-reviewer-models" value={draft.reviewer_model} onChange={event => edit({ reviewer_model: event.target.value })} />
           <datalist id="mutis-reviewer-models">{modelsOf(providers, draft.reviewer_provider_id).map(m => <option key={m} value={m} />)}</datalist></label>

@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/skeleton/skeleton";
 import { notify } from "@/components/toast/toast";
 import type { AddonChange, AddonHome, AddonKind } from "@/schema/addons.schema";
 import { settingsText as t } from "@/text/settings";
+import { AddonLink, CodexPlugins } from "./addon-link";
 import { McpSection } from "./mcp-section";
 import { errorText } from "./use-settings";
 import styles from "./settings.module.css";
@@ -16,11 +17,13 @@ const items = (home: AddonHome, kind: AddonKind): Item[] => kind === "plugin"
   : kind === "skill" ? home.skills.map(name => ({ name, detail: "" }))
     : home.mcp.map(server => ({ name: server.name, detail: server.summary }));
 const KINDS: AddonKind[] = ["plugin", "skill", "mcp"];
-/** Add-ons Claude Code and Codex load inside AI Hub, and copying the user's own Claude Code add-ons across. */
+const TABS = ["claude", "codex", "app"] as const;
+type Tab = (typeof TABS)[number];
+/** Add-ons Claude Code loads inside AI Hub, and copying the user's own Claude Code add-ons across. */
 export function AddonsTab() {
   const client = useQueryClient();
   const query = useQuery({ queryKey: ["addons"], queryFn: ({ signal }) => addonsApi.overview(signal) });
-  const [busy, setBusy] = useState(""); const [output, setOutput] = useState(""); const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(""); const [output, setOutput] = useState(""); const [confirm, setConfirm] = useState(""); const [tab, setTab] = useState<Tab>("claude");
   if (query.isPending) return <Skeleton card />;
   if (query.error) return <p role="alert">{query.error.message}</p>;
   const data = query.data;
@@ -41,55 +44,51 @@ export function AddonsTab() {
   const missing = KINDS.flatMap(kind => items(data.personal, kind)
     .filter(item => !items(data.hub, kind).some(have => have.name === item.name))
     .map(item => ({ target: "claude", kind, name: item.name, action: "add" }) satisfies AddonChange));
+  function onTabKey(event: React.KeyboardEvent<HTMLButtonElement>) {
+    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    event.preventDefault(); const next = TABS[(TABS.indexOf(tab) + step + TABS.length) % TABS.length];
+    setTab(next); document.getElementById(`addons-tab-${next}`)?.focus();
+  }
   return <div className={styles.form}>
-    <section className={styles.group} aria-label={t.addons.claude}>
-      <header className={styles.cardHead}><h3>{t.addons.claude}</h3>
-        {missing.length > 0 && <Button size="sm" variant="primary" disabled={Boolean(busy)} onClick={() => void apply(missing)}>
-          <Plus size={16} aria-hidden="true" />{t.addons.addAll} ({missing.length})</Button>}</header>
-      <p className={styles.note}>{t.addons.intro}</p>
-      {KINDS.map(kind => {
-        const mine = items(data.personal, kind); const hub = items(data.hub, kind);
-        // Everything the user has, plus anything that exists only in AI Hub's Claude.
-        const rows = [...mine.map(item => ({ ...item, inHub: hub.some(have => have.name === item.name), mine: true })),
-          ...hub.filter(item => !mine.some(have => have.name === item.name)).map(item => ({ ...item, inHub: true, mine: false }))];
-        return <div key={kind}><h4>{t.addons.kinds[kind]}</h4>
-          {!rows.length && <p className={styles.note}>{t.addons.none}</p>}
-          <ul className={styles.rows}>{rows.map(row => {
-            const add: AddonChange = { target: "claude", kind, name: row.name, action: "add" };
-            const remove: AddonChange = { target: "claude", kind, name: row.name, action: "remove" };
-            const working = busy === key(add) || busy === key(remove);
-            return <li key={row.name}>
-              <span className={styles.rowText}><strong>{row.name}</strong>{row.detail && <small title={row.detail}>{row.detail}</small>}</span>
-              <span className={styles.badge} data-on={row.inHub}>{row.inHub ? (row.mine ? t.addons.inHub : t.addons.onlyHub) : t.addons.notInHub}</span>
-              {working ? <Loader2 size={16} className="spin" aria-label={t.addons.adding} />
+    <AddonLink onOutput={setOutput} />
+    <div className={styles.subTabs} role="tablist" aria-label={t.addons.tabsLabel}>
+      {TABS.map(id => <button key={id} type="button" role="tab" id={`addons-tab-${id}`} aria-selected={tab === id} aria-controls={`addons-panel-${id}`}
+        tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)} onKeyDown={onTabKey}>{t.addons.tabs[id]}</button>)}
+    </div>
+    <div role="tabpanel" id={`addons-panel-${tab}`} aria-labelledby={`addons-tab-${tab}`} className={styles.form}>
+      {tab === "claude" && <section className={styles.group} aria-label={t.addons.claude}>
+        {missing.length > 0 && <div className={styles.banner}><span>{t.addons.banner(missing.length)}</span>
+          <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply(missing)}><Plus size={16} aria-hidden="true" />{t.addons.addAll}</Button></div>}
+        {KINDS.map(kind => {
+          const hub = items(data.hub, kind);
+          // What the user's own Claude Code has and MutiS does not yet: the source for "Thêm".
+          const available = items(data.personal, kind).filter(item => !hub.some(have => have.name === item.name));
+          const row = (item: Item, inHub: boolean) => {
+            const add: AddonChange = { target: "claude", kind, name: item.name, action: "add" };
+            const remove: AddonChange = { target: "claude", kind, name: item.name, action: "remove" };
+            return <li key={item.name}>
+              <span className={styles.rowText}><strong>{item.name}</strong>{item.detail && <small title={item.detail}>{item.detail}</small>}</span>
+              {busy === key(add) || busy === key(remove) ? <Loader2 size={16} className="spin" aria-label={t.addons.adding} />
                 : confirm === key(remove) ? <><Button size="sm" variant="danger" onClick={() => void apply([remove])}>{t.addons.remove}</Button>
                   <Button size="sm" onClick={() => setConfirm("")}>{t.cancel}</Button></>
-                  : row.inHub ? <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={t.addons.confirmRemove(row.name)}
+                  : inHub ? <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={t.addons.confirmRemove(item.name)}
                     onClick={() => setConfirm(key(remove))}><Trash2 size={16} aria-hidden="true" />{t.addons.remove}</Button>
                     : <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply([add])}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
-            </li>; })}</ul></div>;
-      })}
-      <p className={styles.note}>{t.addons.pluginNote}</p>
-    </section>
-    <section className={styles.group} aria-label={t.addons.codex}><h3>{t.addons.codex}</h3>
-      <p className={styles.note}>{t.addons.codexIntro}</p>
-      <h4>{t.addons.codexMcp}</h4>
-      <ul className={styles.rows}>
-        {data.codex.mcp.map(server => <li key={server.name}><span className={styles.rowText}><strong>{server.name}</strong>
-          <small title={server.summary}>{server.summary}</small></span><span className={styles.badge} data-on="true">{t.addons.inHub}</span></li>)}
-        {data.personal.mcp.filter(server => !data.codex.mcp.some(have => have.name === server.name)).map(server => {
-          const add: AddonChange = { target: "codex", kind: "mcp", name: server.name, action: "add" };
-          return <li key={server.name}><span className={styles.rowText}><strong>{server.name}</strong>
-            <small title={server.summary}>{t.addons.from} · {server.summary}</small></span>
-            {busy === key(add) ? <Loader2 size={16} className="spin" aria-label={t.addons.adding} />
-              : <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply([add])}><Plus size={16} aria-hidden="true" />{t.addons.addToCodex}</Button>}</li>; })}
-      </ul>
-      <h4>{t.addons.codexPlugins}</h4>
-      <ul className={styles.rows}>{data.codex.plugins.map(plugin => <li key={plugin.id}>
-        <span className={styles.rowText}><strong>{plugin.id}</strong></span>
-        <span className={styles.badge} data-on={plugin.enabled}>{plugin.enabled ? t.addons.inHub : t.addons.disabled}</span></li>)}</ul>
-    </section>
-    <McpSection />
-    {output && <section aria-label={t.addons.output}><h4>{t.addons.output}</h4><pre className={styles.log} aria-live="polite">{output}</pre></section>}
+            </li>;
+          };
+          return <div key={kind}><h4>{t.addons.kinds[kind]}</h4>
+            {!hub.length && <p className={styles.note}>{t.addons.emptyHub}</p>}
+            <ul className={styles.rows}>{hub.map(item => row(item, true))}</ul>
+            {available.length > 0 && <details><summary>{t.addons.available(available.length)}</summary>
+              <ul className={styles.rows}>{available.map(item => row(item, false))}</ul></details>}
+          </div>;
+        })}
+        <p className={styles.note}>{t.addons.pluginNote}</p>
+      </section>}
+      {tab === "codex" && <CodexPlugins onOutput={setOutput} />}
+      {tab === "app" && <McpSection />}
+    </div>
+    {output && <details key={output} open><summary>{t.addons.output}</summary><pre className={styles.log} aria-live="polite">{output}</pre></details>}
   </div>;
 }

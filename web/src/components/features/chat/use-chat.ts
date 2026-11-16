@@ -35,8 +35,13 @@ export function useChat() {
     if (!mutis && (!settings.provider_id || !settings.model.trim())) {
       useChatStore.setState({ error: chatText.selectRequired }); return false;
     }
+    const initialProviderId = mutis
+      ? (rolesFor(mutis, settings.effort)?.lead || mutis.roles.lead).provider_id
+      : settings.provider_id;
+    const initialProvider = config.data?.providers.find(item => item.id === initialProviderId)?.kind || "";
+    // Seed the assistant identity from the selected source; backend events may replace this prediction.
     // The message goes on screen at once; everything that waits for the server happens after it, while "streaming" blocks other actions.
-    state.begin(text, attachments);
+    state.begin(text, attachments, initialProvider);
     const current = useChatStore.getState();
     const controller = new AbortController(); activeChatAbort = controller;
     try {

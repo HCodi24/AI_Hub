@@ -42,7 +42,7 @@ type ChatState = {
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
   load: (chat: ChatRecord) => void; reset: () => void;
-  begin: (text: string, attachments?: { id: string; mime: string }[]) => void; event: (event: string, data: StreamData) => void;
+  begin: (text: string, attachments?: { id: string; mime: string }[], initialProvider?: string) => void; event: (event: string, data: StreamData) => void;
   finish: (error?: string) => void; setDrawer: (open: boolean) => void;
 };
 const defaults: Settings = { provider_id: "", model: "", folder: "", permission: "write", effort: "medium", file_tools: "none", dev_chat: false };
@@ -105,13 +105,13 @@ export const useChatStore = create<ChatState>((set) => ({
       return { id: "", messages: [], status: {}, tasks: [], checkers: [], error: "", drawer: false, settings };
     });
   },
-  begin: (text, attachments = []) => set((state) => {
+  begin: (text, attachments = [], initialProvider = "") => set((state) => {
     const id = state.id || crypto.randomUUID();
     rememberActiveChat(id);
     if (!state.id) saveModelSelection(id, state.settings);
     return { id, streaming: true, status: {}, tasks: [], checkers: [], error: "",
       messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text, attachments }),
-        ChatMessageSchema.parse({ role: "assistant", content: "" })] };
+        ChatMessageSchema.parse({ role: "assistant", content: "", provider: initialProvider })] };
   }),
   event: (event, data) => set((state) => {
     if (event === "turn") {
@@ -135,8 +135,8 @@ export const useChatStore = create<ChatState>((set) => ({
     }
     if (event === "status") {
       const last = state.messages.at(-1);
-      // The reply's provider decides its avatar while it streams (the saved copy has it from the server).
-      const provider = data.provider_kind && last && !last.provider ? data.provider_kind : undefined;
+      // The selected provider seeds the assistant identity; backend status may replace that prediction.
+      const provider = data.provider_kind && last?.role === "assistant" && state.streaming ? data.provider_kind : undefined;
       // The model is stamped on the reply that is actually streaming; heartbeats never relabel it.
       const model = data.model && last?.role === "assistant" ? data.model : undefined;
       const messages = last && (provider || model)

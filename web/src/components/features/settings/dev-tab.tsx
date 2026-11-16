@@ -82,12 +82,10 @@ export function DevTab() {
         <div className={styles.actions}>
           <Button disabled={Boolean(busy)} onClick={() => void stream("web-build")}>{t.dev.webBuild}</Button>
           <Button variant="primary" disabled={Boolean(busy)} onClick={() => void stream("rebuild")}>{t.dev.rebuild}</Button>
+          <Button disabled={Boolean(busy)} onClick={() => void stream("test")}>{t.dev.test}</Button>
+          <Button disabled={Boolean(busy)} onClick={() => void stream("release")}>{t.dev.release}</Button>
         </div>
         {busy && <Button variant="danger" onClick={() => abort.current?.abort()}>{t.extensions.stop}</Button>}
-      </div>
-      <div className={styles.actions}>
-        <Button disabled={Boolean(busy)} onClick={() => void stream("test")}>{t.dev.test}</Button>
-        <Button disabled={Boolean(busy)} onClick={() => void stream("release")}>{t.dev.release}</Button>
       </div>
       <label className={cn(styles.check, styles.devSwitch)}><Switch checked={settings.data?.auto_rebuild ?? false} disabled={!settings.data}
         onChange={event => void devApi.saveSettings(event.target.checked).then(value => client.setQueryData(["dev-settings"], value)).catch(error => notify(errorText(error, t.error)))} />

@@ -1,27 +1,24 @@
-//! Pet sprite sheets for the chat avatars. They are never shipped with this app:
-//! - Codex pets are fetched from OpenAI's public pet CDN on first use (like the Codex TUI) and cached.
-//! - Third-party pets (Clawd) are downloaded only when the user presses "Tải" in Settings › Tiện ích.
-//! - Pets the user installed into Codex (`~/.codex/pets/<name>/spritesheet.png|webp`) are read from there.
+//! Pet sprite sheets for the chat avatars. None ship with this app: the user uploads a WebP sheet or imports a pet folder in Settings,
+//! and each pet lives in `<app data>/pets/<id>/`.
 use crate::{
     api::{ApiError, ApiResult},
     app::AppState,
 };
 use axum::{
-    extract::{Path, State},
+    body::Bytes,
+    extract::{Path, Query, State},
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde_json::{json, Value};
-use std::{fs, path::PathBuf, time::Duration};
+use std::{fs, path::PathBuf};
 
-mod catalog;
-
-/// Same cap as the Codex TUI.
+/// Largest sprite sheet accepted.
 const MAX_BYTES: usize = 4 * 1024 * 1024;
-/// Every sprite sheet is 8 columns of 192 px; rows are 208 px each.
+/// Every sprite sheet is 8 columns of 192 px and 5 rows of 208 px (thinking, running, idle, waiting, failed).
 const SHEET_WIDTH: u32 = 1536;
-const CELL_HEIGHT: u32 = 208;
+const SHEET_HEIGHT: u32 = 208 * 5;
 
 fn not_found() -> ApiError {
     ApiError::new(StatusCode::NOT_FOUND, "Không có pet này")
@@ -31,28 +28,14 @@ fn safe_name(name: &str) -> bool {
     (1..=48).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
-/// `<app data>/pets`: Codex pet cache, plus one folder per downloaded third-party pet.
+/// `<app data>/pets`: one folder per pet the user added.
 fn pets_dir(state: &AppState) -> Option<PathBuf> {
     crate::core::paths::data_dir(&state.config_path).ok().map(|dir| dir.join("pets"))
 }
 
 pub(crate) async fn sprite(State(state): State<AppState>, Path(name): Path<String>) -> ApiResult<Response> {
-    let Some((file, url)) = catalog::sprite(&name) else {
-        let bytes = installed(&state, &name).ok_or_else(not_found)?;
-        return Ok(image(bytes, "max-age=60"));
-    };
-    let dir = pets_dir(&state).ok_or_else(not_found)?;
-    let path = dir.join(&file);
-    let bytes = match fs::read(&path) {
-        Ok(bytes) => bytes,
-        Err(_) => {
-            let bytes = download(&url).await.filter(|bytes| is_webp(bytes)).ok_or_else(not_found)?;
-            // A failed cache write only means the next view downloads again.
-            let _ = fs::create_dir_all(&dir).and_then(|_| fs::write(&path, &bytes));
-            bytes
-        }
-    };
-    Ok(image(bytes, "max-age=86400"))
+    let bytes = installed(&state, &name).ok_or_else(not_found)?;
+    Ok(image(bytes, "max-age=60"))
 }
 
 fn image(bytes: Vec<u8>, cache: &'static str) -> Response {
@@ -64,21 +47,15 @@ fn image(bytes: Vec<u8>, cache: &'static str) -> Response {
     response
 }
 
-/// Where a downloaded third-party pet is kept.
+/// Where a pet's sprite sheet is kept (the name becomes a path segment, so it is checked first).
 fn downloaded_file(state: &AppState, id: &str) -> Option<PathBuf> {
     safe_name(id).then(|| pets_dir(state)).flatten().map(|dir| dir.join(id).join("spritesheet.png"))
 }
 
-/// A third-party pet: the copy the user downloaded here, else one they installed into Codex (read in place).
+/// The stored sheet of a pet, when it is still a valid one.
 fn installed(state: &AppState, name: &str) -> Option<Vec<u8>> {
-    // The name becomes a path segment: check it before touching the disk.
-    if !safe_name(name) {
-        return None;
-    }
-    let codex = dirs::home_dir()?.join(".codex").join("pets").join(name);
-    let from_codex = || ["spritesheet.png", "spritesheet.webp"].iter().find_map(|file| fs::read(codex.join(file)).ok());
-    let bytes = downloaded_file(state, name).and_then(|path| fs::read(path).ok()).or_else(from_codex)?;
-    (bytes.len() <= MAX_BYTES && (is_png(&bytes) || is_webp(&bytes))).then_some(bytes)
+    let bytes = fs::read(downloaded_file(state, name)?).ok()?;
+    (bytes.len() <= MAX_BYTES && is_sheet(&bytes)).then_some(bytes)
 }
 
 fn is_png(bytes: &[u8]) -> bool {
@@ -89,21 +66,15 @@ fn is_webp(bytes: &[u8]) -> bool {
     bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP"
 }
 
-/// PNG with the pet sheet layout: 1536 px wide, a whole number of 208 px rows.
+/// PNG with the pet sheet layout: exactly 1536 x 1040 px.
 fn is_sheet_png(bytes: &[u8]) -> bool {
     let dimension = |at: usize| bytes.get(at..at + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]));
-    is_png(bytes)
-        && dimension(16) == Some(SHEET_WIDTH)
-        && dimension(20).is_some_and(|height| height >= CELL_HEIGHT * 9 && height % CELL_HEIGHT == 0)
+    is_png(bytes) && dimension(16) == Some(SHEET_WIDTH) && dimension(20) == Some(SHEET_HEIGHT)
 }
 
-async fn download(url: &str) -> Option<Vec<u8>> {
-    let response = reqwest::Client::new().get(url).timeout(Duration::from_secs(30)).send().await.ok()?;
-    if !response.status().is_success() || response.content_length().is_some_and(|n| n as usize > MAX_BYTES) {
-        return None;
-    }
-    let bytes = response.bytes().await.ok()?;
-    (bytes.len() <= MAX_BYTES).then(|| bytes.to_vec())
+/// PNG or WebP with the pet sheet layout.
+fn is_sheet(bytes: &[u8]) -> bool {
+    is_sheet_png(bytes) || (is_webp(bytes) && webp_size(bytes) == Some((SHEET_WIDTH, SHEET_HEIGHT)))
 }
 
 /// `displayName` of a pet folder's `pet.json`, when it has a usable one.
@@ -113,36 +84,19 @@ fn display_name(dir: &std::path::Path) -> Option<String> {
     (!name.is_empty() && name.chars().count() <= 60).then(|| name.to_owned())
 }
 
-/// Pets the user can download, plus every pet found in the app's pets folder or in Codex's (`~/.codex/pets`).
+/// Every valid pet in the app's pets folder.
 pub(crate) async fn list(State(state): State<AppState>) -> Json<Value> {
-    let mut pets: Vec<Value> = catalog::EXTERNAL
-        .iter()
-        .map(|pet| {
-            json!({
-                "id": pet.id, "name": pet.name, "provider": pet.provider, "source": pet.source, "notice": pet.notice,
-                "installed": installed(&state, pet.id).is_some(),
-                // Only a copy downloaded here can be removed here; a Codex install is left alone.
-                "removable": downloaded_file(&state, pet.id).is_some_and(|path| path.is_file()),
-                "custom": false,
-            })
+    let entries = pets_dir(&state).and_then(|dir| fs::read_dir(dir).ok());
+    let pets: Vec<Value> = entries
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let id = entry.file_name().to_string_lossy().into_owned();
+            (entry.path().is_dir() && installed(&state, &id).is_some())
+                .then(|| json!({ "id": id, "name": display_name(&entry.path()).unwrap_or_else(|| id.clone()) }))
         })
         .collect();
-    let codex = dirs::home_dir().map(|home| home.join(".codex").join("pets"));
-    for (root, source) in [(pets_dir(&state), "MutiS"), (codex, "Codex")] {
-        let Some(entries) = root.and_then(|root| fs::read_dir(root).ok()) else { continue };
-        for entry in entries.flatten() {
-            let id = entry.file_name().to_string_lossy().into_owned();
-            let known = pets.iter().any(|pet| pet["id"] == id.as_str());
-            if known || !safe_name(&id) || catalog::sprite(&id).is_some() || !entry.path().is_dir() || installed(&state, &id).is_none() {
-                continue;
-            }
-            pets.push(json!({
-                "id": id, "name": display_name(&entry.path()).unwrap_or_else(|| id.clone()), "provider": "",
-                "source": source, "notice": "", "installed": true, "custom": true,
-                "removable": downloaded_file(&state, &id).is_some_and(|path| path.is_file()),
-            }));
-        }
-    }
     Json(json!({ "pets": pets }))
 }
 
@@ -160,48 +114,71 @@ pub(crate) async fn import(State(state): State<AppState>, Json(request): Json<Im
         .and_then(|text| serde_json::from_str(&text).ok())
         .ok_or_else(|| bad("Thư mục không có pet.json hợp lệ"))?;
     let id = meta["id"].as_str().unwrap_or_default();
-    if !safe_name(id) || catalog::sprite(id).is_some() {
+    if !safe_name(id) {
         return Err(bad("Mã pet trong pet.json không hợp lệ (chỉ a-z, 0-9 và -)"));
     }
     // The sheet must sit in the same folder: a bare file name, never a path.
     let file = meta["spritesheetPath"].as_str().filter(|name| std::path::Path::new(name).file_name().is_some_and(|f| f == *name));
     let bytes = fs::read(dir.join(file.unwrap_or("spritesheet.png")))
         .ok()
-        .filter(|bytes| bytes.len() <= MAX_BYTES && (is_sheet_png(bytes) || is_webp(bytes)))
-        .ok_or_else(|| bad("Không đọc được ảnh sprite (cần PNG/WebP rộng 1536 px, tối đa 4 MB)"))?;
-    let target = downloaded_file(&state, id).ok_or_else(|| bad("Mã pet không hợp lệ"))?;
+        .filter(|bytes| bytes.len() <= MAX_BYTES && is_sheet(bytes))
+        .ok_or_else(|| bad("Không đọc được ảnh sprite (cần PNG/WebP đúng 1536 × 1040 px, tối đa 4 MB)"))?;
     let name = display_name(&dir).unwrap_or_else(|| id.to_owned());
+    save(&state, id, &name, &bytes)?;
+    Ok(Json(json!({ "id": id, "name": name })))
+}
+
+/// Writes a validated sprite sheet and its `pet.json` into the app's pets folder.
+fn save(state: &AppState, id: &str, name: &str, bytes: &[u8]) -> ApiResult<()> {
+    let target = downloaded_file(state, id).ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Mã pet không hợp lệ"))?;
     target
         .parent()
         .map(fs::create_dir_all)
         .transpose()
-        .and_then(|_| fs::write(&target, &bytes))
+        .and_then(|_| fs::write(&target, bytes))
         .and_then(|_| fs::write(target.with_file_name("pet.json"), json!({"id": id, "displayName": name}).to_string()))
-        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được pet"))?;
+        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được pet"))
+}
+
+/// Pixel size from a WebP header (VP8, VP8L or VP8X); `None` when it cannot be read.
+fn webp_size(b: &[u8]) -> Option<(u32, u32)> {
+    let le = |at: usize, n: usize| b.get(at..at + n).map(|s| s.iter().rev().fold(0u32, |a, &x| a << 8 | u32::from(x)));
+    match b.get(12..16)? {
+        b"VP8X" => Some((le(24, 3)? + 1, le(27, 3)? + 1)),
+        b"VP8L" => {
+            let bits = le(21, 4)?;
+            (b[20] == 0x2f).then(|| ((bits & 0x3fff) + 1, (bits >> 14 & 0x3fff) + 1))
+        }
+        b"VP8 " => Some((le(26, 2)? & 0x3fff, le(28, 2)? & 0x3fff)),
+        _ => None,
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub(crate) struct UploadQuery {
+    /// File name the user picked, e.g. `my pet.webp`.
+    name: String,
+}
+
+/// Adds a sprite sheet the user picked in Settings (raw WebP body). Stored as `my-<file name>`; uploading the same name again replaces it.
+pub(crate) async fn upload(State(state): State<AppState>, Query(query): Query<UploadQuery>, body: Bytes) -> ApiResult<Json<Value>> {
+    let bad = |message: &'static str| ApiError::new(StatusCode::BAD_REQUEST, message);
+    let stem = query.name.rsplit_once('.').map_or(query.name.as_str(), |(stem, _)| stem).trim();
+    let slug: String = stem.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        return Err(bad("Tên file không hợp lệ"));
+    }
+    let id: String = format!("my-{slug}").chars().take(48).collect();
+    if body.len() > MAX_BYTES || !is_webp(&body) || !is_sheet(&body) {
+        return Err(bad("Cần ảnh WebP đúng 1536 × 1040 px (8 cột × 5 hàng), tối đa 4 MB"));
+    }
+    let name: String = stem.chars().take(60).collect();
+    save(&state, &id, &name, &body)?;
     Ok(Json(json!({ "id": id, "name": name })))
 }
 
-pub(crate) async fn install(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
-    let pet = catalog::external(&id).ok_or_else(not_found)?;
-    let path = downloaded_file(&state, pet.id).ok_or_else(not_found)?;
-    let bytes = download(pet.url)
-        .await
-        .filter(|bytes| is_sheet_png(bytes))
-        .ok_or_else(|| ApiError::new(StatusCode::BAD_GATEWAY, "Không tải được pet (mạng lỗi hoặc ảnh không hợp lệ)"))?;
-    let write = path
-        .parent()
-        .map(fs::create_dir_all)
-        .transpose()
-        .and_then(|_| fs::write(&path, &bytes));
-    write.map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được pet"))?;
-    Ok(Json(json!({ "ok": true })))
-}
-
 pub(crate) async fn remove(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
-    // Only a copy in the app's pets folder goes, never anything under ~/.codex (and never a built-in Codex pet).
-    if catalog::sprite(&id).is_some() {
-        return Err(not_found());
-    }
     let path = downloaded_file(&state, &id).ok_or_else(not_found)?;
     let _ = fs::remove_file(&path);
     let _ = fs::remove_file(path.with_file_name("pet.json"));
@@ -231,10 +208,23 @@ mod tests {
 
     #[test]
     fn only_pet_sheet_pngs_are_accepted() {
-        assert!(is_sheet_png(&png(1536, 2288)));
-        assert!(is_sheet_png(&png(1536, 1872)));
-        assert!(!is_sheet_png(&png(800, 2288)));
-        assert!(!is_sheet_png(&png(1536, 2289)));
+        assert!(is_sheet_png(&png(1536, 1040)));
+        assert!(!is_sheet_png(&png(1536, 1872)));
+        assert!(!is_sheet_png(&png(800, 1040)));
+        assert!(!is_sheet_png(&png(1536, 1041)));
         assert!(!is_sheet_png(b"<html>not an image</html>"));
+    }
+
+    #[test]
+    fn webp_size_is_read_from_the_header() {
+        let (w, h) = (1535u32.to_le_bytes(), 1871u32.to_le_bytes());
+        let mut vp8x = b"RIFF\0\0\0\0WEBPVP8X\n\0\0\0\0\0\0\0".to_vec();
+        vp8x.extend(&w[..3]);
+        vp8x.extend(&h[..3]);
+        assert_eq!(webp_size(&vp8x), Some((1536, 1872)));
+        let mut vp8l = b"RIFF\0\0\0\0WEBPVP8L\0\0\0\0\x2f".to_vec();
+        vp8l.extend((1535u32 | 1871 << 14).to_le_bytes());
+        assert_eq!(webp_size(&vp8l), Some((1536, 1872)));
+        assert_eq!(webp_size(b"RIFF\0\0\0\0WEBPjunk"), None);
     }
 }

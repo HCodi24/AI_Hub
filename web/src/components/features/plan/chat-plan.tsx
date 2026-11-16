@@ -18,7 +18,7 @@ export function ChatPlan({ plan, provider, running, onStop, editor }: { plan: Pl
       const tokenLine = task.log.filter(line => /^Token:/i.test(line)).at(-1);
       const state = task.status === t.active ? "working" : [t.failed, t.fixing].includes(task.status) ? "failed" : "idle";
       return <article key={task.id} className={chat.message}>
-        <div className={chat.identity}><PetAvatar provider={source.kind} state={state} /><strong>{source.name}</strong>
+        <div className={chat.identity}><PetAvatar provider={source.kind} model={task.model ?? ""} state={state} /><strong>{source.name}</strong>
           <span className={chat.petStatus} data-state={state} role="status">· #{task.id} {task.title} · {task.status}</span></div>
         {task.summary && <MarkdownView source={task.summary} />}
         <ChatActivity logs={task.log.filter(line => !/^Token:/i.test(line))} />

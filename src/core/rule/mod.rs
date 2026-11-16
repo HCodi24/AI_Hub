@@ -23,10 +23,15 @@ pub fn worker_defaults() -> String {
 /// Rules attached to the first coding request of a session.
 /// `indexed` = the app already checked whether the project has `.codegraph`, so the AI needs no command
 /// (and no extra model call) to find out.
-pub fn first_request_rules(indexed: bool) -> String {
+pub fn first_request_rules(indexed: bool, synced: bool) -> String {
     let status = if indexed { "HAS" } else { "DOES NOT HAVE" };
+    let freshness = match (indexed, synced) {
+        (true, true) => " The app just synced the index with the current code; do not ask to rebuild it.",
+        (true, false) => " The app could not sync the index, so it may be out of date.",
+        _ => "",
+    };
     format!(
-        "{}\nStatus checked by the MutiS app itself (not stated by the user; no need to run a command to check again): the project {status} a .codegraph folder.",
+        "{}\nStatus checked by the MutiS app itself (not stated by the user; no need to run a command to check again): the project {status} a .codegraph folder.{freshness}",
         codegraph::RULE
     )
 }

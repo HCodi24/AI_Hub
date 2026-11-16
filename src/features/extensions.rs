@@ -180,6 +180,35 @@ async fn run_version(path: &std::path::Path, args: &[&str]) -> Option<String> {
     (!version.is_empty()).then_some(version)
 }
 
+/// One `codegraph sync` at a time; a second chat on the same folder waits and then finds nothing to do.
+static SYNC_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// Brings an existing `.codegraph` index up to date before a session's first request.
+/// Returns whether the index is now current. Never fails the chat: no index, no CLI, an error or a
+/// timeout all return false and the AI is told the index may be old.
+pub async fn sync_index(folder: &std::path::Path) -> bool {
+    if !folder.join(".codegraph/codegraph.db").is_file() {
+        return false;
+    }
+    let Some(path) = cli_support::resolve_executable("codegraph", None) else {
+        return false;
+    };
+    let _guard = SYNC_LOCK.lock().await;
+    let arguments = ["sync", "-q"].map(OsString::from);
+    let mut command = cli_support::command_for(&path, &arguments);
+    command
+        .current_dir(folder)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    crate::core::process::configure_hidden(&mut command);
+    matches!(
+        crate::core::process::run_with_timeout(&mut command, Duration::from_secs(25)).await,
+        Ok(output) if output.status.success()
+    )
+}
+
 pub fn action(id: &str, action_id: &str) -> Option<(&'static Definition, &'static Action)> {
     let definition = CATALOG.iter().find(|definition| definition.id == id)?;
     Some((
@@ -228,6 +257,14 @@ pub fn resolve(name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn sync_without_an_index_returns_false_and_never_fails() {
+        assert!(!sync_index(std::path::Path::new("Z:/does/not/exist")).await);
+        let rules = crate::core::rule::first_request_rules(true, false);
+        assert!(rules.contains("may be out of date"));
+        assert!(crate::core::rule::first_request_rules(true, true).contains("just synced"));
+    }
 
     #[test]
     fn catalog_actions_are_fixed_and_resolvable() {

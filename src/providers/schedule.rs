@@ -66,22 +66,23 @@ pub fn parse_check(text: &str) -> CheckResult {
     CheckResult { verdict, issues, notes: text_of(&value, "notes"), error: None }
 }
 
-/// What the chat shows for one check, and what the coordinator reads.
+/// What the chat shows for one check, and what the coordinator reads. The headings are Vietnamese (the app's own prose);
+/// the verdict token, the task title, the severity, the file paths and the checker's own text stay verbatim.
 pub fn check_text(task: &Delegation, attempt: usize, check: &CheckResult) -> String {
     let verdict = match check.verdict {
         Verdict::Pass => "PASS",
         Verdict::Fail => "FAIL",
         Verdict::Unclear => "UNCLEAR",
     };
-    let mut text = format!("Independent check for \"{}\" (attempt {attempt}): {verdict}\n", task.title.trim());
+    let mut text = format!("Kiểm tra độc lập cho \"{}\" (lần {attempt}): {verdict}\n", task.title.trim());
     if let Some(error) = &check.error {
-        text.push_str(&format!("Checker problem: {error}\n"));
+        text.push_str(&format!("Lỗi của checker: {error}\n"));
     }
     for issue in &check.issues {
         text.push_str(&format!("- [{}] {}: {} -> {}\n", issue.severity, issue.file, issue.problem, issue.fix));
     }
     if !check.notes.is_empty() {
-        text.push_str(&format!("Notes: {}\n", check.notes));
+        text.push_str(&format!("Ghi chú: {}\n", check.notes));
     }
     text
 }
@@ -162,6 +163,12 @@ pub(super) struct Row {
     pub attempt: usize,
     /// PASS, FAIL or UNCLEAR once the checker answered.
     pub check: Option<&'static str>,
+    /// Actor and configured model for the current row state.
+    pub actor: Option<String>,
+    pub model: Option<String>,
+    /// Actor and configured model retained for the latest check verdict.
+    pub checker: Option<String>,
+    pub checker_model: Option<String>,
 }
 
 /// The coordinator's instruction when a task's attempts are spent; without write access it can only report what is left.
@@ -184,6 +191,8 @@ pub(super) trait Backend: Send + Sync + 'static {
     fn cancelled(&self) -> bool;
     /// False when the coordinator may not edit files, so it cannot take a task over.
     fn can_edit(&self) -> bool;
+    /// Configured model for the actor selected by the same route used for execution.
+    fn actor_model(&self, _actor: Actor) -> Option<String> { None }
     /// Shows the whole task board; called only from the round loop.
     async fn board(&self, rows: &[Row]);
     fn path_problems(&self, task: &Delegation) -> Vec<String>;
@@ -259,13 +268,21 @@ struct Round<'a, B: Backend> {
 
 impl<B: Backend> Round<'_, B> {
     /// Updates one row of the board (rows are keyed by the task title) and shows the board.
-    async fn mark(&mut self, title: &str, state: &'static str, attempt: usize, check: Option<&'static str>) {
+    async fn mark(&mut self, title: &str, state: &'static str, attempt: usize, check: Option<&'static str>, actor: Option<Actor>, model: Option<String>, checker: Option<Actor>, checker_model: Option<String>) {
         let wanted = key(title);
         if let Some(row) = self.rows.iter_mut().find(|row| key(&row.title) == wanted) {
             row.state = state;
             row.attempt = attempt.max(row.attempt);
             if check.is_some() {
                 row.check = check;
+            }
+            if let Some(actor) = actor {
+                row.actor = Some(actor.name().to_owned());
+                row.model = model;
+            }
+            if let Some(checker) = checker {
+                row.checker = Some(checker.name().to_owned());
+                row.checker_model = checker_model;
             }
         }
         self.backend.board(&self.rows).await;
@@ -283,14 +300,14 @@ impl<B: Backend> Round<'_, B> {
         if self.attempts.get(&title).copied().unwrap_or(0) >= max {
             self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
             self.state.insert(title, State::Failed);
-            self.mark(&task.title, self.spent_state(), max, None).await;
+            self.mark(&task.title, self.spent_state(), max, None, None, None, None, None).await;
             return;
         }
         let problems = self.backend.path_problems(&task);
         if !problems.is_empty() {
             self.out.reports.push(format!("Path check failed for \"{}\": the worker was NOT run and this is not counted as an attempt. {}. Resend the block with correct paths.", task.title.trim(), problems.join("; ")));
             self.state.insert(title, State::Failed);
-            self.mark(&task.title, "failed", 0, None).await;
+            self.mark(&task.title, "failed", 0, None, None, None, None, None).await;
             return;
         }
         let (mut auto, mut feedback) = (0, None::<String>);
@@ -299,7 +316,8 @@ impl<B: Backend> Round<'_, B> {
             *used += 1;
             let attempt = *used;
             let fixing = attempt > 1 && auto == 0;
-            self.mark(&task.title, if fixing { "fixing" } else { "coding" }, attempt, None).await;
+            let (editor, _) = route(task.hard, attempt, escalate);
+            self.mark(&task.title, if fixing { "fixing" } else { "coding" }, attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
             let work = self.backend.work(&task, attempt, feedback.as_deref()).await;
             if self.backend.cancelled() {
                 return;
@@ -317,24 +335,31 @@ impl<B: Backend> Round<'_, B> {
         self.out.reports.push(report(&task, editor.name(), attempt, max, auto, &work));
         if auto_retry_reason(&work).is_some() {
             self.state.insert(title, State::Failed);
-            self.mark(&task.title, self.spent_state(), attempt, None).await;
+            self.mark(&task.title, self.spent_state(), attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
             return;
         }
         self.out.changed = true;
+        if task.trivial {
+            // Tiny low-risk change: no checker run; the coordinator is told to read the diff itself.
+            self.out.reports.push(format!("Check skipped for \"{}\": you marked it trivial, so Luna did not check it. Read the diff above yourself.", task.title.trim()));
+            self.state.insert(title, State::Clean);
+            self.mark(&task.title, "done", attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
+            return;
+        }
         let Some(jobs) = self.jobs.clone() else {
             self.state.insert(title, State::Clean);
-            self.mark(&task.title, "done", attempt, None).await;
+            self.mark(&task.title, "done", attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
             return;
         };
         self.backend.say(format!("{} kiểm tra: {} (lần {attempt})", checker.name(), task.title.trim())).await;
         self.state.insert(title.clone(), State::Checking);
-        self.mark(&task.title, "checking", attempt, None).await;
+        self.mark(&task.title, "checking", attempt, None, Some(checker), self.backend.actor_model(checker), Some(checker), self.backend.actor_model(checker)).await;
         self.pending += 1;
         let shown = task.title.clone();
         if jobs.send((task, attempt, work)).is_err() {
             self.pending -= 1;
             self.state.insert(title, State::Clean);
-            self.mark(&shown, "done", attempt, None).await;
+            self.mark(&shown, "done", attempt, None, Some(editor), self.backend.actor_model(editor), Some(checker), self.backend.actor_model(checker)).await;
         }
     }
 
@@ -348,6 +373,8 @@ impl<B: Backend> Round<'_, B> {
             Verdict::Fail => "FAIL",
             Verdict::Unclear => "UNCLEAR",
         };
+        let (_, checker) = route(task.hard, attempt, self.backend.can_escalate());
+        let checker_model = self.backend.actor_model(checker);
         let severe: Vec<&Issue> = check.issues.iter().filter(|i| i.is_severe()).collect();
         self.out.minor.extend(check.issues.iter().filter(|i| !i.is_severe()).map(|i| format!("{}: {} ({})", task.title.trim(), i.problem, i.file)));
         if check.verdict == Verdict::Fail && !severe.is_empty() {
@@ -371,16 +398,17 @@ impl<B: Backend> Round<'_, B> {
                     self.backend.say(format!("Thêm file Luna nêu vào task sửa: {}", added.join(", "))).await;
                 }
                 self.queue.push_back(fix);
-                self.mark(&task.title, "fixing", attempt, Some(shown)).await;
+                let next_editor = route(task.hard, attempt + 1, self.backend.can_escalate()).0;
+                self.mark(&task.title, "fixing", attempt, Some(shown), Some(next_editor), self.backend.actor_model(next_editor), Some(checker), checker_model).await;
             } else {
                 self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent and the check still fails. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
                 self.state.insert(title, State::Failed);
-                self.mark(&task.title, self.spent_state(), attempt, Some(shown)).await;
+                self.mark(&task.title, self.spent_state(), attempt, Some(shown), None, None, Some(checker), checker_model).await;
             }
             return;
         }
         self.state.insert(title, State::Clean);
-        self.mark(&task.title, "done", attempt, Some(shown)).await;
+        self.mark(&task.title, "done", attempt, Some(shown), None, None, Some(checker), checker_model).await;
     }
 }
 
@@ -404,7 +432,7 @@ pub(super) async fn run_round<B: Backend>(backend: &Arc<B>, tasks: Vec<Delegatio
     let mut rows: Vec<Row> = Vec::new();
     for task in &tasks {
         if !rows.iter().any(|row| key(&row.title) == key(&task.title)) {
-            rows.push(Row { title: task.title.trim().to_owned(), state: "waiting", attempt: 0, check: None });
+            rows.push(Row { title: task.title.trim().to_owned(), state: "waiting", attempt: 0, check: None, actor: None, model: None, checker: None, checker_model: None });
         }
     }
     let mut round = Round { backend, queue: tasks.into(), state: HashMap::new(), attempts, jobs, pending: 0, out: RoundOutcome::default(), rows };
@@ -418,7 +446,7 @@ pub(super) async fn run_round<B: Backend>(backend: &Arc<B>, tasks: Vec<Delegatio
             Next::Skip(task, why) => {
                 round.out.reports.push(format!("Task \"{}\" was skipped: {why}.", task.title.trim()));
                 round.state.insert(key(&task.title), State::Failed);
-                round.mark(&task.title, "skipped", 0, None).await;
+                round.mark(&task.title, "skipped", 0, None, None, None, None, None).await;
             }
             Next::Wait if round.pending > 0 => match done_rx.recv().await {
                 Some(finished) => round.handle_check(finished).await,
@@ -441,7 +469,7 @@ mod tests {
     use tokio::sync::Notify;
 
     fn task(title: &str, deps: &[&str]) -> Delegation {
-        Delegation { title: title.into(), files: vec!["a.rs".into()], instructions: "do it".into(), acceptance: vec![], depends_on: deps.iter().map(|d| d.to_string()).collect(), hard: false }
+        Delegation { title: title.into(), files: vec!["a.rs".into()], instructions: "do it".into(), acceptance: vec![], depends_on: deps.iter().map(|d| d.to_string()).collect(), hard: false, trivial: false }
     }
     fn fail_high() -> CheckResult {
         CheckResult { verdict: Verdict::Fail, issues: vec![Issue { severity: "high".into(), file: "a.rs".into(), problem: "wrong".into(), fix: "right".into() }], notes: String::new(), error: None }
@@ -461,7 +489,7 @@ mod tests {
         hold: Option<(String, String)>,
         released: Notify,
         read_only: bool,
-        boards: Mutex<Vec<String>>,
+        boards: Mutex<Vec<Vec<Row>>>,
         /// Paths the fake project does not accept.
         bad_paths: Vec<String>,
         /// Title and files of every worker run.
@@ -506,8 +534,15 @@ mod tests {
         fn can_edit(&self) -> bool {
             !self.read_only
         }
+        fn actor_model(&self, actor: Actor) -> Option<String> {
+            Some(match actor {
+                Actor::DeepSeek => "deepseek-model",
+                Actor::Luna => "luna-model",
+                Actor::Luna2 => "luna-2-model",
+            }.into())
+        }
         async fn board(&self, rows: &[Row]) {
-            self.boards.lock().unwrap().push(rows.iter().map(|r| format!("{}:{}", r.title, r.state)).collect::<Vec<_>>().join(","));
+            self.boards.lock().unwrap().push(rows.to_vec());
         }
         fn path_problems(&self, task: &Delegation) -> Vec<String> {
             if task.files.iter().any(|file| self.bad_paths.contains(file)) { vec!["not a project path".into()] } else { Vec::new() }
@@ -536,7 +571,7 @@ mod tests {
         let at = |what: &str| lines.iter().position(|l| l == what).unwrap();
         assert!(at("work:B") < at("check:A"), "B started before A's check finished: {lines:?}");
         assert!(lines.contains(&"announce:A".to_string()) && lines.contains(&"announce:B".to_string()));
-        assert_eq!(out.reports.iter().filter(|r| r.starts_with("Independent check")).count(), 2);
+        assert_eq!(out.reports.iter().filter(|r| r.starts_with("Kiểm tra độc lập")).count(), 2);
     }
 
     #[tokio::test]
@@ -569,7 +604,7 @@ mod tests {
         assert_eq!(attempts["a"], 3);
         assert!(out.reports.last().unwrap().contains("attempt limit (3/3)"));
         // The fake can edit, so the spent task is handed to the coordinator instead of showing a bare failure.
-        assert_eq!(fake.boards.lock().unwrap().last().unwrap(), "A:takeover");
+        assert_eq!(fake.boards.lock().unwrap().last().unwrap()[0].state, "takeover");
     }
 
     #[tokio::test]
@@ -585,6 +620,48 @@ mod tests {
         assert!(attempts["a"] <= MAX_ATTEMPTS && fake.lines().iter().all(|l| l.starts_with("work:")));
         assert_eq!(limit(true, false), MAX_ATTEMPTS);
         assert_eq!(limit(false, false), MAX_ATTEMPTS);
+    }
+
+    #[tokio::test]
+    async fn hard_and_escalated_rows_keep_their_routed_editor_and_checker_identity() {
+        let fake = Fake { checker: true, ..Default::default() };
+        fake.checks.lock().unwrap().insert("hard".into(), VecDeque::from([pass()]));
+        let (fake, _, _) = run(fake, vec![Delegation { hard: true, ..task("hard", &[]) }]).await;
+        let boards = fake.boards.lock().unwrap();
+        let hard_coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "hard" && row.state == "coding").unwrap();
+        assert_eq!(hard_coding.actor.as_deref(), Some("Luna 2"));
+        assert_eq!(hard_coding.model.as_deref(), Some("luna-2-model"));
+        let hard_checking = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "hard" && row.state == "checking").unwrap();
+        assert_eq!(hard_checking.actor.as_deref(), Some("Luna"));
+        assert_eq!(hard_checking.checker.as_deref(), Some("Luna"));
+        drop(boards);
+
+        let fake = Fake { checker: true, ..Default::default() };
+        fake.checks.lock().unwrap().insert("escalated".into(), VecDeque::from([fail_high(), fail_high(), pass()]));
+        let (fake, _, _) = run(fake, vec![task("escalated", &[])]).await;
+        let boards = fake.boards.lock().unwrap();
+        let escalated_coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "escalated" && row.state == "fixing" && row.attempt == 3).unwrap();
+        assert_eq!(escalated_coding.actor.as_deref(), Some("Luna"));
+        assert_eq!(escalated_coding.model.as_deref(), Some("luna-model"));
+        let escalated_checking = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "escalated" && row.state == "checking" && row.attempt == 3).unwrap();
+        assert_eq!(escalated_checking.actor.as_deref(), Some("Luna 2"));
+        assert_eq!(escalated_checking.checker.as_deref(), Some("Luna 2"));
+        let finished = boards.last().unwrap().iter().find(|row| row.title == "escalated").unwrap();
+        assert_eq!(finished.check, Some("PASS"));
+        assert_eq!(finished.checker.as_deref(), Some("Luna 2"));
+        assert_eq!(finished.checker_model.as_deref(), Some("luna-2-model"));
+    }
+
+    #[tokio::test]
+    async fn a_trivial_task_is_not_checked_and_the_coordinator_is_told_to_read_the_diff() {
+        let fake = Fake { checker: true, ..Default::default() };
+        let trivial = Delegation { trivial: true, ..task("A", &[]) };
+        let (fake, out, _) = run(fake, vec![trivial, task("B", &[])]).await;
+        let lines = fake.lines();
+        assert!(!lines.contains(&"check:A".to_string()) && !lines.contains(&"announce:A".to_string()), "{lines:?}");
+        assert!(lines.contains(&"check:B".to_string()), "other tasks are still checked: {lines:?}");
+        assert!(out.reports.iter().any(|r| r.contains("Check skipped") && r.contains("\"A\"")));
+        assert!(fake.boards.lock().unwrap().iter().any(|rows| rows.iter().any(|row| row.title == "A" && row.state == "done")));
     }
 
     #[test]
@@ -616,9 +693,9 @@ mod tests {
         fake.checks.lock().unwrap().insert("A".into(), VecDeque::from([fail_high(), pass()]));
         let (fake, _, _) = run(fake, vec![task("A", &[]), task("B", &["A"])]).await;
         let boards = fake.boards.lock().unwrap().clone();
-        assert_eq!(boards[0], "A:waiting,B:waiting");
-        for wanted in ["A:coding,B:waiting", "A:checking,B:waiting", "A:fixing,B:waiting", "A:done,B:done"] {
-            assert!(boards.iter().any(|b| b == wanted), "missing board {wanted}: {boards:?}");
+        assert_eq!(boards[0].iter().map(|row| (row.title.as_str(), row.state)).collect::<Vec<_>>(), [("A", "waiting"), ("B", "waiting")]);
+        for (title, state) in [("A", "coding"), ("A", "checking"), ("A", "fixing"), ("A", "done"), ("B", "done")] {
+            assert!(boards.iter().any(|rows| rows.iter().any(|row| row.title == title && row.state == state)), "missing {title}:{state}: {boards:?}");
         }
     }
 
@@ -657,8 +734,7 @@ mod tests {
     }
 
     #[test]
-    fn the_checker_answer_is_parsed_and_unreadable_answers_are_unclear() {
-        let ok = parse_check("Here: {\"verdict\":\"fail\",\"issues\":[{\"severity\":\"HIGH\",\"file\":\"a.rs\",\"problem\":\"p\",\"fix\":\"f\"},{\"problem\":\"\"}],\"notes\":\"n\"}");
+    fn the_checker_answer_is_parsed_and_unreadable_answers_are_unclear() {        let ok = parse_check("Here: {\"verdict\":\"fail\",\"issues\":[{\"severity\":\"HIGH\",\"file\":\"a.rs\",\"problem\":\"p\",\"fix\":\"f\"},{\"problem\":\"\"}],\"notes\":\"n\"}");
         assert_eq!(ok.verdict, Verdict::Fail);
         assert_eq!(ok.issues.len(), 1, "an issue without a problem is dropped");
         assert!(ok.issues[0].is_severe() && ok.notes == "n");

@@ -12,12 +12,16 @@ import { ChatActivity } from "./chat-activity";
 import { FileChanges } from "./file-changes";
 import { chatPetState } from "@/lib/chat-pet-state";
 import { parseChatQuestions } from "@/lib/chat-questions";
+import { modelLabel } from "@/components/features/composer/model-menu";
 import styles from "./chat-message.module.css";
 /** MutiS High: the app reads Codex's `mutis-delegate` blocks itself and shows the worker's result, so the raw JSON stays hidden. */
 const hideDelegation = (text: string) => text.replace(/```mutis-delegate[\s\S]*?(?:```|$)/g, "").trim();
 const PROVIDER_LABELS: Record<string, string> = { codex_cli: "Codex", claude_cli: "Claude", anthropic: "Claude", deepseek: "DeepSeek" };
 export const ChatMessage = memo(function ChatMessage({ message, chatId, streaming = false, latest = false, status, replies }: { message: Message; chatId: string; streaming?: boolean; latest?: boolean; status?: StreamData; replies?: ReactNode }) {
   const user = message.role === "user";
+  /** Model identity comes only from this message: one chat can mix worker turns with different models. */
+  const sourceLabel = PROVIDER_LABELS[message.provider] || chatText.assistant;
+  const model = message.model.trim();
   const petState = useMemo(() => chatPetState(message, streaming, latest), [message, streaming, latest]);
   const imported = useMemo(() => user ? splitImportedFileText(message.content) : {
     text: streaming
@@ -28,8 +32,8 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
   /** DeepSeek token logs already live inside the collapsed activity disclosure, so they are not repeated here. */
   const tokenLine = message.provider === "deepseek" ? undefined : message.logs.filter((line) => /token|usage|chi phí/i.test(line)).at(-1);
   return <article className={styles.message} data-user={user} data-streaming={streaming}>
-    <div className={styles.identity}>{user ? <UserRound size={18} aria-hidden="true" /> : <PetAvatar key={message.provider} provider={message.provider} state={petState} />}
-      <strong>{user ? chatText.you : PROVIDER_LABELS[message.provider] || chatText.assistant}</strong>
+    <div className={styles.identity}>{user ? <UserRound size={18} aria-hidden="true" /> : <PetAvatar key={`${message.provider}:${model}`} provider={message.provider} model={model} state={petState} />}
+      <strong>{user ? chatText.you : model ? `${sourceLabel} · ${modelLabel(model)}` : sourceLabel}</strong>
       {!user && <span className={styles.petStatus} data-state={petState} role="status">{petState !== "idle" && <>· {chatText.petStatus[petState]}</>}</span>}
     </div>
     {message.debate_id ? <DebateCard id={message.debate_id} /> : message.plan_id ? <PlanCard id={message.plan_id} /> : <>

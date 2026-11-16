@@ -296,6 +296,7 @@ impl Provider for DeepSeekAgentProvider {
                 }
                 break;
             }
+            emit_text(&events, "log", format!("Bước {steps}/{max_steps}: {} lệnh", calls.len())).await?;
             let mut assistant = json!({"role":"assistant","content":if content.is_empty(){Value::Null}else{json!(content)},"tool_calls":calls});
             // Thinking tool calls must retain reasoning for the next API request.
             if let Some(reasoning) = msg.get("reasoning_content") {

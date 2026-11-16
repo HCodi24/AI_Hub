@@ -81,6 +81,9 @@ pub fn router(state: AppState) -> Router {
             "/api/addons",
             get(crate::api::addons::overview).post(crate::api::addons::change),
         )
+        .route("/api/addons/codex", get(crate::api::addons::codex_plugins))
+        .route("/api/addons/link/inspect", post(crate::api::addons::inspect_link))
+        .route("/api/addons/link/install", post(crate::api::addons::install_link))
         // Configuration routes.
         .route(
             "/api/config",
@@ -182,9 +185,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/mcp/test", post(crate::api::mcp::test))
         .route("/api/pets", get(crate::api::pets::list))
         .route("/api/pets/import", post(crate::api::pets::import))
-        .route("/api/pets/{name}", get(crate::api::pets::sprite).delete(crate::api::pets::remove))
-        .route("/api/pets/{name}/install", post(crate::api::pets::install))
-        .route("/api/chats", get(crate::api::chat::list_chats))
+        .route(
+            "/api/pets/upload",
+            post(crate::api::pets::upload).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
+        .route("/api/pets/{name}", get(crate::api::pets::sprite).delete(crate::api::pets::remove))        .route("/api/chats", get(crate::api::chat::list_chats))
         .route(
             "/api/chats/{chat_id}",
             get(crate::api::chat::get_chat).delete(crate::api::chat::delete_chat),

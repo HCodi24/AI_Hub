@@ -23,9 +23,10 @@ pub(crate) fn dev_chat_preamble(repo: &str) -> String {
             "không sửa target/.\n",
             "- Ghi file bằng UTF-8; giữ nguyên tính năng có sẵn; chạy `cargo test` ",
             "với CARGO_TARGET_DIR=target\\dev-check nếu cần.\n",
-            "- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.\n{}"
+            "- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.\n{}\n{}"
         ),
         crate::core::rule::english_rules::RULE,
+        crate::core::rule::mutis_high_delegation::VIETNAMESE_RULE,
         repo = repo
     )
 }
@@ -40,8 +41,17 @@ mod tests {
         assert!(super::dev_chat_preamble("C:/repo").contains(rule));
         assert!(!crate::core::rule::worker_defaults().contains(rule));
         for indexed in [true, false] {
-            assert!(!crate::core::rule::first_request_rules(indexed).contains(rule));
+            assert!(!crate::core::rule::first_request_rules(indexed, indexed).contains(rule));
         }
+    }
+
+    #[test]
+    fn dev_chat_preamble_requires_vietnamese_visible_prose() {
+        let preamble = super::dev_chat_preamble("C:/repo");
+        assert!(preamble.contains(crate::core::rule::mutis_high_delegation::VIETNAMESE_RULE));
+        assert!(preamble.contains("user-facing word in Vietnamese"));
+        // The existing Vietnamese dev instructions are still there.
+        assert!(preamble.contains("Bạn đang sửa chính ứng dụng MutiS") && preamble.contains("Build & khởi động lại"));
     }
 
     #[test]

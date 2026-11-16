@@ -15,10 +15,18 @@ export function TaskBoardView({ tasks }: { tasks: TaskRow[] }) {
     <strong className={styles.title}>{t.title}</strong>
     <ul>{tasks.map(task => {
       const Icon = ICONS[task.state as keyof typeof ICONS] ?? Circle;
+      const actor = task.actor?.trim() || undefined;
+      const checker = task.checker?.trim() || undefined;
+      const state = t.states[task.state as keyof typeof t.states] ?? task.state;
+      const action = actor && BUSY.has(task.state) ? `${actor} ${state.charAt(0).toLowerCase()}${state.slice(1)}` : state;
+      const model = task.model?.trim() || undefined;
+      const checkerModel = task.checker_model?.trim() || undefined;
+      const modelDetails = [model && `${t.model}: ${model}`, checkerModel && `${t.checkerModel}: ${checkerModel}`].filter(Boolean).join("; ");
+      const description = [action, modelDetails, task.attempt > 1 ? t.attempt(task.attempt) : "", task.check ? `${checker || t.check} ${task.check}` : ""].filter(Boolean).join(" · ");
       return <li key={task.title} data-state={task.state}>
         <Icon size={16} aria-hidden="true" className={BUSY.has(task.state) ? "spin" : undefined} />
         <span className={styles.name}>{task.title}</span>
-        <small>{t.states[task.state as keyof typeof t.states] ?? task.state}{task.attempt > 1 ? ` · ${t.attempt(task.attempt)}` : ""}{task.check ? ` · Luna ${task.check}` : ""}</small>
+        <small title={modelDetails || undefined} aria-label={description}>{action}{task.attempt > 1 ? ` · ${t.attempt(task.attempt)}` : ""}{task.check ? ` · ${checker || t.check} ${task.check}` : ""}</small>
       </li>;
     })}</ul>
   </section>;

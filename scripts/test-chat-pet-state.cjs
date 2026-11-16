@@ -6,7 +6,8 @@ module.exports = function testChatPetState(load, web) {
   const { chatText } = load(path.join(web, "src/text/chat.ts"));
   const message = extra => ChatMessageSchema.parse({ role: "assistant", content: "", ...extra });
   assert.equal(chatPetState(message(), true, true), "working");
-  assert.equal(chatPetState(message({ reasoning: "Thinking" }), true, true), "working");
+  assert.equal(chatPetState(message({ reasoning: "Thinking" }), true, true), "thinking");
+  assert.equal(chatPetState(message({ reasoning: "Thinking", logs: ["Command: ls"] }), true, true), "working");
   assert.equal(chatPetState(message({ content: "Xin chào" }), true, true), "replying");
   const question = message({ content: "Bạn có muốn tôi sửa tiếp không?" });
   assert.equal(chatPetState(question, true, true), "replying");

@@ -24,6 +24,19 @@ pub(super) fn anthropic_definitions(write: bool) -> Vec<Value> {
             }
         }),
         json!({
+            "name": "read_files",
+            "description": "Read several files in ONE call (up to 8): prefer this to one read_file call per file. Each entry has path and optional start_line/end_line (at most 400 lines per file).",
+            "input_schema": {
+                "type":"object",
+                "properties":{"files":{"type":"array","items":{
+                    "type":"object",
+                    "properties":{"path":s,"start_line":{"type":"integer"},"end_line":{"type":"integer"}},
+                    "required":["path"]
+                }}},
+                "required":["files"]
+            }
+        }),
+        json!({
             "name": "edit_file",
             "description": "Replace one exact unique occurrence.",
             "input_schema": {
@@ -42,7 +55,7 @@ pub(super) fn anthropic_definitions(write: bool) -> Vec<Value> {
         all
     } else {
         all.into_iter()
-            .filter(|tool| matches!(tool["name"].as_str(), Some("list_dir" | "read_file")))
+            .filter(|tool| matches!(tool["name"].as_str(), Some("list_dir" | "read_file" | "read_files")))
             .collect()
     }
 }
@@ -151,27 +164,25 @@ pub(super) fn run_tool(
                 let lines = text.lines().collect::<Vec<_>>();
                 let start = args["start_line"].as_u64().unwrap_or(1).max(1) as usize;
                 let end = args["end_line"].as_u64().unwrap_or(lines.len() as u64) as usize;
-                if args["start_line"].is_null()
-                    && args["end_line"].is_null()
-                    && lines.len() > max_lines as usize
-                {
-                    bail!(
-                        "File dài {} dòng, hãy đọc theo khoảng start_line/end_line (tối đa 400 dòng mỗi lần)",
-                        lines.len()
-                    );
-                }
+                // A long file read without a range used to be an error that cost a whole extra step: give the first part and say how to go on.
+                let long = args["start_line"].is_null() && args["end_line"].is_null() && lines.len() > max_lines as usize;
                 if end < start {
                     bail!("end_line phải >= start_line");
                 }
                 let end = end.min(lines.len()).min(start.saturating_add(399));
-                Ok(lines
+                let end = if long { end.min(max_lines as usize) } else { end };
+                let mut shown = lines
                     .iter()
                     .enumerate()
                     .skip(start - 1)
                     .take(end.saturating_sub(start) + 1)
                     .map(|(index, line)| format!("{}: {}", index + 1, line))
                     .collect::<Vec<_>>()
-                    .join("\n"))
+                    .join("\n");
+                if long {
+                    shown.push_str(&format!("\n[file has {} lines, showing 1-{end}; call again with start_line={} for the rest]", lines.len(), end + 1));
+                }
+                Ok(shown)
             }
             "edit_file" => {
                 let text = fs::read_to_string(&path)?;

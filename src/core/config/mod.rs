@@ -48,9 +48,16 @@ pub struct Config {
     /// MCP servers MutiS runs for in-app (API source) agents.
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,
-    /// Chosen chat avatar pet per source kind (`codex_cli`, `claude_cli`, `anthropic`, `openai_compat`); missing = default.
+    /// Chosen chat avatar pet per slot (`codex-luna`, `claude-opus`, ..., `deepseek`; API and CLI share one); missing = no pet.
     #[serde(default)]
     pub pets: std::collections::BTreeMap<String, String>,
+    /// Master switch for the chat avatar pets.
+    #[serde(default = "pets_on")]
+    pub pets_enabled: bool,
+}
+
+fn pets_on() -> bool {
+    true
 }
 
 fn default_chat_idle_timeout_minutes() -> u32 {
@@ -138,6 +145,7 @@ impl Config {
             theme: String::new(),
             mcp_servers: Vec::new(),
             pets: Default::default(),
+            pets_enabled: true,
         }
     }
 }
