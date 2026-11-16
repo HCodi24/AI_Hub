@@ -30,7 +30,8 @@ export const settingsText = {
     memoryChars: "Giới hạn ký tự mỗi scope (1000–20000)",
   },
   mutis: {
-    enabled: "Bật MutiS", roles: "Vai trò", maxRoles: "Mức Max — cả 3 AI (Claude, Codex, DeepSeek)", highRoles: "Mức High — chỉ Codex và DeepSeek", checkerRole: "Người kiểm tra (Luna)", levelHint: "Thanh effort của MutiS chọn mức: Max/Extra high dùng 3 AI; các mức thấp hơn dùng Codex + DeepSeek.", role: { lead: "Lập kế hoạch & review", big: "Code lớn", small: "Việc nhỏ" },
+    profileLabel: "Cấu hình từng mức MutiS", sharedSettings: "Cài đặt dùng chung cho High và Max",
+    taskBoard: "Hiện bảng tiến độ các task khi MutiS giao việc", enabled: "Bật MutiS", roles: "Vai trò", maxRoles: "Mức Max — cả 3 AI (Claude, Codex, DeepSeek)", highRoles: "Mức High — chỉ Codex và DeepSeek", checkerRole: "Người kiểm tra (Luna)", levelHint: "Thanh effort của MutiS chọn mức: Max/Extra high dùng 3 AI; các mức thấp hơn dùng Codex + DeepSeek.", role: { lead: "Lập kế hoạch & review", big: "Code lớn", small: "Việc nhỏ" },
     provider: "Nguồn", model: "Model", effort: "Reasoning effort", routing: "Định tuyến mặc định",
     kinds: { small_edit: "Sửa nhỏ", docs: "Tài liệu", code: "Code", test: "Test", plan: "Lập kế hoạch", review: "Review" } as Record<string, string>,
     switches: "Tự động hoá", auto_plan: "Tự động chia việc", plan_approval: "Duyệt kế hoạch trước khi chạy (tắt = tự chạy, hiện như chat thường)", delegate_checker: "Người kiểm tra độc lập (Luna Max) cho kết quả của DeepSeek — chỉ ở mức High", deepseek_ui: "Cho DeepSeek làm bố cục và kiểu dáng (CSS, HTML; với TSX do Sol quyết định). Tắt: việc đó chuyển cho Luna 2 hoặc Sol — chỉ ở mức High", verify_gate: "Cổng kiểm tra sau mỗi task", auto_review: "Review tự động",
@@ -91,10 +92,11 @@ export const settingsText = {
   },
   pets: {
     use: "Pet cho từng nguồn AI", useHint: "Mỗi model Codex và Claude một pet riêng, DeepSeek một pet; dùng cho cả API lẫn CLI. Chưa chọn pet thì không hiện gì: hãy thêm pet của bạn rồi chọn.",
+    familyTabsLabel: "Nhóm model pet", families: { codex: "Codex", claude: "Claude", deepseek: "DeepSeek" },
     default: "Không dùng pet", kinds: { "codex-luna": "Codex · Luna", "codex-sol": "Codex · Sol", "codex-terra": "Codex · Terra", "claude-opus": "Claude · Opus", "claude-sonnet": "Claude · Sonnet", "claude-haiku": "Claude · Haiku", "claude-fable": "Claude · Fable", deepseek: "DeepSeek" } as Record<string, string>,
     enable: "Hiện pet cạnh câu trả lời", uploadFile: "Thêm pet từ file WebP…",
-    uploadHint: "File WebP đúng 1536 × 1040 px, tối đa 4 MB: 8 cột × 5 hàng, mỗi ô 192 × 208. Hàng theo thứ tự: suy nghĩ, chạy, nghỉ, chờ, lỗi.",
-    importFolder: "Thêm pet của bạn từ thư mục…", importHint: "Chọn thư mục chứa pet.json và spritesheet.png hoặc .webp (đúng 1536 × 1040 px, như file WebP ở trên). Thư mục gốc không bị thay đổi.",
+    uploadHint: "File WebP rộng 1536 px, tối đa 4 MB: 8 cột × 6 hàng (cao 1248 px), mỗi ô 192 × 208. Hàng theo thứ tự: suy nghĩ, trả lời, nghỉ, chờ, lỗi, chạy (đang xử lý, đang code). Sheet 5 hàng (cao 1040 px, không có hàng chạy) vẫn dùng được: lúc đó đang xử lý và đang code dùng hàng trả lời.",
+    importFolder: "Thêm pet của bạn từ thư mục…", importHint: "Chọn thư mục chứa pet.json và spritesheet.png hoặc .webp (cùng kích thước như file WebP ở trên). Thư mục gốc không bị thay đổi.",
     tabsLabel: "Các phần của Pet", tabs: { chat: "Pet chat", garden: "Vườn pet" }, gardenSoon: "Vườn pet sẽ có ở bản sau.",
     imported: (name: string) => `Đã thêm ${name}`, adding: "Đang thêm…",
     title: "Pet", intro: "Linh vật hiện cạnh câu trả lời của AI. Ứng dụng không có sẵn pet nào: bạn tự thêm pet của mình.",

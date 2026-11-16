@@ -7,6 +7,6 @@ export function Dialog({ title, close, children, wide, className = "", iconClose
   useEffect(() => { const dialog = ref.current; const previous = document.activeElement;
     dialog?.showModal(); return () => { dialog?.close(); if (previous instanceof HTMLElement) previous.focus(); };
   }, []);
-  return <dialog ref={ref} className={`${styles.dialog} ${wide ? styles.wide : ""} ${className}`} aria-label={title} onCancel={event => { event.preventDefault(); close(); }}>
+  return <dialog ref={ref} className={`${styles.dialog} ${wide ? styles.wide : ""} ${className}`} aria-label={title} onCancel={event => { if (event.target !== event.currentTarget) return; event.preventDefault(); close(); }}>
     <header><h2>{title}</h2><button onClick={close} aria-label={t.close}>{iconClose ? <X size={22} aria-hidden="true" /> : t.close}</button></header>{children}</dialog>;
 }

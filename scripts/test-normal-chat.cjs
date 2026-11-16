@@ -21,7 +21,7 @@ const mocks = {
     get: async () => ({ enabled: true, auto_plan: true, roles: { lead: { provider_id: 'p', model: 'model' } } }),
     resolve: async () => { shownBeforeResolve = state.messages.length === 2; return { lead: { used_provider: { id: 'p' } } }; },
   } },
-  './card-actions': { startCard: async () => { planned = true; } },
+  './card-actions': { startDebate: async () => { planned = true; }, cancelActiveCard: () => false },
   './card-store': { useCardStore: { getState: () => ({ running: false }) } },
   '@/lib/mutis-level': { rolesFor: () => undefined },
   '@/components/features/memory/memory-events': {}, '@/components/toast/toast': {},

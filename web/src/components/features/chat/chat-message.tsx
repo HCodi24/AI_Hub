@@ -5,11 +5,11 @@ import type { ChatMessage as Message, StreamData } from "@/schema/chat.schema";
 import { MarkdownView } from "@/components/markdown-view/markdown-view";
 import { chatText } from "@/text/chat";
 import { DebateCard } from "@/components/features/debate/debate-card";
-import { PlanCard } from "@/components/features/plan/plan-card";
 import { splitImportedFileText } from "@/lib/import-file";
 import { AttachmentCard } from "./attachment-card";
 import { ChatActivity } from "./chat-activity";
 import { FileChanges } from "./file-changes";
+import { TaskBoardView } from "./task-board";
 import { chatPetState } from "@/lib/chat-pet-state";
 import { parseChatQuestions } from "@/lib/chat-questions";
 import { modelLabel } from "@/components/features/composer/model-menu";
@@ -17,7 +17,7 @@ import styles from "./chat-message.module.css";
 /** MutiS High: the app reads Codex's `mutis-delegate` blocks itself and shows the worker's result, so the raw JSON stays hidden. */
 const hideDelegation = (text: string) => text.replace(/```mutis-delegate[\s\S]*?(?:```|$)/g, "").trim();
 const PROVIDER_LABELS: Record<string, string> = { codex_cli: "Codex", claude_cli: "Claude", anthropic: "Claude", deepseek: "DeepSeek" };
-export const ChatMessage = memo(function ChatMessage({ message, chatId, streaming = false, latest = false, status, replies }: { message: Message; chatId: string; streaming?: boolean; latest?: boolean; status?: StreamData; replies?: ReactNode }) {
+export const ChatMessage = memo(function ChatMessage({ message, chatId, streaming = false, latest = false, status, replies, taskBoardEnabled = true }: { message: Message; chatId: string; streaming?: boolean; latest?: boolean; status?: StreamData; replies?: ReactNode; taskBoardEnabled?: boolean }) {
   const user = message.role === "user";
   /** Model identity comes only from this message: one chat can mix worker turns with different models. */
   const sourceLabel = PROVIDER_LABELS[message.provider] || chatText.assistant;
@@ -36,7 +36,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
       <strong>{user ? chatText.you : model ? `${sourceLabel} · ${modelLabel(model)}` : sourceLabel}</strong>
       {!user && <span className={styles.petStatus} data-state={petState} role="status">{petState !== "idle" && <>· {chatText.petStatus[petState]}</>}</span>}
     </div>
-    {message.debate_id ? <DebateCard id={message.debate_id} /> : message.plan_id ? <PlanCard id={message.plan_id} /> : <>
+    {message.debate_id ? <DebateCard id={message.debate_id} /> : <>
       {(!imported.files.length || imported.text) && <MarkdownView source={imported.text} />}
       {imported.files.length > 0 && <section className={styles.attachments} aria-label={chatText.attachedFiles}>
         {imported.files.map((file, index) => <AttachmentCard key={`${index}:${file.name}`} name={file.name} />)}
@@ -53,6 +53,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
     </div>}
     {tokenLine && <div className={styles.tokens}>{tokenLine}</div>}
     <FileChanges files={message.files} diff={message.diff} />
+    {taskBoardEnabled && !(streaming && latest) && message.tasks && <div className={styles.archivedTaskBoard}><TaskBoardView tasks={message.tasks} /></div>}
     {message.error && <div className={styles.error} role="alert">{message.error}</div>}
   </article>;
 });

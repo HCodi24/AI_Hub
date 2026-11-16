@@ -315,7 +315,7 @@ R1 hỗ trợ lịch sử, chat SSE, markdown, hoạt động, diff, light/dark 
 
 ## React R2 tại /app/
 
-React chat hỗ trợ thẻ Tranh luận, Chia việc và Bộ nhớ dự án ngay trong hội thoại. Công tắc Tranh luận dùng chung `localStorage.debateMode` với legacy (`1`/`0`). Nguồn `✦ MutiS (3 AI)` dùng lead cho chat thường; bật auto_plan để chuyển yêu cầu thành kế hoạch. Phán quyết có thể tạo kế hoạch với xác nhận chạy inline hoặc gửi thẳng tới nguồn đã chọn.
+React chat hỗ trợ thẻ Tranh luận và Bộ nhớ dự án ngay trong hội thoại (thẻ Chia việc đã bị gỡ; mức High giao việc ngầm cho worker). Công tắc Tranh luận dùng chung `localStorage.debateMode` với legacy (`1`/`0`). Nguồn `✦ MutiS (3 AI)` dùng lead cho chat thường; chat không còn tự chuyển thành thẻ kế hoạch (mức High giao việc ngầm cho worker). Phán quyết có thể gửi thẳng tới nguồn đã chọn.
 
 Thẻ kế hoạch có editor, lưu, duyệt, chạy từng việc/toàn bộ theo phụ thuộc, dừng/chạy tiếp, verify, review và các vòng sửa có giới hạn. Bộ nhớ trong thanh trên cùng theo thư mục chat, hỗ trợ active/archive, sửa nội dung, xác nhận lưu trữ/khôi phục/xoá và toast Hoàn tác cho sự kiện SSE archive. Giao diện `/` vẫn hoạt động độc lập.
 

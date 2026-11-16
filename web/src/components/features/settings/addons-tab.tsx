@@ -51,11 +51,11 @@ export function AddonsTab() {
     setTab(next); document.getElementById(`addons-tab-${next}`)?.focus();
   }
   return <div className={styles.form}>
-    <AddonLink onOutput={setOutput} />
     <div className={styles.subTabs} role="tablist" aria-label={t.addons.tabsLabel}>
       {TABS.map(id => <button key={id} type="button" role="tab" id={`addons-tab-${id}`} aria-selected={tab === id} aria-controls={`addons-panel-${id}`}
         tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)} onKeyDown={onTabKey}>{t.addons.tabs[id]}</button>)}
     </div>
+    <AddonLink onOutput={setOutput} />
     <div role="tabpanel" id={`addons-panel-${tab}`} aria-labelledby={`addons-tab-${tab}`} className={styles.form}>
       {tab === "claude" && <section className={styles.group} aria-label={t.addons.claude}>
         {missing.length > 0 && <div className={styles.banner}><span>{t.addons.banner(missing.length)}</span>

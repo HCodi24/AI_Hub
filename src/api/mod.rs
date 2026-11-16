@@ -21,7 +21,6 @@ pub mod extensions;
 pub mod folder;
 pub mod memory;
 pub mod mutis;
-pub mod plans;
 pub mod providers;
 pub mod static_ui;
 pub mod verify;
@@ -207,19 +206,6 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/debates/{id}/chat",
             post(crate::api::debate::attach_chat),
-        )
-        .route(
-            "/api/debates/{id}/plan",
-            post(crate::api::debate::link_plan),
-        )
-        // Plan management and generation routes.
-        .route(
-            "/api/plans",
-            get(plans::list_plans).post(plans::generate_plan),
-        )
-        .route(
-            "/api/plans/{id}",
-            get(plans::get_plan).put(plans::save_plan),
         )
         // Verification and plan diff routes.
         .route("/api/verify", post(crate::api::verify::verify_handler))

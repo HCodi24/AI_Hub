@@ -48,3 +48,5 @@
 @keyframes caret { 50% { opacity: 0; } }
 .choices { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .choices button { min-width: 88px; min-height: 44px; }
+.archivedTaskBoard { margin-top: var(--space-3); min-width: 0; }
+.archivedTaskBoard > section { width: 100%; max-width: none; margin: 0; }

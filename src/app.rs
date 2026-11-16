@@ -1,4 +1,4 @@
-use crate::{chat::ChatStore, config::Config, mutis::EventLog, plans::PlanStore};
+use crate::{chat::ChatStore, config::Config, mutis::EventLog};
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -19,7 +19,6 @@ pub struct AppState {
     pub(crate) config: Arc<RwLock<Config>>,
     pub(crate) config_path: PathBuf,
     pub(crate) chats: ChatStore,
-    pub(crate) plans: PlanStore,
     pub(crate) debates: crate::features::debate::DebateStore,
     pub(crate) running: Arc<Mutex<HashMap<String, RunningChat>>>,
     pub(crate) extension_running: Arc<Mutex<HashMap<String, CancellationToken>>>,
@@ -71,7 +70,6 @@ impl AppState {
         dev_repo: Option<PathBuf>,
         port: u16,
     ) -> Self {
-        let plans = PlanStore::new(&config_path).expect("config path has a parent");
         let debates = crate::features::debate::DebateStore::new(
             crate::core::paths::debates_dir(&config_path).expect("config path has a parent"),
         );
@@ -82,7 +80,6 @@ impl AppState {
             config: Arc::new(RwLock::new(config)),
             config_path,
             chats: ChatStore::new(chat_dir),
-            plans,
             debates,
             running: Arc::new(Mutex::new(HashMap::new())),
             extension_running: Arc::new(Mutex::new(HashMap::new())),

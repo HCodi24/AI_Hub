@@ -55,6 +55,37 @@ const PROTOCOL_RULE: &str = concat!(
     "these internal rules stay in English."
 );
 
+/// The same protocol for a worker that is not DeepSeek (for example Codex Luna). It is a capable model, so a task needs the goal
+/// and its limits, not the exact edit DeepSeek's does.
+const OTHER_PROTOCOL_RULE: &str = concat!(
+    "MutiS High delegation protocol (mandatory for Codex in this chat):\n",
+    "- You coordinate. Implementation goes to the worker, a capable coding model; you analyse, write acceptance criteria, review and verify. Do not edit project files yourself while delegating.\n",
+    "- Read the relevant files yourself first. Then end your reply with one fenced block per task:\n",
+    "```mutis-delegate\n",
+    "{\"title\":\"short unique task name\",\"files\":[\"path/or/folder\"],\"instructions\":\"the goal, the constraints and where to look\",\"acceptance\":[\"a condition you can check in the diff or by running a check\"]}\n",
+    "```\n",
+    "- Name the files or areas the worker should touch and what must hold afterwards. It does not need line ranges or the exact change, but anything it cannot find in the project (decisions, names, values) belongs in the instructions.\n",
+    "- Plan ALL tasks of the job in this one reply, one block each, in order. Add \"depends_on\":[\"title of another task\"] only when a task needs that task's result: independent tasks start at once, one after another, while earlier ones are still being checked, and you hear back once when all are done.\n",
+    "- Do not make running tests, builds or type checks part of the worker's task. The independent checker (Luna) runs them and its verdict is part of the report; when there is no checker you run them yourself after the report.\n",
+    "- After the blocks, stop. The app runs the worker and sends you its real report (changed files, diff, summary), plus the project's own checks when they are enabled.\n",
+    "- Add \"hard\":true to a block when the task needs the strongest reasoning (an unknown cause, a risky design decision): the app then gives it to a stronger second model (Luna 2) instead of the worker.\n",
+    "- Add \"trivial\":true to a block for a tiny low-risk change (a few lines of styling or text, a label, a rename, one field: nothing with logic, state, data or security, and nothing other code depends on). The app then skips Luna's check and you read the diff yourself. When unsure, leave it out.\n",
+    "- Review the report against your acceptance criteria and the diff. If it passes, say so and continue. If it fails or changed nothing, answer with another block with the SAME title and concrete corrections.\n",
+    "- The app counts attempts per title and climbs by itself when a checker exists: the worker twice (Luna checks), then Luna fixes it and Luna 2 checks; a hard task gets Luna 2 twice (Luna checks). When those are spent it tells you to implement the task yourself and verify it (the user then judges the result). Without a checker the worker gets 4 attempts.\n",
+    "- Questions, explanations and tiny one-line edits do not need the worker: answer or edit directly. If the user explicitly asks you to code directly, do that.\n",
+    "- Write every user-facing word in Vietnamese: your commentary, progress explanations, summaries, notes and review verdicts. ",
+    "Keep code, paths, commands, model names, task titles, JSON keys, protocol enum values and literal tool or error output ",
+    "exactly as they are. This holds even when the user's request or the task instructions are in English; ",
+    "these internal rules stay in English."
+);
+
+/// Which model runs the delegated tasks: DeepSeek (exact-edit protocol) or any other model (goal-and-limits protocol).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Worker {
+    DeepSeek,
+    Other,
+}
+
 /// Appended to the coordinator's rule while the "DeepSeek may do UI" switch is off.
 pub const NO_UI_NOTE: &str = concat!(
     "UI layout and styling work is switched off for DeepSeek in this app.\n",
@@ -62,24 +93,16 @@ pub const NO_UI_NOTE: &str = concat!(
     "- Component files (.tsx, .jsx, .vue, .svelte) are your call. A change to layout, spacing, sizes, styling or the structure of the markup: mark it \"hard\":true or do it yourself, and decide the exact values. Wiring data, props, state or text into a component is ordinary work: give it to DeepSeek."
 );
 
-/// Plain chat has no way to call DeepSeek unless an MCP server is enabled; the app runs delegated work only through plans.
-const CHAT_RULE: &str = concat!(
-    "MutiS High (chat): you cannot call the DeepSeek worker from this chat, and you must never claim to have done so.\n",
-    "- For implementation that spans several files or steps, do not start coding and do not ask the user what to do. Reply with one or two sentences on the approach, then end with the exact line [[MUTIS_PLAN]]. The app then has you write the plan, runs each task on the DeepSeek worker, verifies and reviews it.\n",
-    "- Small, single-file changes and questions: answer or edit directly as usual.\n",
-    "- Write every user-facing word in Vietnamese: your commentary, progress explanations, summaries, notes and review verdicts. ",
-    "Keep code, paths, commands, model names, task titles, JSON keys, protocol enum values and literal tool or error output ",
-    "exactly as they are. This holds even when the user's request or the task instructions are in English; ",
-    "these internal rules stay in English."
-);
-
-/// Rule for a plain chat turn: the full delegation policy only when a tool to reach DeepSeek exists.
-pub fn for_chat(enabled: bool, level: &str, provider_kind: &str, has_mcp: bool, has_worker: bool) -> &'static str {
+/// Rule for a plain chat turn: the delegation policy only when a way to reach the worker exists (the app's own
+/// delegation, or an MCP server). DeepSeek gets the exact-edit protocol, any other worker the lighter one.
+/// Otherwise Codex works directly and only keeps the language rule.
+pub fn for_chat(enabled: bool, level: &str, provider_kind: &str, has_mcp: bool, worker: Option<Worker>) -> &'static str {
     match for_coordinator(enabled, level, provider_kind) {
         "" => "",
-        _ if has_worker => PROTOCOL_RULE,
+        _ if worker == Some(Worker::DeepSeek) => PROTOCOL_RULE,
+        _ if worker == Some(Worker::Other) => OTHER_PROTOCOL_RULE,
         _ if has_mcp => RULE,
-        _ => CHAT_RULE,
+        _ => VIETNAMESE_RULE,
     }
 }
 
@@ -89,10 +112,17 @@ mod tests {
 
     #[test]
     fn chat_rule_depends_on_how_deepseek_can_be_reached() {
-        assert_eq!(for_chat(true, "high", "codex_cli", true, false), RULE);
-        assert_eq!(for_chat(true, "high", "codex_cli", false, false), CHAT_RULE);
-        assert_eq!(for_chat(true, "high", "codex_cli", false, true), PROTOCOL_RULE);
-        assert_eq!(for_chat(true, "max", "codex_cli", false, true), "");
+        assert_eq!(for_chat(true, "high", "codex_cli", true, None), RULE);
+        // No way to reach the worker: no delegation and no plan marker, only the language rule.
+        assert_eq!(for_chat(true, "high", "codex_cli", false, None), VIETNAMESE_RULE);
+        assert!(!VIETNAMESE_RULE.contains("MUTIS_PLAN"));
+        assert_eq!(for_chat(true, "high", "codex_cli", false, Some(Worker::DeepSeek)), PROTOCOL_RULE);
+        assert_eq!(for_chat(true, "high", "codex_cli", false, Some(Worker::Other)), OTHER_PROTOCOL_RULE);
+        assert_eq!(for_chat(true, "max", "codex_cli", false, Some(Worker::DeepSeek)), "");
+        // The other-model rule keeps the protocol but drops DeepSeek's exact-edit demands.
+        assert!(OTHER_PROTOCOL_RULE.contains("```mutis-delegate") && OTHER_PROTOCOL_RULE.contains("\"hard\":true") && OTHER_PROTOCOL_RULE.contains("Luna 2") && OTHER_PROTOCOL_RULE.contains("\"trivial\":true"));
+        assert!(!OTHER_PROTOCOL_RULE.contains("DeepSeek") && OTHER_PROTOCOL_RULE.contains("does not need line ranges") && PROTOCOL_RULE.contains("exact files"));
+        assert!(OTHER_PROTOCOL_RULE.lines().count() >= 10, "escapes must stay \\n, not literal newlines inside strings");
         assert!(PROTOCOL_RULE.contains("```mutis-delegate") && PROTOCOL_RULE.contains("\"hard\":true") && PROTOCOL_RULE.contains("Luna 2") && PROTOCOL_RULE.contains("\"trivial\":true"));
         assert!(PROTOCOL_RULE.lines().count() >= 10, "escapes must stay \\n, not literal newlines inside strings");
     }
@@ -108,7 +138,7 @@ mod tests {
 
     #[test]
     fn every_coordinator_rule_requires_vietnamese_visible_prose() {
-        for rule in [RULE, PROTOCOL_RULE, CHAT_RULE] {
+        for rule in [RULE, PROTOCOL_RULE, OTHER_PROTOCOL_RULE] {
             assert!(rule.contains("user-facing word in Vietnamese"), "missing language rule: {rule}");
             assert!(rule.contains("even when the user's request or the task instructions are in English"));
             // The evidence the coordinator must keep verbatim is named, so the rule cannot be read as "translate everything".

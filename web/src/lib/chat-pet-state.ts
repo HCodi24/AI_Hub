@@ -3,6 +3,8 @@ import { chatChoices } from "./chat-choices";
 import { parseChatQuestions } from "./chat-questions";
 import { chatText } from "@/text/chat";
 
+/** A pet that animates a task row can also be coding (the running pose); chat replies never are. */
+export type PetState = ChatPetState | "coding";
 export type ChatPetState = "idle" | "thinking" | "working" | "replying" | "waiting" | "failed";
 const COMMAND = /^(?:Command|Lệnh):/i;
 /** shortcut: reasoning text exists and the newest log is not a command; a stream flag would be exact, add one if this misfires. */

@@ -23,7 +23,7 @@ const Footer = () => <LunaActivity />;
 /** Stable module-level components map so Virtuoso does not remount its scroller on every render. */
 const SCROLL_COMPONENTS = { Scroller, Footer };
 
-const MessageRow = memo(function MessageRow({ index, send }: { index: number; send: SendReply }) {
+const MessageRow = memo(function MessageRow({ index, send, taskBoardEnabled }: { index: number; send: SendReply; taskBoardEnabled: boolean }) {
   const message = useChatStore(s => s.messages[index]);
   const id = useChatStore(s => s.id);
   const streaming = useChatStore(s => s.streaming && index === s.messages.length - 1);
@@ -31,15 +31,15 @@ const MessageRow = memo(function MessageRow({ index, send }: { index: number; se
   const status = useChatStore(s => s.streaming && index === s.messages.length - 1 ? s.status : undefined);
   const questions = useMemo(() => message?.role === "assistant" ? parseChatQuestions(message.content).questions : [], [message?.role, message?.content]);
   const canReply = message?.role === "assistant" && !streaming && !message.error && !message.plan_id && !message.debate_id;
-  return message ? <ChatMessage message={message} chatId={id} streaming={streaming} latest={latest} status={status}
+  return message ? <ChatMessage message={message} chatId={id} streaming={streaming} latest={latest} status={status} taskBoardEnabled={taskBoardEnabled}
     replies={canReply && questions.length > 0
       ? <ChatQuestions key={`${id}:${index}`} questions={questions} send={send} active={latest && !streaming} chatId={id} />
       : latest && canReply ? <QuickReplies key={`${id}:${index}`} content={message.content} send={send} /> : undefined} /> : null;
 });
-export const MessageList = memo(function MessageList({ send }: { send: SendReply }) {
+export const MessageList = memo(function MessageList({ send, taskBoardEnabled }: { send: SendReply; taskBoardEnabled: boolean }) {
   const count = useChatStore(s => s.messages.length);
   const id = useChatStore(s => s.id);
   return count ? <Virtuoso key={id} totalCount={count} followOutput="auto" initialTopMostItemIndex={{ index: count - 1, align: "end" }}
     components={SCROLL_COMPONENTS}
-    itemContent={index => <MessageRow index={index} send={send} />} /> : <EmptyState />;
+    itemContent={index => <MessageRow index={index} send={send} taskBoardEnabled={taskBoardEnabled} />} /> : <EmptyState />;
 });

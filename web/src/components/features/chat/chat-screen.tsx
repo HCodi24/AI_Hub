@@ -11,11 +11,10 @@ import { ChatHeader } from "@/components/features/composer/chat-toolbar";
 import { ACTIVE_CHAT_KEY, useChatStore } from "./chat-store";
 import { useChat } from "./use-chat";
 import { useDashboardPreference } from "./use-dashboard-preference";
+import { useTaskBoardPreference } from "./use-task-board-preference";
 import { chatText } from "@/text/chat";
 import styles from "./chat-screen.module.css";
 import { Toast, useToast } from "@/components/toast/toast";
-import { setRunnerMemoryHandler } from "@/components/features/plan/plan-runner";
-import { memoryNotice } from "@/components/features/memory/memory-events";
 import { SettingsDialog } from "@/components/features/settings/settings-dialog";
 import { DashboardDialog } from "./dashboard-dialog";
 import { DevBanner, RESUME_KEY } from "@/components/features/dev/dev-banner";
@@ -26,7 +25,6 @@ import { devApi } from "@/apis/dev.api";
 const INTERACTIVE = "a, button, input, select, textarea, summary, details, label, [role='button'], [role='link'], [contenteditable='true'], [tabindex]:not([tabindex='-1'])";
 export function ChatScreen() {
   const dropTarget = useRef<HTMLElement>(null);
-  useEffect(() => { setRunnerMemoryHandler((raw, folder) => useToast.getState().show(memoryNotice(raw, folder))); }, []);
   const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, folder: s.settings.folder })));
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Local only: opening the large Dashboard dialog never touches chat state or the dashboard preference.
@@ -34,6 +32,7 @@ export function ChatScreen() {
   // Persisted in localStorage (shared across chats and tabs); the frame shows the cumulative chart of
   // the current chat, while the dialog adds the totals, tables, notes and backend history.
   const [dashboardEnabled, setDashboardEnabled] = useDashboardPreference();
+  const [taskBoardEnabled, setTaskBoardEnabled] = useTaskBoardPreference();
   const { config, chats, send, stop, load, remove } = useChat();
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
   // Restore the chat that was open before the page reload.
@@ -80,13 +79,14 @@ export function ChatScreen() {
         <div className={styles.workspace} data-dashboard={dashboardEnabled ? "on" : undefined}>
           {dashboardEnabled && <aside className={styles.dashboard} aria-label={chatText.dashboard.open} tabIndex={0} aria-haspopup="dialog" onClick={onDashboardClick} onKeyDown={onDashboardKeyDown}><TokenDashboard compact /></aside>}
           <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
-            <MessageList send={send} />
+            <MessageList send={send} taskBoardEnabled={taskBoardEnabled} />
           </section>
         </div>
-        <TaskBoard />
+        <TaskBoard enabled={taskBoardEnabled} />
         <Composer dropTarget={dropTarget} config={config.data} streaming={state.streaming} send={send} stop={stop} />
       </main>
     </div>{settingsOpen && <SettingsDialog folder={state.folder} close={() => setSettingsOpen(false)}
-      dashboardEnabled={dashboardEnabled} onDashboardEnabledChange={setDashboardEnabled} />}
+      dashboardEnabled={dashboardEnabled} onDashboardEnabledChange={setDashboardEnabled}
+      taskBoardEnabled={taskBoardEnabled} onTaskBoardEnabledChange={setTaskBoardEnabled} />}
     {dashboardOpen && <DashboardDialog close={() => setDashboardOpen(false)} />}<Toast /></>;
 }

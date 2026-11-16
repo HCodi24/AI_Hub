@@ -5,7 +5,7 @@ mod config {
 mod api;
 mod app;
 mod features;
-pub(crate) use features::{chat, dev, extensions, mutis, plans, verify};
+pub(crate) use features::{chat, dev, extensions, mutis, verify};
 mod providers;
 
 use anyhow::{Context, Result};

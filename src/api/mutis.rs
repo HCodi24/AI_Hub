@@ -472,6 +472,7 @@ pub(crate) async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<R
             logs: Vec::new(),
             diff: String::new(),
             files: Vec::new(),
+            tasks: None,
             provider: String::new(),
             model: String::new(),
             error: None,

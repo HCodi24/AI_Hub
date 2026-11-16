@@ -191,6 +191,8 @@ pub(super) trait Backend: Send + Sync + 'static {
     fn cancelled(&self) -> bool;
     /// False when the coordinator may not edit files, so it cannot take a task over.
     fn can_edit(&self) -> bool;
+    /// Name shown for an actor: the worker is DeepSeek for an API agent, or the source's own name for a CLI worker.
+    fn actor_name(&self, actor: Actor) -> String { actor.name().to_owned() }
     /// Configured model for the actor selected by the same route used for execution.
     fn actor_model(&self, _actor: Actor) -> Option<String> { None }
     /// Shows the whole task board; called only from the round loop.
@@ -277,11 +279,11 @@ impl<B: Backend> Round<'_, B> {
                 row.check = check;
             }
             if let Some(actor) = actor {
-                row.actor = Some(actor.name().to_owned());
+                row.actor = Some(self.backend.actor_name(actor));
                 row.model = model;
             }
             if let Some(checker) = checker {
-                row.checker = Some(checker.name().to_owned());
+                row.checker = Some(self.backend.actor_name(checker));
                 row.checker_model = checker_model;
             }
         }
@@ -325,14 +327,14 @@ impl<B: Backend> Round<'_, B> {
             match auto_retry_reason(&work) {
                 Some(why) if auto < MAX_AUTO_RETRIES && attempt < max => {
                     auto += 1;
-                    self.backend.say(format!("Tự giao lại {} ({auto}/{MAX_AUTO_RETRIES}): {}", route(task.hard, attempt, escalate).0.name(), truncate_chars(&why, 160))).await;
+                    self.backend.say(format!("Tự giao lại {} ({auto}/{MAX_AUTO_RETRIES}): {}", self.backend.actor_name(route(task.hard, attempt, escalate).0), truncate_chars(&why, 160))).await;
                     feedback = Some(why);
                 }
                 _ => break (attempt, work),
             }
         };
         let (editor, checker) = route(task.hard, attempt, escalate);
-        self.out.reports.push(report(&task, editor.name(), attempt, max, auto, &work));
+        self.out.reports.push(report(&task, &self.backend.actor_name(editor), attempt, max, auto, &work));
         if auto_retry_reason(&work).is_some() {
             self.state.insert(title, State::Failed);
             self.mark(&task.title, self.spent_state(), attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
@@ -351,7 +353,7 @@ impl<B: Backend> Round<'_, B> {
             self.mark(&task.title, "done", attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
             return;
         };
-        self.backend.say(format!("{} kiểm tra: {} (lần {attempt})", checker.name(), task.title.trim())).await;
+        self.backend.say(format!("{} kiểm tra: {} (lần {attempt})", self.backend.actor_name(checker), task.title.trim())).await;
         self.state.insert(title.clone(), State::Checking);
         self.mark(&task.title, "checking", attempt, None, Some(checker), self.backend.actor_model(checker), Some(checker), self.backend.actor_model(checker)).await;
         self.pending += 1;

@@ -35,14 +35,14 @@ function stopCheckers(cards: LiveChecker[]): LiveChecker[] {
 type ChatState = {
   id: string; messages: ChatMessage[]; settings: Settings; streaming: boolean; drawer: boolean;
   status: StreamData; error: string; initialized: boolean;
-  /** Live task board of a MutiS High delegation (not saved with the chat). */
+  /** Live task board of the current MutiS High run. Archived snapshots live on assistant messages. */
   tasks: TaskRow[];
   /** Live Luna checks, keyed by the checker's own id and independent of messages, status and tasks. */
   checkers: LiveChecker[];
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
   load: (chat: ChatRecord) => void; reset: () => void;
-  begin: (text: string, attachments?: { id: string; mime: string }[], initialProvider?: string) => void; event: (event: string, data: StreamData) => void;
+  begin: (text: string, attachments?: { id: string; mime: string }[], initialProvider?: string, initialModel?: string) => void; event: (event: string, data: StreamData) => void;
   finish: (error?: string) => void; setDrawer: (open: boolean) => void;
 };
 const defaults: Settings = { provider_id: "", model: "", folder: "", permission: "write", effort: "medium", file_tools: "none", dev_chat: false };
@@ -105,13 +105,13 @@ export const useChatStore = create<ChatState>((set) => ({
       return { id: "", messages: [], status: {}, tasks: [], checkers: [], error: "", drawer: false, settings };
     });
   },
-  begin: (text, attachments = [], initialProvider = "") => set((state) => {
+  begin: (text, attachments = [], initialProvider = "", initialModel = "") => set((state) => {
     const id = state.id || crypto.randomUUID();
     rememberActiveChat(id);
     if (!state.id) saveModelSelection(id, state.settings);
     return { id, streaming: true, status: {}, tasks: [], checkers: [], error: "",
       messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text, attachments }),
-        ChatMessageSchema.parse({ role: "assistant", content: "", provider: initialProvider })] };
+        ChatMessageSchema.parse({ role: "assistant", content: "", provider: initialProvider, model: initialModel })] };
   }),
   event: (event, data) => set((state) => {
     if (event === "turn") {
@@ -119,7 +119,7 @@ export const useChatStore = create<ChatState>((set) => ({
       if (provider !== "codex_cli" && provider !== "deepseek") return {};
       const last = state.messages.at(-1);
       const empty = last?.role === "assistant" && !last.content && !last.reasoning && !last.logs.length &&
-        !last.diff && !last.files.length && !last.attachments.length && last.error == null && last.plan_id == null && last.debate_id == null;
+        !last.diff && !last.files.length && !last.tasks?.length && !last.attachments.length && last.error == null && last.plan_id == null && last.debate_id == null;
       // A new turn starts a fresh reply: the placeholder's previous identity is dropped, never inferred from settings.
       const next = ChatMessageSchema.parse({ role: "assistant", content: "", provider, model: data.model || "" });
       return { messages: empty ? [...state.messages.slice(0, -1), next] : [...state.messages, next],
@@ -128,6 +128,12 @@ export const useChatStore = create<ChatState>((set) => ({
     }
     if (event === "heartbeat") return { status: { ...state.status, ...data } };
     if (event === "tasks") return { tasks: data.tasks ?? [] };
+    if (event === "task_snapshot") {
+      const messages = [...state.messages];
+      const last = messages.at(-1);
+      if (last?.role === "assistant" && data.tasks) messages[messages.length - 1] = { ...last, tasks: data.tasks };
+      return { tasks: data.tasks ?? state.tasks, messages };
+    }
     // Live Luna cards are handled before any trailing-message update: a checker event never touches the
     // streaming worker's message, and a worker event never touches a card.
     if (event === "checker_activity") {
@@ -159,9 +165,13 @@ export const useChatStore = create<ChatState>((set) => ({
     return { messages };
   }),
   // A row still waiting or busy when the stream ends will never move again (stopped, or the connection dropped).
-  finish: (error = "") => set((state) => ({ streaming: false, error,
-    tasks: state.tasks.map(task => ["waiting", "coding", "checking", "fixing"].includes(task.state) ? { ...task, state: "stopped" } : task),
-    checkers: stopCheckers(state.checkers),
-    messages: state.messages.map((message, index) => error && index === state.messages.length - 1 ? { ...message, error } : message) })),
+  finish: (error = "") => set((state) => {
+    const tasks = state.tasks.map(task => ["waiting", "coding", "checking", "fixing"].includes(task.state) ? { ...task, state: "stopped" } : task);
+    return { streaming: false, error, tasks, checkers: stopCheckers(state.checkers),
+      messages: state.messages.map((message, index) => {
+        if (index !== state.messages.length - 1 || message.role !== "assistant") return message;
+        return { ...message, ...(tasks.length ? { tasks } : {}), ...(error ? { error } : {}) };
+      }) };
+  }),
   setDrawer: (drawer) => set({ drawer }),
 }));

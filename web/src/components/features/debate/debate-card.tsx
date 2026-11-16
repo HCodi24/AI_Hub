@@ -4,7 +4,6 @@ import { Skeleton } from "@/components/skeleton/skeleton";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { debatesApi } from "@/apis/debates.api";
-import { plansApi } from "@/apis/plans.api";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { cancelCard } from "@/components/features/chat/card-actions";
 import { useClock } from "@/components/features/chat/use-clock";
@@ -16,9 +15,6 @@ export function DebateCard({ id }: { id: string }) {
   const cached = useCardStore(s => s.debates[id]);
   const query = useQuery({ queryKey: ["debate", id], queryFn: ({ signal }) => debatesApi.get(id, signal), enabled: !cached });
   const record = cached?.record || query.data;
-  const linked = useCardStore(s => record?.plan_id ? s.plans[record.plan_id] : undefined);
-  const planQuery = useQuery({ queryKey: ["plan", record?.plan_id], queryFn: ({ signal }) => plansApi.get(record!.plan_id!, signal), enabled: Boolean(record?.plan_id && !linked) });
-  const plan = linked || planQuery.data;
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<number | null>(null); const [side, setSide] = useState("codex");
   const clock = useClock(Boolean(cached?.live), record?.created_at || 0, record?.elapsed_s);
@@ -26,8 +22,7 @@ export function DebateCard({ id }: { id: string }) {
   const round = record.rounds.find(r => r.index === (selected || cached?.round)) || record.rounds.at(-1);
   const verdict = record.verdict;
   const steps = [...Array.from({ length: record.max_rounds }, (_, index) => ({ label: `${t.round} ${index + 1} ${index ? t.rebuttal : t.proposal}`, done: cached?.live ? Boolean(cached.finished?.includes(`codex:${index + 1}`)) : Boolean(record.rounds.find(r => r.index === index + 1)?.codex.text), active: cached?.live && cached.phase === "round" && cached.round === index + 1 })),
-    { label: t.judge, done: Boolean(verdict), active: cached?.live && cached.phase === "judge" }, { label: t.plan, done: Boolean(plan && !plan.planning), active: plan?.planning },
-    { label: t.execute, done: Boolean(plan?.tasks.length && plan.tasks.every(task => task.status === t.complete)), active: plan?.tasks.some(task => task.status === t.active) }];
+    { label: t.judge, done: Boolean(verdict), active: cached?.live && cached.phase === "judge" }];
   return <section className={styles.card} aria-label={t.debate}><header><strong><Scale size={18} aria-hidden="true" /> {t.debate} · {record.title || record.request.slice(0, 72)}</strong><StatusBadge state={cached?.live ? "running" : record.error ? "failed" : record.status === "done" ? "done" : "draft"} label={cached?.live ? t.running : record.error ? t.error : record.status === "done" ? t.done : t.stopped} /><time>{clock}s</time></header>
     <p className={styles.meta}>{t.codex} {record.codex_model} · {t.claude} {record.claude_model} · {t.judge}: {record.judge_model}</p>
     <div className={styles.chips}>{steps.map(step => <span key={step.label} data-active={step.active}>{step.done ? <CheckCircle2 size={14} aria-hidden="true" /> : step.active ? <Loader2 size={14} aria-hidden="true" className="spin" /> : <Circle size={14} aria-hidden="true" />} {step.label}</span>)}</div>

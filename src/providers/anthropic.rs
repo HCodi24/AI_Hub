@@ -340,6 +340,7 @@ mod image_builder_tests {
             logs: vec![],
             diff: String::new(),
             files: Vec::new(),
+            tasks: None,
             provider: String::new(),
             model: String::new(),
             error: None,

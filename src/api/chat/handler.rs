@@ -22,14 +22,31 @@ use uuid::Uuid;
 
 /// What the chat avatar is chosen by: the source kind, except DeepSeek models (by model, source id or name), which get their own.
 fn avatar_source(provider: &crate::config::ProviderConfig, model: &str) -> String {
-    let deepseek = [model, provider.id.as_str(), provider.name.as_str()]
-        .iter()
-        .any(|text| text.to_ascii_lowercase().contains("deepseek"));
-    if deepseek && !provider.kind.ends_with("_cli") {
+    if provider.is_deepseek(model) {
         "deepseek".to_owned()
     } else {
         provider.kind.clone()
     }
+}
+
+/// Kinds of source that can run delegated tasks: an API agent loop (OpenAI-compatible) or a CLI thread (Codex, Claude).
+const WORKER_KINDS: [&str; 3] = ["openai_compat", "codex_cli", "claude_cli"];
+
+/// Sources the delegated worker may be, best first: the role's own source, then the agent-capable API sources, then the Codex sources.
+/// The caller uses the first one that is active (connected).
+fn worker_candidates(providers: &[crate::config::ProviderConfig], configured_id: &str) -> Vec<crate::config::ProviderConfig> {
+    let mut found: Vec<_> = crate::config::resolve_provider_id(providers, configured_id)
+        .filter(|p| WORKER_KINDS.contains(&p.kind.as_str()))
+        .cloned()
+        .into_iter()
+        .collect();
+    for provider in providers {
+        let fits = (provider.kind == "openai_compat" && provider.agent_capable) || provider.kind == "codex_cli";
+        if fits && !found.iter().any(|p| p.id == provider.id) {
+            found.push(provider.clone());
+        }
+    }
+    found
 }
 
 /// First user message of the conversation gets the fixed rules in front of it.
@@ -123,18 +140,27 @@ pub(crate) async fn chat_handler(
         provider_config.kind = "mcp_agent".into();
     }
     let mutis_config = state.config.read().await.mutis.clone();
-    // MutiS High + Codex: the app runs the DeepSeek worker for Codex (see providers::delegate).
+    // MutiS High + Codex: the app runs the delegated worker for Codex (see providers::delegate). Any source that is
+    // active in Settings › Nguồn AI can be the worker, whatever its kind (API key or CLI).
     let role_effort_name = request.effort.as_deref().unwrap_or("max");
     let delegate_worker = if provider_config.kind == "codex_cli" && mutis_config.enabled && request.plan_id.is_none() && !plain_chat
         && crate::config::MutisConfig::level_for(role_effort_name) == "high" {
-        let config = state.config.read().await;
+        let providers_now = state.config.read().await.providers.clone();
         // High roles may be unset (old configs): fall back to the Max small worker.
         let high_small = &mutis_config.roles_for(role_effort_name).small;
         let role = if high_small.provider_id.trim().is_empty() { &mutis_config.roles.small } else { high_small };
-        crate::config::resolve_provider_id(&config.providers, &role.provider_id)
-            .filter(|p| !p.api_key.trim().is_empty())
-            .map(|p| (p.clone(), if role.model.trim().is_empty() { p.models.first().cloned().unwrap_or_default() } else { role.model.clone() }))
-            .filter(|(_, model)| !model.is_empty())
+        let configured_id = crate::config::resolve_provider_id(&providers_now, &role.provider_id).map(|p| p.id.clone());
+        let mut chosen = None;
+        for provider in worker_candidates(&providers_now, &role.provider_id) {
+            let active = crate::api::providers::cached_provider_test(&state, &provider.id).await.is_ok_and(|test| test.status == "connected");
+            let own_model = configured_id.as_deref() == Some(provider.id.as_str()) && !role.model.trim().is_empty();
+            let model = if own_model { role.model.trim().to_owned() } else { provider.models.first().cloned().unwrap_or_default() };
+            if active && !model.is_empty() {
+                chosen = Some((provider, model, chat::parse_effort(&role.effort).unwrap_or_default()));
+                break;
+            }
+        }
+        chosen
     } else {
         None
     };
@@ -152,7 +178,7 @@ pub(crate) async fn chat_handler(
         (None, None)
     };
     let provider: Box<dyn providers::Provider> = match &delegate_worker {
-        Some((worker, model)) => Box::new(providers::delegate::DelegateProvider { worker: worker.clone(), model: model.clone(), checker: delegate_checker.clone(), checker_note: checker_note.clone(), chat_id: request.chat_id.clone() }),
+        Some((worker, model, effort)) => Box::new(providers::delegate::DelegateProvider { worker: worker.clone(), model: model.clone(), effort: *effort, checker: delegate_checker.clone(), checker_note: checker_note.clone(), chat_id: request.chat_id.clone() }),
         None => providers::for_kind(&provider_config.kind)
             .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?,
     };
@@ -218,6 +244,7 @@ pub(crate) async fn chat_handler(
         logs: Vec::new(),
         diff: String::new(),
         files: Vec::new(),
+        tasks: None,
         provider: avatar_source(&provider_config, &request.model),
         model: request.model.clone(),
         error: None,
@@ -299,6 +326,10 @@ pub(crate) async fn chat_handler(
         crate::features::memory::inject(&mut provider_request, &memory_context);
     }
     // Plan workers run unattended; interactive chat supports user decision cards on every turn.
+    // The delegated worker decides which protocol Codex gets: exact edits for DeepSeek, goals and limits for any other model.
+    let worker_kind = delegate_worker.as_ref().map(|(worker, model, _)| {
+        if worker.is_deepseek(model) { crate::core::rule::mutis_high_delegation::Worker::DeepSeek } else { crate::core::rule::mutis_high_delegation::Worker::Other }
+    });
     if request.plan_id.is_none() {
         add_question_rules(&mut provider_request);
         if !plain_chat {
@@ -307,11 +338,11 @@ pub(crate) async fn chat_handler(
                 crate::config::MutisConfig::level_for(request.effort.as_deref().unwrap_or("max")),
                 &provider_request.provider.kind,
                 provider_request.mcp.iter().any(|server| server.name.contains("deepseek")),
-                delegate_worker.is_some(),
+                worker_kind,
             );
             if !rule.is_empty() {
                 let rule = if delegate_checker.is_some() { format!("{rule}\n{}", crate::core::rule::mutis_checker::NOTE) } else { rule.to_owned() };
-                let rule = if delegate_worker.is_some() && !mutis_config.deepseek_ui { format!("{rule}\n{}", crate::core::rule::mutis_high_delegation::NO_UI_NOTE) } else { rule };
+                let rule = if worker_kind == Some(crate::core::rule::mutis_high_delegation::Worker::DeepSeek) && !mutis_config.deepseek_ui { format!("{rule}\n{}", crate::core::rule::mutis_high_delegation::NO_UI_NOTE) } else { rule };
                 if let Some(message) = provider_request.messages.iter_mut().rev().find(|m| m.role == "user") {
                     message.content = format!("{rule}\n\n{}", message.content);
                 }
@@ -432,6 +463,23 @@ pub(crate) async fn chat_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn source(id: &str, kind: &str, agent_capable: bool) -> crate::config::ProviderConfig {
+        crate::config::ProviderConfig { id: id.into(), kind: kind.into(), agent_capable, ..Default::default() }
+    }
+
+    #[test]
+    fn worker_candidates_start_with_the_role_source_whatever_its_kind() {
+        let providers = [source("claude", "claude_cli", false), source("api", "openai_compat", true), source("codex", "codex_cli", false), source("plain", "anthropic", false)];
+        let ids = |configured: &str| worker_candidates(&providers, configured).into_iter().map(|p| p.id).collect::<Vec<_>>();
+        // A CLI role source is used as it is (no API key needed), then the agent API source and the Codex source follow.
+        assert_eq!(ids("codex"), ["codex", "api"]);
+        assert_eq!(ids("claude"), ["claude", "api", "codex"]);
+        assert_eq!(ids("api"), ["api", "codex"]);
+        // A kind that cannot run tasks, or an unknown id, is skipped; the others still apply.
+        assert_eq!(ids("plain"), ["api", "codex"]);
+        assert_eq!(ids("missing"), ["api", "codex"]);
+    }
 
     fn request(messages: serde_json::Value) -> ProviderRequest {
         ProviderRequest {

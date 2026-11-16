@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { z } from "zod";
-import { ArrowUp, Square, Scale, Sparkles, ImagePlus, Plus, X, FileEdit, FileUp } from "lucide-react";
+import { ArrowUp, Square, Scale, ImagePlus, Plus, X, FileEdit, FileUp } from "lucide-react";
 import { droppedFiles, fileReadError, importDirectory, importTextFile, importedFileText, type DroppedFile, type ImportedFile } from "@/lib/import-file";
 import { Button } from "@/components/button/button";
 import { http } from "@/lib/http";
 import { chatText } from "@/text/chat";
 import { cardText as t } from "@/text/cards";
-import { startCard } from "@/components/features/chat/card-actions";
 import { notify } from "@/components/toast/toast";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { useChatStore } from "@/components/features/chat/chat-store";
@@ -137,8 +136,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   }
   return <><form className={styles.composer} data-dragging={dragging || undefined} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <label className="sr-only" htmlFor="chat-input">{chatText.placeholder}</label>
-    <div><button type="button" aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" />{t.debate}</button>
-      <button type="button" disabled={streaming || uploading || attachments.length > 0 || Boolean(running) || !value.trim()} onClick={() => { const draft = value; setValue(""); void startCard(draft, "plan").catch(error => { setValue(draft); notify(String(error)); }); }}><Sparkles size={16} aria-hidden="true" />{t.plan}</button></div>
+    <div><button type="button" aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" />{t.debate}</button></div>
     {recalled.length > 0 && <div className={styles.recalled} aria-label={t.recalled}>{recalled.map((item, index) => <span key={item.label}>
       <FileEdit size={14} aria-hidden="true" /><span title={item.label}>{item.label}</span>
       <button type="button" aria-label={`${t.removeMemory}: ${item.label}`} onClick={() => setRecalled(current => current.filter((_, i) => i !== index))}><X size={12} aria-hidden="true" /></button></span>)}</div>}

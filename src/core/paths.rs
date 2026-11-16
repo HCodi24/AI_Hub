@@ -24,10 +24,6 @@ pub fn debates_dir(config_path: &Path) -> Result<PathBuf> {
     Ok(data_dir(config_path)?.join("debates"))
 }
 
-pub fn plans_dir(config_path: &Path) -> Result<PathBuf> {
-    Ok(data_dir(config_path)?.join("plans"))
-}
-
 pub fn mutis_dir(config_path: &Path) -> Result<PathBuf> {
     Ok(data_dir(config_path)?.join("mutis"))
 }

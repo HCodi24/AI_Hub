@@ -23,8 +23,10 @@ type SettingsDialogProps = {
   close: () => void;
   dashboardEnabled: boolean;
   onDashboardEnabledChange: (enabled: boolean) => void;
+  taskBoardEnabled: boolean;
+  onTaskBoardEnabledChange: (enabled: boolean) => void;
 };
-export function SettingsDialog({ folder, close, dashboardEnabled, onDashboardEnabledChange }: SettingsDialogProps) {
+export function SettingsDialog({ folder, close, dashboardEnabled, onDashboardEnabledChange, taskBoardEnabled, onTaskBoardEnabledChange }: SettingsDialogProps) {
   const [tab, setTab] = useState<TabId>("providers");
   return <Dialog title={t.title} close={close} wide className={styles.settingsDialog} iconClose>
     <div className={styles.layout}>
@@ -34,7 +36,7 @@ export function SettingsDialog({ folder, close, dashboardEnabled, onDashboardEna
     </ScrollArea>
     <ScrollArea as="section" id="settings-panel" aria-labelledby={`settings-tab-${tab}`} className={styles.panel} key={tab}>
       <h3 className={styles.panelTitle}>{t.tabs[tab]}</h3>
-      {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab />}{tab === "mutis" && <MutisTab />}
+      {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab />}{tab === "mutis" && <MutisTab taskBoardEnabled={taskBoardEnabled} onTaskBoardEnabledChange={onTaskBoardEnabledChange} />}
       {tab === "addons" && <AddonsTab />}
       {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "pets" && <PetsSection />}{tab === "dev" && <DevTab />}
       {tab === "sound" && <p className={styles.note}>{t.sound.notice}</p>}

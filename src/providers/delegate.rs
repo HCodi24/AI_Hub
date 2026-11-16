@@ -206,14 +206,14 @@ fn is_token_line(line: &str) -> bool {
 }
 
 /// A worker log line as shown in the chat; token lines stay unprefixed because the token table and task_end only match them at the start.
-fn worker_log(line: &str) -> String {
-    if is_token_line(line) { line.to_owned() } else { format!("DeepSeek: {line}") }
+fn worker_log(line: &str, label: &str) -> String {
+    if is_token_line(line) { line.to_owned() } else { format!("{label}: {line}") }
 }
 
 fn message(role: &str, content: String) -> ChatMessage {
     ChatMessage {
         debate_id: None, plan_id: None, role: role.into(), content, attachments: Vec::new(), reasoning: String::new(),
-        logs: Vec::new(), diff: String::new(), files: Vec::new(), provider: String::new(), model: String::new(), error: None,
+        logs: Vec::new(), diff: String::new(), files: Vec::new(), tasks: None, provider: String::new(), model: String::new(), error: None,
     }
 }
 
@@ -244,8 +244,11 @@ fn checker_progress(line: &str) -> Option<String> {
 }
 
 pub struct DelegateProvider {
+    /// The source that runs the tasks: an API agent (OpenAI-compatible) or a CLI (Codex, Claude), whichever is active.
     pub worker: ProviderConfig,
     pub model: String,
+    /// Reasoning effort of the worker role; used when the worker is a CLI.
+    pub effort: Effort,
     /// The independent checker (a Codex source, its model and effort), when the option is on and configured.
     pub checker: Option<(ProviderConfig, String, Effort)>,
     /// Shown once in the chat when the option is on but the checker cannot run (what to set in the High section).
@@ -257,6 +260,9 @@ pub struct DelegateProvider {
 struct Live {
     worker: ProviderConfig,
     model: String,
+    effort: Effort,
+    /// The worker's own CLI thread (only when the worker is a CLI source); kept for every task of this reply.
+    worker_cli_session: Mutex<Option<String>>,
     folder: String,
     mutis: MutisConfig,
     events: mpsc::Sender<ProviderEvent>,
@@ -313,7 +319,60 @@ impl Live {
             // shortcut: no write scope for Luna (Codex cannot be scoped); the checker judges the diff instead.
             write_scope: Vec::new(), checker_session_id: None,
         };
-        let inner = match for_kind("codex_cli") {
+        let result = self.run_cli("codex_cli", request, who.name(), self.session_of(who)).await;
+        // Luna's thread is kept in the chat record; Luna 2's lives only in this reply.
+        let kept = if who == Actor::Luna { self.checker_session.lock().unwrap().clone() } else { None };
+        if let Some(id) = kept {
+            let _ = events.send(ProviderEvent { name: "checker_session", data: serde_json::json!({ "session_id": id }) }).await;
+        }
+        result
+    }
+
+    /// Whether the worker runs as a CLI thread (Codex, Claude) instead of the API agent loop.
+    fn worker_is_cli(&self) -> bool {
+        matches!(self.worker.kind.as_str(), "codex_cli" | "claude_cli")
+    }
+
+    fn worker_is_deepseek(&self) -> bool {
+        self.worker.is_deepseek(&self.model)
+    }
+
+    /// Name shown for the worker: DeepSeek for a DeepSeek model, otherwise its family ("Codex", "Claude") or the source's own name.
+    /// The task board adds the exact model after it.
+    fn worker_label(&self) -> String {
+        match self.worker.kind.as_str() {
+            _ if self.worker_is_deepseek() => Actor::DeepSeek.name().to_owned(),
+            "codex_cli" => "Codex".to_owned(),
+            "claude_cli" => "Claude".to_owned(),
+            _ => self.worker.name.clone(),
+        }
+    }
+
+    /// The worker is a CLI source (for example Codex Luna): it edits the project in its own thread, like Luna does when it takes a task over.
+    async fn work_cli(&self, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult {
+        let label = self.worker_label();
+        let events = &self.events;
+        if self.cancel.is_cancelled() || events.send(turn(&self.worker.kind, &self.model, &label)).await.is_err() {
+            self.cancel.cancel();
+            return WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
+        }
+        let max = limit(task.hard, self.can_escalate());
+        let _ = events.send(ProviderEvent::text("log", format!("Giao {label}: {} (lần {attempt}/{max})", task.title.trim()))).await;
+        let request = ProviderRequest {
+            provider: self.worker.clone(), model: self.model.clone(), folder: self.folder.clone(), permission: Permission::Write, effort: self.effort,
+            messages: vec![message("user", worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback) + LUNA_WORK_NOTE)],
+            session_id: self.worker_cli_session.lock().unwrap().clone(), mutis: self.mutis.clone(), mcp: Vec::new(),
+            // shortcut: a CLI cannot be scoped to files; the checker judges the diff instead.
+            write_scope: Vec::new(), checker_session_id: None,
+        };
+        self.run_cli(&self.worker.kind, request, &label, &self.worker_cli_session).await
+    }
+
+    /// Runs one CLI turn and folds its events into a `WorkerResult`. `session` receives the thread id the CLI reports; `label` prefixes its log lines.
+    async fn run_cli(&self, kind: &str, request: ProviderRequest, label: &str, session: &Mutex<Option<String>>) -> WorkerResult {
+        let events = &self.events;
+        let mut result = WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
+        let inner = match for_kind(kind) {
             Ok(inner) => inner,
             Err(error) => {
                 result.error = Some(error.to_string());
@@ -333,19 +392,19 @@ impl Live {
                     let _ = events.send(event).await;
                 }
                 "diff" => {
-                    // Codex repeats the whole diff of its turn: the last one is the result.
+                    // A CLI repeats the whole diff of its turn: the last one is the result.
                     result.diff = event.data["text"].as_str().unwrap_or("").to_owned();
                     let _ = events.send(event).await;
                 }
                 // Never forwarded: a "session" event would overwrite the coordinator's own thread in the chat record.
                 "session" => {
                     if let Some(id) = event.data["session_id"].as_str() {
-                        *self.session_of(who).lock().unwrap() = Some(id.to_owned());
+                        *session.lock().unwrap() = Some(id.to_owned());
                     }
                 }
                 "log" => {
                     let line = event.data["text"].as_str().unwrap_or("");
-                    let line = if is_token_line(line) { line.to_owned() } else { format!("{}: {line}", who.name()) };
+                    let line = if is_token_line(line) { line.to_owned() } else { format!("{label}: {line}") };
                     let _ = events.send(ProviderEvent::text("log", line)).await;
                 }
                 "error" => {
@@ -366,11 +425,6 @@ impl Live {
             }
             result.error = Some(error);
         }
-        // Luna's thread is kept in the chat record; Luna 2's lives only in this reply.
-        let kept = if who == Actor::Luna { self.checker_session.lock().unwrap().clone() } else { None };
-        if let Some(id) = kept {
-            let _ = events.send(ProviderEvent { name: "checker_session", data: serde_json::json!({ "session_id": id }) }).await;
-        }
         result
     }
 }
@@ -382,13 +436,17 @@ impl Backend for Live {
         if who != Actor::DeepSeek {
             return self.work_luna(who, task, attempt, feedback).await;
         }
+        if self.worker_is_cli() {
+            return self.work_cli(task, attempt, feedback).await;
+        }
         let events = &self.events;
-        if self.cancel.is_cancelled() || events.send(turn("deepseek", &self.model, "DeepSeek")).await.is_err() {
+        let label = self.worker_label();
+        if self.cancel.is_cancelled() || events.send(turn(if self.worker_is_deepseek() { "deepseek" } else { &self.worker.kind }, &self.model, &label)).await.is_err() {
             self.cancel.cancel();
             return WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
         }
         let max = limit(task.hard, self.can_escalate());
-        let _ = events.send(ProviderEvent::text("log", format!("Giao DeepSeek: {} (lần {attempt}/{max})", task.title.trim()))).await;
+        let _ = events.send(ProviderEvent::text("log", format!("Giao {label}: {} (lần {attempt}/{max})", task.title.trim()))).await;
         // The worker stays at Write whatever the chat permission is: it edits files but never runs commands (the checker runs the tests).
         let mut provider = self.worker.clone();
         provider.kind = "deepseek_agent".into();
@@ -428,7 +486,7 @@ impl Backend for Live {
                         result.refused.push(line.trim_start_matches("Từ chối: ").to_owned());
                     }
                     // The token table and task_end only match lines that start with "Token:", so those stay unprefixed.
-                    let line = worker_log(line);
+                    let line = worker_log(line, &label);
                     let _ = events.send(ProviderEvent::text("log", line)).await;
                 }
                 "error" => {
@@ -563,6 +621,10 @@ impl Backend for Live {
         self.can_edit
     }
 
+    fn actor_name(&self, actor: Actor) -> String {
+        if actor == Actor::DeepSeek { self.worker_label() } else { actor.name().to_owned() }
+    }
+
     fn actor_model(&self, actor: Actor) -> Option<String> {
         match actor {
             Actor::DeepSeek => Some(self.model.clone()),
@@ -635,7 +697,8 @@ impl DelegateProvider {
 impl super::Provider for DelegateProvider {
     async fn run(&self, mut request: ProviderRequest, events: mpsc::Sender<ProviderEvent>, cancel: CancellationToken) -> Result<()> {
         let live = Arc::new(Live {
-            worker: self.worker.clone(), model: self.model.clone(), folder: request.folder.clone(), mutis: request.mutis.clone(),
+            worker: self.worker.clone(), model: self.model.clone(), effort: self.effort, worker_cli_session: Mutex::new(None),
+            folder: request.folder.clone(), mutis: request.mutis.clone(),
             events: events.clone(), cancel: cancel.clone(), checker: self.checker.clone(),
             worker_session: format!("{}{}:{}:{}", super::worker_session::PREFIX, self.chat_id, self.worker.id, self.model),
             checker_session: Mutex::new(request.checker_session_id.clone()),
@@ -656,7 +719,7 @@ impl super::Provider for DelegateProvider {
                 request.session_id = session;
             }
             let (tasks, errors) = extract(&text);
-            let (tasks, ui_notes, ui_logs) = guard_ui(tasks, request.mutis.deepseek_ui, live.can_escalate());
+            let (tasks, ui_notes, ui_logs) = guard_ui(tasks, request.mutis.deepseek_ui || !live.worker_is_deepseek(), live.can_escalate());
             for line in ui_logs {
                 let _ = events.send(ProviderEvent::text("log", line)).await;
             }
@@ -698,8 +761,9 @@ mod tests {
 
     #[test]
     fn worker_token_lines_stay_unprefixed_so_the_token_table_counts_them() {
-        assert_eq!(worker_log("Token: vào 10 (cache 2), ra 3 (suy luận 0)"), "Token: vào 10 (cache 2), ra 3 (suy luận 0)");
-        assert_eq!(worker_log("Sửa a.rs"), "DeepSeek: Sửa a.rs");
+        assert_eq!(worker_log("Token: vào 10 (cache 2), ra 3 (suy luận 0)", "DeepSeek"), "Token: vào 10 (cache 2), ra 3 (suy luận 0)");
+        assert_eq!(worker_log("Sửa a.rs", "DeepSeek"), "DeepSeek: Sửa a.rs");
+        assert_eq!(worker_log("Sửa a.rs", "Luna"), "Luna: Sửa a.rs");
         assert!(is_token_line("Token: vào 1, ra 2") && !is_token_line("DeepSeek: Token: vào 1, ra 2"));
     }
 

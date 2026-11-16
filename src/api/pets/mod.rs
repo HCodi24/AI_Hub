@@ -18,7 +18,8 @@ use std::{fs, path::PathBuf};
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 /// Every sprite sheet is 8 columns of 192 px and 5 rows of 208 px (thinking, running, idle, waiting, failed).
 const SHEET_WIDTH: u32 = 1536;
-const SHEET_HEIGHT: u32 = 208 * 5;
+/// 6 rows (thinking, replying, idle, waiting, failed, running) or 5 without the running row.
+const SHEET_HEIGHTS: [u32; 2] = [208 * 5, 208 * 6];
 
 fn not_found() -> ApiError {
     ApiError::new(StatusCode::NOT_FOUND, "Không có pet này")
@@ -66,15 +67,15 @@ fn is_webp(bytes: &[u8]) -> bool {
     bytes.len() > 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP"
 }
 
-/// PNG with the pet sheet layout: exactly 1536 x 1040 px.
+/// PNG with the pet sheet layout: 1536 px wide, 1248 px (6 rows) or 1040 px (5 rows) high.
 fn is_sheet_png(bytes: &[u8]) -> bool {
     let dimension = |at: usize| bytes.get(at..at + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]));
-    is_png(bytes) && dimension(16) == Some(SHEET_WIDTH) && dimension(20) == Some(SHEET_HEIGHT)
+    is_png(bytes) && dimension(16) == Some(SHEET_WIDTH) && dimension(20).is_some_and(|height| SHEET_HEIGHTS.contains(&height))
 }
 
 /// PNG or WebP with the pet sheet layout.
 fn is_sheet(bytes: &[u8]) -> bool {
-    is_sheet_png(bytes) || (is_webp(bytes) && webp_size(bytes) == Some((SHEET_WIDTH, SHEET_HEIGHT)))
+    is_sheet_png(bytes) || (is_webp(bytes) && webp_size(bytes).is_some_and(|(width, height)| width == SHEET_WIDTH && SHEET_HEIGHTS.contains(&height)))
 }
 
 /// `displayName` of a pet folder's `pet.json`, when it has a usable one.
@@ -122,7 +123,7 @@ pub(crate) async fn import(State(state): State<AppState>, Json(request): Json<Im
     let bytes = fs::read(dir.join(file.unwrap_or("spritesheet.png")))
         .ok()
         .filter(|bytes| bytes.len() <= MAX_BYTES && is_sheet(bytes))
-        .ok_or_else(|| bad("Không đọc được ảnh sprite (cần PNG/WebP đúng 1536 × 1040 px, tối đa 4 MB)"))?;
+        .ok_or_else(|| bad("Không đọc được ảnh sprite (cần PNG/WebP rộng 1536 px, cao 1248 px (6 hàng) hoặc 1040 px (5 hàng), tối đa 4 MB)"))?;
     let name = display_name(&dir).unwrap_or_else(|| id.to_owned());
     save(&state, id, &name, &bytes)?;
     Ok(Json(json!({ "id": id, "name": name })))
@@ -171,7 +172,7 @@ pub(crate) async fn upload(State(state): State<AppState>, Query(query): Query<Up
     }
     let id: String = format!("my-{slug}").chars().take(48).collect();
     if body.len() > MAX_BYTES || !is_webp(&body) || !is_sheet(&body) {
-        return Err(bad("Cần ảnh WebP đúng 1536 × 1040 px (8 cột × 5 hàng), tối đa 4 MB"));
+        return Err(bad("Cần ảnh WebP rộng 1536 px, cao 1248 px (8 cột × 6 hàng) hoặc 1040 px (5 hàng), tối đa 4 MB"));
     }
     let name: String = stem.chars().take(60).collect();
     save(&state, &id, &name, &body)?;
@@ -208,9 +209,11 @@ mod tests {
 
     #[test]
     fn only_pet_sheet_pngs_are_accepted() {
+        assert!(is_sheet_png(&png(1536, 1248)));
         assert!(is_sheet_png(&png(1536, 1040)));
         assert!(!is_sheet_png(&png(1536, 1872)));
-        assert!(!is_sheet_png(&png(800, 1040)));
+        assert!(!is_sheet_png(&png(800, 1248)));
+        assert!(!is_sheet_png(&png(1536, 1456)));
         assert!(!is_sheet_png(&png(1536, 1041)));
         assert!(!is_sheet_png(b"<html>not an image</html>"));
     }

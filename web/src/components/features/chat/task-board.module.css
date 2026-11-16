@@ -9,6 +9,7 @@
 .board li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start; gap: var(--space-1) var(--space-2); min-width: 0; }
 .board li > svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; }
 .name { min-width: 0; overflow-wrap: anywhere; }
+.who { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .board small { color: var(--muted); white-space: normal; overflow-wrap: anywhere; min-width: 0; }
 .board li[data-state="done"] svg { color: var(--accent); }
 .board li[data-state="failed"] svg { color: var(--danger); }
@@ -17,5 +18,5 @@
 @media (max-width: 767px) {
   .board { width: calc(100% - 2 * var(--space-4)); max-width: calc(820px - 2 * var(--space-4)); }
   .board li { grid-template-columns: 16px minmax(0, 1fr); }
-  .board small { grid-column: 2; }
+  .who { grid-column: 2; }
 }

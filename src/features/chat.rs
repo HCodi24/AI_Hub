@@ -66,6 +66,9 @@ pub struct ChatMessage {
     pub diff: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<crate::features::changes::FileChange>,
+    /// Optional MutiS task metadata archived with the assistant reply that completed the run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tasks: Option<Vec<Value>>,
     /// Provider kind that wrote this assistant reply (e.g. `codex_cli`), for its avatar in the UI.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub provider: String,
@@ -534,6 +537,7 @@ mod message_model_tests {
             logs: Vec::new(),
             diff: String::new(),
             files: Vec::new(),
+            tasks: None,
             provider: String::new(),
             model: String::new(),
             error: None,

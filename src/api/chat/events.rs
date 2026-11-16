@@ -85,6 +85,7 @@ pub(super) fn persist_event(
                 logs: Vec::new(),
                 diff: String::new(),
                 files: Vec::new(),
+                tasks: None,
                 provider: kind.to_owned(),
                 model,
                 error: None,

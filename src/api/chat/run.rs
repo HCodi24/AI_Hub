@@ -7,7 +7,7 @@ use crate::{
     mutis::{self, Event},
     providers::ProviderEvent,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -45,6 +45,7 @@ impl Run {
         let mut record = record;
         let first_turn = record.messages.len().saturating_sub(1);
         let mut delegated = false;
+        let mut task_snapshot: Option<Vec<Value>> = None;
         let mut last_persist = Instant::now();
         let mut last_event_at = Instant::now();
         let mut last_activity = String::new();
@@ -95,6 +96,9 @@ impl Run {
                     }
                     if event.name == "delta" { received_delta = true; }
                     if event.name == "error" { received_error = true; }
+                    if event.name == "tasks" {
+                        task_snapshot = event.data["tasks"].as_array().cloned();
+                    }
                     if event.name == "log" {
                         last_activity = event.data["text"].as_str().unwrap_or_default().chars().take(100).collect();
                     }
@@ -185,6 +189,22 @@ impl Run {
                 .await;
             if let Some(message) = record.messages.last_mut() {
                 message.files = files.clone();
+            }
+        }
+        if let Some(tasks) = task_snapshot {
+            let tasks: Vec<Value> = tasks.into_iter().map(|mut task| {
+                let unfinished = task.get("state").and_then(Value::as_str)
+                    .is_some_and(|state| matches!(state, "waiting" | "coding" | "checking" | "fixing"));
+                if unfinished {
+                    if let Some(fields) = task.as_object_mut() {
+                        fields.insert("state".to_owned(), Value::String("stopped".to_owned()));
+                    }
+                }
+                task
+            }).collect();
+            if let Some(message) = record.messages.iter_mut().rev().find(|message| message.role == "assistant") {
+                message.tasks = Some(tasks.clone());
+                let _ = sse_sender.send(chat::sse_event("task_snapshot", &json!({ "tasks": tasks }))).await;
             }
         }
         let mut memory_logs = Vec::new();
