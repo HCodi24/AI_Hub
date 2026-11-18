@@ -47,6 +47,13 @@
 .inline { display: flex; gap: var(--space-2); align-items: center; }
 .inline input { flex: 1; min-width: 0; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.repoForm { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; container: repo-form / inline-size; }
+.repoFormRow { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); align-items: center; }
+.repoFormRow > input { box-sizing: border-box; width: 100%; min-width: 0; }
+.repoFormRow > button { justify-self: start; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+@container repo-form (min-width: 22rem) {
+  .repoFormRow { grid-template-columns: minmax(0, 1fr) auto; }
+}
 .note { color: var(--muted); font-size: var(--font-13); margin: 0; overflow-wrap: anywhere; }
 .pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: var(--font-13); }
 .confirm { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--color-muted); }
@@ -134,4 +141,12 @@
   .tabs button { font-size: var(--font-13); }
   .panel .panelTitle { margin-bottom: 20px; }
 }
-.banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--color-muted); font-size: var(--font-14); }
+.addonInventory { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.addonInventoryBanner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border-radius: var(--radius-small); background: var(--color-muted); font-size: var(--font-14); }
+.addonInventoryGroup { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.addonInventoryGroup + .addonInventoryGroup { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); padding-top: var(--space-3); }
+.addonInventoryGroup > h4 { margin: 0; text-transform: none; letter-spacing: normal; }
+.addonInventoryGroup .rows { margin: 0; }
+.addonInventoryGroup details > .rows { margin-top: var(--space-1); }
+.addonInventoryGroup summary { font-size: var(--font-13); overflow-wrap: anywhere; cursor: pointer; border-radius: var(--radius-xs); }
+.addonInventoryGroup summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

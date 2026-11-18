@@ -61,15 +61,16 @@ export function AddonsTab() {
     setTab(next); document.getElementById(`addons-tab-${next}`)?.focus();
   }
   return <div className={styles.form}>
+    <AddonLink onOutput={setOutput} />
+
     <div className={styles.subTabs} role="tablist" aria-label={t.addons.tabsLabel}>
       {TABS.map(id => <button key={id} type="button" role="tab" id={`addons-tab-${id}`} aria-selected={tab === id} aria-controls={`addons-panel-${id}`}
         tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)} onKeyDown={onTabKey}>{t.addons.tabs[id]}</button>)}
     </div>
-    <AddonLink onOutput={setOutput} />
     <div role="tabpanel" id={`addons-panel-${tab}`} aria-labelledby={`addons-tab-${tab}`} className={styles.form}>
-      {tab === "claude" && <section className={styles.group} aria-label={t.addons.claude}>
-        {missing.length > 0 && <div className={styles.banner}><span>{t.addons.banner(missing.length)}</span>
-          <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply(missing)}><Plus size={16} aria-hidden="true" />{t.addons.addAll}</Button></div>}
+      {tab === "claude" && <section className={styles.addonInventory} aria-label={t.addons.claude}>
+        {missing.length > 0 && <div className={styles.addonInventoryBanner}><span>{t.addons.banner(missing.length)}</span>
+          <Button size="sm" variant="primary" disabled={Boolean(busy)} onClick={() => void apply(missing)}><Plus size={16} aria-hidden="true" />{t.addons.addAll}</Button></div>}
         {KINDS.map(kind => {
           const hub = items(data.hub, kind);
           // What the user's own Claude Code has and MutiS does not yet: the source for "Thêm".
@@ -84,11 +85,15 @@ export function AddonsTab() {
                   : <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply([add])}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
             </li>;
           };
-          return <div key={kind}><h4>{t.addons.kinds[kind]}</h4>
-            {!hub.length && <p className={styles.note}>{t.addons.emptyHub}</p>}
-            <ul className={styles.rows}>{hub.map(item => row(item, true))}</ul>
-            {available.length > 0 && <details><summary>{t.addons.available(available.length)}</summary>
-              <ul className={styles.rows}>{available.map(item => row(item, false))}</ul></details>}
+          const empty = t.addons.emptyHub[kind];
+          const availableText = t.addons.available(available.length);
+          return <div key={kind} className={styles.addonInventoryGroup}>
+            <h4>{t.addons.kinds[kind]}</h4>
+            {hub.length > 0 && <ul className={styles.rows}>{hub.map(item => row(item, true))}</ul>}
+            {available.length > 0 ? <details>
+              <summary>{hub.length === 0 ? `${empty} · ${availableText}` : availableText}</summary>
+              <ul className={styles.rows}>{available.map(item => row(item, false))}</ul>
+            </details> : hub.length === 0 && <p className={styles.note}>{empty}</p>}
           </div>;
         })}
         <p className={styles.note}>{t.addons.pluginNote}</p>

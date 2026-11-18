@@ -13,6 +13,7 @@ const toggle = <T extends string>(list: T[], value: T, set: (next: T[]) => void)
 export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
   const client = useQueryClient();
   const skillGroup = useId();
+  const repositoryId = useId();
   const [link, setLink] = useState("");
   const [found, setFound] = useState<LinkFound | null>(null);
   const [targets, setTargets] = useState<LinkTarget[]>([]);
@@ -113,9 +114,21 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
   return <section className={styles.group} aria-label={labels.title}>
     <h3>{labels.title}</h3>
     <p className={styles.note}>{labels.intro}</p>
-    <form className={styles.actions} onSubmit={event => { event.preventDefault(); void inspect(); }}>
-      <input value={link} onChange={event => editLink(event.target.value)} placeholder={labels.placeholder} aria-label={labels.title} disabled={installing} required />
-      <Button type="submit" variant="primary" disabled={Boolean(busy) || !link.trim()}>{busy === "inspect" ? labels.checking : labels.check}</Button>
+    <form className={styles.repoForm} onSubmit={event => { event.preventDefault(); void inspect(); }}>
+      <label htmlFor={repositoryId}>{labels.repository}</label>
+      <div className={styles.repoFormRow}>
+        <input
+          id={repositoryId}
+          value={link}
+          onChange={event => editLink(event.target.value)}
+          placeholder={labels.placeholder}
+          disabled={installing}
+          required
+        />
+        <Button type="submit" variant="primary" disabled={Boolean(busy) || !link.trim()}>
+          {busy === "inspect" ? labels.checking : labels.check}
+        </Button>
+      </div>
     </form>
     {found && !markets.length && !found.skills.length && <p className={styles.note} role="status">{labels.none}</p>}
     {found && markets.length > 0 && <div className={styles.form}>
@@ -175,7 +188,10 @@ export function CodexPlugins({ onOutput }: { onOutput: (text: string) => void })
     }
     setBusy(""); await client.invalidateQueries({ queryKey: ["codex-plugins"] });
   }
+  const hub = codex.data?.plugins ?? [];
   const available = codex.data?.available ?? [];
+  const empty = t.addons.emptyHub.plugin;
+  const availableText = t.addons.availableCodex(available.length);
   const row = (plugin: { id: string; version: string }, inHub: boolean) => <li key={plugin.id}>
     <span className={styles.rowText}><strong>{plugin.id}</strong>{plugin.version && <small>{plugin.version}</small>}</span>
     {busy === plugin.id ? <Loader2 size={16} className="spin" aria-label={inHub ? t.addons.removing : t.addons.adding} />
@@ -183,12 +199,16 @@ export function CodexPlugins({ onOutput }: { onOutput: (text: string) => void })
         : inHub ? <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={t.addons.confirmRemove(plugin.id)} onClick={() => setConfirm(plugin.id)}><Trash2 size={16} aria-hidden="true" />{t.addons.remove}</Button>
           : <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply([plugin.id], "add")}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
   </li>;
-  return <section className={styles.group} aria-label={t.addons.link.codexTitle}>
-    {available.length > 0 && <div className={styles.banner}><span>{t.addons.bannerCodex(available.length)}</span>
-      <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply(available.map(plugin => plugin.id), "add")}><Plus size={16} aria-hidden="true" />{t.addons.addAll}</Button></div>}
-    <h4>{t.addons.link.codexTitle}</h4>
-    {!codex.data?.plugins.length && <p className={styles.note}>{t.addons.link.codexNone}</p>}
-    <ul className={styles.rows}>{codex.data?.plugins.map(plugin => row(plugin, true))}</ul>
-    {available.length > 0 && <details><summary>{t.addons.availableCodex(available.length)}</summary><ul className={styles.rows}>{available.map(plugin => row(plugin, false))}</ul></details>}
+  return <section className={styles.addonInventory} aria-label={t.addons.link.codexTitle}>
+    {available.length > 0 && <div className={styles.addonInventoryBanner}><span>{t.addons.bannerCodex(available.length)}</span>
+      <Button size="sm" variant="primary" disabled={Boolean(busy)} onClick={() => void apply(available.map(plugin => plugin.id), "add")}><Plus size={16} aria-hidden="true" />{t.addons.addAll}</Button></div>}
+    <div className={styles.addonInventoryGroup}>
+      <h4>{t.addons.kinds.plugin}</h4>
+      {hub.length > 0 && <ul className={styles.rows}>{hub.map(plugin => row(plugin, true))}</ul>}
+      {available.length > 0 ? <details>
+        <summary>{hub.length === 0 ? `${empty} · ${availableText}` : availableText}</summary>
+        <ul className={styles.rows}>{available.map(plugin => row(plugin, false))}</ul>
+      </details> : hub.length === 0 && <p className={styles.note}>{empty}</p>}
+    </div>
   </section>;
 }
