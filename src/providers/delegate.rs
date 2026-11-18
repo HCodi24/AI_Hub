@@ -3,7 +3,7 @@
 //! Codex ends a turn with fenced `mutis-delegate` JSON blocks (see `core::rule::mutis_high_delegation`). The app runs
 //! each block on the worker, then resumes the same Codex thread with the worker's report. The app, not Codex, counts
 //! the attempts per task and tells Codex to take a task over once the limit is spent.
-use super::schedule::{check_text, limit, parse_check, route, run_round, Actor, Backend, CheckResult, Row};
+use super::schedule::{check_text, limit, parse_check, run_round, Actor, Backend, CheckResult, Row};
 use super::{for_kind, ProviderEvent, ProviderRequest};
 use crate::chat::{ChatMessage, Effort, Permission};
 use crate::config::{McpServerConfig, MutisConfig, ProviderConfig};
@@ -34,7 +34,7 @@ pub struct Delegation {
     /// Titles of tasks whose result this one needs; it starts only after they passed their check. Independent tasks start at once.
     #[serde(default)]
     pub depends_on: Vec<String>,
-    /// The coordinator marks a task it expects to be too hard for DeepSeek: Tester 2 codes it, Tester checks it.
+    /// Only with a DeepSeek worker: the coordinator marks a big task it will do itself, so the app does not delegate it.
     #[serde(default)]
     pub hard: bool,
     /// The coordinator marks a tiny low-risk change (a few lines of styling or text): Tester does not check it, the coordinator reads the diff.
@@ -66,33 +66,27 @@ fn is_ui_file(path: &str) -> bool {
     path.rsplit_once('.').is_some_and(|(_, ext)| UI.iter().any(|ui| ext.eq_ignore_ascii_case(ui)))
 }
 
-/// With the "DeepSeek may do UI" switch off, a task with UI files never runs on DeepSeek: it becomes `hard` (Tester 2) when
-/// the ladder exists, otherwise it goes back to the coordinator. Returns the tasks to run, notes for the coordinator and chat log lines.
-fn guard_ui(tasks: Vec<Delegation>, ui_allowed: bool, escalate: bool) -> (Vec<Delegation>, Vec<String>, Vec<String>) {
+/// With the "DeepSeek may do UI" switch off, a task with UI files never runs on DeepSeek: it goes back to the coordinator.
+/// Returns the tasks to run and the notes for the coordinator.
+fn guard_ui(tasks: Vec<Delegation>, ui_allowed: bool) -> (Vec<Delegation>, Vec<String>) {
     if ui_allowed {
-        return (tasks, Vec::new(), Vec::new());
+        return (tasks, Vec::new());
     }
-    let (mut kept, mut notes, mut logs, mut dropped) = (Vec::new(), Vec::new(), Vec::new(), Vec::<String>::new());
+    let (mut kept, mut notes, mut dropped) = (Vec::new(), Vec::new(), Vec::<String>::new());
     let key = |title: &str| title.trim().to_lowercase();
-    for mut task in tasks {
+    for task in tasks {
         let blocked_by = task.depends_on.iter().find(|dep| dropped.contains(&key(dep))).cloned();
         if let Some(dep) = blocked_by {
             notes.push(format!("Task \"{}\" was not run: it depends on \"{dep}\", which you must implement yourself first (UI is off for DeepSeek). Resend it afterwards.", task.title.trim()));
             dropped.push(key(&task.title));
         } else if !task.hard && task.files.iter().any(|file| is_ui_file(file)) {
-            if escalate {
-                logs.push(format!("Giao diện: {} chuyển cho Codex 2 (DeepSeek không được làm giao diện)", task.title.trim()));
-                task.hard = true;
-                kept.push(task);
-            } else {
-                notes.push(format!("Task \"{}\" has UI files and DeepSeek may not do UI (setting). Implement it yourself.", task.title.trim()));
-                dropped.push(key(&task.title));
-            }
+            notes.push(format!("Task \"{}\" has UI files and DeepSeek may not do UI (setting). Implement it yourself.", task.title.trim()));
+            dropped.push(key(&task.title));
         } else {
             kept.push(task);
         }
     }
-    (kept, notes, logs)
+    (kept, notes)
 }
 
 /// Paths Codex named must be real before a worker run is spent: an existing file, or a new file in an existing folder.
@@ -262,6 +256,13 @@ pub struct DelegateProvider {
     pub chat_id: String,
     /// The CLI worker's thread kept in the chat record from an earlier message; None = start a new one.
     pub worker_session: Option<String>,
+    /// The same for Worker 2, the second slot of the same worker.
+    pub worker2_session: Option<String>,
+}
+
+/// Key under which Worker 2's thread is kept in the chat record, next to the worker's own (`worker_id`).
+pub fn worker2_key(worker_id: &str) -> String {
+    format!("{worker_id}#2")
 }
 
 /// What one round needs to talk to the worker and the checker; shared by the round loop and the checker's task.
@@ -273,6 +274,9 @@ struct Live {
     worker_cli_session: Mutex<Option<String>>,
     /// Input tokens of the worker thread's last model call (a Codex worker only): its current size, kept in the chat record.
     worker_cli_tokens: std::sync::atomic::AtomicU64,
+    /// Worker 2's own CLI thread and its size: the same worker, a second conversation that runs beside the first.
+    worker2_cli_session: Mutex<Option<String>>,
+    worker2_cli_tokens: std::sync::atomic::AtomicU64,
     folder: String,
     mutis: MutisConfig,
     events: mpsc::Sender<ProviderEvent>,
@@ -282,11 +286,8 @@ struct Live {
     worker_session: String,
     /// The checker's own Codex thread: resumed for every check, kept in the chat record between messages.
     checker_session: Mutex<Option<String>>,
-    /// Tester 2's Codex thread; shared by its coding and its checks within this reply (not kept between messages).
-    tester2_session: Mutex<Option<String>>,
-    /// A Codex thread runs one turn at a time: Tester may be fixing one task while it should check another.
+    /// A Codex thread runs one turn at a time: the checker checks one task after another.
     tester_busy: tokio::sync::Mutex<()>,
-    tester2_busy: tokio::sync::Mutex<()>,
     /// The checker's last "Token:" log line, held until `announce_check` shows it in the Tester turn.
     checker_tokens: Mutex<Option<String>>,
     /// Whether the coordinator may edit files, i.e. can take a task over when the attempts run out.
@@ -304,7 +305,7 @@ fn cli_mcp(codegraph: Option<&McpServerConfig>, kind: &str) -> Vec<McpServerConf
     if matches!(kind, "codex_cli" | "claude_cli") { codegraph.cloned().into_iter().collect() } else { Vec::new() }
 }
 
-const TESTER_WORK_NOTE: &str = concat!(
+const CLI_WORK_NOTE: &str = concat!(
     "
 You work directly in the project folder. Edit only what the task needs. ",
     "After editing run only quick checks of the files you changed (format check, lint, type check). ",
@@ -320,47 +321,6 @@ impl Live {
     /// The prompt of a CLI role, with the CodeGraph hint when the tool is attached.
     fn with_codegraph_note(&self, prompt: String, mcp: &[McpServerConfig]) -> String {
         if mcp.is_empty() { prompt } else { prompt + CODEGRAPH_NOTE }
-    }
-
-    fn session_of(&self, who: Actor) -> &Mutex<Option<String>> {
-        if who == Actor::Tester2 { &self.tester2_session } else { &self.checker_session }
-    }
-
-    fn busy_of(&self, who: Actor) -> &tokio::sync::Mutex<()> {
-        if who == Actor::Tester2 { &self.tester2_busy } else { &self.tester_busy }
-    }
-
-    /// Tester (fixing after two DeepSeek failures) or Tester 2 (a hard task) edits the project itself, in its own Codex thread.
-    async fn work_tester(&self, who: Actor, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult {
-        let events = &self.events;
-        let mut result = WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
-        let Some((provider, model, effort)) = self.checker.clone() else {
-            result.error = Some("no checker is configured".into());
-            return result;
-        };
-        let _turn = self.busy_of(who).lock().await;
-        if self.cancel.is_cancelled() || events.send(turn("codex_cli", &model, who.name())).await.is_err() {
-            self.cancel.cancel();
-            return result;
-        }
-        let max = limit(task.hard, self.can_escalate());
-        let _ = events.send(ProviderEvent::text("log", format!("Giao {}: {} (lần {attempt}/{max})", who.name(), task.title.trim()))).await;
-        let effort = if who == Actor::Tester2 { Effort::Max } else { effort };
-        let mcp = self.mcp_for("codex_cli");
-        let request = ProviderRequest {
-            provider, model, folder: self.folder.clone(), permission: self.permission, effort,
-            messages: vec![message("user", self.with_codegraph_note(worker_prompt(&self.mutis, task, "", feedback) + TESTER_WORK_NOTE, &mcp))],
-            session_id: self.session_of(who).lock().unwrap().clone(), mutis: self.mutis.clone(), mcp,
-            // shortcut: no write scope for Tester (Codex cannot be scoped); the checker judges the diff instead.
-            write_scope: Vec::new(), checker_session_id: None,
-        };
-        let result = self.run_cli("codex_cli", request, who.name(), self.session_of(who), None).await;
-        // Tester's thread is kept in the chat record; Tester 2's lives only in this reply.
-        let kept = if who == Actor::Tester { self.checker_session.lock().unwrap().clone() } else { None };
-        if let Some(id) = kept {
-            let _ = events.send(ProviderEvent { name: "checker_session", data: serde_json::json!({ "session_id": id }) }).await;
-        }
-        result
     }
 
     /// Whether the worker runs as a CLI thread (Codex, Claude) instead of the API agent loop.
@@ -383,37 +343,45 @@ impl Live {
         }
     }
 
-    /// The worker is a CLI source (for example Codex Tester): it edits the project in its own thread, like Tester does when it takes a task over.
-    async fn work_cli(&self, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult {
-        let label = self.worker_label();
+    /// The worker is a CLI source (for example Codex): it edits the project in its own thread, kept between messages. Worker 2 is the
+    /// same worker in a second thread; it runs beside the first, so it shows only its log lines (its text would mix into the first's turn).
+    async fn work_cli(&self, task: &Delegation, attempt: usize, feedback: Option<&str>, editor: Actor) -> WorkerResult {
+        let second = editor == Actor::Worker2;
+        let label = if second { Actor::Worker2.name().to_owned() } else { self.worker_label() };
         let events = &self.events;
-        if self.cancel.is_cancelled() || events.send(turn(&self.worker.kind, &self.model, &label)).await.is_err() {
+        if self.cancel.is_cancelled() || (!second && events.send(turn(&self.worker.kind, &self.model, &label)).await.is_err()) {
             self.cancel.cancel();
             return WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
         }
-        let max = limit(task.hard, self.can_escalate());
+        let max = limit(self.can_escalate());
         let _ = events.send(ProviderEvent::text("log", format!("Giao {label}: {} (lần {attempt}/{max})", task.title.trim()))).await;
+        let (session, tokens, worker_id) = if second {
+            (&self.worker2_cli_session, &self.worker2_cli_tokens, worker2_key(&self.worker.id))
+        } else {
+            (&self.worker_cli_session, &self.worker_cli_tokens, self.worker.id.clone())
+        };
         let mcp = self.mcp_for(&self.worker.kind);
         let request = ProviderRequest {
             provider: self.worker.clone(), model: self.model.clone(), folder: self.folder.clone(), permission: Permission::Write, effort: self.effort,
-            messages: vec![message("user", self.with_codegraph_note(worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback) + TESTER_WORK_NOTE, &mcp))],
-            session_id: self.worker_cli_session.lock().unwrap().clone(), mutis: self.mutis.clone(), mcp,
+            messages: vec![message("user", self.with_codegraph_note(worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback) + CLI_WORK_NOTE, &mcp))],
+            session_id: session.lock().unwrap().clone(), mutis: self.mutis.clone(), mcp,
             // shortcut: a CLI cannot be scoped to files; the checker judges the diff instead.
             write_scope: Vec::new(), checker_session_id: None,
         };
-        let size = (self.worker.kind == "codex_cli").then_some(&self.worker_cli_tokens);
-        let result = self.run_cli(&self.worker.kind, request, &label, &self.worker_cli_session, size).await;
+        let size = (self.worker.kind == "codex_cli").then_some(tokens);
+        let result = self.run_cli(&self.worker.kind, request, &label, session, size, second).await;
         // Kept in the chat record, so the next message resumes this thread instead of re-reading the project.
-        let id = self.worker_cli_session.lock().unwrap().clone();
+        let id = session.lock().unwrap().clone();
         if let Some(id) = id {
-            let tokens = self.worker_cli_tokens.load(std::sync::atomic::Ordering::Relaxed);
-            let _ = events.send(ProviderEvent { name: "worker_session", data: serde_json::json!({ "worker_id": self.worker.id, "session_id": id, "tokens": (tokens > 0).then_some(tokens) }) }).await;
+            let tokens = tokens.load(std::sync::atomic::Ordering::Relaxed);
+            let _ = events.send(ProviderEvent { name: "worker_session", data: serde_json::json!({ "worker_id": worker_id, "session_id": id, "tokens": (tokens > 0).then_some(tokens) }) }).await;
         }
         result
     }
 
     /// Runs one CLI turn and folds its events into a `WorkerResult`. `session` receives the thread id the CLI reports; `label` prefixes its log lines.
-    async fn run_cli(&self, kind: &str, request: ProviderRequest, label: &str, session: &Mutex<Option<String>>, size: Option<&std::sync::atomic::AtomicU64>) -> WorkerResult {
+    /// A `quiet` run forwards only its log lines to the chat.
+    async fn run_cli(&self, kind: &str, request: ProviderRequest, label: &str, session: &Mutex<Option<String>>, size: Option<&std::sync::atomic::AtomicU64>, quiet: bool) -> WorkerResult {
         let events = &self.events;
         let mut result = WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
         let inner = match for_kind(kind) {
@@ -430,15 +398,21 @@ impl Live {
             match event.name {
                 "delta" => {
                     result.summary.push_str(event.data["text"].as_str().unwrap_or(""));
-                    let _ = events.send(event).await;
+                    if !quiet {
+                        let _ = events.send(event).await;
+                    }
                 }
                 "reasoning" => {
-                    let _ = events.send(event).await;
+                    if !quiet {
+                        let _ = events.send(event).await;
+                    }
                 }
                 "diff" => {
                     // A CLI repeats the whole diff of its turn: the last one is the result.
                     result.diff = event.data["text"].as_str().unwrap_or("").to_owned();
-                    let _ = events.send(event).await;
+                    if !quiet {
+                        let _ = events.send(event).await;
+                    }
                 }
                 // Never forwarded: a "session" event would overwrite the coordinator's own thread in the chat record.
                 "session" => {
@@ -456,7 +430,9 @@ impl Live {
                 }
                 "error" => {
                     result.error = event.data["text"].as_str().map(str::to_owned);
-                    let _ = events.send(event).await;
+                    if !quiet {
+                        let _ = events.send(event).await;
+                    }
                 }
                 _ => {}
             }
@@ -467,7 +443,7 @@ impl Live {
             Ok(Ok(())) => None,
         };
         if let Some(error) = failure {
-            if result.error.as_deref() != Some(error.as_str()) {
+            if !quiet && result.error.as_deref() != Some(error.as_str()) {
                 let _ = events.send(ProviderEvent::text("error", error.clone())).await;
             }
             result.error = Some(error);
@@ -478,21 +454,19 @@ impl Live {
 
 #[async_trait::async_trait]
 impl Backend for Live {
-    async fn work(&self, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult {
-        let who = route(task.hard, attempt, self.can_escalate()).0;
-        if who != Actor::Worker {
-            return self.work_tester(who, task, attempt, feedback).await;
-        }
+    async fn work(&self, task: &Delegation, attempt: usize, feedback: Option<&str>, editor: Actor) -> WorkerResult {
         if self.worker_is_cli() {
-            return self.work_cli(task, attempt, feedback).await;
+            return self.work_cli(task, attempt, feedback, editor).await;
         }
+        // Worker 2 is the same API worker in a second conversation, and shows only its log lines (see `work_cli`).
+        let quiet = editor == Actor::Worker2;
         let events = &self.events;
-        let label = self.worker_label();
-        if self.cancel.is_cancelled() || events.send(turn(if self.worker_is_deepseek() { "deepseek" } else { &self.worker.kind }, &self.model, &label)).await.is_err() {
+        let label = if quiet { Actor::Worker2.name().to_owned() } else { self.worker_label() };
+        if self.cancel.is_cancelled() || (!quiet && events.send(turn(if self.worker_is_deepseek() { "deepseek" } else { &self.worker.kind }, &self.model, &label)).await.is_err()) {
             self.cancel.cancel();
             return WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
         }
-        let max = limit(task.hard, self.can_escalate());
+        let max = limit(self.can_escalate());
         let _ = events.send(ProviderEvent::text("log", format!("Giao {label}: {} (lần {attempt}/{max})", task.title.trim()))).await;
         // The worker stays at Write whatever the chat permission is: it edits files but never runs commands (the checker runs the tests).
         let mut provider = self.worker.clone();
@@ -500,7 +474,7 @@ impl Backend for Live {
         provider.agent_capable = true;
         let worker_request = ProviderRequest {
             provider, model: self.model.clone(), folder: self.folder.clone(), permission: Permission::Write, effort: Effort::Default,
-            messages: vec![message("user", worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback))], session_id: Some(self.worker_session.clone()), mutis: self.mutis.clone(), mcp: Vec::new(),
+            messages: vec![message("user", worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback))], session_id: Some(if quiet { worker2_key(&self.worker_session) } else { self.worker_session.clone() }), mutis: self.mutis.clone(), mcp: Vec::new(),
             write_scope: task.files.clone(),
             checker_session_id: None,
         };
@@ -517,14 +491,20 @@ impl Backend for Live {
             match event.name {
                 "delta" => {
                     result.summary.push_str(event.data["text"].as_str().unwrap_or(""));
-                    let _ = events.send(event).await;
+                    if !quiet {
+                        let _ = events.send(event).await;
+                    }
                 }
                 "reasoning" => {
-                    let _ = events.send(event).await;
+                    if !quiet {
+                        let _ = events.send(event).await;
+                    }
                 }
                 "diff" => {
                     result.diff.push_str(event.data["text"].as_str().unwrap_or(""));
-                    let _ = events.send(event).await;
+                    if !quiet {
+                        let _ = events.send(event).await;
+                    }
                 }
                 "log" => {
                     let line = event.data["text"].as_str().unwrap_or("");
@@ -539,7 +519,9 @@ impl Backend for Live {
                 "error" => {
                     result.error = event.data["text"].as_str().map(str::to_owned);
                     // A worker failure stays visible in its own turn; the coordinator still gets it in the report.
-                    let _ = events.send(event).await;
+                    if !quiet {
+                        let _ = events.send(event).await;
+                    }
                 }
                 _ => {}
             }
@@ -550,7 +532,7 @@ impl Backend for Live {
             Ok(Ok(())) => None,
         };
         if let Some(error) = failure {
-            if result.error.as_deref() != Some(error.as_str()) {
+            if !quiet && result.error.as_deref() != Some(error.as_str()) {
                 let _ = events.send(ProviderEvent::text("error", error.clone())).await;
             }
             result.error = Some(error);
@@ -564,13 +546,11 @@ impl Backend for Live {
 
     async fn check(&self, task: &Delegation, attempt: usize, work: &WorkerResult) -> CheckResult {
         let Some((provider, model, effort)) = self.checker.clone() else { return CheckResult::unclear("no checker is configured") };
-        let who = route(task.hard, attempt, self.can_escalate()).1;
-        let effort = if who == Actor::Tester2 { Effort::Max } else { effort };
         let id = check_id(task, attempt);
         // The live card appears before the checker provider starts, so Tester is visible while it runs.
         let _ = self.events.send(checker_activity(&id, "start", task, attempt, &model, "")).await;
-        let _turn = self.busy_of(who).lock().await;
-        let session = self.session_of(who).lock().unwrap().clone();
+        let _turn = self.tester_busy.lock().await;
+        let session = self.checker_session.lock().unwrap().clone();
         let folder = std::path::Path::new(&self.folder);
         let custom = crate::verify::command_for(&self.mutis, folder);
         let commands = if custom.trim().is_empty() { crate::verify::detected_commands(folder).into_iter().map(|(_, command)| command).collect() } else { vec![custom] };
@@ -598,7 +578,7 @@ impl Backend for Live {
                 "delta" => text.push_str(event.data["text"].as_str().unwrap_or("")),
                 "session" => {
                     if let Some(id) = event.data["session_id"].as_str() {
-                        *self.session_of(who).lock().unwrap() = Some(id.to_owned());
+                        *self.checker_session.lock().unwrap() = Some(id.to_owned());
                     }
                 }
                 "log" => {
@@ -641,13 +621,13 @@ impl Backend for Live {
 
     async fn announce_check(&self, task: &Delegation, attempt: usize, check: &CheckResult) {
         let model = self.checker.as_ref().map_or("", |(_, model, _)| model.as_str());
-        let who = route(task.hard, attempt, self.can_escalate()).1;
+        let who = Actor::Tester;
         if self.events.send(turn("codex_cli", model, who.name())).await.is_err() {
             self.cancel.cancel();
             return;
         }
-        // Only Tester's thread is kept in the chat record; Tester 2's lives only in this reply.
-        let session = if who == Actor::Tester { self.checker_session.lock().unwrap().clone() } else { None };
+        // Tester's thread is kept in the chat record.
+        let session = self.checker_session.lock().unwrap().clone();
         if let Some(id) = session {
             let _ = self.events.send(ProviderEvent { name: "checker_session", data: serde_json::json!({ "session_id": id }) }).await;
         }
@@ -669,14 +649,22 @@ impl Backend for Live {
         self.can_edit
     }
 
+    fn splits_big_small(&self) -> bool {
+        self.worker_is_deepseek()
+    }
+
+    fn has_second_worker(&self) -> bool {
+        true
+    }
+
     fn actor_name(&self, actor: Actor) -> String {
         if actor == Actor::Worker { self.worker_label() } else { actor.name().to_owned() }
     }
 
     fn actor_model(&self, actor: Actor) -> Option<String> {
         match actor {
-            Actor::Worker => Some(self.model.clone()),
-            Actor::Tester | Actor::Tester2 => self.checker.as_ref().map(|(_, model, _)| model.clone()),
+            Actor::Worker | Actor::Worker2 => Some(self.model.clone()),
+            Actor::Tester => self.checker.as_ref().map(|(_, model, _)| model.clone()),
         }
     }
 
@@ -746,11 +734,12 @@ impl super::Provider for DelegateProvider {
     async fn run(&self, mut request: ProviderRequest, events: mpsc::Sender<ProviderEvent>, cancel: CancellationToken) -> Result<()> {
         let live = Arc::new(Live {
             worker: self.worker.clone(), model: self.model.clone(), effort: self.effort, worker_cli_session: Mutex::new(self.worker_session.clone()), worker_cli_tokens: Default::default(),
+            worker2_cli_session: Mutex::new(self.worker2_session.clone()), worker2_cli_tokens: Default::default(),
             folder: request.folder.clone(), mutis: request.mutis.clone(),
             events: events.clone(), cancel: cancel.clone(), checker: self.checker.clone(),
             worker_session: format!("{}{}:{}:{}", super::worker_session::PREFIX, self.chat_id, self.worker.id, self.model),
             checker_session: Mutex::new(request.checker_session_id.clone()),
-            tester2_session: Mutex::new(None), tester_busy: Default::default(), tester2_busy: Default::default(),
+            tester_busy: Default::default(),
             checker_tokens: Mutex::new(None),
             can_edit: request.permission != Permission::Read,
             permission: request.permission,
@@ -768,10 +757,7 @@ impl super::Provider for DelegateProvider {
                 request.session_id = session;
             }
             let (tasks, errors) = extract(&text);
-            let (tasks, ui_notes, ui_logs) = guard_ui(tasks, request.mutis.deepseek_ui || !live.worker_is_deepseek(), live.can_escalate());
-            for line in ui_logs {
-                let _ = events.send(ProviderEvent::text("log", line)).await;
-            }
+            let (tasks, ui_notes) = guard_ui(tasks, request.mutis.deepseek_ui || !live.worker_is_deepseek());
             if cancel.is_cancelled() || (tasks.is_empty() && errors.is_empty() && ui_notes.is_empty()) {
                 return Ok(());
             }
@@ -827,20 +813,15 @@ mod tests {
         assert!(is_ui_file("web/src/a.CSS") && is_ui_file("x.scss") && is_ui_file("page.html") && !is_ui_file("web/src/a.tsx") && !is_ui_file("web/src/a.ts") && !is_ui_file("src/a.rs") && !is_ui_file("Makefile"));
         let tasks = || vec![task("logic", &["src/a.rs"], &[]), task("layout", &["web/a.css", "src/b.rs"], &[]), task("after", &["src/c.rs"], &["Layout"])];
         // Switch on: untouched.
-        let (kept, notes, logs) = guard_ui(tasks(), true, true);
-        assert_eq!((kept.len(), notes.len(), logs.len()), (3, 0, 0));
-        assert!(kept.iter().all(|t| !t.hard));
-        // Off with a ladder: the UI task becomes hard (Tester 2); the others stay on DeepSeek.
-        let (kept, notes, logs) = guard_ui(tasks(), false, true);
-        assert_eq!(kept.iter().map(|t| (t.title.as_str(), t.hard)).collect::<Vec<_>>(), [("logic", false), ("layout", true), ("after", false)]);
-        assert!(notes.is_empty() && logs.len() == 1);
-        // Off with no ladder: the UI task and what depends on it go back to the coordinator.
-        let (kept, notes, _) = guard_ui(tasks(), false, false);
+        let (kept, notes) = guard_ui(tasks(), true);
+        assert_eq!((kept.len(), notes.len()), (3, 0));
+        // Off: the UI task and what depends on it go back to the coordinator.
+        let (kept, notes) = guard_ui(tasks(), false);
         assert_eq!(kept.iter().map(|t| t.title.as_str()).collect::<Vec<_>>(), ["logic"]);
         assert_eq!(notes.len(), 2);
-        // A task the coordinator already marked hard is left alone.
+        // A task the coordinator already marked hard is left alone: it does it itself.
         let hard = Delegation { hard: true, ..task("layout", &["a.css"], &[]) };
-        assert_eq!(guard_ui(vec![hard], false, false).0.len(), 1);
+        assert_eq!(guard_ui(vec![hard], false).0.len(), 1);
     }
 
     #[test]
@@ -869,9 +850,9 @@ mod tests {
     fn report_headings_are_vietnamese_and_keep_the_evidence() {
         let task = Delegation { title: "Sửa đăng nhập".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
         let edited = WorkerResult { summary: "đã sửa".into(), diff: "+ let a = 1;".into(), error: None, refused: Vec::new() };
-        let text = report(&task, "Tester 2", 1, 3, 2, &edited);
+        let text = report(&task, "Worker 2", 1, 3, 2, &edited);
         // App-generated headings are Vietnamese.
-        assert!(text.contains("Báo cáo của worker Tester 2"), "{text}");
+        assert!(text.contains("Báo cáo của worker Worker 2"), "{text}");
         assert!(text.contains("Trạng thái: đã xong") && text.contains("Các file đã đổi: có, diff:"));
         assert!(text.contains("Tóm tắt của worker:") && text.contains("Ứng dụng đã tự chạy lại worker 2 lần"));
         // Identifiers, the attempt counter and the evidence stay verbatim.

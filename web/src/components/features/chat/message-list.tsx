@@ -9,6 +9,7 @@ import { QuickReplies, type SendReply } from "./quick-replies";
 import { parseChatQuestions } from "@/lib/chat-questions";
 import { ChatQuestions } from "./chat-questions";
 import { useChatScrollFollow } from "./use-chat-scroll-follow";
+import styles from "./chat-screen.module.css";
 
 /** Virtuoso scroller adapter: renders the shared themed ScrollArea and drops Virtuoso's context prop. */
 const Scroller = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { context?: unknown }>(function Scroller(
@@ -19,7 +20,7 @@ const Scroller = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { c
 });
 
 /** Live Tester cards ride in the scroller footer: visible at once, outside every message's Activity list. */
-const Footer = () => <div data-chat-virtuoso-footer><TesterActivity /></div>;
+const Footer = () => <div className={styles.listFooter} data-chat-virtuoso-footer><TesterActivity /></div>;
 
 /** Stable module-level components map so Virtuoso does not remount its scroller on every render. */
 const SCROLL_COMPONENTS = { Scroller, Footer };
@@ -42,7 +43,8 @@ export const MessageList = memo(function MessageList({ send, taskBoardEnabled }:
   const id = useChatStore(s => s.id);
   const { virtuosoRef, scrollerRef } = useChatScrollFollow(id, count);
   // Keep Virtuoso's size-change auto-follow disabled so reader intent controls every follow action.
-  return count ? <Virtuoso key={id} ref={virtuosoRef} scrollerRef={scrollerRef} totalCount={count} followOutput={false} initialTopMostItemIndex={{ index: count - 1, align: "end" }}
+  return count ? <Virtuoso key={id} ref={virtuosoRef} scrollerRef={scrollerRef} className={styles.scroller}
+    totalCount={count} followOutput={false} initialTopMostItemIndex={{ index: count - 1, align: "end" }}
     components={SCROLL_COMPONENTS}
     itemContent={index => <MessageRow index={index} send={send} taskBoardEnabled={taskBoardEnabled} />} /> : <EmptyState />;
 });

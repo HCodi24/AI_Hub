@@ -1,6 +1,6 @@
-//! One delegation round of MutiS High. The worker runs the tasks one after another without pause. With an independent
-//! checker, every finished task is checked in parallel while the worker already starts the next task that does not
-//! depend on it; severe findings come back as fix tasks at the end of the worker's queue.
+//! One delegation round of MutiS High. The worker runs the tasks without pause; two independent tasks (no dependency, different files) run
+//! at once, the second on Worker 2. With an independent checker, every finished task is checked in parallel while the worker already
+//! starts the next task that does not depend on it; severe findings come back as fix tasks at the end of the worker's queue.
 //!
 //! Only this loop writes to the chat (through `Backend::say`/`announce_check`) between worker runs, so the output of
 //! the worker and of the checker never interleave.
@@ -116,43 +116,36 @@ fn fix_task(task: &Delegation, severe: &[&Issue]) -> Delegation {
     }
 }
 
-/// The roles of a delegated task besides the lead (the coordinator): `Worker` is the configured worker (any model), `Tester` is the
-/// independent tester's Codex thread (it checks, and fixes after the worker failed), `Tester2` a second Codex thread at max effort.
+/// The roles of a delegated task besides the lead (the coordinator): `Worker` is the configured worker (any model), `Worker2` a
+/// second instance of it (same source, model and effort, its own thread) that only runs beside it, and `Tester` is the independent
+/// tester's Codex thread, which only checks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Actor {
     Worker,
+    Worker2,
     Tester,
-    Tester2,
 }
 
 impl Actor {
     pub(super) fn name(self) -> &'static str {
         match self {
             Actor::Worker => "DeepSeek",
+            Actor::Worker2 => "Worker 2",
             Actor::Tester => "Codex",
-            Actor::Tester2 => "Codex 2",
         }
     }
 }
 
-/// (editor, checker) of one attempt. With a checker and a coordinator that can edit the task climbs a ladder:
-/// the worker twice (Tester checks), then Tester fixes it and Tester 2 checks; a `hard` task starts with Tester 2 (Tester checks).
-/// Without that, the worker does every attempt.
-pub(super) fn route(hard: bool, attempt: usize, escalate: bool) -> (Actor, Actor) {
-    match (escalate, hard, attempt) {
-        (true, true, _) => (Actor::Tester2, Actor::Tester),
-        (true, false, 3..) => (Actor::Tester, Actor::Tester2),
-        _ => (Actor::Worker, Actor::Tester),
-    }
+/// Attempts a task may use before the coordinator takes it over: with a checker and a coordinator that can edit there is
+/// someone to take over, so three; otherwise the worker keeps all of them.
+pub(super) fn limit(escalate: bool) -> usize {
+    if escalate { 3 } else { MAX_ATTEMPTS }
 }
 
-/// Attempts a task may use before the coordinator takes it over.
-pub(super) fn limit(hard: bool, escalate: bool) -> usize {
-    match (escalate, hard) {
-        (true, true) => 2,
-        (true, false) => 3,
-        _ => MAX_ATTEMPTS,
-    }
+/// Whether two file lists touch the same file (a listed folder covers the files inside it).
+fn overlap(a: &[String], b: &[String]) -> bool {
+    let clean = |p: &String| p.replace('\\', "/").trim_start_matches("./").trim_end_matches('/').to_lowercase();
+    a.iter().map(clean).any(|x| b.iter().map(clean).any(|y| x == y || x.starts_with(&format!("{y}/")) || y.starts_with(&format!("{x}/"))))
 }
 
 /// One line of the live task board shown in the chat.
@@ -183,8 +176,13 @@ fn takeover_text(can_edit: bool) -> &'static str {
 
 #[async_trait::async_trait]
 pub(super) trait Backend: Send + Sync + 'static {
-    async fn work(&self, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult;
+    /// `editor` is the worker slot that runs it: `Worker`, or `Worker2` when two tasks run at the same time.
+    async fn work(&self, task: &Delegation, attempt: usize, feedback: Option<&str>, editor: Actor) -> WorkerResult;
     fn has_checker(&self) -> bool;
+    /// A `hard` task exists only when the worker is DeepSeek: the coordinator does it itself and never delegates it.
+    fn splits_big_small(&self) -> bool { false }
+    /// Whether a second worker slot exists, so two independent tasks may run at once.
+    fn has_second_worker(&self) -> bool { false }
     /// Runs in its own task, in parallel with the worker; must not write to the chat.
     async fn check(&self, task: &Delegation, attempt: usize, work: &WorkerResult) -> CheckResult;
     async fn say(&self, line: String);
@@ -255,6 +253,22 @@ fn next_ready(queue: &mut VecDeque<Delegation>, state: &HashMap<String, State>) 
     Next::Wait
 }
 
+/// A queued task that may run beside `first`: its dependencies are settled (`first` itself is not), it is not a big task, and it
+/// shares no file with `first`. Taken out of the queue.
+fn take_partner(queue: &mut VecDeque<Delegation>, state: &HashMap<String, State>, first: &Delegation, skip: impl Fn(&Delegation) -> bool) -> Option<Delegation> {
+    let queued: Vec<String> = queue.iter().map(|t| key(&t.title)).collect();
+    let index = queue.iter().position(|task| {
+        let own = key(&task.title);
+        let settled = task.depends_on.iter().map(|d| key(d)).filter(|d| *d != own).all(|dep| match state.get(&dep) {
+            Some(State::Clean) => true,
+            None => dep != key(&first.title) && !queued.contains(&dep),
+            _ => false,
+        });
+        settled && !skip(task) && !task.files.is_empty() && !first.files.is_empty() && !overlap(&task.files, &first.files)
+    })?;
+    queue.remove(index)
+}
+
 type Finished = (Delegation, usize, CheckResult);
 type Job = (Delegation, usize, WorkerResult);
 
@@ -296,45 +310,90 @@ impl<B: Backend> Round<'_, B> {
         if self.backend.can_edit() { "takeover" } else { "failed" }
     }
 
-    async fn run_task(&mut self, task: Delegation) {
+    /// A big task (`hard`) of a DeepSeek worker is never delegated: the coordinator does it itself.
+    fn is_big(&self, task: &Delegation) -> bool {
+        task.hard && self.backend.splits_big_small()
+    }
+
+    /// Runs one task, or two independent ones at the same time (the second on the second worker slot).
+    async fn run_group(&mut self, first: Delegation, second: Option<Delegation>) {
+        let mut started = Vec::new();
+        for (task, editor) in std::iter::once(first).chain(second).zip([Actor::Worker, Actor::Worker2]) {
+            if let Some(attempt) = self.begin(&task, editor).await {
+                started.push((task, editor, attempt));
+            }
+        }
+        // Only the first call of each task is concurrent; the app's retries and the checks stay in this loop's order.
+        let backend = self.backend;
+        let works = match started.as_slice() {
+            [one] => vec![backend.work(&one.0, one.2, None, one.1).await],
+            [a, b] => {
+                let (x, y) = tokio::join!(backend.work(&a.0, a.2, None, a.1), backend.work(&b.0, b.2, None, b.1));
+                vec![x, y]
+            }
+            _ => return,
+        };
+        for ((task, editor, attempt), work) in started.into_iter().zip(works) {
+            self.settle(task, editor, attempt, work).await;
+        }
+    }
+
+    /// Leaves a big task to the coordinator, or checks the limit and the paths and counts the first attempt; None = nothing runs.
+    async fn begin(&mut self, task: &Delegation, editor: Actor) -> Option<usize> {
         let title = key(&task.title);
-        let escalate = self.backend.can_escalate();
-        let max = limit(task.hard, escalate);
+        let max = limit(self.backend.can_escalate());
+        if self.is_big(task) {
+            self.out.reports.push(format!("Task \"{}\" is marked hard, so it is not delegated to DeepSeek. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
+            self.state.insert(title, State::Failed);
+            self.mark(&task.title, self.spent_state(), 0, None, None, None, None, None).await;
+            return None;
+        }
         if self.attempts.get(&title).copied().unwrap_or(0) >= max {
             self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
             self.state.insert(title, State::Failed);
             self.mark(&task.title, self.spent_state(), max, None, None, None, None, None).await;
-            return;
+            return None;
         }
-        let problems = self.backend.path_problems(&task);
+        let problems = self.backend.path_problems(task);
         if !problems.is_empty() {
             self.out.reports.push(format!("Path check failed for \"{}\": the worker was NOT run and this is not counted as an attempt. {}. Resend the block with correct paths.", task.title.trim(), problems.join("; ")));
             self.state.insert(title, State::Failed);
             self.mark(&task.title, "failed", 0, None, None, None, None, None).await;
-            return;
+            return None;
         }
-        let (mut auto, mut feedback) = (0, None::<String>);
-        let (attempt, work) = loop {
-            let used = self.attempts.entry(title.clone()).or_insert(0);
-            *used += 1;
-            let attempt = *used;
-            let fixing = attempt > 1 && auto == 0;
-            let (editor, _) = route(task.hard, attempt, escalate);
-            self.mark(&task.title, if fixing { "fixing" } else { "coding" }, attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
-            let work = self.backend.work(&task, attempt, feedback.as_deref()).await;
+        Some(self.next_attempt(task, editor, 0).await)
+    }
+
+    /// Counts one more attempt of the task and shows it on the board.
+    async fn next_attempt(&mut self, task: &Delegation, editor: Actor, auto: usize) -> usize {
+        let used = self.attempts.entry(key(&task.title)).or_insert(0);
+        *used += 1;
+        let attempt = *used;
+        let fixing = attempt > 1 && auto == 0;
+        self.mark(&task.title, if fixing { "fixing" } else { "coding" }, attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
+        attempt
+    }
+
+    /// What follows a worker run: the app's own retries of an empty or failed run, the report, and the hand-over to the checker.
+    async fn settle(&mut self, task: Delegation, editor: Actor, mut attempt: usize, mut work: WorkerResult) {
+        let title = key(&task.title);
+        let max = limit(self.backend.can_escalate());
+        let mut auto = 0;
+        loop {
             if self.backend.cancelled() {
                 return;
             }
             match auto_retry_reason(&work) {
                 Some(why) if auto < MAX_AUTO_RETRIES && attempt < max => {
                     auto += 1;
-                    self.backend.say(format!("Tự giao lại {} ({auto}/{MAX_AUTO_RETRIES}): {}", self.backend.actor_name(route(task.hard, attempt, escalate).0), truncate_chars(&why, 160))).await;
-                    feedback = Some(why);
+                    self.backend.say(format!("Tự giao lại {} ({auto}/{MAX_AUTO_RETRIES}): {}", self.backend.actor_name(editor), truncate_chars(&why, 160))).await;
+                    attempt = self.next_attempt(&task, editor, auto).await;
+                    work = self.backend.work(&task, attempt, Some(&why), editor).await;
                 }
-                _ => break (attempt, work),
+                _ => break,
             }
-        };
-        let (editor, checker) = route(task.hard, attempt, escalate);
+        }
+        let checker = Actor::Tester;
         self.out.reports.push(report(&task, &self.backend.actor_name(editor), attempt, max, auto, &work));
         if auto_retry_reason(&work).is_some() {
             self.state.insert(title, State::Failed);
@@ -376,12 +435,12 @@ impl<B: Backend> Round<'_, B> {
             Verdict::Fail => "FAIL",
             Verdict::Unclear => "UNCLEAR",
         };
-        let (_, checker) = route(task.hard, attempt, self.backend.can_escalate());
+        let checker = Actor::Tester;
         let checker_model = self.backend.actor_model(checker);
         let severe: Vec<&Issue> = check.issues.iter().filter(|i| i.is_severe()).collect();
         self.out.minor.extend(check.issues.iter().filter(|i| !i.is_severe()).map(|i| format!("{}: {} ({})", task.title.trim(), i.problem, i.file)));
         if check.verdict == Verdict::Fail && !severe.is_empty() {
-            let max = limit(task.hard, self.backend.can_escalate());
+            let max = limit(self.backend.can_escalate());
             if self.attempts.get(&title).copied().unwrap_or(0) < max {
                 self.state.remove(&title);
                 let mut fix = fix_task(&task, &severe);
@@ -401,7 +460,7 @@ impl<B: Backend> Round<'_, B> {
                     self.backend.say(format!("Thêm file người kiểm tra nêu vào task sửa: {}", added.join(", "))).await;
                 }
                 self.queue.push_back(fix);
-                let next_editor = route(task.hard, attempt + 1, self.backend.can_escalate()).0;
+                let next_editor = Actor::Worker;
                 self.mark(&task.title, "fixing", attempt, Some(shown), Some(next_editor), self.backend.actor_model(next_editor), Some(checker), checker_model).await;
             } else {
                 self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent and the check still fails. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
@@ -445,7 +504,16 @@ pub(super) async fn run_round<B: Backend>(backend: &Arc<B>, tasks: Vec<Delegatio
             round.handle_check(finished).await;
         }
         match next_ready(&mut round.queue, &round.state) {
-            Next::Run(task) => round.run_task(task).await,
+            Next::Run(task) => {
+                // Two independent tasks at once: only for the worker's second slot, never for a big task, a task another needs, or the same files.
+                let splits = backend.splits_big_small();
+                let second = if backend.has_second_worker() && !(splits && task.hard) {
+                    take_partner(&mut round.queue, &round.state, &task, |other| splits && other.hard)
+                } else {
+                    None
+                };
+                round.run_group(task, second).await;
+            }
             Next::Skip(task, why) => {
                 round.out.reports.push(format!("Task \"{}\" was skipped: {why}.", task.title.trim()));
                 round.state.insert(key(&task.title), State::Failed);
@@ -497,6 +565,13 @@ mod tests {
         bad_paths: Vec<String>,
         /// Title and files of every worker run.
         works: Mutex<Vec<(String, Vec<String>)>>,
+        /// A second worker slot exists / the worker splits big and small tasks (DeepSeek).
+        second: bool,
+        splits: bool,
+        /// Worker runs in progress now and the most there ever were, with the slot each title ran on.
+        active: std::sync::atomic::AtomicUsize,
+        peak: std::sync::atomic::AtomicUsize,
+        slots: Mutex<Vec<(String, Actor)>>,
     }
     impl Fake {
         fn log(&self, line: impl Into<String>) {
@@ -508,9 +583,14 @@ mod tests {
     }
     #[async_trait::async_trait]
     impl Backend for Fake {
-        async fn work(&self, task: &Delegation, _attempt: usize, _feedback: Option<&str>) -> WorkerResult {
+        async fn work(&self, task: &Delegation, _attempt: usize, _feedback: Option<&str>, editor: Actor) -> WorkerResult {
+            use std::sync::atomic::Ordering::SeqCst;
             self.log(format!("work:{}", task.title));
             self.works.lock().unwrap().push((task.title.clone(), task.files.clone()));
+            self.slots.lock().unwrap().push((task.title.clone(), editor));
+            self.peak.fetch_max(self.active.fetch_add(1, SeqCst) + 1, SeqCst);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            self.active.fetch_sub(1, SeqCst);
             if self.hold.as_ref().is_some_and(|(_, other)| *other == task.title) {
                 self.released.notify_one();
             }
@@ -519,6 +599,12 @@ mod tests {
         }
         fn has_checker(&self) -> bool {
             self.checker
+        }
+        fn splits_big_small(&self) -> bool {
+            self.splits
+        }
+        fn has_second_worker(&self) -> bool {
+            self.second
         }
         async fn check(&self, task: &Delegation, _attempt: usize, _work: &WorkerResult) -> CheckResult {
             if self.hold.as_ref().is_some_and(|(held, _)| *held == task.title) {
@@ -539,9 +625,9 @@ mod tests {
         }
         fn actor_model(&self, actor: Actor) -> Option<String> {
             Some(match actor {
-                Actor::Worker => "deepseek-model",
+                Actor::Worker => "worker-model",
+                Actor::Worker2 => "worker-model",
                 Actor::Tester => "tester-model",
-                Actor::Tester2 => "tester-2-model",
             }.into())
         }
         async fn board(&self, rows: &[Row]) {
@@ -602,7 +688,7 @@ mod tests {
         let fake = Fake { checker: true, ..Default::default() };
         fake.checks.lock().unwrap().insert("A".into(), VecDeque::from(vec![fail_high(); 10]));
         let (fake, out, attempts) = run(fake, vec![task("A", &[])]).await;
-        // DeepSeek twice, then Tester's fix: the third failed check hands the task to the coordinator.
+        // The worker has three attempts when a checker exists: the third failed check hands the task to the coordinator.
         assert_eq!(fake.lines().iter().filter(|l| l.starts_with("work:")).count(), 3);
         assert_eq!(attempts["a"], 3);
         assert!(out.reports.last().unwrap().contains("attempt limit (3/3)"));
@@ -611,48 +697,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_hard_task_gets_two_attempts_and_without_a_checker_every_task_keeps_four() {
-        let fake = Fake { checker: true, ..Default::default() };
-        fake.checks.lock().unwrap().insert("A".into(), VecDeque::from(vec![fail_high(); 10]));
-        let hard = Delegation { hard: true, ..task("A", &[]) };
-        let (fake, out, attempts) = run(fake, vec![hard]).await;
-        assert_eq!((fake.lines().iter().filter(|l| l.starts_with("work:")).count(), attempts["a"]), (2, 2));
-        assert!(out.reports.last().unwrap().contains("attempt limit (2/2)"));
-        // No checker, or a coordinator that cannot edit: nobody to climb to, so the old four DeepSeek attempts stay.
-        let (fake, _, attempts) = run(Fake { empty: vec!["A".into()], ..Default::default() }, vec![Delegation { hard: true, ..task("A", &[]) }]).await;
-        assert!(attempts["a"] <= MAX_ATTEMPTS && fake.lines().iter().all(|l| l.starts_with("work:")));
-        assert_eq!(limit(true, false), MAX_ATTEMPTS);
-        assert_eq!(limit(false, false), MAX_ATTEMPTS);
+    async fn a_hard_task_is_left_to_the_coordinator_only_when_the_worker_splits_big_and_small() {
+        let hard = || Delegation { hard: true, ..task("A", &[]) };
+        let (fake, out, attempts) = run(Fake { splits: true, ..Default::default() }, vec![hard(), task("B", &["A"])]).await;
+        assert!(fake.lines().is_empty(), "a big task is never delegated and its dependent is skipped: {:?}", fake.lines());
+        assert!(attempts.is_empty());
+        assert!(out.reports.iter().any(|r| r.contains("marked hard") && r.contains("Implement it yourself")));
+        assert_eq!(fake.boards.lock().unwrap().last().unwrap()[0].state, "takeover");
+        // Any other worker: the flag means nothing and the worker runs the task.
+        let (fake, _, _) = run(Fake::default(), vec![hard()]).await;
+        assert_eq!(fake.lines(), ["work:A"]);
+        assert_eq!((limit(true), limit(false)), (3, MAX_ATTEMPTS));
     }
 
     #[tokio::test]
-    async fn hard_and_escalated_rows_keep_their_routed_editor_and_checker_identity() {
-        let fake = Fake { checker: true, ..Default::default() };
-        fake.checks.lock().unwrap().insert("hard".into(), VecDeque::from([pass()]));
-        let (fake, _, _) = run(fake, vec![Delegation { hard: true, ..task("hard", &[]) }]).await;
+    async fn two_independent_tasks_run_at_once_on_the_two_worker_slots() {
+        let tasks = || vec![
+            Delegation { files: vec!["src/a.rs".into()], ..task("A", &[]) },
+            Delegation { files: vec!["web/b.ts".into()], ..task("B", &[]) },
+        ];
+        let (fake, _, _) = run(Fake { second: true, checker: true, ..Default::default() }, tasks()).await;
+        assert_eq!(fake.peak.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(*fake.slots.lock().unwrap(), [("A".to_string(), Actor::Worker), ("B".to_string(), Actor::Worker2)]);
         let boards = fake.boards.lock().unwrap();
-        let hard_coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "hard" && row.state == "coding").unwrap();
-        assert_eq!(hard_coding.actor.as_deref(), Some("Codex 2"));
-        assert_eq!(hard_coding.model.as_deref(), Some("tester-2-model"));
-        let hard_checking = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "hard" && row.state == "checking").unwrap();
-        assert_eq!(hard_checking.actor.as_deref(), Some("Codex"));
-        assert_eq!(hard_checking.checker.as_deref(), Some("Codex"));
+        let coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "B" && row.state == "coding").unwrap();
+        assert_eq!(coding.actor.as_deref(), Some("Worker 2"));
         drop(boards);
+        // No second slot: one after another.
+        let (fake, _, _) = run(Fake { checker: true, ..Default::default() }, tasks()).await;
+        assert_eq!(fake.peak.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
 
-        let fake = Fake { checker: true, ..Default::default() };
-        fake.checks.lock().unwrap().insert("escalated".into(), VecDeque::from([fail_high(), fail_high(), pass()]));
-        let (fake, _, _) = run(fake, vec![task("escalated", &[])]).await;
-        let boards = fake.boards.lock().unwrap();
-        let escalated_coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "escalated" && row.state == "fixing" && row.attempt == 3).unwrap();
-        assert_eq!(escalated_coding.actor.as_deref(), Some("Codex"));
-        assert_eq!(escalated_coding.model.as_deref(), Some("tester-model"));
-        let escalated_checking = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "escalated" && row.state == "checking" && row.attempt == 3).unwrap();
-        assert_eq!(escalated_checking.actor.as_deref(), Some("Codex 2"));
-        assert_eq!(escalated_checking.checker.as_deref(), Some("Codex 2"));
-        let finished = boards.last().unwrap().iter().find(|row| row.title == "escalated").unwrap();
-        assert_eq!(finished.check, Some("PASS"));
-        assert_eq!(finished.checker.as_deref(), Some("Codex 2"));
-        assert_eq!(finished.checker_model.as_deref(), Some("tester-2-model"));
+    #[tokio::test]
+    async fn tasks_that_share_a_file_or_depend_on_each_other_never_run_at_once() {
+        let fake = || Fake { second: true, checker: true, ..Default::default() };
+        let folder = Delegation { files: vec!["src".into()], ..task("A", &[]) };
+        let inside = Delegation { files: vec!["src/a.rs".into()], ..task("B", &[]) };
+        let (peak, _) = { let (f, o, _) = run(fake(), vec![folder, inside]).await; (f.peak.load(std::sync::atomic::Ordering::SeqCst), o) };
+        assert_eq!(peak, 1, "a folder covers the files inside it");
+        let a = Delegation { files: vec!["x.rs".into()], ..task("A", &[]) };
+        let b = Delegation { files: vec!["y.rs".into()], ..task("B", &["A"]) };
+        let (f, _, _) = run(fake(), vec![a, b]).await;
+        assert_eq!(f.peak.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let (f, _, _) = run(Fake { second: true, ..Default::default() }, vec![task("A", &[]), Delegation { files: vec![], ..task("B", &[]) }]).await;
+        assert_eq!(f.peak.load(std::sync::atomic::Ordering::SeqCst), 1, "a task without files cannot be proven independent");
     }
 
     #[tokio::test]
@@ -665,15 +753,6 @@ mod tests {
         assert!(lines.contains(&"check:B".to_string()), "other tasks are still checked: {lines:?}");
         assert!(out.reports.iter().any(|r| r.contains("Check skipped") && r.contains("\"A\"")));
         assert!(fake.boards.lock().unwrap().iter().any(|rows| rows.iter().any(|row| row.title == "A" && row.state == "done")));
-    }
-
-    #[test]
-    fn the_ladder_is_worker_twice_then_tester_fixes_and_tester_2_checks_and_hard_tasks_start_with_tester_2() {
-        use Actor::*;
-        assert_eq!([1, 2, 3].map(|n| route(false, n, true)), [(Worker, Tester), (Worker, Tester), (Tester, Tester2)]);
-        assert_eq!([1, 2].map(|n| route(true, n, true)), [(Tester2, Tester), (Tester2, Tester)]);
-        assert_eq!([1, 3, 4].map(|n| route(true, n, false)), [(Worker, Tester); 3]);
-        assert_eq!(route(false, 4, false), (Worker, Tester));
     }
 
     #[tokio::test]

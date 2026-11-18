@@ -34,29 +34,30 @@ pub fn for_coordinator(enabled: bool, level: &str, provider_kind: &str) -> &'sta
 /// The coordinator always analyses and splits the job first, whatever model the worker is; only how fine the split is differs.
 macro_rules! split_rule {
     () => {
-        "- Always analyse the job and split it before delegating, whatever the worker is. A task is one concern with a clear boundary: a few files at most and one result you can check in the diff. Never put a whole feature, or several layers (backend, web, adapters), into one task: give each its own block and link them with depends_on. A task that is merely wide is split, never marked hard.\n"
+        "- Always analyse the job and split it before delegating, whatever the worker is. A task is one concern with a clear boundary: a few files at most and one result you can check in the diff. Never put a whole feature, or several layers (backend, web, adapters), into one task: give each its own block and link them with depends_on. A task that is merely wide is split into several tasks, whoever does it.\n"
     };
 }
 
 /// Plain chat with a DeepSeek worker the app can run: Codex hands work over in a fenced block and the app answers with the real report.
 const PROTOCOL_RULE: &str = concat!(
     "MutiS High delegation protocol (mandatory for Codex in this chat):\n",
-    "- You coordinate. Implementation goes to the DeepSeek worker; you analyse, write acceptance criteria, review and verify. Do not edit project files yourself while delegating.\n",
+    "- You coordinate. Implementation goes to the DeepSeek worker; you analyse, write acceptance criteria, review and verify. Do not edit project files yourself while delegating, except the big tasks you mark \"hard\" (below).\n",
     split_rule!(),
     "- DeepSeek works from exact edits, so split finer than for a capable model: one function, component or file per task.\n",
+    "- Small work goes to DeepSeek; big work stays with you. Small = mechanical edits whose exact change you can describe. Big = work that needs real reasoning (logic, algorithms, layout decisions, an unknown cause, a risky design decision). Wide work is not big: split it.\n",
     "- Read the relevant files yourself first. Then end your reply with one fenced block per task:\n",
     "```mutis-delegate\n",
     "{\"title\":\"short unique task name\",\"files\":[\"exact/path.ext\"],\"instructions\":\"what to change, with names, line ranges and expected behaviour\",\"acceptance\":[\"a condition you can check in the diff\"]}\n",
     "```\n",
     "- The worker has no context beyond the block: name exact files (and symbols or line ranges) and put everything it needs in the instructions. Never create a separate investigation task for the worker.\n",
-    "- Plan ALL tasks of the job in this one reply, one block each, in order. Add \"depends_on\":[\"title of another task\"] only when a task needs that task's result: independent tasks start at once, one after another, while earlier ones are still being checked, and you hear back once when all are done.\n",
+    "- Plan ALL tasks of the job in this one reply, one block each, in order. Add \"depends_on\":[\"title of another task\"] only when a task needs that task's result: independent tasks start at once (two at a time when they list different files), while earlier ones are still being checked, and you hear back once when all are done.\n",
     "- The worker cannot run commands: never put running tests, builds or type checks in its instructions or acceptance. The independent checker runs them and its verdict is part of the report; when there is no checker you run them yourself after the report.\n",
     "- After the blocks, stop. The app runs the worker and sends you its real report (changed files, diff, summary), plus the project's own checks when they are enabled.\n",
-    "- Add \"hard\":true to a block when the task needs real reasoning (logic, algorithms, layout decisions, an unknown cause): the app then gives it to a stronger second checker model (the second editor) instead of DeepSeek. DeepSeek is for mechanical edits whose exact change you can describe.\n",
+    "- Add \"hard\":true to a block for a big task: the app does not delegate it, the block only tells it that you implement and verify that task yourself (do it after the report). Tasks that depend on it are skipped, so resend them afterwards.\n",
     "- Add \"trivial\":true to a block for a tiny low-risk change (a few lines of styling or text, a label, a rename, one field: nothing with logic, state, data or security, and nothing other code depends on). The app then skips the checker's check and you read the diff yourself. When unsure, leave it out.
 ",
     "- Review the report against your acceptance criteria and the diff. If it passes, say so and continue. If it fails or changed nothing, answer with another block with the SAME title and concrete corrections.\n",
-    "- The app counts attempts per title and climbs by itself when a checker exists: DeepSeek twice (the checker checks), then the checker fixes it and the second editor checks; a hard task gets the second editor twice (the checker checks). When those are spent it tells you to implement the task yourself and verify it (the user then judges the result). Without a checker DeepSeek gets 4 attempts.\n",
+    "- The app counts attempts per title: DeepSeek gets 3 attempts when a checker exists (the checker checks each), 4 without one. When they are spent it tells you to implement the task yourself and verify it (the user then judges the result).\n",
     "- Questions, explanations and tiny one-line edits do not need the worker: answer or edit directly. If the user explicitly asks you to code directly, do that.\n",
     "- Write every user-facing word in Vietnamese: your commentary, progress explanations, summaries, notes and review verdicts. ",
     "Keep code, paths, commands, model names, task titles, JSON keys, protocol enum values and literal tool or error output ",
@@ -75,13 +76,12 @@ const OTHER_PROTOCOL_RULE: &str = concat!(
     "{\"title\":\"short unique task name\",\"files\":[\"path/or/folder\"],\"instructions\":\"the goal, the constraints and where to look\",\"acceptance\":[\"a condition you can check in the diff or by running a check\"]}\n",
     "```\n",
     "- Name the files or areas the worker should touch and what must hold afterwards. It does not need line ranges or the exact change, but anything it cannot find in the project (decisions, names, values) belongs in the instructions.\n",
-    "- Plan ALL tasks of the job in this one reply, one block each, in order. Add \"depends_on\":[\"title of another task\"] only when a task needs that task's result: independent tasks start at once, one after another, while earlier ones are still being checked, and you hear back once when all are done.\n",
+    "- Plan ALL tasks of the job in this one reply, one block each, in order. Add \"depends_on\":[\"title of another task\"] only when a task needs that task's result: independent tasks start at once (two at a time when they list different files), while earlier ones are still being checked, and you hear back once when all are done.\n",
     "- Do not make running tests, builds or type checks part of the worker's task. The independent checker runs them and its verdict is part of the report; when there is no checker you run them yourself after the report.\n",
     "- After the blocks, stop. The app runs the worker and sends you its real report (changed files, diff, summary), plus the project's own checks when they are enabled.\n",
-    "- Add \"hard\":true to a block when the task needs the strongest reasoning (an unknown cause, a risky design decision): the app then gives it to a stronger second model (the second editor) instead of the worker.\n",
     "- Add \"trivial\":true to a block for a tiny low-risk change (a few lines of styling or text, a label, a rename, one field: nothing with logic, state, data or security, and nothing other code depends on). The app then skips the checker's check and you read the diff yourself. When unsure, leave it out.\n",
     "- Review the report against your acceptance criteria and the diff. If it passes, say so and continue. If it fails or changed nothing, answer with another block with the SAME title and concrete corrections.\n",
-    "- The app counts attempts per title and climbs by itself when a checker exists: the worker twice (the checker checks), then the checker fixes it and the second editor checks; a hard task gets the second editor twice (the checker checks). When those are spent it tells you to implement the task yourself and verify it (the user then judges the result). Without a checker the worker gets 4 attempts.\n",
+    "- The app counts attempts per title: the worker gets 3 attempts when a checker exists (the checker checks each), 4 without one. When they are spent it tells you to implement the task yourself and verify it (the user then judges the result).\n",
     "- Questions, explanations and tiny one-line edits do not need the worker: answer or edit directly. If the user explicitly asks you to code directly, do that.\n",
     "- Write every user-facing word in Vietnamese: your commentary, progress explanations, summaries, notes and review verdicts. ",
     "Keep code, paths, commands, model names, task titles, JSON keys, protocol enum values and literal tool or error output ",
@@ -99,8 +99,8 @@ pub enum Worker {
 /// Appended to the coordinator's rule while the "DeepSeek may do UI" switch is off.
 pub const NO_UI_NOTE: &str = concat!(
     "UI layout and styling work is switched off for DeepSeek in this app.\n",
-    "- Style and markup files (.css, .scss, .sass, .less, .html) are never run on DeepSeek: the app hands such a task to the second editor when it can, otherwise it sends it back to you.\n",
-    "- Component files (.tsx, .jsx, .vue, .svelte) are your call. A change to layout, spacing, sizes, styling or the structure of the markup: mark it \"hard\":true or do it yourself, and decide the exact values. Wiring data, props, state or text into a component is ordinary work: give it to DeepSeek."
+    "- Style and markup files (.css, .scss, .sass, .less, .html) are never run on DeepSeek: the app sends such a task back to you.\n",
+    "- Component files (.tsx, .jsx, .vue, .svelte) are your call. A change to layout, spacing, sizes, styling or the structure of the markup: mark it \"hard\":true and do it yourself, deciding the exact values. Wiring data, props, state or text into a component is ordinary work: give it to DeepSeek."
 );
 
 /// Rule for a plain chat turn: the delegation policy only when a way to reach the worker exists (the app's own
@@ -130,15 +130,17 @@ mod tests {
         assert_eq!(for_chat(true, "high", "codex_cli", false, Some(Worker::Other)), OTHER_PROTOCOL_RULE);
         assert_eq!(for_chat(true, "max", "codex_cli", false, Some(Worker::DeepSeek)), "");
         // The other-model rule keeps the protocol but drops DeepSeek's exact-edit demands.
-        assert!(OTHER_PROTOCOL_RULE.contains("```mutis-delegate") && OTHER_PROTOCOL_RULE.contains("\"hard\":true") && OTHER_PROTOCOL_RULE.contains("second editor") && OTHER_PROTOCOL_RULE.contains("\"trivial\":true"));
+        // Big and small work exists only with DeepSeek: another worker is capable and takes every task.
+        assert!(OTHER_PROTOCOL_RULE.contains("```mutis-delegate") && OTHER_PROTOCOL_RULE.contains("\"trivial\":true"));
+        assert!(!OTHER_PROTOCOL_RULE.contains("hard") && !OTHER_PROTOCOL_RULE.contains("second editor"));
         assert!(!OTHER_PROTOCOL_RULE.contains("DeepSeek") && OTHER_PROTOCOL_RULE.contains("does not need line ranges") && PROTOCOL_RULE.contains("exact files"));
         // Splitting the job is the coordinator's duty with any worker; DeepSeek only gets the finer split.
         for rule in [PROTOCOL_RULE, OTHER_PROTOCOL_RULE] {
-            assert!(rule.contains("Always analyse the job and split it") && rule.contains("never marked hard"));
+            assert!(rule.contains("Always analyse the job and split it") && rule.contains("split into several tasks"));
         }
         assert!(PROTOCOL_RULE.contains("split finer") && !OTHER_PROTOCOL_RULE.contains("split finer"));
         assert!(OTHER_PROTOCOL_RULE.lines().count() >= 10, "escapes must stay \\n, not literal newlines inside strings");
-        assert!(PROTOCOL_RULE.contains("```mutis-delegate") && PROTOCOL_RULE.contains("\"hard\":true") && PROTOCOL_RULE.contains("second editor") && PROTOCOL_RULE.contains("\"trivial\":true"));
+        assert!(PROTOCOL_RULE.contains("```mutis-delegate") && PROTOCOL_RULE.contains("\"hard\":true") && PROTOCOL_RULE.contains("big task") && !PROTOCOL_RULE.contains("second editor") && PROTOCOL_RULE.contains("\"trivial\":true"));
         assert!(PROTOCOL_RULE.lines().count() >= 10, "escapes must stay \\n, not literal newlines inside strings");
     }
 

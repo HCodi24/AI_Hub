@@ -5,7 +5,7 @@
 .board { box-sizing: border-box; flex: 0 0 auto; width: calc(100% - 2 * var(--space-6)); max-width: calc(820px - 2 * var(--space-6)); margin: 0 auto var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); min-width: 0; }
 .title { font-size: var(--font-13); }
 .board ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.board li { display: grid; grid-template-columns: 16px minmax(0, 3fr) 24px minmax(0, 2fr); grid-template-areas: "icon name avatar details"; align-items: start; gap: 0 var(--space-2); min-width: 0; }
+.board li { display: grid; grid-template-columns: 16px minmax(0, 1fr) 24px fit-content(40%); grid-template-areas: "icon name avatar details"; align-items: start; gap: 0 var(--space-2); min-width: 0; }
 .board li > svg { grid-area: icon; width: 16px; height: 16px; margin-top: 4px; }
 .name, .details { min-width: 0; overflow-wrap: anywhere; white-space: normal; line-height: 24px; }
 .name { grid-area: name; }

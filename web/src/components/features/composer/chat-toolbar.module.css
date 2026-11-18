@@ -8,6 +8,7 @@
 .limits { position: relative; }
 .limits > summary { display: grid; place-items: center; width: 36px; min-height: 36px; padding: 4px; list-style: none; border-radius: 50%; }
 .limits > summary::-webkit-details-marker { display: none; }
+.limits > summary:focus-visible { outline: none; background: var(--color-muted); }
 .limitRing { display: block; fill: none; stroke-width: 3; color: var(--color-info); }
 .limitTrack { stroke: var(--color-muted); }
 .limitProgress { stroke: currentColor; transform: rotate(-90deg); transform-origin: center; }

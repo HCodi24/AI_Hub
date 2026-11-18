@@ -64,7 +64,7 @@ pub struct MutisConfig {
     /// MutiS High: an independent checker reviews each DeepSeek result before the coordinator judges it.
     #[serde(default)]
     pub delegate_checker: bool,
-    /// MutiS High: whether DeepSeek may be given layout and styling work (.css/.html...). Off = such tasks go to the second editor, or back to the coordinator.
+    /// MutiS High: whether DeepSeek may be given layout and styling work (.css/.html...). Off = such tasks go back to the coordinator.
     #[serde(default)]
     pub deepseek_ui: bool,
     /// Who the checker is (a Codex source and model; effort defaults to max). Used only at the High level.

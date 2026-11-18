@@ -286,11 +286,14 @@ pub(crate) async fn chat_handler(
     let provider: Box<dyn providers::Provider> = match &delegate_worker {
         Some((worker, model, effort)) => {
             // A Codex worker's thread only resumes inside the Codex home it was made in.
-            let mut worker_session = existing.as_ref().and_then(|r| r.worker_sessions.get(&worker.id).cloned());
+            let kept = |id: &str| existing.as_ref().and_then(|r| r.worker_sessions.get(id).cloned());
+            let mut worker_session = kept(&worker.id);
+            let mut worker2_session = kept(&providers::delegate::worker2_key(&worker.id));
             if worker.kind == "codex_cli" {
                 let settings = state.config.read().await.codex.clone();
                 let prefix = providers::codex::session_prefix(&settings, worker, &folder);
                 worker_session = worker_session.filter(|id| id.starts_with(&prefix));
+                worker2_session = worker2_session.filter(|id| id.starts_with(&prefix));
             }
             Box::new(providers::delegate::DelegateProvider {
             worker: worker.clone(),
@@ -300,6 +303,7 @@ pub(crate) async fn chat_handler(
             checker_note: checker_note.clone(),
             chat_id: request.chat_id.clone(),
             worker_session,
+            worker2_session,
         })},
         None => providers::for_kind(&provider_config.kind).map_err(|_| {
             ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ")

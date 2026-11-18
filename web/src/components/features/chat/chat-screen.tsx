@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
 import Head from "next/head";
 import { useShallow } from "zustand/react/shallow";
 import { MessageList } from "./message-list";
@@ -25,6 +25,9 @@ import { devApi } from "@/apis/dev.api";
 const INTERACTIVE = "a, button, input, select, textarea, summary, details, label, [role='button'], [role='link'], [contenteditable='true'], [tabindex]:not([tabindex='-1'])";
 export function ChatScreen() {
   const dropTarget = useRef<HTMLElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
+  const composerSlotRef = useRef<HTMLDivElement>(null);
   const state = useChatStore(useShallow(s => ({ error: s.error, streaming: s.streaming, folder: s.settings.folder })));
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Local only: opening the large Dashboard dialog never touches chat state or the dashboard preference.
@@ -35,6 +38,31 @@ export function ChatScreen() {
   const [taskBoardEnabled, setTaskBoardEnabled] = useTaskBoardPreference();
   const { config, chats, send, stop, load, remove } = useChat();
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    const dock = dockRef.current;
+    const composerSlot = composerSlotRef.current;
+    const composer = composerSlot?.querySelector("form");
+    if (!frame || !dock || !composerSlot || !composer) return;
+
+    let overflowFrame = 0;
+    const updateDock = () => {
+      frame.style.setProperty("--chat-dock-height", `${dock.getBoundingClientRect().height}px`);
+      cancelAnimationFrame(overflowFrame);
+      overflowFrame = requestAnimationFrame(() => {
+        composerSlot.toggleAttribute("data-overflow", composer.offsetHeight > composerSlot.clientHeight);
+      });
+    };
+    updateDock();
+    const observer = new ResizeObserver(updateDock);
+    observer.observe(dock, { box: "border-box" });
+    observer.observe(composerSlot);
+    observer.observe(composer, { box: "border-box" });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(overflowFrame);
+    };
+  }, []);
   // Restore the chat that was open before the page reload.
   useEffect(() => {
     let id: string | null = null;
@@ -76,14 +104,20 @@ export function ChatScreen() {
         {queryError && <div role="alert" className={styles.error}>{queryError.message}
           <button onClick={() => { void config.refetch(); void chats.refetch(); }}>{chatText.retry}</button></div>}
         {state.error && <div role="alert" className={styles.error}>{state.error}</div>}
-        <div className={styles.workspace} data-dashboard={dashboardEnabled ? "on" : undefined}>
-          {dashboardEnabled && <aside className={styles.dashboard} aria-label={chatText.dashboard.open} tabIndex={0} aria-haspopup="dialog" onClick={onDashboardClick} onKeyDown={onDashboardKeyDown}><TokenDashboard compact /></aside>}
-          <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
-            <MessageList send={send} taskBoardEnabled={taskBoardEnabled} />
-          </section>
+        <div ref={frameRef} className={styles.chatFrame}>
+          <div className={styles.workspace} data-dashboard={dashboardEnabled ? "on" : undefined}>
+            {dashboardEnabled && <aside className={styles.dashboard} aria-label={chatText.dashboard.open} tabIndex={0} aria-haspopup="dialog" onClick={onDashboardClick} onKeyDown={onDashboardKeyDown}><TokenDashboard compact /></aside>}
+            <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
+              <MessageList send={send} taskBoardEnabled={taskBoardEnabled} />
+            </section>
+          </div>
+          <div ref={dockRef} className={styles.dock}>
+            <div className={styles.dockBoard}><TaskBoard enabled={taskBoardEnabled} /></div>
+            <div ref={composerSlotRef} className={styles.dockComposer}>
+              <Composer dropTarget={dropTarget} config={config.data} streaming={state.streaming} send={send} stop={stop} />
+            </div>
+          </div>
         </div>
-        <TaskBoard enabled={taskBoardEnabled} />
-        <Composer dropTarget={dropTarget} config={config.data} streaming={state.streaming} send={send} stop={stop} />
       </main>
     </div>{settingsOpen && <SettingsDialog folder={state.folder} close={() => setSettingsOpen(false)}
       dashboardEnabled={dashboardEnabled} onDashboardEnabledChange={setDashboardEnabled}
