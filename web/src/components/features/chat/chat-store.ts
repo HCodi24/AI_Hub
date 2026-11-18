@@ -17,7 +17,7 @@ export function applyCheckerActivity(cards: LiveChecker[], activity: CheckerActi
   const index = cards.findIndex(card => card.id === activity.id);
   const base: LiveChecker = index >= 0 ? cards[index] : {
     id: activity.id, title: activity.title, attempt: activity.attempt, model: activity.model,
-    provider_name: activity.provider_name || "Luna", state: "running", progress: [],
+    provider_name: activity.provider_name || "Người kiểm tra", state: "running", progress: [],
   };
   const next: LiveChecker = {
     ...base,

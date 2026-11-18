@@ -3,7 +3,11 @@ use crate::{
     app::AppState,
     chat::{self, ChatRecord},
 };
-use axum::{extract::{Path, State}, http::StatusCode, Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
+};
 use serde::Serialize;
 
 #[derive(Serialize)]

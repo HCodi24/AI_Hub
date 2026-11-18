@@ -2,12 +2,14 @@ import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import { extensionsApi } from "@/apis/extensions.api";
+import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
+import { Switch } from "@/components/button/switch";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { notify } from "@/components/toast/toast";
 import type { Extension, ExtensionAction } from "@/schema/extensions.schema";
 import { settingsText as t } from "@/text/settings";
-import { errorText } from "./use-settings";
+import { errorText, useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
 /** Which actions make sense for the extension's current state (same rules as the legacy UI). */
 function visible(card: Extension, action: ExtensionAction, folder: string) {
@@ -26,6 +28,11 @@ export function ExtensionsTab({ folder }: { folder: string }) {
   const [pending, setPending] = useState<{ card: Extension; action: ExtensionAction } | null>(null);
   const [running, setRunning] = useState(""); const [log, setLog] = useState("");
   const abort = useRef<AbortController | null>(null);
+  const { query: config, apply } = useSettingsConfig();
+  async function setCodegraph(enabled: boolean) {
+    try { apply(await settingsApi.saveConfig({ codegraph_enabled: enabled })); notify(t.extensions.autoIndexSaved); }
+    catch (error) { notify(errorText(error, t.error)); }
+  }
   const command = (action: ExtensionAction) => `${action.command}${action.id === "index_folder" ? `  (cwd: ${folder})` : ""}`;
   async function run(card: Extension, action: ExtensionAction) {
     setPending(null); setRunning(card.id); setLog(current => `${current}\n> ${command(action)}\n`);
@@ -48,6 +55,8 @@ export function ExtensionsTab({ folder }: { folder: string }) {
         {card.installed && <span className={styles.badge} data-on={card.claude}>{t.extensions.claude}</span>}
         {card.folder_indexed && <span className={styles.badge} data-on="true">{t.extensions.indexed}</span>}</header>
       <p>{card.description}</p>
+      {card.id === "codegraph" && <label className={styles.check}><Switch checked={config.data?.codegraph_enabled ?? true} disabled={!config.data}
+        onChange={event => void setCodegraph(event.target.checked)} /><span>{t.extensions.autoIndex}</span></label>}
       {card.homepage && <a href={card.homepage} target="_blank" rel="noreferrer">{t.extensions.homepage} <ExternalLink size={14} aria-hidden="true" /></a>}
       <div className={styles.actions}>{card.actions.filter(action => visible(card, action, folder)).map(action =>
         <Button key={action.id} variant={action.id === "uninstall" ? "danger" : "secondary"} disabled={Boolean(running)}

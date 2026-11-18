@@ -26,21 +26,33 @@ fn not_found() -> ApiError {
 }
 
 fn safe_name(name: &str) -> bool {
-    (1..=48).contains(&name.len()) && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    (1..=48).contains(&name.len())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 /// `<app data>/pets`: one folder per pet the user added.
 fn pets_dir(state: &AppState) -> Option<PathBuf> {
-    crate::core::paths::data_dir(&state.config_path).ok().map(|dir| dir.join("pets"))
+    crate::core::paths::data_dir(&state.config_path)
+        .ok()
+        .map(|dir| dir.join("pets"))
 }
 
-pub(crate) async fn sprite(State(state): State<AppState>, Path(name): Path<String>) -> ApiResult<Response> {
+pub(crate) async fn sprite(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> ApiResult<Response> {
     let bytes = installed(&state, &name).ok_or_else(not_found)?;
     Ok(image(bytes, "max-age=60"))
 }
 
 fn image(bytes: Vec<u8>, cache: &'static str) -> Response {
-    let mime = if is_png(&bytes) { "image/png" } else { "image/webp" };
+    let mime = if is_png(&bytes) {
+        "image/png"
+    } else {
+        "image/webp"
+    };
     let mut response = bytes.into_response();
     let headers = response.headers_mut();
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(mime));
@@ -50,7 +62,10 @@ fn image(bytes: Vec<u8>, cache: &'static str) -> Response {
 
 /// Where a pet's sprite sheet is kept (the name becomes a path segment, so it is checked first).
 fn downloaded_file(state: &AppState, id: &str) -> Option<PathBuf> {
-    safe_name(id).then(|| pets_dir(state)).flatten().map(|dir| dir.join(id).join("spritesheet.png"))
+    safe_name(id)
+        .then(|| pets_dir(state))
+        .flatten()
+        .map(|dir| dir.join(id).join("spritesheet.png"))
 }
 
 /// The stored sheet of a pet, when it is still a valid one.
@@ -69,13 +84,23 @@ fn is_webp(bytes: &[u8]) -> bool {
 
 /// PNG with the pet sheet layout: 1536 px wide, 1248 px (6 rows) or 1040 px (5 rows) high.
 fn is_sheet_png(bytes: &[u8]) -> bool {
-    let dimension = |at: usize| bytes.get(at..at + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]));
-    is_png(bytes) && dimension(16) == Some(SHEET_WIDTH) && dimension(20).is_some_and(|height| SHEET_HEIGHTS.contains(&height))
+    let dimension = |at: usize| {
+        bytes
+            .get(at..at + 4)
+            .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    is_png(bytes)
+        && dimension(16) == Some(SHEET_WIDTH)
+        && dimension(20).is_some_and(|height| SHEET_HEIGHTS.contains(&height))
 }
 
 /// PNG or WebP with the pet sheet layout.
 fn is_sheet(bytes: &[u8]) -> bool {
-    is_sheet_png(bytes) || (is_webp(bytes) && webp_size(bytes).is_some_and(|(width, height)| width == SHEET_WIDTH && SHEET_HEIGHTS.contains(&height)))
+    is_sheet_png(bytes)
+        || (is_webp(bytes)
+            && webp_size(bytes).is_some_and(|(width, height)| {
+                width == SHEET_WIDTH && SHEET_HEIGHTS.contains(&height)
+            }))
 }
 
 /// `displayName` of a pet folder's `pet.json`, when it has a usable one.
@@ -107,7 +132,10 @@ pub(crate) struct ImportRequest {
 }
 
 /// Imports the user's own pet folder (`pet.json` + sprite sheet) into the app's pets folder. The folder is read, never changed.
-pub(crate) async fn import(State(state): State<AppState>, Json(request): Json<ImportRequest>) -> ApiResult<Json<Value>> {
+pub(crate) async fn import(
+    State(state): State<AppState>,
+    Json(request): Json<ImportRequest>,
+) -> ApiResult<Json<Value>> {
     let bad = |message: &'static str| ApiError::new(StatusCode::BAD_REQUEST, message);
     let dir = PathBuf::from(request.path.trim());
     let meta: Value = fs::read_to_string(dir.join("pet.json"))
@@ -116,10 +144,16 @@ pub(crate) async fn import(State(state): State<AppState>, Json(request): Json<Im
         .ok_or_else(|| bad("Thư mục không có pet.json hợp lệ"))?;
     let id = meta["id"].as_str().unwrap_or_default();
     if !safe_name(id) {
-        return Err(bad("Mã pet trong pet.json không hợp lệ (chỉ a-z, 0-9 và -)"));
+        return Err(bad(
+            "Mã pet trong pet.json không hợp lệ (chỉ a-z, 0-9 và -)",
+        ));
     }
     // The sheet must sit in the same folder: a bare file name, never a path.
-    let file = meta["spritesheetPath"].as_str().filter(|name| std::path::Path::new(name).file_name().is_some_and(|f| f == *name));
+    let file = meta["spritesheetPath"].as_str().filter(|name| {
+        std::path::Path::new(name)
+            .file_name()
+            .is_some_and(|f| f == *name)
+    });
     let bytes = fs::read(dir.join(file.unwrap_or("spritesheet.png")))
         .ok()
         .filter(|bytes| bytes.len() <= MAX_BYTES && is_sheet(bytes))
@@ -131,19 +165,28 @@ pub(crate) async fn import(State(state): State<AppState>, Json(request): Json<Im
 
 /// Writes a validated sprite sheet and its `pet.json` into the app's pets folder.
 fn save(state: &AppState, id: &str, name: &str, bytes: &[u8]) -> ApiResult<()> {
-    let target = downloaded_file(state, id).ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Mã pet không hợp lệ"))?;
+    let target = downloaded_file(state, id)
+        .ok_or_else(|| ApiError::new(StatusCode::BAD_REQUEST, "Mã pet không hợp lệ"))?;
     target
         .parent()
         .map(fs::create_dir_all)
         .transpose()
         .and_then(|_| fs::write(&target, bytes))
-        .and_then(|_| fs::write(target.with_file_name("pet.json"), json!({"id": id, "displayName": name}).to_string()))
+        .and_then(|_| {
+            fs::write(
+                target.with_file_name("pet.json"),
+                json!({"id": id, "displayName": name}).to_string(),
+            )
+        })
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không lưu được pet"))
 }
 
 /// Pixel size from a WebP header (VP8, VP8L or VP8X); `None` when it cannot be read.
 fn webp_size(b: &[u8]) -> Option<(u32, u32)> {
-    let le = |at: usize, n: usize| b.get(at..at + n).map(|s| s.iter().rev().fold(0u32, |a, &x| a << 8 | u32::from(x)));
+    let le = |at: usize, n: usize| {
+        b.get(at..at + n)
+            .map(|s| s.iter().rev().fold(0u32, |a, &x| a << 8 | u32::from(x)))
+    };
     match b.get(12..16)? {
         b"VP8X" => Some((le(24, 3)? + 1, le(27, 3)? + 1)),
         b"VP8L" => {
@@ -162,10 +205,22 @@ pub(crate) struct UploadQuery {
 }
 
 /// Adds a sprite sheet the user picked in Settings (raw WebP body). Stored as `my-<file name>`; uploading the same name again replaces it.
-pub(crate) async fn upload(State(state): State<AppState>, Query(query): Query<UploadQuery>, body: Bytes) -> ApiResult<Json<Value>> {
+pub(crate) async fn upload(
+    State(state): State<AppState>,
+    Query(query): Query<UploadQuery>,
+    body: Bytes,
+) -> ApiResult<Json<Value>> {
     let bad = |message: &'static str| ApiError::new(StatusCode::BAD_REQUEST, message);
-    let stem = query.name.rsplit_once('.').map_or(query.name.as_str(), |(stem, _)| stem).trim();
-    let slug: String = stem.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    let stem = query
+        .name
+        .rsplit_once('.')
+        .map_or(query.name.as_str(), |(stem, _)| stem)
+        .trim();
+    let slug: String = stem
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
     let slug = slug.trim_matches('-');
     if slug.is_empty() {
         return Err(bad("Tên file không hợp lệ"));
@@ -179,7 +234,10 @@ pub(crate) async fn upload(State(state): State<AppState>, Query(query): Query<Up
     Ok(Json(json!({ "id": id, "name": name })))
 }
 
-pub(crate) async fn remove(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+pub(crate) async fn remove(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Value>> {
     let path = downloaded_file(&state, &id).ok_or_else(not_found)?;
     let _ = fs::remove_file(&path);
     let _ = fs::remove_file(path.with_file_name("pet.json"));

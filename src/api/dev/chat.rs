@@ -51,7 +51,10 @@ mod tests {
         assert!(preamble.contains(crate::core::rule::mutis_high_delegation::VIETNAMESE_RULE));
         assert!(preamble.contains("user-facing word in Vietnamese"));
         // The existing Vietnamese dev instructions are still there.
-        assert!(preamble.contains("Bạn đang sửa chính ứng dụng MutiS") && preamble.contains("Build & khởi động lại"));
+        assert!(
+            preamble.contains("Bạn đang sửa chính ứng dụng MutiS")
+                && preamble.contains("Build & khởi động lại")
+        );
     }
 
     #[test]

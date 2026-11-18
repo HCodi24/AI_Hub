@@ -128,8 +128,8 @@ impl Actor {
     pub(super) fn name(self) -> &'static str {
         match self {
             Actor::DeepSeek => "DeepSeek",
-            Actor::Luna => "Luna",
-            Actor::Luna2 => "Luna 2",
+            Actor::Luna => "Codex",
+            Actor::Luna2 => "Codex 2",
         }
     }
 }
@@ -631,11 +631,11 @@ mod tests {
         let (fake, _, _) = run(fake, vec![Delegation { hard: true, ..task("hard", &[]) }]).await;
         let boards = fake.boards.lock().unwrap();
         let hard_coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "hard" && row.state == "coding").unwrap();
-        assert_eq!(hard_coding.actor.as_deref(), Some("Luna 2"));
+        assert_eq!(hard_coding.actor.as_deref(), Some("Codex 2"));
         assert_eq!(hard_coding.model.as_deref(), Some("luna-2-model"));
         let hard_checking = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "hard" && row.state == "checking").unwrap();
-        assert_eq!(hard_checking.actor.as_deref(), Some("Luna"));
-        assert_eq!(hard_checking.checker.as_deref(), Some("Luna"));
+        assert_eq!(hard_checking.actor.as_deref(), Some("Codex"));
+        assert_eq!(hard_checking.checker.as_deref(), Some("Codex"));
         drop(boards);
 
         let fake = Fake { checker: true, ..Default::default() };
@@ -643,14 +643,14 @@ mod tests {
         let (fake, _, _) = run(fake, vec![task("escalated", &[])]).await;
         let boards = fake.boards.lock().unwrap();
         let escalated_coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "escalated" && row.state == "fixing" && row.attempt == 3).unwrap();
-        assert_eq!(escalated_coding.actor.as_deref(), Some("Luna"));
+        assert_eq!(escalated_coding.actor.as_deref(), Some("Codex"));
         assert_eq!(escalated_coding.model.as_deref(), Some("luna-model"));
         let escalated_checking = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "escalated" && row.state == "checking" && row.attempt == 3).unwrap();
-        assert_eq!(escalated_checking.actor.as_deref(), Some("Luna 2"));
-        assert_eq!(escalated_checking.checker.as_deref(), Some("Luna 2"));
+        assert_eq!(escalated_checking.actor.as_deref(), Some("Codex 2"));
+        assert_eq!(escalated_checking.checker.as_deref(), Some("Codex 2"));
         let finished = boards.last().unwrap().iter().find(|row| row.title == "escalated").unwrap();
         assert_eq!(finished.check, Some("PASS"));
-        assert_eq!(finished.checker.as_deref(), Some("Luna 2"));
+        assert_eq!(finished.checker.as_deref(), Some("Codex 2"));
         assert_eq!(finished.checker_model.as_deref(), Some("luna-2-model"));
     }
 

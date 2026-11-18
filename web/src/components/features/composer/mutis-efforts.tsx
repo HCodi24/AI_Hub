@@ -9,7 +9,10 @@ import { modelLabel } from "./model-menu";
 import styles from "./chat-toolbar.module.css";
 
 type Role = Mutis["roles"]["lead"];
-const roleNames = ["lead", "big", "small"] as const;
+const roleNames = {
+  high: ["lead", "small"],
+  max: ["lead", "big", "small"],
+} as const;
 
 function RoleSlider({ role, provider, disabled, save }: {
   role: Role; provider?: Config["providers"][number]; disabled: boolean;
@@ -45,19 +48,25 @@ export function MutisEfforts({ mutis, level, config, disabled }: { mutis: Mutis;
   const client = useQueryClient();
   const profile = level === "high" && mutis.high_roles.lead.provider_id ? "high_roles" : "roles";
   const roles = mutis[profile];
-  const unique = roleNames.filter((name, index) => roleNames.findIndex(other => roles[other].provider_id === roles[name].provider_id && roles[other].model === roles[name].model) === index);
+  const activeRoleNames = roleNames[level];
+  const unique = activeRoleNames.filter((name, index) => activeRoleNames.findIndex(other => roles[other].provider_id === roles[name].provider_id && roles[other].model === roles[name].model) === index);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const busy = useRef(false);
   async function save(role: Role, effort: Role["effort"]) {
-    if (busy.current || disabled || role.effort === effort) return true;
+    if (busy.current || disabled) return true;
     busy.current = true; setSaving(true); setError("");
     try {
       const current = await mutisApi.get();
       const next = { ...current[profile] };
-      for (const name of roleNames) {
-        if (next[name].provider_id === role.provider_id && next[name].model === role.model) next[name] = { ...next[name], effort };
+      let changed = false;
+      for (const name of activeRoleNames) {
+        if (next[name].provider_id === role.provider_id && next[name].model === role.model && next[name].effort !== effort) {
+          next[name] = { ...next[name], effort };
+          changed = true;
+        }
       }
+      if (!changed) return true;
       const result = await mutisApi.put({ ...current, [profile]: next });
       client.setQueryData(["mutis"], result);
       return true;

@@ -81,7 +81,7 @@ fn guard_ui(tasks: Vec<Delegation>, ui_allowed: bool, escalate: bool) -> (Vec<De
             dropped.push(key(&task.title));
         } else if !task.hard && task.files.iter().any(|file| is_ui_file(file)) {
             if escalate {
-                logs.push(format!("Giao diện: {} chuyển cho Luna 2 (DeepSeek không được làm giao diện)", task.title.trim()));
+                logs.push(format!("Giao diện: {} chuyển cho Codex 2 (DeepSeek không được làm giao diện)", task.title.trim()));
                 task.hard = true;
                 kept.push(task);
             } else {
@@ -229,7 +229,7 @@ fn checker_activity(id: &str, phase: &str, task: &Delegation, attempt: usize, mo
         name: "checker_activity",
         data: serde_json::json!({ "checker_activity": {
             "id": id, "phase": phase, "title": task.title.trim(), "attempt": attempt,
-            "model": model, "provider_name": "Luna", "text": text,
+            "model": model, "provider_name": "Người kiểm tra", "text": text,
         } }),
     }
 }
@@ -920,7 +920,7 @@ mod tests {
         assert_eq!(event.data["checker_activity"]["title"], "A");
         assert_eq!(event.data["checker_activity"]["attempt"], 1);
         assert_eq!(event.data["checker_activity"]["model"], "gpt-5-codex");
-        assert_eq!(event.data["checker_activity"]["provider_name"], "Luna");
+        assert_eq!(event.data["checker_activity"]["provider_name"], "Người kiểm tra");
         assert_eq!(event.data["checker_activity"]["text"], "");
         assert_eq!(checker_activity("a#1", "done", &task, 1, "gpt-5-codex", "").data["checker_activity"]["phase"], "done");
     }

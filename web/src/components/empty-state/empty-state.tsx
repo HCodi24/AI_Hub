@@ -4,6 +4,7 @@ import { Check, ChevronDown, Folder, FolderOpen, MessagesSquare } from "lucide-r
 import { chatApi } from "@/apis/chat.api";
 import { configApi } from "@/apis/config.api";
 import { useChatStore } from "@/components/features/chat/chat-store";
+import { Picker } from "@/components/picker/picker";
 import { notify } from "@/components/toast/toast";
 import { chatText } from "@/text/chat";
 import { folderName } from "@/lib/utils";
@@ -29,11 +30,6 @@ export function EmptyState() {
   // Chats arrive newest first, so recently used projects come first; the selected one is always listed.
   const projects = [...new Set([folder, ...(chats.data || []).map(chat => chat.folder), config.data?.default_folder || ""])]
     .filter(Boolean).slice(0, MAX_PROJECTS);
-  async function openFolder() {
-    setOpen(false);
-    try { const path = await configApi.pickFolder(); if (path) configure({ folder: path }); }
-    catch { notify(chatText.pickFolderFailed); }
-  }
   return <div className={styles.empty}><MessagesSquare size={36} aria-hidden="true" /><h1>{chatText.greeting}</h1><p>{chatText.intro}</p>
     <div ref={root} className={styles.picker}>
       <button className={styles.trigger} aria-haspopup="listbox" aria-expanded={open} title={folder} onClick={() => setOpen(!open)}>
@@ -43,7 +39,10 @@ export function EmptyState() {
           <MessagesSquare size={18} aria-hidden="true" /><span>{chatText.noFolder}</span>{!folder && <Check size={18} aria-hidden="true" />}</button>
         {projects.map(path => <button key={path} role="option" aria-selected={path === folder} title={path} onClick={() => { configure({ folder: path }); setOpen(false); }}>
           <Folder size={18} aria-hidden="true" /><span>{folderName(path)}</span>{path === folder && <Check size={18} aria-hidden="true" />}</button>)}
-        <button className={styles.openFolder} onClick={() => void openFolder()}><FolderOpen size={18} aria-hidden="true" /><span>{chatText.openFolder}</span></button>
+        <Picker mode="folder" onOpen={() => setOpen(false)} onPick={path => configure({ folder: path })}
+          onError={() => notify(chatText.pickFolderFailed)}>
+          {openPicker => <button className={styles.openFolder} onClick={openPicker}><FolderOpen size={18} aria-hidden="true" /><span>{chatText.openFolder}</span></button>}
+        </Picker>
       </div>}
     </div></div>;
 }

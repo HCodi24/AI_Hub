@@ -32,7 +32,7 @@ const { LunaActivityView } = load(src("components/features/chat/luna-activity.ts
 const React = fromWeb("react");
 const render = checkers => renderToStaticMarkup(React.createElement(LunaActivityView, { checkers }));
 const activity = (id, phase, extra = {}) => schema.StreamDataSchema.parse({
-  checker_activity: { id, phase, title: "Task A", attempt: 1, model: "gpt-5-codex", provider_name: "Luna", text: "", ...extra },
+  checker_activity: { id, phase, title: "Task A", attempt: 1, model: "gpt-5-codex", provider_name: "Người kiểm tra", text: "", ...extra },
 });
 const send = (id, phase, extra) => store.getState().event("checker_activity", activity(id, phase, extra));
 const cards = () => store.getState().checkers;
@@ -43,10 +43,10 @@ store.getState().begin("build it");
 send("task a#1", "start");
 assert.equal(cards().length, 1, "start opens one card");
 assert.equal(cards()[0].state, "running");
-assert.equal(cards()[0].provider_name, "Luna");
+assert.equal(cards()[0].provider_name, "Người kiểm tra");
 assert.equal(cards()[0].model, "gpt-5-codex");
 const started = render(cards());
-for (const wanted of ["Luna đang kiểm tra", "Luna", "gpt-5-codex", "Task A", "lần 1", "Đang xử lý", 'data-pet="codex_cli"', 'data-pet-state="working"', 'data-checker-id="task a#1"'])
+for (const wanted of ["Đang kiểm tra", "Người kiểm tra", "gpt-5-codex", "Task A", "lần 1", "Đang xử lý", 'data-pet="codex_cli"', 'data-pet-state="working"', 'data-checker-id="task a#1"'])
   assert.ok(started.includes(wanted), `missing ${wanted}`);
 assert.ok(started.includes("Activity (0)"), "the collapsed Activity list is the same one a chat message uses");
 assert.equal(store.getState().messages.at(-1).content, "", "the card never writes into the chat message");
@@ -110,7 +110,7 @@ assert.equal(cards().length, 0, "loading another chat never shows a stale card")
 // 7. The event is optional and unknown fields do not break parsing.
 assert.equal(schema.StreamDataSchema.parse({}).checker_activity, undefined);
 const parsed = schema.StreamDataSchema.parse({ checker_activity: { id: "x#1", phase: "start", extra: 1 } });
-assert.equal(parsed.checker_activity.provider_name, "Luna", "the provider label defaults to Luna");
+assert.equal(parsed.checker_activity.provider_name, "Người kiểm tra", "the provider label defaults to the checker");
 assert.equal(parsed.checker_activity.attempt, 0);
 
 
@@ -118,7 +118,7 @@ assert.equal(parsed.checker_activity.attempt, 0);
 const rust = fs.readFileSync(path.resolve(__dirname, "../src/providers/delegate.rs"), "utf8");
 const helper = rust.slice(rust.indexOf("fn checker_activity("), rust.indexOf("fn checker_progress("));
 assert.match(helper, /data:\s*serde_json::json!\(\{\s*"checker_activity":\s*\{/);
-const backendBody = { checker_activity: { id: "wire#1", phase: "start", title: "Wire task", attempt: 1, model: "luna", provider_name: "Luna", text: "" } };
+const backendBody = { checker_activity: { id: "wire#1", phase: "start", title: "Wire task", attempt: 1, model: "luna", provider_name: "Người kiểm tra", text: "" } };
 store.getState().event("checker_activity", schema.StreamDataSchema.parse(backendBody));
 assert.equal(cards().at(-1).id, "wire#1");
 backendBody.checker_activity.phase = "progress";

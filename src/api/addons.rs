@@ -210,7 +210,13 @@ pub(crate) async fn change(
                 if let Some(source) = plugin["marketplaceSource"]["source"].as_str() {
                     let source = source.trim_start_matches(r"\\?\");
                     // An already-added or built-in marketplace makes this fail; the install below reports any real problem.
-                    let _ = run_cli_in(&codex, &["plugin", "marketplace", "add", source], false, Some(&home)).await;
+                    let _ = run_cli_in(
+                        &codex,
+                        &["plugin", "marketplace", "add", source],
+                        false,
+                        Some(&home),
+                    )
+                    .await;
                 }
                 run_cli_in(&codex, &["plugin", "add", name], false, Some(&home)).await?
             } else {
@@ -272,8 +278,15 @@ pub(crate) async fn codex_plugins(State(state): State<AppState>) -> Json<Value> 
             })
             .collect()
     };
-    let have: Vec<&str> = installed.iter().filter_map(|plugin| plugin["pluginId"].as_str()).collect();
-    available.retain(|plugin| plugin["pluginId"].as_str().is_some_and(|id| !have.contains(&id)));
+    let have: Vec<&str> = installed
+        .iter()
+        .filter_map(|plugin| plugin["pluginId"].as_str())
+        .collect();
+    available.retain(|plugin| {
+        plugin["pluginId"]
+            .as_str()
+            .is_some_and(|id| !have.contains(&id))
+    });
     Json(json!({ "plugins": view(&installed), "available": view(&available) }))
 }
 
@@ -289,7 +302,8 @@ impl Drop for TempCheckout {
 /// Downloads a GitHub repository (depth 1) and says which CLIs it can be installed into. Nothing is run from it.
 async fn checkout(link: &str) -> ApiResult<(String, TempCheckout, addons::LinkFound)> {
     let source = addons::github_source(link).map_err(|error| bad(error.to_string()))?;
-    let dir = TempCheckout(std::env::temp_dir().join(format!("mutis-plugin-{}", uuid::Uuid::new_v4())));
+    let dir =
+        TempCheckout(std::env::temp_dir().join(format!("mutis-plugin-{}", uuid::Uuid::new_v4())));
     let mut git = tokio::process::Command::new("git");
     git.args(["clone", "--depth", "1", "--", &source])
         .arg(&dir.0)
@@ -316,7 +330,9 @@ pub(crate) struct LinkInspect {
 
 pub(crate) async fn inspect_link(Json(input): Json<LinkInspect>) -> ApiResult<Json<Value>> {
     let (source, _dir, found) = checkout(&input.link).await?;
-    Ok(Json(json!({ "source": source, "claude": found.claude, "codex": found.codex })))
+    Ok(Json(
+        json!({ "source": source, "claude": found.claude, "codex": found.codex }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -361,7 +377,13 @@ pub(crate) async fn install_link(
             (codex, Some(home))
         };
         // An already-added marketplace makes this fail; the install below reports any real problem.
-        let _ = run_cli_in(&cli, &["plugin", "marketplace", "add", &source], claude, home.as_deref()).await;
+        let _ = run_cli_in(
+            &cli,
+            &["plugin", "marketplace", "add", &source],
+            claude,
+            home.as_deref(),
+        )
+        .await;
         for name in names {
             let id = format!("{name}@{}", market.name);
             let args: Vec<&str> = if claude {

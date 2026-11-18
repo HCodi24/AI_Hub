@@ -11,16 +11,16 @@ use serde_json::json;
 
 pub mod addons;
 pub mod attachments;
-pub mod mcp;
-pub mod pets;
 pub mod chat;
 pub mod config;
 pub mod debate;
 pub mod dev;
 pub mod extensions;
 pub mod folder;
+pub mod mcp;
 pub mod memory;
 pub mod mutis;
+pub mod pets;
 pub mod providers;
 pub mod static_ui;
 pub mod verify;
@@ -81,8 +81,14 @@ pub fn router(state: AppState) -> Router {
             get(crate::api::addons::overview).post(crate::api::addons::change),
         )
         .route("/api/addons/codex", get(crate::api::addons::codex_plugins))
-        .route("/api/addons/link/inspect", post(crate::api::addons::inspect_link))
-        .route("/api/addons/link/install", post(crate::api::addons::install_link))
+        .route(
+            "/api/addons/link/inspect",
+            post(crate::api::addons::inspect_link),
+        )
+        .route(
+            "/api/addons/link/install",
+            post(crate::api::addons::install_link),
+        )
         // Configuration routes.
         .route(
             "/api/config",
@@ -188,7 +194,11 @@ pub fn router(state: AppState) -> Router {
             "/api/pets/upload",
             post(crate::api::pets::upload).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
         )
-        .route("/api/pets/{name}", get(crate::api::pets::sprite).delete(crate::api::pets::remove))        .route("/api/chats", get(crate::api::chat::list_chats))
+        .route(
+            "/api/pets/{name}",
+            get(crate::api::pets::sprite).delete(crate::api::pets::remove),
+        )
+        .route("/api/chats", get(crate::api::chat::list_chats))
         .route(
             "/api/chats/{chat_id}",
             get(crate::api::chat::get_chat).delete(crate::api::chat::delete_chat),
@@ -211,17 +221,26 @@ pub fn router(state: AppState) -> Router {
         .route("/api/verify", post(crate::api::verify::verify_handler))
         .route(
             "/api/verify/commands",
-            get(crate::api::verify::verify_commands_get).put(crate::api::verify::verify_commands_put),
+            get(crate::api::verify::verify_commands_get)
+                .put(crate::api::verify::verify_commands_put),
         )
         .route(
             "/api/plan-diff",
             post(crate::api::verify::plan_diff_handler),
         )
         .route("/api/cli-status", get(crate::api::providers::cli_status))
-        .route("/api/providers/{id}/claude", get(crate::api::providers::claude_status)
-            .post(crate::api::providers::claude_action).put(crate::api::providers::claude_settings))
-        .route("/api/providers/{id}/codex", get(crate::api::providers::codex_status)
-            .post(crate::api::providers::codex_action).put(crate::api::providers::codex_settings))
+        .route(
+            "/api/providers/{id}/claude",
+            get(crate::api::providers::claude_status)
+                .post(crate::api::providers::claude_action)
+                .put(crate::api::providers::claude_settings),
+        )
+        .route(
+            "/api/providers/{id}/codex",
+            get(crate::api::providers::codex_status)
+                .post(crate::api::providers::codex_action)
+                .put(crate::api::providers::codex_settings),
+        )
         // Extension catalog and actions.
         .route(
             "/api/extensions",

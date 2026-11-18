@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { configApi } from "@/apis/config.api";
 import { petsApi } from "@/apis/pets.api";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
+import { Picker } from "@/components/picker/picker";
 import { Switch } from "@/components/button/switch";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { notify } from "@/components/toast/toast";
@@ -45,7 +46,6 @@ function ChatPets() {
   const config = useQuery({ queryKey: ["config"], queryFn: ({ signal }) => configApi.get(signal) });
   const [busy, setBusy] = useState("");
   const [petFamily, setPetFamily] = useState<PetFamily>("codex");
-  const fileInput = useRef<HTMLInputElement>(null);
   const chosen = config.data?.pets ?? {};
   async function run(key: string, action: () => Promise<void>, done: string) {
     setBusy(key);
@@ -71,10 +71,6 @@ function ChatPets() {
     setPetFamily(next);
     document.getElementById(`pets-source-tab-${next}`)?.focus();
   }
-  async function importFolder() {
-    const path = await configApi.pickFolder().catch(() => null);
-    if (path) await run("import", async () => { await petsApi.import(path); }, t.pets.imported(path.split(/[\\/]/).filter(Boolean).at(-1) || path));
-  }
   const pets = list.data ?? [];
   return <section className={styles.form} aria-label={t.pets.title}><p className={styles.note}>{t.pets.intro}</p>
     <label className={styles.check}><Switch checked={config.data?.pets_enabled ?? true} disabled={!config.data}
@@ -97,10 +93,12 @@ function ChatPets() {
       </div>)}
     </div>
     <div className={styles.actions}>
-      <Button variant="secondary" disabled={Boolean(busy)} onClick={() => fileInput.current?.click()}>{busy === "upload" ? t.pets.adding : t.pets.uploadFile}</Button>
-      <input ref={fileInput} type="file" accept="image/webp,.webp" hidden
-        onChange={event => { const file = event.target.files?.[0]; if (file) void run("upload", () => petsApi.upload(file), t.pets.imported(file.name)); event.target.value = ""; }} />
-      <Button variant="secondary" disabled={Boolean(busy)} onClick={() => void importFolder()}>{busy === "import" ? t.pets.adding : t.pets.importFolder}</Button></div>
+      <Picker mode="file" accept="image/webp,.webp" onPick={file => run("upload", () => petsApi.upload(file), t.pets.imported(file.name))}>
+        {openPicker => <Button variant="secondary" disabled={Boolean(busy)} onClick={openPicker}>{busy === "upload" ? t.pets.adding : t.pets.uploadFile}</Button>}
+      </Picker>
+      <Picker mode="folder" onPick={path => run("import", async () => { await petsApi.import(path); }, t.pets.imported(path.split(/[\\/]/).filter(Boolean).at(-1) || path))}>
+        {openPicker => <Button variant="secondary" disabled={Boolean(busy)} onClick={openPicker}>{busy === "import" ? t.pets.adding : t.pets.importFolder}</Button>}
+      </Picker></div>
     <p className={styles.note}>{t.pets.uploadHint}</p>
     <p className={styles.note}>{t.pets.importHint}</p>
     {list.isPending && <Skeleton card />}{list.error && <p role="alert">{list.error.message}</p>}

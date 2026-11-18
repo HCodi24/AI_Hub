@@ -54,6 +54,9 @@ pub struct Config {
     /// Master switch for the chat avatar pets.
     #[serde(default = "pets_on")]
     pub pets_enabled: bool,
+    /// Master switch for CodeGraph: before a chat's first message the app builds or syncs the index and hands the AI its context.
+    #[serde(default = "pets_on")]
+    pub codegraph_enabled: bool,
 }
 
 fn pets_on() -> bool {
@@ -147,6 +150,7 @@ impl Config {
             mcp_servers: Vec::new(),
             pets: Default::default(),
             pets_enabled: true,
+            codegraph_enabled: true,
         }
     }
 }

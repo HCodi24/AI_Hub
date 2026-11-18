@@ -98,8 +98,7 @@ pub(crate) async fn dev_web_build(State(state): State<AppState>) -> ApiResult<Re
     let (tx, rx) = mpsc::channel::<String>(64);
     tokio::spawn(async move {
         let mut cmd = npm_build_command(&repo);
-        cmd.stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         let ok = stream_process(cmd, tx.clone()).await;
         let _ = tx
             .send(json!({"event":"summary","data":{"web_ok":ok}}).to_string())

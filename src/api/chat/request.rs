@@ -8,7 +8,11 @@ use axum::http::StatusCode;
 use std::path::PathBuf;
 
 /// Working folder the AI runs in: dev-repo aware, must exist, returned canonical.
-pub(super) fn resolve_folder(state: &AppState, request: &ChatRequest, dev_chat: bool) -> ApiResult<String> {
+pub(super) fn resolve_folder(
+    state: &AppState,
+    request: &ChatRequest,
+    dev_chat: bool,
+) -> ApiResult<String> {
     if !dev_chat && request.folder.trim().is_empty() {
         return plain_chat_folder(&state.config_path, &request.chat_id);
     }
@@ -51,14 +55,26 @@ pub(super) fn resolve_folder(state: &AppState, request: &ChatRequest, dev_chat: 
 // CLI sources need a working directory even when a chat has no project.
 fn plain_chat_folder(config: &std::path::Path, chat_id: &str) -> ApiResult<String> {
     if !chat::valid_id(chat_id) {
-        return Err(ApiError::new(StatusCode::BAD_REQUEST, "chat_id phải là UUID hợp lệ"));
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "chat_id phải là UUID hợp lệ",
+        ));
     }
     let folder = crate::core::paths::data_dir(config)
-        .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không tìm thấy vùng dữ liệu ứng dụng"))?
-        .join("plain-chats").join(chat_id);
-    std::fs::create_dir_all(&folder).map_err(|_| ApiError::new(
-        StatusCode::INTERNAL_SERVER_ERROR, "Không tạo được vùng dữ liệu cho chat",
-    ))?;
+        .map_err(|_| {
+            ApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Không tìm thấy vùng dữ liệu ứng dụng",
+            )
+        })?
+        .join("plain-chats")
+        .join(chat_id);
+    std::fs::create_dir_all(&folder).map_err(|_| {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Không tạo được vùng dữ liệu cho chat",
+        )
+    })?;
     Ok(folder.to_string_lossy().into_owned())
 }
 
@@ -74,12 +90,16 @@ mod tests {
         let folder = plain_chat_folder(&config, &id).unwrap();
         assert!(std::path::Path::new(&folder).is_dir());
         assert_eq!(folder, plain_chat_folder(&config, &id).unwrap());
-        assert_ne!(folder, plain_chat_folder(&config, &uuid::Uuid::new_v4().to_string()).unwrap());
+        assert_ne!(
+            folder,
+            plain_chat_folder(&config, &uuid::Uuid::new_v4().to_string()).unwrap()
+        );
         assert!(plain_chat_folder(&config, "../project").is_err());
         let request: ChatRequest = serde_json::from_value(serde_json::json!({
             "chat_id": id, "provider_id": "p", "model": "m", "folder": "",
             "messages": [{ "role": "user", "content": "Hello" }]
-        })).unwrap();
+        }))
+        .unwrap();
         assert!(check_request(&request).is_ok());
         let store = chat::ChatStore::new(root.join("chats"));
         store.save(&chat::new_record(&request)).unwrap();

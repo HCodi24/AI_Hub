@@ -34,14 +34,18 @@ const WORKER_KINDS: [&str; 3] = ["openai_compat", "codex_cli", "claude_cli"];
 
 /// Sources the delegated worker may be, best first: the role's own source, then the agent-capable API sources, then the Codex sources.
 /// The caller uses the first one that is active (connected).
-fn worker_candidates(providers: &[crate::config::ProviderConfig], configured_id: &str) -> Vec<crate::config::ProviderConfig> {
+fn worker_candidates(
+    providers: &[crate::config::ProviderConfig],
+    configured_id: &str,
+) -> Vec<crate::config::ProviderConfig> {
     let mut found: Vec<_> = crate::config::resolve_provider_id(providers, configured_id)
         .filter(|p| WORKER_KINDS.contains(&p.kind.as_str()))
         .cloned()
         .into_iter()
         .collect();
     for provider in providers {
-        let fits = (provider.kind == "openai_compat" && provider.agent_capable) || provider.kind == "codex_cli";
+        let fits = (provider.kind == "openai_compat" && provider.agent_capable)
+            || provider.kind == "codex_cli";
         if fits && !found.iter().any(|p| p.id == provider.id) {
             found.push(provider.clone());
         }
@@ -49,31 +53,51 @@ fn worker_candidates(providers: &[crate::config::ProviderConfig], configured_id:
     found
 }
 
-/// First user message of the conversation gets the fixed rules in front of it.
-async fn add_first_request_rules(request: &mut ProviderRequest) {
-    // The DeepSeek agent has no MCP, so the CodeGraph rule does not apply to it.
-    if request.provider.kind == "deepseek_agent"
-        || request.messages.iter().filter(|m| m.role == "user").count() != 1
-    {
+/// Only the CLI sources get CodeGraph's MCP tool from the app; API sources and the DeepSeek agent cannot call it.
+fn uses_codegraph(request: &ProviderRequest) -> bool {
+    matches!(request.provider.kind.as_str(), "codex_cli" | "claude_cli")
+}
+
+/// First user message of the conversation gets the fixed rules in front of it. Before that the app builds or syncs
+/// the project's CodeGraph index; problems go to the chat's activity log through `events`.
+async fn add_first_request_rules(request: &mut ProviderRequest, events: &mpsc::Sender<ProviderEvent>) {
+    if !uses_codegraph(request) || request.messages.iter().filter(|m| m.role == "user").count() != 1 {
         return;
     }
-    let folder = std::path::Path::new(&request.folder);
-    let indexed = folder.join(".codegraph").is_dir();
-    let synced = indexed && crate::features::extensions::sync_index(folder).await;
+    let prepared = crate::features::extensions::prepare(std::path::Path::new(&request.folder)).await;
+    for note in prepared.notes {
+        let _ = providers::emit_text(events, "log", note).await;
+    }
     if let Some(message) = request.messages.iter_mut().find(|m| m.role == "user") {
         message.content = format!(
-            "{}
-
-{}",
-            crate::core::rule::first_request_rules(indexed, synced),
+            "{}\n\n{}",
+            crate::core::rule::first_request_rules(prepared.indexed, prepared.synced),
             message.content
         );
     }
 }
 
+/// Gives the AI CodeGraph's MCP server (every turn, so a resumed session keeps the tool) once the project has an index.
+fn attach_codegraph(request: &mut ProviderRequest) {
+    let indexed = std::path::Path::new(&request.folder).join(".codegraph/codegraph.db").is_file();
+    if uses_codegraph(request) && indexed && !request.mcp.iter().any(|server| server.name == "codegraph") {
+        request.mcp.push(crate::config::McpServerConfig {
+            name: "codegraph".into(),
+            command: "codegraph".into(),
+            args: vec!["serve".into(), "--mcp".into()],
+            env: Default::default(),
+            enabled: true,
+        });
+    }
+}
+
 fn add_question_rules(request: &mut ProviderRequest) {
     if let Some(message) = request.messages.iter_mut().rev().find(|m| m.role == "user") {
-        message.content = format!("{}\n\n{}", crate::core::rule::chat_questions::RULE, message.content);
+        message.content = format!(
+            "{}\n\n{}",
+            crate::core::rule::chat_questions::RULE,
+            message.content
+        );
     }
 }
 
@@ -114,7 +138,11 @@ pub(crate) async fn chat_handler(
             .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nhà cung cấp"))?
     };
     // File tools = agent mode of the SAME source; Full also grants API-key sources run_command.
-    let file_tools = if plain_chat { chat::FileTools::None } else { request.file_tools };
+    let file_tools = if plain_chat {
+        chat::FileTools::None
+    } else {
+        request.file_tools
+    };
     let agent = chat::agent_permission(&provider_config, file_tools, request.permission)
         .map_err(|message| ApiError::new(StatusCode::BAD_REQUEST, message))?;
     if provider_config.kind == "anthropic" {
@@ -143,20 +171,40 @@ pub(crate) async fn chat_handler(
     // MutiS High + Codex: the app runs the delegated worker for Codex (see providers::delegate). Any source that is
     // active in Settings › Nguồn AI can be the worker, whatever its kind (API key or CLI).
     let role_effort_name = request.effort.as_deref().unwrap_or("max");
-    let delegate_worker = if provider_config.kind == "codex_cli" && mutis_config.enabled && request.plan_id.is_none() && !plain_chat
-        && crate::config::MutisConfig::level_for(role_effort_name) == "high" {
+    let delegate_worker = if provider_config.kind == "codex_cli"
+        && mutis_config.enabled
+        && request.plan_id.is_none()
+        && !plain_chat
+        && crate::config::MutisConfig::level_for(role_effort_name) == "high"
+    {
         let providers_now = state.config.read().await.providers.clone();
         // High roles may be unset (old configs): fall back to the Max small worker.
         let high_small = &mutis_config.roles_for(role_effort_name).small;
-        let role = if high_small.provider_id.trim().is_empty() { &mutis_config.roles.small } else { high_small };
-        let configured_id = crate::config::resolve_provider_id(&providers_now, &role.provider_id).map(|p| p.id.clone());
+        let role = if high_small.provider_id.trim().is_empty() {
+            &mutis_config.roles.small
+        } else {
+            high_small
+        };
+        let configured_id = crate::config::resolve_provider_id(&providers_now, &role.provider_id)
+            .map(|p| p.id.clone());
         let mut chosen = None;
         for provider in worker_candidates(&providers_now, &role.provider_id) {
-            let active = crate::api::providers::cached_provider_test(&state, &provider.id).await.is_ok_and(|test| test.status == "connected");
-            let own_model = configured_id.as_deref() == Some(provider.id.as_str()) && !role.model.trim().is_empty();
-            let model = if own_model { role.model.trim().to_owned() } else { provider.models.first().cloned().unwrap_or_default() };
+            let active = crate::api::providers::cached_provider_test(&state, &provider.id)
+                .await
+                .is_ok_and(|test| test.status == "connected");
+            let own_model = configured_id.as_deref() == Some(provider.id.as_str())
+                && !role.model.trim().is_empty();
+            let model = if own_model {
+                role.model.trim().to_owned()
+            } else {
+                provider.models.first().cloned().unwrap_or_default()
+            };
             if active && !model.is_empty() {
-                chosen = Some((provider, model, chat::parse_effort(&role.effort).unwrap_or_default()));
+                chosen = Some((
+                    provider,
+                    model,
+                    chat::parse_effort(&role.effort).unwrap_or_default(),
+                ));
                 break;
             }
         }
@@ -165,22 +213,44 @@ pub(crate) async fn chat_handler(
         None
     };
     // The optional independent checker: the High section's "checker" role, which must be a Codex source (it keeps and resumes its own thread).
-    let (delegate_checker, checker_note) = if delegate_worker.is_some() && mutis_config.delegate_checker {
+    let (delegate_checker, checker_note) = if delegate_worker.is_some()
+        && mutis_config.delegate_checker
+    {
         let role = &mutis_config.high_checker;
         let config = state.config.read().await;
-        let found = crate::config::resolve_provider_id(&config.providers, &role.provider_id).filter(|p| p.kind == "codex_cli").and_then(|p| {
-            let model = if role.model.trim().is_empty() { p.models.first().cloned().unwrap_or_default() } else { role.model.trim().to_owned() };
-            (!model.is_empty()).then(|| (p.clone(), model, chat::parse_effort(&role.effort).unwrap_or(chat::Effort::Max)))
-        });
+        let found = crate::config::resolve_provider_id(&config.providers, &role.provider_id)
+            .filter(|p| p.kind == "codex_cli")
+            .and_then(|p| {
+                let model = if role.model.trim().is_empty() {
+                    p.models.first().cloned().unwrap_or_default()
+                } else {
+                    role.model.trim().to_owned()
+                };
+                (!model.is_empty()).then(|| {
+                    (
+                        p.clone(),
+                        model,
+                        chat::parse_effort(&role.effort).unwrap_or(chat::Effort::Max),
+                    )
+                })
+            });
         let note = found.is_none().then(|| "Luna chưa chạy: vào Cài đặt › MutiS › Mức High, mục «Người kiểm tra», chọn nguồn Codex CLI và model.".to_owned());
         (found, note)
     } else {
         (None, None)
     };
     let provider: Box<dyn providers::Provider> = match &delegate_worker {
-        Some((worker, model, effort)) => Box::new(providers::delegate::DelegateProvider { worker: worker.clone(), model: model.clone(), effort: *effort, checker: delegate_checker.clone(), checker_note: checker_note.clone(), chat_id: request.chat_id.clone() }),
-        None => providers::for_kind(&provider_config.kind)
-            .map_err(|_| ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ"))?,
+        Some((worker, model, effort)) => Box::new(providers::delegate::DelegateProvider {
+            worker: worker.clone(),
+            model: model.clone(),
+            effort: *effort,
+            checker: delegate_checker.clone(),
+            checker_note: checker_note.clone(),
+            chat_id: request.chat_id.clone(),
+        }),
+        None => providers::for_kind(&provider_config.kind).map_err(|_| {
+            ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ")
+        })?,
     };
     let switched_source = existing
         .as_ref()
@@ -192,17 +262,29 @@ pub(crate) async fn chat_handler(
     if provider_config.kind == "codex_cli" {
         let settings = state.config.read().await.codex.clone();
         let prefix = providers::codex::session_prefix(&settings, &provider_config, &folder);
-        if !record.session_id.as_deref().is_some_and(|id| id.starts_with(&prefix)) {
+        if !record
+            .session_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with(&prefix))
+        {
             record.session_id = None;
         }
         // The checker is Codex too, so its thread belongs to the same Codex home as the coordinator's.
-        if !record.checker_session_id.as_deref().is_some_and(|id| id.starts_with(&prefix)) {
+        if !record
+            .checker_session_id
+            .as_deref()
+            .is_some_and(|id| id.starts_with(&prefix))
+        {
             record.checker_session_id = None;
         }
     }
     record.provider_id = request.provider_id.clone();
     record.model = request.model.clone();
-    record.folder = if plain_chat { String::new() } else { folder.clone() };
+    record.folder = if plain_chat {
+        String::new()
+    } else {
+        folder.clone()
+    };
     record.dev_chat = dev_chat;
     record.permission = request.permission;
     record.file_tools = file_tools;
@@ -280,7 +362,9 @@ pub(crate) async fn chat_handler(
     }
     let memory_context =
         crate::features::memory::memory_context(&state.config_path, &folder, &memory_config);
-    let files_before = if plain_chat { Default::default() } else {
+    let files_before = if plain_chat {
+        Default::default()
+    } else {
         crate::features::changes::snapshot(std::path::Path::new(&folder)).await
     };
     let mut provider_request = ProviderRequest {
@@ -328,7 +412,11 @@ pub(crate) async fn chat_handler(
     // Plan workers run unattended; interactive chat supports user decision cards on every turn.
     // The delegated worker decides which protocol Codex gets: exact edits for DeepSeek, goals and limits for any other model.
     let worker_kind = delegate_worker.as_ref().map(|(worker, model, _)| {
-        if worker.is_deepseek(model) { crate::core::rule::mutis_high_delegation::Worker::DeepSeek } else { crate::core::rule::mutis_high_delegation::Worker::Other }
+        if worker.is_deepseek(model) {
+            crate::core::rule::mutis_high_delegation::Worker::DeepSeek
+        } else {
+            crate::core::rule::mutis_high_delegation::Worker::Other
+        }
     });
     if request.plan_id.is_none() {
         add_question_rules(&mut provider_request);
@@ -337,21 +425,44 @@ pub(crate) async fn chat_handler(
                 mutis_config.enabled,
                 crate::config::MutisConfig::level_for(request.effort.as_deref().unwrap_or("max")),
                 &provider_request.provider.kind,
-                provider_request.mcp.iter().any(|server| server.name.contains("deepseek")),
+                provider_request
+                    .mcp
+                    .iter()
+                    .any(|server| server.name.contains("deepseek")),
                 worker_kind,
             );
             if !rule.is_empty() {
-                let rule = if delegate_checker.is_some() { format!("{rule}\n{}", crate::core::rule::mutis_checker::NOTE) } else { rule.to_owned() };
-                let rule = if worker_kind == Some(crate::core::rule::mutis_high_delegation::Worker::DeepSeek) && !mutis_config.deepseek_ui { format!("{rule}\n{}", crate::core::rule::mutis_high_delegation::NO_UI_NOTE) } else { rule };
-                if let Some(message) = provider_request.messages.iter_mut().rev().find(|m| m.role == "user") {
+                let rule = if delegate_checker.is_some() {
+                    format!("{rule}\n{}", crate::core::rule::mutis_checker::NOTE)
+                } else {
+                    rule.to_owned()
+                };
+                let rule = if worker_kind
+                    == Some(crate::core::rule::mutis_high_delegation::Worker::DeepSeek)
+                    && !mutis_config.deepseek_ui
+                {
+                    format!(
+                        "{rule}\n{}",
+                        crate::core::rule::mutis_high_delegation::NO_UI_NOTE
+                    )
+                } else {
+                    rule
+                };
+                if let Some(message) = provider_request
+                    .messages
+                    .iter_mut()
+                    .rev()
+                    .find(|m| m.role == "user")
+                {
                     message.content = format!("{rule}\n\n{}", message.content);
                 }
             }
         }
     }
     // Plan task workers cannot stop to ask the user, so they skip the first-request rules.
-    if request.plan_id.is_none() && !plain_chat {
-        add_first_request_rules(&mut provider_request).await;
+    if request.plan_id.is_none() && !plain_chat && state.config.read().await.codegraph_enabled {
+        add_first_request_rules(&mut provider_request, &provider_sender).await;
+        attach_codegraph(&mut provider_request);
     }
     let event_provider_id = provider_request.provider.id.clone();
     let provider_name = provider_request.provider.name.clone();
@@ -364,8 +475,12 @@ pub(crate) async fn chat_handler(
             ["lead", "big", "small"]
                 .into_iter()
                 .find(|role| match *role {
-                    "lead" => mutis_config.roles_for(role_effort).lead.provider_id == event_provider_id,
-                    "big" => mutis_config.roles_for(role_effort).big.provider_id == event_provider_id,
+                    "lead" => {
+                        mutis_config.roles_for(role_effort).lead.provider_id == event_provider_id
+                    }
+                    "big" => {
+                        mutis_config.roles_for(role_effort).big.provider_id == event_provider_id
+                    }
                     _ => mutis_config.roles_for(role_effort).small.provider_id == event_provider_id,
                 })
                 .map(str::to_owned)
@@ -465,13 +580,28 @@ mod tests {
     use super::*;
 
     fn source(id: &str, kind: &str, agent_capable: bool) -> crate::config::ProviderConfig {
-        crate::config::ProviderConfig { id: id.into(), kind: kind.into(), agent_capable, ..Default::default() }
+        crate::config::ProviderConfig {
+            id: id.into(),
+            kind: kind.into(),
+            agent_capable,
+            ..Default::default()
+        }
     }
 
     #[test]
     fn worker_candidates_start_with_the_role_source_whatever_its_kind() {
-        let providers = [source("claude", "claude_cli", false), source("api", "openai_compat", true), source("codex", "codex_cli", false), source("plain", "anthropic", false)];
-        let ids = |configured: &str| worker_candidates(&providers, configured).into_iter().map(|p| p.id).collect::<Vec<_>>();
+        let providers = [
+            source("claude", "claude_cli", false),
+            source("api", "openai_compat", true),
+            source("codex", "codex_cli", false),
+            source("plain", "anthropic", false),
+        ];
+        let ids = |configured: &str| {
+            worker_candidates(&providers, configured)
+                .into_iter()
+                .map(|p| p.id)
+                .collect::<Vec<_>>()
+        };
         // A CLI role source is used as it is (no API key needed), then the agent API source and the Codex source follow.
         assert_eq!(ids("codex"), ["codex", "api"]);
         assert_eq!(ids("claude"), ["claude", "api", "codex"]);
@@ -499,18 +629,41 @@ mod tests {
 
     #[test]
     fn deepseek_models_get_their_own_avatar_label() {
-        let source = |id: &str, kind: &str| crate::config::ProviderConfig { id: id.into(), kind: kind.into(), ..Default::default() };
-        assert_eq!(avatar_source(&source("openai", "openai_compat"), "deepseek-ai/deepseek-v4"), "deepseek");
-        assert_eq!(avatar_source(&source("deploy-deepseek", "mcp_agent"), "x"), "deepseek");
-        assert_eq!(avatar_source(&source("openai", "openai_compat"), "gpt-5.1"), "openai_compat");
-        assert_eq!(avatar_source(&source("codex-cli", "codex_cli"), "gpt-6-luna"), "codex_cli");
+        let source = |id: &str, kind: &str| crate::config::ProviderConfig {
+            id: id.into(),
+            kind: kind.into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            avatar_source(
+                &source("openai", "openai_compat"),
+                "deepseek-ai/deepseek-v4"
+            ),
+            "deepseek"
+        );
+        assert_eq!(
+            avatar_source(&source("deploy-deepseek", "mcp_agent"), "x"),
+            "deepseek"
+        );
+        assert_eq!(
+            avatar_source(&source("openai", "openai_compat"), "gpt-5.1"),
+            "openai_compat"
+        );
+        assert_eq!(
+            avatar_source(&source("codex-cli", "codex_cli"), "gpt-6-luna"),
+            "codex_cli"
+        );
     }
 
     #[tokio::test]
     async fn rules_go_only_on_the_first_user_message() {
+        let (events, mut log) = mpsc::channel(8);
         let mut first = request(json!([{"role":"user","content":"làm đi"}]));
-        add_first_request_rules(&mut first).await;
+        first.provider.kind = "codex_cli".into();
+        add_first_request_rules(&mut first, &events).await;
         assert!(first.messages[0].content.contains(".codegraph"));
+        // A folder that does not exist is skipped quietly: nothing is built and no failure is logged.
+        assert!(log.try_recv().is_err());
         assert!(first.messages[0].content.ends_with("làm đi"));
         // The app states the index status itself, so the AI does not spend a command (and a model call) on it.
         assert!(first.messages[0]
@@ -519,11 +672,40 @@ mod tests {
         let mut later = request(json!([
             {"role":"user","content":"a"},{"role":"assistant","content":"b"},{"role":"user","content":"c"}
         ]));
-        add_first_request_rules(&mut later).await;
+        later.provider.kind = "codex_cli".into();
+        add_first_request_rules(&mut later, &events).await;
         assert!(later
             .messages
             .iter()
             .all(|m| !m.content.contains(".codegraph")));
+        // API sources cannot call the tool, so they get neither the rule nor a failure note.
+        let mut api = request(json!([{"role":"user","content":"làm đi"}]));
+        api.provider.kind = "openai_compat".into();
+        add_first_request_rules(&mut api, &events).await;
+        assert_eq!(api.messages[0].content, "làm đi");
+    }
+
+    #[test]
+    fn codegraph_tool_is_attached_once_to_indexed_cli_projects() {
+        let dir = std::env::temp_dir().join(format!("mutis-cg-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".codegraph")).unwrap();
+        std::fs::write(dir.join(".codegraph/codegraph.db"), b"x").unwrap();
+        let mut codex = request(json!([{"role":"user","content":"a"}]));
+        codex.folder = dir.to_string_lossy().into_owned();
+        codex.provider.kind = "codex_cli".into();
+        attach_codegraph(&mut codex);
+        attach_codegraph(&mut codex);
+        assert_eq!(codex.mcp.iter().filter(|s| s.name == "codegraph").count(), 1);
+        let mut api = request(json!([{"role":"user","content":"a"}]));
+        api.folder = codex.folder.clone();
+        api.provider.kind = "anthropic".into();
+        attach_codegraph(&mut api);
+        assert!(api.mcp.is_empty());
+        let mut bare = request(json!([{"role":"user","content":"a"}]));
+        bare.provider.kind = "claude_cli".into();
+        attach_codegraph(&mut bare);
+        assert!(bare.mcp.is_empty(), "no index, no tool");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -536,7 +718,9 @@ mod tests {
         add_question_rules(&mut turn);
         assert_eq!(turn.messages[0].content, "first");
         assert_eq!(turn.messages[1].content, "reply");
-        assert!(turn.messages[2].content.starts_with(crate::core::rule::chat_questions::RULE));
+        assert!(turn.messages[2]
+            .content
+            .starts_with(crate::core::rule::chat_questions::RULE));
         assert!(turn.messages[2].content.ends_with("follow up"));
     }
 }

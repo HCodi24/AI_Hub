@@ -37,9 +37,24 @@ pub(super) struct Run {
 impl Run {
     pub(super) async fn run(self) {
         let Run {
-            job_guard, record, task_state, chat_id, request_id, plan_id, task_id, task_kind,
-            event_provider_id, event_logging_enabled, log_enabled, started, task_cancel,
-            sse_sender, mut provider_receiver, idle_timeout_minutes, memory_config, files_before,
+            job_guard,
+            record,
+            task_state,
+            chat_id,
+            request_id,
+            plan_id,
+            task_id,
+            task_kind,
+            event_provider_id,
+            event_logging_enabled,
+            log_enabled,
+            started,
+            task_cancel,
+            sse_sender,
+            mut provider_receiver,
+            idle_timeout_minutes,
+            memory_config,
+            files_before,
         } = self;
         let _job_guard = job_guard;
         let mut record = record;
@@ -179,7 +194,9 @@ impl Run {
             persist_event(&task_state.chats, &mut record, &event, &mut last_persist);
             let _ = sse_sender.send(chat::sse_event("error", &event.data)).await;
         }
-        let files_after = if record.folder.is_empty() { Default::default() } else {
+        let files_after = if record.folder.is_empty() {
+            Default::default()
+        } else {
             crate::features::changes::snapshot(std::path::Path::new(&record.folder)).await
         };
         let files = crate::features::changes::changes(&files_before, &files_after);
@@ -192,23 +209,42 @@ impl Run {
             }
         }
         if let Some(tasks) = task_snapshot {
-            let tasks: Vec<Value> = tasks.into_iter().map(|mut task| {
-                let unfinished = task.get("state").and_then(Value::as_str)
-                    .is_some_and(|state| matches!(state, "waiting" | "coding" | "checking" | "fixing"));
-                if unfinished {
-                    if let Some(fields) = task.as_object_mut() {
-                        fields.insert("state".to_owned(), Value::String("stopped".to_owned()));
+            let tasks: Vec<Value> = tasks
+                .into_iter()
+                .map(|mut task| {
+                    let unfinished =
+                        task.get("state")
+                            .and_then(Value::as_str)
+                            .is_some_and(|state| {
+                                matches!(state, "waiting" | "coding" | "checking" | "fixing")
+                            });
+                    if unfinished {
+                        if let Some(fields) = task.as_object_mut() {
+                            fields.insert("state".to_owned(), Value::String("stopped".to_owned()));
+                        }
                     }
-                }
-                task
-            }).collect();
-            if let Some(message) = record.messages.iter_mut().rev().find(|message| message.role == "assistant") {
+                    task
+                })
+                .collect();
+            if let Some(message) = record
+                .messages
+                .iter_mut()
+                .rev()
+                .find(|message| message.role == "assistant")
+            {
                 message.tasks = Some(tasks.clone());
-                let _ = sse_sender.send(chat::sse_event("task_snapshot", &json!({ "tasks": tasks }))).await;
+                let _ = sse_sender
+                    .send(chat::sse_event("task_snapshot", &json!({ "tasks": tasks })))
+                    .await;
             }
         }
         let mut memory_logs = Vec::new();
-        for message in record.messages.iter_mut().skip(first_turn).filter(|m| m.role == "assistant") {
+        for message in record
+            .messages
+            .iter_mut()
+            .skip(first_turn)
+            .filter(|m| m.role == "assistant")
+        {
             let (clean, block) = crate::features::memory::strip_blocks(&message.content);
             message.content = clean;
             if memory_config.enabled && !(delegated && message.provider == "deepseek") {
@@ -223,11 +259,15 @@ impl Run {
                                 let paths = files.iter().map(|f| f.path.clone()).collect();
                                 if let Ok(change) = store.merge(update, &chat_id, paths) {
                                     let value = json!(change);
-                                    memory_logs.push(["scope", "status", "action"].iter()
-                                        .filter_map(|key| value[*key].as_str()).collect::<Vec<_>>().join(" · "));
-                                    let _ = sse_sender
-                                        .send(chat::sse_event("memory", &value))
-                                        .await;
+                                    memory_logs.push(
+                                        ["scope", "status", "action"]
+                                            .iter()
+                                            .filter_map(|key| value[*key].as_str())
+                                            .collect::<Vec<_>>()
+                                            .join(" · "),
+                                    );
+                                    let _ =
+                                        sse_sender.send(chat::sse_event("memory", &value)).await;
                                 }
                             }
                         }

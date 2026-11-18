@@ -69,7 +69,10 @@ pub(crate) async fn archive(
     Query(folder): Query<Folder>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Value>> {
-    store(&state, &folder).await?.archive(&id, false).map_err(error)?;
+    store(&state, &folder)
+        .await?
+        .archive(&id, false)
+        .map_err(error)?;
     Ok(Json(json!({"ok":true})))
 }
 pub(crate) async fn restore(
@@ -77,7 +80,10 @@ pub(crate) async fn restore(
     Query(folder): Query<Folder>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Value>> {
-    store(&state, &folder).await?.archive(&id, true).map_err(error)?;
+    store(&state, &folder)
+        .await?
+        .archive(&id, true)
+        .map_err(error)?;
     Ok(Json(json!({"ok":true})))
 }
 pub(crate) async fn delete(

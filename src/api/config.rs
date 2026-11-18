@@ -21,6 +21,8 @@ pub(crate) struct ConfigInput {
     #[serde(default)]
     pets_enabled: Option<bool>,
     #[serde(default)]
+    codegraph_enabled: Option<bool>,
+    #[serde(default)]
     memory: Option<crate::features::memory::MemoryConfig>,
     // Optional on purpose: a partial update (e.g. the UI saving only the working folder) must NOT reset
     // settings it did not send. Only fields that are present are applied.
@@ -58,16 +60,40 @@ pub(crate) async fn put_config(
         .as_deref()
         .is_some_and(|theme| !matches!(theme, "light" | "dark" | "system"))
     {
-        return Err(ApiError::new(StatusCode::BAD_REQUEST, "Giao diện không hợp lệ"));
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Giao diện không hợp lệ",
+        ));
     }
     if let Some(pets) = &input.pets {
-        let valid_kind = |kind: &str| matches!(
-            kind,
-            "codex-luna" | "codex-sol" | "codex-terra" | "claude-opus" | "claude-sonnet" | "claude-haiku" | "claude-fable" | "deepseek"
-        );
-        let valid_pet = |pet: &str| (1..=48).contains(&pet.len()) && pet.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-        if pets.len() > 8 || pets.iter().any(|(kind, pet)| !valid_kind(kind) || !valid_pet(pet)) {
-            return Err(ApiError::new(StatusCode::BAD_REQUEST, "Lựa chọn pet không hợp lệ"));
+        let valid_kind = |kind: &str| {
+            matches!(
+                kind,
+                "codex-luna"
+                    | "codex-sol"
+                    | "codex-terra"
+                    | "claude-opus"
+                    | "claude-sonnet"
+                    | "claude-haiku"
+                    | "claude-fable"
+                    | "deepseek"
+            )
+        };
+        let valid_pet = |pet: &str| {
+            (1..=48).contains(&pet.len())
+                && pet
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        };
+        if pets.len() > 8
+            || pets
+                .iter()
+                .any(|(kind, pet)| !valid_kind(kind) || !valid_pet(pet))
+        {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Lựa chọn pet không hợp lệ",
+            ));
         }
     }
     if let Some(servers) = &input.mcp_servers {
@@ -98,6 +124,9 @@ pub(crate) async fn put_config(
     }
     if let Some(on) = input.pets_enabled {
         config.pets_enabled = on;
+    }
+    if let Some(on) = input.codegraph_enabled {
+        config.codegraph_enabled = on;
     }
     if let Some(minutes) = input.chat_idle_timeout_minutes {
         config.chat_idle_timeout_minutes = minutes;

@@ -5,7 +5,7 @@ import styles from "./chat-message.module.css";
 /** One activity entry per supplied log, in the original order; `Command:`/`Lệnh:` lines are real shell commands. */
 const COMMAND = /^(?:Command|Lệnh):\s*([\s\S]*)$/i;
 
-const FAILURE = /^(?:MCP .* không dùng được|error:)/i;
+const FAILURE = /^(?:MCP .* không dùng được|CodeGraph không dùng được|error:)/i;
 
 /** `provider` stays accepted for compatibility; every provider's logs collapse into the same disclosure. */
 export function ChatActivity({ logs }: { logs: string[]; provider?: string }) {

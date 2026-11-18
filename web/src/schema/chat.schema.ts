@@ -36,7 +36,7 @@ export type TaskRow = z.infer<typeof TaskRowSchema>;
 export const CheckerActivitySchema = z.object({
   id: z.string(), phase: z.enum(["start", "progress", "error", "done"]),
   title: z.string().default(""), attempt: z.number().default(0),
-  model: z.string().default(""), provider_name: z.string().default("Luna"), text: z.string().default(""),
+  model: z.string().default(""), provider_name: z.string().default("Người kiểm tra"), text: z.string().default(""),
 });
 export type CheckerActivity = z.infer<typeof CheckerActivitySchema>;
 export const StreamDataSchema = z.object({

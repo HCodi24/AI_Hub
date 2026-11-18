@@ -6,7 +6,7 @@ import styles from "./chat-message.module.css";
 
 /** Vietnamese wording of the live Luna cards (kept local: the shared chat text has no live-checker strings). */
 const text = {
-  title: "Luna đang kiểm tra",
+  title: "Đang kiểm tra",
   stopped: "Đã dừng",
   attempt: (attempt: number) => `lần ${attempt}`,
 } as const;
@@ -18,7 +18,7 @@ function CheckerCard({ card }: { card: LiveChecker }) {
     <div className={styles.identity}>
       {/* Luna is a Codex source: it wears the pet chosen for its model. */}
       <PetAvatar provider="codex_cli" model={card.model} state={state} />
-      <strong>{card.provider_name || "Luna"}</strong>
+      <strong>{card.provider_name || "Người kiểm tra"}</strong>
       <span className={styles.petStatus} data-state={state} role="status">
         {state !== "idle" ? <>· {chatText.petStatus[state]}</> : <>· {text.stopped}</>}
       </span>

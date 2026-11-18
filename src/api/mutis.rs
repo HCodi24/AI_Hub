@@ -199,9 +199,27 @@ pub(crate) async fn put_mutis(
             ));
         }
     }
-    for role in [&value.roles.lead, &value.roles.big, &value.roles.small, &value.high_roles.lead, &value.high_roles.big, &value.high_roles.small] {
-        if !role.provider_id.is_empty() && !state.config.read().await.providers.iter().any(|provider| provider.id == role.provider_id) {
-            return Err(ApiError::new(StatusCode::BAD_REQUEST, "Nguồn AI không tồn tại"));
+    for role in [
+        &value.roles.lead,
+        &value.roles.big,
+        &value.roles.small,
+        &value.high_roles.lead,
+        &value.high_roles.big,
+        &value.high_roles.small,
+    ] {
+        if !role.provider_id.is_empty()
+            && !state
+                .config
+                .read()
+                .await
+                .providers
+                .iter()
+                .any(|provider| provider.id == role.provider_id)
+        {
+            return Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "Nguồn AI không tồn tại",
+            ));
         }
         if !matches!(
             role.effort.as_str(),
