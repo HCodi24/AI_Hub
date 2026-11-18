@@ -21,27 +21,33 @@ function who(name: string | undefined, model: string | undefined) {
   return !name || label.toLowerCase().includes(name.toLowerCase()) ? label : `${name} · ${label}`;
 }
 
-/** One task. With a pet beside it the pet says who works, so the model name is left out; without a pet the name is shown. */
 function TaskItem({ task }: { task: TaskRow }) {
   const t = chatText.taskBoard;
   const Icon = ICONS[task.state as keyof typeof ICONS] ?? Circle;
   const model = task.model?.trim() || undefined;
   const checkerModel = task.checker_model?.trim() || undefined;
   const petModel = (task.state === "checking" ? checkerModel || model : model) ?? "";
-  const hasPet = Boolean(usePetId(kindFromModel(petModel), petModel));
+  const petProvider = kindFromModel(petModel);
+  const hasPet = Boolean(usePetId(petProvider, petModel));
   const actor = hasPet ? undefined : who(task.actor?.trim() || undefined, model);
   const checker = hasPet ? undefined : who(task.checker?.trim() || undefined, checkerModel);
   const state = t.states[task.state as keyof typeof t.states] ?? task.state;
   const action = actor && BUSY.has(task.state) ? `${actor} ${state.charAt(0).toLowerCase()}${state.slice(1)}` : state;
-  const modelDetails = [model && `${t.model}: ${model}`, checkerModel && `${t.checkerModel}: ${checkerModel}`].filter(Boolean).join("; ");
-  const description = [action, modelDetails, task.attempt > 1 ? t.attempt(task.attempt) : "", task.check ? `${checker || t.check} ${task.check}` : ""].filter(Boolean).join(" · ");
+  const check = task.check?.trim();
+  const showAction = task.state !== "done" || !check;
+  const modelDetails = [model && `${t.model}: ${model}`, checkerModel && `${t.checkerModel}: ${checkerModel}`].filter(Boolean).join(" · ");
   return <li data-state={task.state}>
     <Icon size={16} aria-hidden="true" className={BUSY.has(task.state) ? "spin" : undefined} />
     <span className={styles.name}>{task.title}</span>
-    <span className={styles.who}>
-      <PetAvatar small provider={kindFromModel(petModel)} model={petModel} state={PET_STATE[task.state] ?? "idle"} />
-      <small title={modelDetails || undefined} aria-label={description}>{action}{task.attempt > 1 ? ` · ${t.attempt(task.attempt)}` : ""}{task.check ? ` · ${checker || t.check} ${task.check}` : ""}</small>
+    <span className={styles.avatar}>
+      <PetAvatar small provider={petProvider} model={petModel} state={PET_STATE[task.state] ?? "idle"} />
     </span>
+    <small className={styles.details} title={modelDetails || undefined}>
+      {showAction ? action : <span className="sr-only">{state}{" · "}</span>}
+      {check && <>{showAction && " · "}{checker || t.check} <strong data-verdict={check.toUpperCase()}>{task.check}</strong></>}
+      {task.attempt > 1 && <>{" · "}{t.attempt(task.attempt)}</>}
+      {modelDetails && <span className="sr-only">{" · "}{modelDetails}</span>}
+    </small>
   </li>;
 }
 

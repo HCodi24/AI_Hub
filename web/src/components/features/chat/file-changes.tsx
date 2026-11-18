@@ -109,6 +109,38 @@ function StatusMarker({ status }: { status: FileEntry["status"] }) {
   return <span className={styles.marker} data-status={value} role="img" aria-label={chatText.fileStatus[value]} title={chatText.fileStatus[value]}>{STATUS_GLYPH[value]}</span>;
 }
 
+function summarizePaths(files: FileEntry[]) {
+  const foldersByName = new Map<string, string[][]>();
+  const paths = files.map((file) => {
+    const folders = file.path.split(/[\\/]/);
+    const name = folders.pop() || file.path;
+    const matches = foldersByName.get(name);
+    if (matches) matches.push(folders);
+    else foldersByName.set(name, [folders]);
+    return { file, name, folders };
+  });
+
+  return paths.map(({ file, name, folders }) => {
+    const matches = foldersByName.get(name) ?? [];
+    let directory = "";
+    if (matches.length > 1) {
+      for (let depth = 1; depth <= folders.length; depth++) {
+        directory = folders.slice(-depth).join("/");
+        if (matches.every((other) => other === folders || other.slice(-depth).join("/") !== directory)) break;
+      }
+    }
+    return { file, name, directory };
+  });
+}
+
+function SummaryCounts({ added, removed, className }: Pick<FileEntry, "added" | "removed"> & { className: string }) {
+  if (added === 0 && removed === 0) return null;
+  return <span className={className}>
+    {added !== 0 && <span className={styles.added}>+{added}</span>}
+    {removed !== 0 && <span className={styles.removed}>−{removed}</span>}
+  </span>;
+}
+
 export function FileChanges({ files, diff }: { files: FileEntry[]; diff: string }) {
   const titleId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -116,6 +148,7 @@ export function FileChanges({ files, diff }: { files: FileEntry[]; diff: string 
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const sections = useMemo(() => parseDiff(diff), [diff]);
+  const summaryPaths = useMemo(() => summarizePaths(files), [files]);
   const { entries, extras } = useMemo(() => {
     const used = new Set<number>();
     const list = files.map((file) => {
@@ -196,29 +229,25 @@ export function FileChanges({ files, diff }: { files: FileEntry[]; diff: string 
       ? <div className={styles.card}>
         <button type="button" className={styles.cardHeader} aria-haspopup="dialog" aria-expanded={open} title={chatText.openChanges} onClick={openFrom}>
           <span className={styles.cardTitle}>{chatText.edited(files.length)}</span>
-          <span className={styles.cardTotals}>
-            <span className={styles.added}>+{totals.added}</span>
-            <span className={styles.removed}>−{totals.removed}</span>
-          </span>
+          <SummaryCounts {...totals} className={styles.cardTotals} />
           <ChevronRight size={16} aria-hidden="true" className={styles.chevron} />
         </button>
         <ul className={styles.fileList}>
-          {files.map((file, index) => <li key={`${index}:${file.path}`} className={styles.fileItem}>
+          {summaryPaths.map(({ file, name, directory }, index) => <li key={`${index}:${file.path}`} className={styles.fileItem}>
             <button type="button" className={styles.fileRow} aria-haspopup="dialog" aria-expanded={open} title={file.path} onClick={openFrom}>
               <StatusMarker status={file.status} />
-              <span className={styles.fileRowPath}>{file.path}</span>
-              <span className={styles.fileRowCounts}>
-                <span className={styles.added}>+{file.added}</span>
-                <span className={styles.removed}>−{file.removed}</span>
+              <span className={styles.fileRowPath}>
+                <span className={styles.fileRowName}>{name}</span>
+                {directory && <span className={styles.fileRowDirectory}>{directory}</span>}
               </span>
+              <SummaryCounts added={file.added} removed={file.removed} className={styles.fileRowCounts} />
             </button>
           </li>)}
         </ul>
       </div>
       : <button ref={triggerRef} type="button" className={styles.summary} aria-haspopup="dialog" aria-expanded={open} title={chatText.openChanges} onClick={openFrom}>
         <span className={styles.summaryLabel}>{chatText.diff}</span>
-        <span className={styles.added}>+{totals.added}</span>
-        <span className={styles.removed}>−{totals.removed}</span>
+        <SummaryCounts {...totals} className={styles.cardTotals} />
         <ChevronRight size={16} aria-hidden="true" className={styles.chevron} />
       </button>}
     {open && createPortal(<div className={styles.layer}>

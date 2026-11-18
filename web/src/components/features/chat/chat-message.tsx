@@ -59,7 +59,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
       {status?.idle_s !== undefined && ` · ${chatText.idle}: ${status.idle_s} ${chatText.seconds}`}
     </div>}
     {tokenLine && <div className={styles.tokens}>{tokenLine}</div>}
-    <FileChanges files={message.files} diff={message.diff} />
+    <div className={styles.fileResults}><FileChanges files={message.files} diff={message.diff} /></div>
     {taskBoardEnabled && !(streaming && latest) && message.tasks && <div className={styles.archivedTaskBoard}><TaskBoardView tasks={message.tasks} /></div>}
     {message.error && <div className={styles.error} role="alert">{message.error}</div>}
   </article>;

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { ArrowUp, Square, Scale, ImagePlus, Plus, X, FileEdit, FileUp } from "lucide-react";
+import { addonsApi } from "@/apis/addons.api";
 import { droppedFiles, fileReadError, importDirectory, importTextFile, importedFileText, type DroppedFile, type ImportedFile } from "@/lib/import-file";
 import { Button } from "@/components/button/button";
 import { http } from "@/lib/http";
@@ -10,11 +12,14 @@ import { notify } from "@/components/toast/toast";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { ChatToolbar } from "./chat-toolbar";
+import { SkillSuggestions } from "./skill-suggestions";
 import { AttachmentCard } from "@/components/features/chat/attachment-card";
 import { MemoryPanel } from "@/components/features/memory/memory-panel";
 import type { Config } from "@/schema/config.schema";
 import styles from "./composer.module.css";
 const MAX_FILES = 5;
+// Match the whitespace used by Rust's trim_start and char::is_whitespace.
+const FIRST_SLASH_TOKEN = new RegExp("^(\\p{White_Space}*)/([^\\p{White_Space}]*)", "u");
 const UploadSchema = z.object({ id: z.string(), mime: z.string(), url: z.string() });
 type Image = z.infer<typeof UploadSchema>;
 type Attachment = (Image & { kind: "image"; name: string }) | (ImportedFile & { kind: "text"; id: string });
@@ -32,6 +37,25 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const [memory, setMemory] = useState(false);
   useEffect(() => { try { setDebate(["1", "true"].includes(localStorage.getItem("debateMode") || "")); } catch { /* Storage unavailable. */ } }, []);
   const [value, setValue] = useState("");
+  const [focused, setFocused] = useState(false);
+  const [composing, setComposing] = useState(false);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
+  const [activeSkill, setActiveSkill] = useState<string | null>(null);
+  const skillListId = useId();
+  const addons = useQuery({ queryKey: ["addons"], queryFn: ({ signal }) => addonsApi.overview(signal) });
+  const sharedSkills = addons.isSuccess ? addons.data.shared_skills : undefined;
+  const slashToken = FIRST_SLASH_TOKEN.exec(value);
+  const prefix = focused && !streaming && !composing && !suggestionsDismissed && slashToken
+    && selection.start === selection.end && selection.start > slashToken[1].length && selection.start <= slashToken[0].length
+    ? value.slice(slashToken[1].length + 1, selection.start).toLowerCase()
+    : null;
+  const suggestions = useMemo(() => {
+    if (prefix === null || !sharedSkills) return [];
+    return sharedSkills.filter(name => name.toLowerCase().startsWith(prefix));
+  }, [prefix, sharedSkills]);
+  const menuOpen = suggestions.length > 0;
+  const activeIndex = Math.max(0, suggestions.indexOf(activeSkill ?? ""));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const attached = useRef<Attachment[]>([]);
   const importing = useRef(false);
@@ -40,6 +64,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const updateAttachments = useCallback((next: Attachment[]) => { attached.current = next; setAttachments(next); }, []);
   const [recalled, setRecalled] = useState<{ label: string; text: string }[]>([]);
   const input = useRef<HTMLTextAreaElement>(null);
+  const nextCaret = useRef<number | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const attachmentMenu = useRef<HTMLDetailsElement>(null);
@@ -57,6 +82,59 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   useEffect(() => {
     if (input.current) { input.current.style.height = "auto"; input.current.style.height = `${Math.min(input.current.scrollHeight, 180)}px`; }
   }, [value]);
+  useLayoutEffect(() => {
+    const caret = nextCaret.current;
+    if (caret === null) return;
+    input.current?.setSelectionRange(caret, caret);
+    nextCaret.current = null;
+  }, [value, selection]);
+
+  function trackSelection(textarea: HTMLTextAreaElement) {
+    const { selectionStart: start, selectionEnd: end } = textarea;
+    setSelection(current => current.start === start && current.end === end ? current : { start, end });
+  }
+
+  function selectSkill(name: string) {
+    if (!slashToken) return;
+    const before = `${slashToken[1]}/${name}`;
+    const after = value.slice(slashToken[0].length) || " ";
+    const caret = before.length + 1;
+    nextCaret.current = caret;
+    setValue(before + after);
+    setSelection({ start: caret, end: caret });
+    setSuggestionsDismissed(true);
+  }
+
+  function handleInputKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.shiftKey || composing || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (event.key === "Enter" && event.repeat) {
+      event.preventDefault();
+      return;
+    }
+    if (menuOpen) {
+      switch (event.key) {
+        case "ArrowDown":
+        case "ArrowUp": {
+          event.preventDefault();
+          const step = event.key === "ArrowDown" ? 1 : -1;
+          setActiveSkill(suggestions[(activeIndex + step + suggestions.length) % suggestions.length]);
+          return;
+        }
+        case "Enter":
+          event.preventDefault();
+          selectSkill(suggestions[activeIndex]);
+          return;
+        case "Escape":
+          event.preventDefault();
+          setSuggestionsDismissed(true);
+          return;
+      }
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void submit();
+    }
+  }
   const addFiles = useCallback(async (files: DroppedFile[]) => {
     if (importing.current || pending.current || useChatStore.getState().streaming || useCardStore.getState().running || !files.length) return;
     importing.current = true; setUploading(true);
@@ -124,10 +202,14 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
     pending.current = true;
     const origin = useChatStore.getState().id;
     const draft = value, sent = attached.current, picked = recalled; setValue(""); updateAttachments([]); setRecalled([]);
-    // Picked memory goes in front of the message, so the AI reads it without opening files (an extra model call).
-    const prompt = picked.length
-      ? `Recalled memory (picked by the user):\n${picked.map(item => `[${item.label}]\n${item.text}`).join("\n\n")}\n\n${draft.trim()}`
-      : draft.trim();
+    let prompt = draft.trim();
+    if (picked.length) {
+      const context = `Recalled memory (picked by the user):\n${picked.map(item => `[${item.label}]\n${item.text}`).join("\n\n")}`;
+      // The backend resolves slash commands from the first token, even if suggestions are unavailable.
+      prompt = slashToken?.[2]
+        ? `${prompt}\n\n${context}`
+        : `${context}\n\n${prompt}`;
+    }
     const text = [prompt, importedFileText(sent.filter((file): file is Extract<Attachment, { kind: "text" }> => file.kind === "text"))].filter(Boolean).join("\n\n");
     const restore = () => { if (useChatStore.getState().id === origin) { setValue(draft); updateAttachments(sent); setRecalled(picked); } };
     try { if (!(await send(text, false, sent.filter((file): file is Extract<Attachment, { kind: "image" }> => file.kind === "image").map(({ id, mime }) => ({ id, mime }))))) restore(); }
@@ -136,7 +218,6 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   }
   return <><form className={styles.composer} data-dragging={dragging || undefined} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <label className="sr-only" htmlFor="chat-input">{chatText.placeholder}</label>
-    <div><button type="button" aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" />{t.debate}</button></div>
     {recalled.length > 0 && <div className={styles.recalled} aria-label={t.recalled}>{recalled.map((item, index) => <span key={item.label}>
       <FileEdit size={14} aria-hidden="true" /><span title={item.label}>{item.label}</span>
       <button type="button" aria-label={`${t.removeMemory}: ${item.label}`} onClick={() => setRecalled(current => current.filter((_, i) => i !== index))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
@@ -144,6 +225,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
       ? <AttachmentCard key={file.id} name={file.name} disabled={uploading} remove={() => updateAttachments(attached.current.filter(item => item.id !== file.id))} />
       : <span key={file.id} title={file.name}><img src={file.url} alt={file.name || chatText.attachments} />
         <button type="button" disabled={uploading} aria-label={`${chatText.removeFile}: ${file.name}`} onClick={() => updateAttachments(attached.current.filter(item => item.id !== file.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
+    {menuOpen && <SkillSuggestions id={skillListId} names={suggestions} activeIndex={activeIndex} onSelect={selectSkill} />}
     <div className={styles.box}>
       <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(event) => void addFiles([...(event.target.files ?? [])])} />
       <input ref={filePicker} type="file" multiple hidden onChange={(event) => void addFiles([...(event.target.files ?? [])])} />
@@ -170,13 +252,38 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         </div>
       </details>
       <textarea id="chat-input" ref={input} value={value} rows={1} disabled={streaming}
-      placeholder={chatText.placeholder} onChange={(event) => setValue(event.target.value)}
+      placeholder={chatText.placeholder}
+      aria-autocomplete="list" aria-controls={menuOpen ? skillListId : undefined}
+      aria-activedescendant={menuOpen ? `${skillListId}-${activeIndex}` : undefined}
+      aria-describedby={menuOpen ? `${skillListId}-hint` : undefined}
+      onFocus={(event) => {
+        setFocused(true);
+        setSuggestionsDismissed(false);
+        setActiveSkill(null);
+        trackSelection(event.currentTarget);
+      }}
+      onBlur={() => { setFocused(false); setComposing(false); }}
+      onSelect={(event) => trackSelection(event.currentTarget)}
+      onChange={(event) => {
+        setValue(event.currentTarget.value);
+        trackSelection(event.currentTarget);
+        setSuggestionsDismissed(false);
+        setActiveSkill(null);
+      }}
+      onCompositionStart={() => setComposing(true)}
+      onCompositionEnd={(event) => {
+        setComposing(false);
+        trackSelection(event.currentTarget);
+      }}
       onPaste={(event) => { const files = [...event.clipboardData.items].flatMap(item => item.kind === "file" ? [item.getAsFile()] : []).filter((file): file is File => file !== null); if (files.length) { event.preventDefault(); void addFiles(files); } }}
-      onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
+      onKeyDown={handleInputKeyDown} />
       {streaming ? <Button className={styles.sendButton} variant="danger" onClick={() => void stop()} aria-label={chatText.stop} title={chatText.stop}><Square size={18} aria-hidden="true" /></Button> :
         <Button className={styles.sendButton} variant="primary" type="submit" disabled={uploading || !canSend || Boolean(running)} aria-label={chatText.send} title={chatText.send}><ArrowUp size={20} aria-hidden="true" /></Button>}
     </div>
-    <div className={styles.toolbar}><ChatToolbar config={config} /></div>
+    <div className={styles.toolbar}>
+      <ChatToolbar config={config} />
+      <button className={styles.debateButton} type="button" aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" />{t.debate}</button>
+    </div>
     {(uploading || dragging) && <p className={styles.fileHint} role="status">{uploading ? chatText.importingFiles : chatText.dropFiles}</p>}
   </form>{memory && <MemoryPanel folder={folder} close={() => setMemory(false)}
     attach={(label, text) => setRecalled(current => [...current.filter(item => item.label !== label), { label, text }])} />}</>;

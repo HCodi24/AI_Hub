@@ -35,9 +35,9 @@ function CumulativeChart({ series }: { series: ReturnType<typeof chatTokenSeries
         <path d={`M42 ${y(max * i / 3)}H342`} stroke={i ? "#e2e8f0" : "#94a3b8"} />
         <text x="36" y={y(max * i / 3) + 4} textAnchor="end">{formatCompact(max * i / 3)}</text>
       </g>)}
-      <text x="42" y="192">0</text>
+      <text x="42" y="192">{formatTokens(0)}</text>
       {series.steps > 0 && <text x="342" y="192" textAnchor="end">{formatTokens(series.steps)}</text>}
-      <text x="192" y="210" textAnchor="middle">{t.replyAxis}</text>
+      <text x="192" y="210" textAnchor="middle" className={styles.axisTitle}>{t.replyAxis}</text>
       {[...ranked].reverse().map(({ entry, color, last }) => {
         const d = entry.points.map((point, i) => i ? `H${x(point.step)}V${y(point.total)}` : `M${x(point.step)} ${y(point.total)}`).join(" ");
         return <g key={`series:${entry.model}`}>
@@ -245,7 +245,7 @@ export function TokenDashboardView({ messages, samples = [], status = "ready", c
   // Compact frame: only the short heading plus the cumulative chart and its legend. Totals, the exact
   // table, the backend history and the explanatory notes live in the large Dashboard dialog.
   if (compact) return <section className={`${styles.dashboard} ${styles.compact}`} aria-label={t.title}>
-    <h2 className={styles.title}>{chatText.dashboard.title}</h2>
+    <h2 className={styles.title}>{t.title}</h2>
     {usage.reports === 0
       ? <p className={styles.empty}>{t.empty}</p>
       : <CumulativeChart series={series} />}

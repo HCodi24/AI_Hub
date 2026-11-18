@@ -49,6 +49,8 @@
 .compact .rank li > :last-child { grid-column: 2; grid-row: 1; }
 .axisTitle { font-size: 11px; }
 .chart text { fill: #64748b; }
+.compact .chart text { fill: #475569; font-variant-numeric: tabular-nums; }
+.compact .chart .axisTitle { font-size: 12px; font-weight: 600; }
 .legend .swatch { flex: none; margin: 0; width: 10px; height: 10px; border-radius: 2px; }
 .compact .legendName { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .legendValue { font-weight: 600; color: #0f172a; }
