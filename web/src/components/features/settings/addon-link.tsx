@@ -18,7 +18,6 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
   const [targets, setTargets] = useState<LinkTarget[]>([]);
   const [plugins, setPlugins] = useState<string[]>([]);
   const [skillId, setSkillId] = useState("");
-  const [skillTarget, setSkillTarget] = useState<LinkTarget>("claude");
   const [replacement, setReplacement] = useState<LinkSkillConflict | null>(null);
   const [busy, setBusy] = useState<"inspect" | "plugins" | "skill" | null>(null);
   const pendingInspection = useRef<AbortController | null>(null);
@@ -27,7 +26,7 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
   const labels = t.addons.link;
   const markets = found ? TARGETS.filter(target => found[target]) : [];
   const skill = found?.skills.find(item => item.id === skillId);
-  const conflict = replacement?.skill_id === skill?.id && replacement?.target === skillTarget ? replacement : null;
+  const conflict = replacement?.skill_id === skill?.id ? replacement : null;
   const installing = busy === "plugins" || busy === "skill";
 
   function clearResult() {
@@ -35,7 +34,6 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
     setTargets([]);
     setPlugins([]);
     setSkillId("");
-    setSkillTarget("claude");
     setReplacement(null);
   }
 
@@ -96,13 +94,12 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
     setBusy("skill");
     setReplacement(null);
     try {
-      const result = await addonsApi.installLinkSkill({ link: found.source, skill_id: skill.id, target: skillTarget, confirmation });
+      const result = await addonsApi.installLinkSkill({ link: found.source, skill_id: skill.id, confirmation });
       report(result.output);
       if (result.conflict) setReplacement(result.conflict);
       if (result.ok) {
         setSkillId("");
-        const key = skillTarget === "claude" ? "addons" : "codex-plugins";
-        await client.invalidateQueries({ queryKey: [key] });
+        await client.invalidateQueries({ queryKey: ["addons"] });
       }
     } catch (error) {
       report(errorText(error, t.error));
@@ -154,18 +151,8 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
           </label></li>)}
         </ul>
       </div>
-      <div className={styles.actions}>
-        <label className={styles.inlineLabel}>{labels.skillTarget}
-          <select value={skillTarget} disabled={installing} onChange={event => {
-            setSkillTarget(event.target.value === "codex" ? "codex" : "claude");
-            setReplacement(null);
-          }}>
-            {TARGETS.map(target => <option key={target} value={target}>{t.extensions[target]}</option>)}
-          </select>
-        </label>
-      </div>
       {skill && conflict ? <div className={styles.confirm} role="group" aria-label={labels.replaceSkill}>
-        <p>{labels.confirmReplace(skill.name, t.extensions[skillTarget])}</p>
+        <p>{labels.confirmReplace(skill.name)}</p>
         <Button variant="danger" disabled={installing} onClick={() => void installSkill(conflict.confirmation)}>{labels.replaceSkill}</Button>
         <Button disabled={installing} onClick={() => setReplacement(null)}>{t.cancel}</Button>
       </div> : <Button variant="primary" disabled={Boolean(busy) || !skill} onClick={() => void installSkill()}>

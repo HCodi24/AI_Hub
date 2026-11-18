@@ -25,7 +25,7 @@ const { TaskBoardView } = load(src("components/features/chat/task-board.tsx"), {
   "@/components/features/pets/pet-avatar": { PetAvatar: () => null }, "@/lib/pet-choice": { kindFromModel: model => model },
   // Only the Sol model has a chosen pet in this test; a row with a pet leaves the model name out.
   "@/components/features/pets/use-pet-id": { usePetId: (_, model) => model === "gpt-6.1-sol" ? "my-pet" : undefined },
-  "@/components/features/composer/model-menu": { modelLabel: model => ({ "gpt-6-luna": "GPT-6 Luna", "gpt-6.1-sol": "GPT-6.1 Sol" })[model] || model },
+  "@/components/features/composer/model-menu": { modelLabel: model => ({ "gpt-6-luna": "GPT-6 Tester", "gpt-6.1-sol": "GPT-6.1 Sol" })[model] || model },
 });
 const React = fromWeb("react");
 const render = tasks => renderToStaticMarkup(React.createElement(TaskBoardView, { tasks }));
@@ -39,12 +39,12 @@ const html = render([
   { title: "E", state: "failed", attempt: 4, check: "FAIL" },
   { title: "F", state: "takeover", attempt: 4, check: "FAIL" },
   { title: "G", state: "coding", attempt: 1, actor: "Codex", model: "gpt-6-luna" },
-  { title: "H", state: "checking", attempt: 1, actor: "Luna", model: "gpt-6-luna", checker: "Luna", checker_model: "gpt-6-luna" },
+  { title: "H", state: "checking", attempt: 1, actor: "Tester", model: "gpt-6-luna", checker: "Tester", checker_model: "gpt-6-luna" },
   { title: "I", state: "coding", attempt: 1, actor: "DeepSeek", model: "deepseek-v4" },
-  { title: "J", state: "checking", attempt: 1, actor: "Codex", model: "gpt-6-luna", checker: "Luna", checker_model: "gpt-6.1-sol", check: "PASS" },
+  { title: "J", state: "checking", attempt: 1, actor: "Codex", model: "gpt-6-luna", checker: "Tester", checker_model: "gpt-6.1-sol", check: "PASS" },
 ]);
 for (const wanted of ["Tiến độ các task", "Xong", "Đang kiểm tra", "Đang sửa", "lần 2", "Kiểm tra FAIL", "Kiểm tra PASS", "Chờ", "Lỗi", "Đã bàn giao", 'data-state="failed"',
-  "Codex · GPT-6 Luna đang code", "GPT-6 Luna đang kiểm tra", "deepseek-v4 đang code"])
+  "Codex · GPT-6 Tester đang code", "GPT-6 Tester đang kiểm tra", "deepseek-v4 đang code"])
   assert.ok(html.includes(wanted), `missing ${wanted}`);
 assert.ok(!html.includes("lần 1"), "the first attempt is not shown as a retry");
 assert.ok(!html.includes("Codex CLI"), "the exact model is shown, not the generic source name");
@@ -62,4 +62,4 @@ store.getState().finish();
 assert.equal(store.getState().tasks[0].state, "stopped", "a row still busy when the stream ends is shown as stopped");
 store.getState().begin("next request");
 assert.equal(store.getState().tasks.length, 0, "a new request starts with an empty board");
-console.log("PASS task board: states, retries, Luna verdicts, busy rows and store events");
+console.log("PASS task board: states, retries, Tester verdicts, busy rows and store events");

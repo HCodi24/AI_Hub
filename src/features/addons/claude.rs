@@ -6,7 +6,7 @@
 
 use super::{
     paths::{read_json, valid_name},
-    skills::skill_install_lock,
+    skills::{shared_skill_names, skill_install_lock},
 };
 use anyhow::{bail, Context, Result};
 use serde::Serialize;
@@ -41,6 +41,7 @@ pub struct Home {
 pub struct Overview {
     pub personal: Home,
     pub hub: Home,
+    pub shared_skills: Vec<String>,
 }
 
 fn marketplace_source(entry: &Value) -> String {
@@ -124,11 +125,16 @@ pub fn personal_claude_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".claude"))
 }
 
-pub fn overview(hub_dir: &Path) -> Overview {
+pub(crate) fn personal_claude_home() -> Home {
     let home = dirs::home_dir().unwrap_or_default();
+    claude_home(&home.join(".claude"), &home.join(".claude.json"))
+}
+
+pub fn overview(hub_dir: &Path, skills_dir: &Path) -> Overview {
     Overview {
-        personal: claude_home(&home.join(".claude"), &home.join(".claude.json")),
+        personal: personal_claude_home(),
         hub: claude_home(hub_dir, &hub_dir.join(".claude.json")),
+        shared_skills: shared_skill_names(skills_dir),
     }
 }
 

@@ -1,8 +1,9 @@
-//! Rule: a project check that hangs is reported, never polled.
+//! Rule: a check that cannot run quickly is reported to the user, never forced.
 pub const RULE: &str = concat!(
-    "- Run each long project check (e2e, dev server, full build) at most once, through the project's own script if it has one. ",
-    "These limits also apply when the project's instructions (AGENTS.md) say to always run it: ",
-    "if the check prints nothing new for 2 minutes or runs longer than 5 minutes, stop it, ",
-    "read its log at most 3 times, do not poll processes or the clock, ",
-    "and report it as \"not verified\" with the reason. Rely on the faster checks (lint, type check) instead."
+    "- Only do the coding and simple tests of the files you changed; a separate checker runs the real tests. ",
+    "Try each check once. If it cannot run right away (a missing tool or build environment, a hang, ",
+    "no output for 2 minutes, or longer than 5 minutes), stop: do not look for another way to run it, ",
+    "do not poll its logs or processes, and do not set up an environment. ",
+    "These limits also apply when the project's instructions (AGENTS.md) say to always run it. ",
+    "End your report with \"Not verified: <what> — <why>\" so the user sees what was skipped."
 );

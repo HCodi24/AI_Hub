@@ -2,14 +2,14 @@ import { create } from "zustand";
 import { ChatMessageSchema, PermissionSchema, type ChatMessage, type ChatRecord, type ChatRequest, type CheckerActivity, type StreamData, type TaskRow } from "@/schema/chat.schema";
 type Settings = Omit<ChatRequest, "chat_id" | "messages">;
 type ModelSelection = Pick<Settings, "provider_id" | "model"> & Partial<Pick<Settings, "permission">>;
-/** One live Luna card: a check that is running (or failed) beside the conversation, never inside a chat message. */
+/** One live Tester card: a check that is running (or failed) beside the conversation, never inside a chat message. */
 export type LiveChecker = {
   id: string; title: string; attempt: number; model: string; provider_name: string;
   state: "running" | "failed" | "stopped";
   /** Latest meaningful checker lines, oldest first, bounded. */
   progress: string[];
 };
-/** Retained progress lines per card: enough to see what Luna is doing, never an unbounded log. */
+/** Retained progress lines per card: enough to see what Tester is doing, never an unbounded log. */
 const MAX_CHECKER_PROGRESS = 6;
 /** Applies one `checker_activity` event to the cards: start/progress/error merge by id, done removes only that card. */
 export function applyCheckerActivity(cards: LiveChecker[], activity: CheckerActivity): LiveChecker[] {
@@ -37,7 +37,7 @@ type ChatState = {
   status: StreamData; error: string; initialized: boolean;
   /** Live task board of the current MutiS High run. Archived snapshots live on assistant messages. */
   tasks: TaskRow[];
-  /** Live Luna checks, keyed by the checker's own id and independent of messages, status and tasks. */
+  /** Live Tester checks, keyed by the checker's own id and independent of messages, status and tasks. */
   checkers: LiveChecker[];
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
@@ -137,7 +137,7 @@ export const useChatStore = create<ChatState>((set) => ({
       if (last?.role === "assistant" && data.tasks) messages[messages.length - 1] = { ...last, tasks: data.tasks };
       return { tasks: data.tasks ?? state.tasks, messages };
     }
-    // Live Luna cards are handled before any trailing-message update: a checker event never touches the
+    // Live Tester cards are handled before any trailing-message update: a checker event never touches the
     // streaming worker's message, and a worker event never touches a card.
     if (event === "checker_activity") {
       return data.checker_activity ? { checkers: applyCheckerActivity(state.checkers, data.checker_activity) } : {};

@@ -34,7 +34,7 @@ export type ChatRecord = z.infer<typeof ChatRecordSchema>;
 export type ChatRequest = z.infer<typeof ChatRequestSchema>;
 export type ChatSummary = z.infer<typeof ChatSummarySchema>;
 export type TaskRow = z.infer<typeof TaskRowSchema>;
-/** Live checker card of one Luna check: start, progress, error or done (done removes the card). */
+/** Live checker card of one Tester check: start, progress, error or done (done removes the card). */
 export const CheckerActivitySchema = z.object({
   id: z.string(), phase: z.enum(["start", "progress", "error", "done"]),
   title: z.string().default(""), attempt: z.number().default(0),

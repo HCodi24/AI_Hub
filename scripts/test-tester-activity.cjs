@@ -1,4 +1,4 @@
-// Offline contract test of the live Luna cards: the checker_activity events, the chat store and the rendered card.
+// Offline contract test of the live Tester cards: the checker_activity events, the chat store and the rendered card.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -22,7 +22,7 @@ const schema = load(src("schema/chat.schema.ts"));
 const storeModule = load(src("components/features/chat/chat-store.ts"), { "@/schema/chat.schema": schema });
 const store = storeModule.useChatStore;
 const chatText = load(src("text/chat.ts"));
-const { LunaActivityView } = load(src("components/features/chat/luna-activity.tsx"), {
+const { TesterActivityView } = load(src("components/features/chat/tester-activity.tsx"), {
   "./chat-store": { useChatStore: () => [] },
   "@/text/chat": chatText,
   // The pet needs a react-query client; the card contract only needs to know which pet state it was given.
@@ -30,14 +30,14 @@ const { LunaActivityView } = load(src("components/features/chat/luna-activity.ts
   "./chat-activity": load(src("components/features/chat/chat-activity.tsx"), { "@/text/chat": chatText }),
 });
 const React = fromWeb("react");
-const render = checkers => renderToStaticMarkup(React.createElement(LunaActivityView, { checkers }));
+const render = checkers => renderToStaticMarkup(React.createElement(TesterActivityView, { checkers }));
 const activity = (id, phase, extra = {}) => schema.StreamDataSchema.parse({
   checker_activity: { id, phase, title: "Task A", attempt: 1, model: "gpt-5-codex", provider_name: "Người kiểm tra", text: "", ...extra },
 });
 const send = (id, phase, extra) => store.getState().event("checker_activity", activity(id, phase, extra));
 const cards = () => store.getState().checkers;
 
-// 1. A start event alone produces a visible, running Luna card, before any verdict text exists.
+// 1. A start event alone produces a visible, running Tester card, before any verdict text exists.
 assert.equal(render([]), "", "no checks, no card");
 store.getState().begin("build it");
 send("task a#1", "start");
@@ -71,7 +71,7 @@ assert.equal(worker.provider, "deepseek", "the worker keeps its own identity");
 assert.equal(worker.model, "deepseek-chat");
 assert.deepEqual(worker.logs, ["worker log"], "checker progress never lands in the worker logs");
 assert.equal(cards()[0].progress.at(-1), "đọc src/lib.rs", "worker events never touch the card");
-assert.equal(cards()[0].model, "gpt-5-codex", "the card keeps Luna's model");
+assert.equal(cards()[0].model, "gpt-5-codex", "the card keeps Tester's model");
 
 // 4. Two checks and a retry stay independent.
 send("task b#1", "start", { title: "Task B" });
@@ -118,7 +118,7 @@ assert.equal(parsed.checker_activity.attempt, 0);
 const rust = fs.readFileSync(path.resolve(__dirname, "../src/providers/delegate.rs"), "utf8");
 const helper = rust.slice(rust.indexOf("fn checker_activity("), rust.indexOf("fn checker_progress("));
 assert.match(helper, /data:\s*serde_json::json!\(\{\s*"checker_activity":\s*\{/);
-const backendBody = { checker_activity: { id: "wire#1", phase: "start", title: "Wire task", attempt: 1, model: "luna", provider_name: "Người kiểm tra", text: "" } };
+const backendBody = { checker_activity: { id: "wire#1", phase: "start", title: "Wire task", attempt: 1, model: "tester-model", provider_name: "Người kiểm tra", text: "" } };
 store.getState().event("checker_activity", schema.StreamDataSchema.parse(backendBody));
 assert.equal(cards().at(-1).id, "wire#1");
 backendBody.checker_activity.phase = "progress";
@@ -129,4 +129,4 @@ backendBody.checker_activity.phase = "done";
 store.getState().event("checker_activity", schema.StreamDataSchema.parse(backendBody));
 assert.equal(cards().length, 0);
 
-console.log("PASS luna activity: wire envelope, live visibility, isolation and cleanup");
+console.log("PASS tester activity: wire envelope, live visibility, isolation and cleanup");

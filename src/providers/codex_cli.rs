@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-/// The skill directory under the app-server's per-source CODEX_HOME, without creating it.
-pub(crate) fn managed_skills_dir(config_path: &Path, provider_id: &str) -> Result<PathBuf> {
+/// The old skill directory under the app-server's per-source CODEX_HOME, without creating it.
+pub(crate) fn legacy_skills_dir(config_path: &Path, provider_id: &str) -> Result<PathBuf> {
     ensure!(
         provider_id.len() <= 80
             && crate::features::addons::safe_component(provider_id.as_ref())
@@ -28,21 +28,10 @@ pub(crate) struct CodexCliProvider;
 impl Provider for CodexCliProvider {
     async fn run(
         &self,
-        mut request: ProviderRequest,
+        request: ProviderRequest,
         events: mpsc::Sender<ProviderEvent>,
         cancel: CancellationToken,
     ) -> Result<()> {
-        // Native skill instructions are disabled because the native catalogue also lists project skills.
-        let config_path = crate::config::config_file_path()?;
-        if let Ok(dir) = managed_skills_dir(&config_path, &request.provider.id) {
-            let catalogue = crate::features::addons::managed_skill_context(&dir);
-            if !catalogue.is_empty() {
-                if let Some(message) = request.messages.last_mut() {
-                    message.content =
-                        format!("{catalogue}\nYêu cầu của người dùng\n{}", message.content);
-                }
-            }
-        }
         CodexProvider.run(request, events, cancel).await
     }
 }

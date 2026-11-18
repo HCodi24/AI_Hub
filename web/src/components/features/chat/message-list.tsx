@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/empty-state/empty-state";
 import { ScrollArea } from "@/components/scroll-area";
 import { ChatMessage } from "./chat-message";
 import { useChatStore } from "./chat-store";
-import { LunaActivity } from "./luna-activity";
+import { TesterActivity } from "./tester-activity";
 import { QuickReplies, type SendReply } from "./quick-replies";
 import { parseChatQuestions } from "@/lib/chat-questions";
 import { ChatQuestions } from "./chat-questions";
@@ -18,8 +18,8 @@ const Scroller = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement> & { c
   return <ScrollArea ref={ref as Ref<HTMLElement>} {...props} />;
 });
 
-/** Live Luna cards ride in the scroller footer: visible at once, outside every message's Activity list. */
-const Footer = () => <div data-chat-virtuoso-footer><LunaActivity /></div>;
+/** Live Tester cards ride in the scroller footer: visible at once, outside every message's Activity list. */
+const Footer = () => <div data-chat-virtuoso-footer><TesterActivity /></div>;
 
 /** Stable module-level components map so Virtuoso does not remount its scroller on every render. */
 const SCROLL_COMPONENTS = { Scroller, Footer };

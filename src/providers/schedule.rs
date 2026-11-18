@@ -116,32 +116,33 @@ fn fix_task(task: &Delegation, severe: &[&Issue]) -> Delegation {
     }
 }
 
-/// Who edits and who checks. Luna is the independent checker's Codex thread; Luna 2 is a second Codex thread (max effort).
+/// The roles of a delegated task besides the lead (the coordinator): `Worker` is the configured worker (any model), `Tester` is the
+/// independent tester's Codex thread (it checks, and fixes after the worker failed), `Tester2` a second Codex thread at max effort.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Actor {
-    DeepSeek,
-    Luna,
-    Luna2,
+    Worker,
+    Tester,
+    Tester2,
 }
 
 impl Actor {
     pub(super) fn name(self) -> &'static str {
         match self {
-            Actor::DeepSeek => "DeepSeek",
-            Actor::Luna => "Codex",
-            Actor::Luna2 => "Codex 2",
+            Actor::Worker => "DeepSeek",
+            Actor::Tester => "Codex",
+            Actor::Tester2 => "Codex 2",
         }
     }
 }
 
 /// (editor, checker) of one attempt. With a checker and a coordinator that can edit the task climbs a ladder:
-/// DeepSeek twice (Luna checks), then Luna fixes it and Luna 2 checks; a `hard` task starts with Luna 2 (Luna checks).
-/// Without that, DeepSeek does every attempt.
+/// the worker twice (Tester checks), then Tester fixes it and Tester 2 checks; a `hard` task starts with Tester 2 (Tester checks).
+/// Without that, the worker does every attempt.
 pub(super) fn route(hard: bool, attempt: usize, escalate: bool) -> (Actor, Actor) {
     match (escalate, hard, attempt) {
-        (true, true, _) => (Actor::Luna2, Actor::Luna),
-        (true, false, 3..) => (Actor::Luna, Actor::Luna2),
-        _ => (Actor::DeepSeek, Actor::Luna),
+        (true, true, _) => (Actor::Tester2, Actor::Tester),
+        (true, false, 3..) => (Actor::Tester, Actor::Tester2),
+        _ => (Actor::Worker, Actor::Tester),
     }
 }
 
@@ -343,7 +344,7 @@ impl<B: Backend> Round<'_, B> {
         self.out.changed = true;
         if task.trivial {
             // Tiny low-risk change: no checker run; the coordinator is told to read the diff itself.
-            self.out.reports.push(format!("Check skipped for \"{}\": you marked it trivial, so Luna did not check it. Read the diff above yourself.", task.title.trim()));
+            self.out.reports.push(format!("Check skipped for \"{}\": you marked it trivial, so the checker did not check it. Read the diff above yourself.", task.title.trim()));
             self.state.insert(title, State::Clean);
             self.mark(&task.title, "done", attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
             return;
@@ -397,7 +398,7 @@ impl<B: Backend> Round<'_, B> {
                     }
                 }
                 if !added.is_empty() {
-                    self.backend.say(format!("Thêm file Luna nêu vào task sửa: {}", added.join(", "))).await;
+                    self.backend.say(format!("Thêm file người kiểm tra nêu vào task sửa: {}", added.join(", "))).await;
                 }
                 self.queue.push_back(fix);
                 let next_editor = route(task.hard, attempt + 1, self.backend.can_escalate()).0;
@@ -538,9 +539,9 @@ mod tests {
         }
         fn actor_model(&self, actor: Actor) -> Option<String> {
             Some(match actor {
-                Actor::DeepSeek => "deepseek-model",
-                Actor::Luna => "luna-model",
-                Actor::Luna2 => "luna-2-model",
+                Actor::Worker => "deepseek-model",
+                Actor::Tester => "tester-model",
+                Actor::Tester2 => "tester-2-model",
             }.into())
         }
         async fn board(&self, rows: &[Row]) {
@@ -601,7 +602,7 @@ mod tests {
         let fake = Fake { checker: true, ..Default::default() };
         fake.checks.lock().unwrap().insert("A".into(), VecDeque::from(vec![fail_high(); 10]));
         let (fake, out, attempts) = run(fake, vec![task("A", &[])]).await;
-        // DeepSeek twice, then Luna's fix: the third failed check hands the task to the coordinator.
+        // DeepSeek twice, then Tester's fix: the third failed check hands the task to the coordinator.
         assert_eq!(fake.lines().iter().filter(|l| l.starts_with("work:")).count(), 3);
         assert_eq!(attempts["a"], 3);
         assert!(out.reports.last().unwrap().contains("attempt limit (3/3)"));
@@ -632,7 +633,7 @@ mod tests {
         let boards = fake.boards.lock().unwrap();
         let hard_coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "hard" && row.state == "coding").unwrap();
         assert_eq!(hard_coding.actor.as_deref(), Some("Codex 2"));
-        assert_eq!(hard_coding.model.as_deref(), Some("luna-2-model"));
+        assert_eq!(hard_coding.model.as_deref(), Some("tester-2-model"));
         let hard_checking = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "hard" && row.state == "checking").unwrap();
         assert_eq!(hard_checking.actor.as_deref(), Some("Codex"));
         assert_eq!(hard_checking.checker.as_deref(), Some("Codex"));
@@ -644,14 +645,14 @@ mod tests {
         let boards = fake.boards.lock().unwrap();
         let escalated_coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "escalated" && row.state == "fixing" && row.attempt == 3).unwrap();
         assert_eq!(escalated_coding.actor.as_deref(), Some("Codex"));
-        assert_eq!(escalated_coding.model.as_deref(), Some("luna-model"));
+        assert_eq!(escalated_coding.model.as_deref(), Some("tester-model"));
         let escalated_checking = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "escalated" && row.state == "checking" && row.attempt == 3).unwrap();
         assert_eq!(escalated_checking.actor.as_deref(), Some("Codex 2"));
         assert_eq!(escalated_checking.checker.as_deref(), Some("Codex 2"));
         let finished = boards.last().unwrap().iter().find(|row| row.title == "escalated").unwrap();
         assert_eq!(finished.check, Some("PASS"));
         assert_eq!(finished.checker.as_deref(), Some("Codex 2"));
-        assert_eq!(finished.checker_model.as_deref(), Some("luna-2-model"));
+        assert_eq!(finished.checker_model.as_deref(), Some("tester-2-model"));
     }
 
     #[tokio::test]
@@ -667,12 +668,12 @@ mod tests {
     }
 
     #[test]
-    fn the_ladder_is_deepseek_twice_then_luna_fixes_and_luna_2_checks_and_hard_tasks_start_with_luna_2() {
+    fn the_ladder_is_worker_twice_then_tester_fixes_and_tester_2_checks_and_hard_tasks_start_with_tester_2() {
         use Actor::*;
-        assert_eq!([1, 2, 3].map(|n| route(false, n, true)), [(DeepSeek, Luna), (DeepSeek, Luna), (Luna, Luna2)]);
-        assert_eq!([1, 2].map(|n| route(true, n, true)), [(Luna2, Luna), (Luna2, Luna)]);
-        assert_eq!([1, 3, 4].map(|n| route(true, n, false)), [(DeepSeek, Luna); 3]);
-        assert_eq!(route(false, 4, false), (DeepSeek, Luna));
+        assert_eq!([1, 2, 3].map(|n| route(false, n, true)), [(Worker, Tester), (Worker, Tester), (Tester, Tester2)]);
+        assert_eq!([1, 2].map(|n| route(true, n, true)), [(Tester2, Tester), (Tester2, Tester)]);
+        assert_eq!([1, 3, 4].map(|n| route(true, n, false)), [(Worker, Tester); 3]);
+        assert_eq!(route(false, 4, false), (Worker, Tester));
     }
 
     #[tokio::test]

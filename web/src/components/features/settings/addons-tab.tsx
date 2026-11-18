@@ -19,7 +19,6 @@ const items = (home: AddonHome, kind: AddonKind): Item[] => kind === "plugin"
 const KINDS: AddonKind[] = ["plugin", "skill", "mcp"];
 const TABS = ["claude", "codex", "app"] as const;
 type Tab = (typeof TABS)[number];
-/** Add-ons Claude Code loads inside AI Hub, and copying the user's own Claude Code add-ons across. */
 export function AddonsTab() {
   const client = useQueryClient();
   const query = useQuery({ queryKey: ["addons"], queryFn: ({ signal }) => addonsApi.overview(signal) });
@@ -40,6 +39,17 @@ export function AddonsTab() {
     }
     setBusy("");
     await client.invalidateQueries({ queryKey: ["addons"] });
+  }
+  function removeControl(change: AddonChange, label: string) {
+    const id = key(change);
+    if (busy === id) return <Loader2 size={16} className="spin" aria-label={t.addons.removing} />;
+    if (confirm === id) return <>
+      <Button size="sm" variant="danger" disabled={Boolean(busy)} onClick={() => void apply([change])}>{t.addons.remove}</Button>
+      <Button size="sm" onClick={() => setConfirm("")}>{t.cancel}</Button>
+    </>;
+    return <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={label} onClick={() => setConfirm(id)}>
+      <Trash2 size={16} aria-hidden="true" />{t.addons.remove}
+    </Button>;
   }
   const missing = KINDS.flatMap(kind => items(data.personal, kind)
     .filter(item => !items(data.hub, kind).some(have => have.name === item.name))
@@ -69,12 +79,9 @@ export function AddonsTab() {
             const remove: AddonChange = { target: "claude", kind, name: item.name, action: "remove" };
             return <li key={item.name}>
               <span className={styles.rowText}><strong>{item.name}</strong>{item.detail && <small title={item.detail}>{item.detail}</small>}</span>
-              {busy === key(add) || busy === key(remove) ? <Loader2 size={16} className="spin" aria-label={t.addons.adding} />
-                : confirm === key(remove) ? <><Button size="sm" variant="danger" onClick={() => void apply([remove])}>{t.addons.remove}</Button>
-                  <Button size="sm" onClick={() => setConfirm("")}>{t.cancel}</Button></>
-                  : inHub ? <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={t.addons.confirmRemove(item.name)}
-                    onClick={() => setConfirm(key(remove))}><Trash2 size={16} aria-hidden="true" />{t.addons.remove}</Button>
-                    : <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply([add])}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
+              {inHub ? removeControl(remove, t.addons.confirmRemove(item.name))
+                : busy === key(add) ? <Loader2 size={16} className="spin" aria-label={t.addons.adding} />
+                  : <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply([add])}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
             </li>;
           };
           return <div key={kind}><h4>{t.addons.kinds[kind]}</h4>
@@ -87,7 +94,19 @@ export function AddonsTab() {
         <p className={styles.note}>{t.addons.pluginNote}</p>
       </section>}
       {tab === "codex" && <CodexPlugins onOutput={setOutput} />}
-      {tab === "app" && <McpSection />}
+      {tab === "app" && <>
+        <section className={styles.group} aria-label={t.addons.sharedSkills.title}>
+          <h4>{t.addons.sharedSkills.title}</h4>
+          {data.shared_skills.length === 0 ? <p className={styles.note}>{t.addons.sharedSkills.empty}</p> : <>
+            <p className={styles.note}>{t.addons.sharedSkills.hint}</p>
+            <ul className={styles.rows}>{data.shared_skills.map(name => <li key={name}>
+              <span className={styles.rowText}><strong>/{name}</strong></span>
+              {removeControl({ target: "mutis", kind: "skill", name, action: "remove" }, t.addons.sharedSkills.confirmRemove(name))}
+            </li>)}</ul>
+          </>}
+        </section>
+        <McpSection />
+      </>}
     </div>
     {output && <details key={output} open><summary>{t.addons.output}</summary><pre className={styles.log} aria-live="polite">{output}</pre></details>}
   </div>;

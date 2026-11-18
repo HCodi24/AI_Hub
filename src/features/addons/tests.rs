@@ -1,9 +1,11 @@
 use super::claude::claude_home;
 use super::github::LinkPlugin;
 use super::{
-    copy_skill, github_source, inspect_checkout, install_checkout_skill, managed_skill_context,
-    remove_skill, safe_component, valid_name, SkillInstall,
+    copy_skill, github_source, inspect_checkout, install_checkout_skill, load_skill, overview,
+    remove_shared_skill, remove_skill, safe_component, shared_skill_catalogue, shared_skills_dir,
+    valid_name, SkillInstall,
 };
+use crate::config::ProviderConfig;
 use std::{ffi::OsStr, fs, path::PathBuf};
 
 #[test]
@@ -119,6 +121,7 @@ fn checkout_lists_root_and_nested_skills_alongside_marketplaces() {
 #[test]
 fn standalone_skill_copies_assets_and_requires_confirmation_for_the_current_destination() {
     let dir = temp("install");
+    let config = dir.join("config.json");
     let checkout = dir.join("checkout");
     let from = checkout.join("skills/unslop");
     fs::create_dir_all(from.join("references")).unwrap();
@@ -131,54 +134,60 @@ fn standalone_skill_copies_assets_and_requires_confirmation_for_the_current_dest
     ]);
     let found = inspect_checkout(&checkout, "https://github.com/owner/repo", &tree);
     let skill = &found.skills[0];
-    let claude = dir.join("claude-config/skills");
-    let codex = dir.join("codex/first/skills");
+    let shared = shared_skills_dir(&config).unwrap();
+    let other_config = dir.join("other/config.json");
+    let other_shared = shared_skills_dir(&other_config).unwrap();
+    let claude = dir.join("claude-config");
+    let legacy = claude.join("skills/unslop/SKILL.md");
+    fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    fs::write(&legacy, "# Bản cũ của Claude").unwrap();
     assert!(matches!(
-        install_checkout_skill(&checkout, &tree, skill, &claude, "claude", None).unwrap(),
+        install_checkout_skill(&checkout, &tree, skill, &config, None).unwrap(),
         SkillInstall::Installed
     ));
     assert_eq!(
-        fs::read(claude.join("unslop/references/Ảnh.bin")).unwrap(),
+        fs::read(shared.join("unslop/references/Ảnh.bin")).unwrap(),
         [0, 128, 255]
     );
-    assert!(!claude.join("unslop/.git").exists());
-    assert!(managed_skill_context(&claude).contains("unslop"));
+    assert!(!shared.join("unslop/.git").exists());
+    assert!(shared_skill_catalogue(&config).contains("unslop"));
+    assert_eq!(overview(&claude, &shared).shared_skills, ["unslop"]);
 
-    fs::create_dir_all(codex.join("unslop")).unwrap();
-    let current = codex.join("unslop/SKILL.md");
+    fs::create_dir_all(other_shared.join("unslop")).unwrap();
+    let current = other_shared.join("unslop/SKILL.md");
     fs::write(&current, "# Bản cũ").unwrap();
-    let SkillInstall::Conflict(claude_token) =
-        install_checkout_skill(&checkout, &tree, skill, &claude, "claude", None).unwrap()
+    let SkillInstall::Conflict(token) =
+        install_checkout_skill(&checkout, &tree, skill, &config, None).unwrap()
     else {
         panic!("expected conflict");
     };
-    let SkillInstall::Conflict(codex_token) = install_checkout_skill(
-        &checkout,
-        &tree,
-        skill,
-        &codex,
-        "codex",
-        Some(&claude_token),
-    )
-    .unwrap() else {
+    let SkillInstall::Conflict(other_token) =
+        install_checkout_skill(&checkout, &tree, skill, &other_config, Some(&token)).unwrap()
+    else {
         panic!("a confirmation from another destination must not be accepted");
     };
-    assert_ne!(codex_token, claude_token);
+    assert_ne!(other_token, token);
     assert_eq!(fs::read_to_string(&current).unwrap(), "# Bản cũ");
-    assert_eq!(fs::read_dir(&codex).unwrap().count(), 1);
+    assert_eq!(fs::read_dir(&other_shared).unwrap().count(), 1);
     assert!(matches!(
-        install_checkout_skill(&checkout, &tree, skill, &codex, "codex", Some(&codex_token))
-            .unwrap(),
+        install_checkout_skill(&checkout, &tree, skill, &other_config, Some(&other_token)).unwrap(),
         SkillInstall::Installed
     ));
     assert_eq!(fs::read_to_string(&current).unwrap(), "# Bản mới");
-    assert!(codex.join("unslop/references/Ảnh.bin").is_file());
+    assert!(other_shared.join("unslop/references/Ảnh.bin").is_file());
+
+    remove_shared_skill(&config, "unslop").unwrap();
+    assert!(overview(&claude, &shared).shared_skills.is_empty());
+    assert_eq!(fs::read_to_string(legacy).unwrap(), "# Bản cũ của Claude");
+    assert!(current.is_file());
+    assert!(remove_shared_skill(&config, "unslop").is_err());
     fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
 fn rejected_git_links_and_failed_staging_leave_the_installed_skill_intact() {
     let dir = temp("unsafe");
+    let config = dir.join("config.json");
     let checkout = dir.join("checkout");
     fs::create_dir(&checkout).unwrap();
     fs::write(checkout.join("SKILL.md"), "# Bản mới").unwrap();
@@ -194,14 +203,12 @@ fn rejected_git_links_and_failed_staging_leave_the_installed_skill_intact() {
         ("100644", "a", "SKILL.md"),
         ("120000", "b", "reference.txt"),
     ]);
-    assert!(install_checkout_skill(&checkout, &invalid, skill, &skills, "codex", None).is_err());
+    assert!(install_checkout_skill(&checkout, &invalid, skill, &config, None).is_err());
     let unsafe_path = git_tree(&[
         ("100644", "a", "SKILL.md"),
         ("100644", "b", "assets/CON.txt"),
     ]);
-    assert!(
-        install_checkout_skill(&checkout, &unsafe_path, skill, &skills, "codex", None).is_err()
-    );
+    assert!(install_checkout_skill(&checkout, &unsafe_path, skill, &config, None).is_err());
     assert!(!skills.exists());
     for path in [
         "..",
@@ -220,31 +227,102 @@ fn rejected_git_links_and_failed_staging_leave_the_installed_skill_intact() {
     let current = skills.join("repo/SKILL.md");
     fs::write(&current, "# Bản cũ").unwrap();
     let SkillInstall::Conflict(token) =
-        install_checkout_skill(&checkout, &tree, skill, &skills, "codex", None).unwrap()
+        install_checkout_skill(&checkout, &tree, skill, &config, None).unwrap()
     else {
         panic!("expected conflict");
     };
     fs::remove_file(checkout.join("SKILL.md")).unwrap();
-    assert!(
-        install_checkout_skill(&checkout, &tree, skill, &skills, "codex", Some(&token)).is_err()
-    );
+    assert!(install_checkout_skill(&checkout, &tree, skill, &config, Some(&token)).is_err());
     assert_eq!(fs::read_to_string(current).unwrap(), "# Bản cũ");
     assert_eq!(fs::read_dir(skills).unwrap().count(), 1);
     fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
-fn codex_skills_use_the_same_home_as_app_server() {
+fn legacy_codex_skills_use_the_same_home_as_app_server() {
     let dir = temp("codex-home");
     let config = dir.join("config.json");
-    let provider = crate::config::ProviderConfig {
+    let provider = ProviderConfig {
         id: "first-codex".into(),
         ..Default::default()
     };
-    let skills = crate::providers::codex_cli::managed_skills_dir(&config, &provider.id).unwrap();
+    let skills = crate::providers::codex_cli::legacy_skills_dir(&config, &provider.id).unwrap();
     assert!(!skills.parent().unwrap().exists());
     let home = crate::providers::codex::home(&config, &provider).unwrap();
     assert_eq!(skills, home.join("skills"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn shared_skill_wins_and_legacy_lookup_only_reads_configured_homes() {
+    let dir = temp("lookup");
+    let config = dir.join("config.json");
+    let providers = ["first-codex", "second-codex"].map(|id| ProviderConfig {
+        id: id.into(),
+        kind: "codex_cli".into(),
+        ..Default::default()
+    });
+    let shared = dir.join("skills");
+    let claude = dir.join("claude-config/skills");
+    let codex = dir.join("codex/second-codex/skills");
+    let unconfigured = dir.join("codex/other/skills");
+    let write = |root: &std::path::Path, content: &str| {
+        let directory = root.join("review");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("SKILL.md"), content).unwrap();
+    };
+    write(&unconfigured, "# Nguồn chưa cấu hình");
+    assert!(load_skill(&config, &providers, "review").unwrap().is_none());
+    assert!(!shared.exists());
+    assert!(!dir.join("codex/first-codex").exists());
+
+    write(&codex, "# Bản cũ của Codex");
+    let skill = load_skill(&config, &providers, "review").unwrap().unwrap();
+    assert_eq!(skill.content, "# Bản cũ của Codex");
+    assert!(skill
+        .directory
+        .ends_with("codex/second-codex/skills/review"));
+    assert!(shared_skill_catalogue(&config).is_empty());
+
+    write(&claude, "# Bản cũ của Claude");
+    let skill = load_skill(&config, &[], "review").unwrap().unwrap();
+    assert_eq!(skill.content, "# Bản cũ của Claude");
+    let Err(error) = load_skill(&config, &providers, "review") else {
+        panic!("expected ambiguous legacy skill");
+    };
+    assert!(error
+        .to_string()
+        .contains("Hãy cài bản bạn muốn dùng vào kho chung"));
+
+    write(&shared, "# Bản dùng chung");
+    let skill = load_skill(&config, &providers, "review").unwrap().unwrap();
+    assert_eq!(skill.content, "# Bản dùng chung");
+    assert_eq!(
+        fs::read_to_string(claude.join("review/SKILL.md")).unwrap(),
+        "# Bản cũ của Claude"
+    );
+    assert_eq!(
+        fs::read_to_string(codex.join("review/SKILL.md")).unwrap(),
+        "# Bản cũ của Codex"
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn skill_lookup_rejects_invalid_names_non_files_and_oversized_markdown() {
+    let dir = temp("invalid-lookup");
+    let config = dir.join("config.json");
+    let file = dir.join("skills/review/SKILL.md");
+    assert!(load_skill(&config, &[], "../review").unwrap().is_none());
+    assert!(remove_shared_skill(&config, "../review").is_err());
+    fs::create_dir_all(&file).unwrap();
+    assert!(load_skill(&config, &[], "review").is_err());
+    fs::remove_dir(&file).unwrap();
+    fs::write(&file, vec![b'x'; 64 * 1024 + 1]).unwrap();
+    let Err(error) = load_skill(&config, &[], "review") else {
+        panic!("expected size limit");
+    };
+    assert!(error.to_string().contains("64 KiB"));
     fs::remove_dir_all(dir).unwrap();
 }
 

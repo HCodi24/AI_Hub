@@ -676,15 +676,15 @@ mod switch_source_tests {
     #[test]
     fn a_thread_over_the_budget_is_dropped_and_zero_turns_it_off() {
         let mut chat = record();
-        chat.worker_sessions.insert("luna".into(), "w".into());
+        chat.worker_sessions.insert("w1".into(), "w".into());
         chat.thread_tokens.insert("main".into(), 160_000);
-        chat.thread_tokens.insert("worker:luna".into(), 90_000);
+        chat.thread_tokens.insert("worker:w1".into(), 90_000);
         assert!(chat.rotate_big_threads(0).is_empty(), "0 = off");
         assert_eq!(chat.session_id.as_deref(), Some("claude-session"));
         assert_eq!(chat.rotate_big_threads(150_000), vec![("main".to_owned(), 160_000)]);
         assert_eq!(chat.session_id, None);
-        assert!(chat.worker_sessions.contains_key("luna"), "under the budget: kept");
-        assert_eq!(chat.rotate_big_threads(50_000), vec![("worker:luna".to_owned(), 90_000)]);
+        assert!(chat.worker_sessions.contains_key("w1"), "under the budget: kept");
+        assert_eq!(chat.rotate_big_threads(50_000), vec![("worker:w1".to_owned(), 90_000)]);
         assert!(chat.worker_sessions.is_empty());
         assert!(chat.thread_tokens.is_empty());
     }

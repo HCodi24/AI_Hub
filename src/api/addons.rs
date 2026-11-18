@@ -13,7 +13,7 @@ use std::{ffi::OsString, path::PathBuf, process::Stdio, time::Duration};
 
 #[derive(Deserialize)]
 pub(crate) struct Change {
-    /// "claude" (AI Hub's Claude Code) or "codex" (AI Hub's Codex).
+    /// "claude" | "codex" | "mutis".
     target: String,
     /// "plugin" | "skill" | "mcp".
     kind: String,
@@ -35,17 +35,19 @@ fn hub_dir() -> ApiResult<PathBuf> {
     })
 }
 
-pub(crate) async fn overview() -> ApiResult<Json<addons::Overview>> {
-    let dir = hub_dir()?;
-    tokio::task::spawn_blocking(move || addons::overview(&dir))
+pub(crate) async fn overview(State(state): State<AppState>) -> ApiResult<Json<addons::Overview>> {
+    let error = || {
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Không đọc được danh sách plugin và skill",
+        )
+    };
+    let dir = cli_support::claude_config_dir(&state.config_path).map_err(|_| error())?;
+    let skills_dir = addons::shared_skills_dir(&state.config_path).map_err(|_| error())?;
+    tokio::task::spawn_blocking(move || addons::overview(&dir, &skills_dir))
         .await
         .map(Json)
-        .map_err(|_| {
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Không đọc được danh sách plugin",
-            )
-        })
+        .map_err(|_| error())
 }
 
 /// The CLI configured for the first source of `kind`, or one found on the machine.
@@ -126,6 +128,15 @@ pub(crate) async fn change(
     };
     let name = input.name.as_str();
     let output = match (input.target.as_str(), input.kind.as_str()) {
+        ("mutis", "skill") if !add => {
+            let config_path = state.config_path.clone();
+            let name = name.to_owned();
+            tokio::task::spawn_blocking(move || addons::remove_shared_skill(&config_path, &name))
+                .await
+                .map_err(|_| bad("Không xử lý được skill"))?
+                .map_err(|error| bad(format!("{error:#}")))?;
+            String::new()
+        }
         ("claude", "skill") => {
             let hub = hub_dir()?;
             let personal = addons::personal_claude_dir()
@@ -147,8 +158,7 @@ pub(crate) async fn change(
             let claude = executable(&state, "claude_cli", "claude").await?;
             if add {
                 // The plugin's marketplace must be known to AI Hub's Claude first; it is the one the user installed from.
-                let hub = hub_dir()?;
-                let personal = tokio::task::spawn_blocking(move || addons::overview(&hub).personal)
+                let personal = tokio::task::spawn_blocking(addons::personal_claude_home)
                     .await
                     .map_err(|_| bad("Không đọc được Claude Code của bạn"))?;
                 let source = personal
@@ -477,7 +487,6 @@ pub(crate) async fn install_link(
 pub(crate) struct LinkSkillInstall {
     link: String,
     skill_id: String,
-    target: String,
     confirmation: Option<String>,
 }
 
@@ -488,25 +497,6 @@ pub(crate) async fn install_link_skill(
     if input.skill_id.len() != 64 || !input.skill_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(bad("Mã skill không hợp lệ. Hãy kiểm tra lại liên kết."));
     }
-    let (target, label, skills_dir) = match input.target.as_str() {
-        "claude" => (
-            "claude",
-            "Claude",
-            cli_support::claude_config_dir(&state.config_path)
-                .map_err(|error| bad(error.to_string()))?
-                .join("skills"),
-        ),
-        "codex" => {
-            let provider = codex_provider(&state).await.map_err(|_| {
-                bad("MutiS chưa có nguồn Codex. Hãy thêm nguồn trong Cài đặt › Nguồn AI.")
-            })?;
-            let skills_dir =
-                crate::providers::codex_cli::managed_skills_dir(&state.config_path, &provider.id)
-                    .map_err(|error| bad(error.to_string()))?;
-            ("codex", "Codex", skills_dir)
-        }
-        _ => return Err(bad("Chỉ cài được cho Claude hoặc Codex")),
-    };
     let Checkout {
         dir, found, tree, ..
     } = checkout(&input.link).await?;
@@ -518,15 +508,9 @@ pub(crate) async fn install_link_skill(
     let name = skill.name.clone();
     let confirmation = input.confirmation;
     let skill_id = skill.id.clone();
+    let config_path = state.config_path.clone();
     let result = tokio::task::spawn_blocking(move || {
-        addons::install_checkout_skill(
-            &dir.0,
-            &tree,
-            &skill,
-            &skills_dir,
-            target,
-            confirmation.as_deref(),
-        )
+        addons::install_checkout_skill(&dir.0, &tree, &skill, &config_path, confirmation.as_deref())
     })
     .await
     .map_err(|_| bad("Không xử lý được skill"))?
@@ -534,12 +518,12 @@ pub(crate) async fn install_link_skill(
     Ok(Json(match result {
         addons::SkillInstall::Installed => json!({
             "ok": true,
-            "output": format!("Đã cài skill «{name}» cho {label} trong MutiS. Bạn có thể dùng skill trong phiên mới."),
+            "output": format!("Đã cài skill «{name}» vào kho chung của MutiS. Gõ /{name} ở đầu tin nhắn để dùng."),
         }),
         addons::SkillInstall::Conflict(confirmation) => json!({
             "ok": false,
-            "output": format!("{label} trong MutiS đã có mục «{name}». Cần xác nhận để thay thế."),
-            "conflict": { "skill_id": skill_id, "target": target, "confirmation": confirmation },
+            "output": format!("Kho chung của MutiS đã có skill «{name}». Cần xác nhận để thay thế."),
+            "conflict": { "skill_id": skill_id, "confirmation": confirmation },
         }),
     }))
 }

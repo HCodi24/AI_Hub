@@ -6,7 +6,7 @@
 use super::schedule::{check_text, limit, parse_check, route, run_round, Actor, Backend, CheckResult, Row};
 use super::{for_kind, ProviderEvent, ProviderRequest};
 use crate::chat::{ChatMessage, Effort, Permission};
-use crate::config::{MutisConfig, ProviderConfig};
+use crate::config::{McpServerConfig, MutisConfig, ProviderConfig};
 use crate::core::rule::mutis_checker;
 use crate::core::text::truncate_chars;
 use anyhow::{anyhow, Result};
@@ -34,10 +34,10 @@ pub struct Delegation {
     /// Titles of tasks whose result this one needs; it starts only after they passed their check. Independent tasks start at once.
     #[serde(default)]
     pub depends_on: Vec<String>,
-    /// The coordinator marks a task it expects to be too hard for DeepSeek: Luna 2 codes it, Luna checks it.
+    /// The coordinator marks a task it expects to be too hard for DeepSeek: Tester 2 codes it, Tester checks it.
     #[serde(default)]
     pub hard: bool,
-    /// The coordinator marks a tiny low-risk change (a few lines of styling or text): Luna does not check it, the coordinator reads the diff.
+    /// The coordinator marks a tiny low-risk change (a few lines of styling or text): Tester does not check it, the coordinator reads the diff.
     #[serde(default)]
     pub trivial: bool,
 }
@@ -66,7 +66,7 @@ fn is_ui_file(path: &str) -> bool {
     path.rsplit_once('.').is_some_and(|(_, ext)| UI.iter().any(|ui| ext.eq_ignore_ascii_case(ui)))
 }
 
-/// With the "DeepSeek may do UI" switch off, a task with UI files never runs on DeepSeek: it becomes `hard` (Luna 2) when
+/// With the "DeepSeek may do UI" switch off, a task with UI files never runs on DeepSeek: it becomes `hard` (Tester 2) when
 /// the ladder exists, otherwise it goes back to the coordinator. Returns the tasks to run, notes for the coordinator and chat log lines.
 fn guard_ui(tasks: Vec<Delegation>, ui_allowed: bool, escalate: bool) -> (Vec<Delegation>, Vec<String>, Vec<String>) {
     if ui_allowed {
@@ -229,7 +229,7 @@ fn check_id(task: &Delegation, attempt: usize) -> String {
     format!("{}#{}", task.title.trim().to_lowercase(), attempt)
 }
 
-/// A live checker card event: shown beside the conversation while Luna runs, never appended to a chat message.
+/// A live checker card event: shown beside the conversation while Tester runs, never appended to a chat message.
 fn checker_activity(id: &str, phase: &str, task: &Delegation, attempt: usize, model: &str, text: &str) -> ProviderEvent {
     ProviderEvent {
         name: "checker_activity",
@@ -282,36 +282,60 @@ struct Live {
     worker_session: String,
     /// The checker's own Codex thread: resumed for every check, kept in the chat record between messages.
     checker_session: Mutex<Option<String>>,
-    /// Luna 2's Codex thread; shared by its coding and its checks within this reply (not kept between messages).
-    luna2_session: Mutex<Option<String>>,
-    /// A Codex thread runs one turn at a time: Luna may be fixing one task while it should check another.
-    luna_busy: tokio::sync::Mutex<()>,
-    luna2_busy: tokio::sync::Mutex<()>,
-    /// The checker's last "Token:" log line, held until `announce_check` shows it in the Luna turn.
+    /// Tester 2's Codex thread; shared by its coding and its checks within this reply (not kept between messages).
+    tester2_session: Mutex<Option<String>>,
+    /// A Codex thread runs one turn at a time: Tester may be fixing one task while it should check another.
+    tester_busy: tokio::sync::Mutex<()>,
+    tester2_busy: tokio::sync::Mutex<()>,
+    /// The checker's last "Token:" log line, held until `announce_check` shows it in the Tester turn.
     checker_tokens: Mutex<Option<String>>,
     /// Whether the coordinator may edit files, i.e. can take a task over when the attempts run out.
     can_edit: bool,
     /// The chat's permission: the coordinator and the checker run with it.
     permission: Permission,
+    /// CodeGraph's MCP server as the lead got it (indexed project, option on); None = no role gets it.
+    codegraph: Option<McpServerConfig>,
 }
 
-const LUNA_WORK_NOTE: &str = "\nYou work directly in the project folder: after editing you may run the project's own tests and checks. Edit only what the task needs.";
+/// Said to every role that gets the CodeGraph tool, so it searches the index before reading files one by one.
+const CODEGRAPH_NOTE: &str = "\nThe codegraph MCP tool is attached: use codegraph_explore to find and read code before opening files one by one.";
+
+fn cli_mcp(codegraph: Option<&McpServerConfig>, kind: &str) -> Vec<McpServerConfig> {
+    if matches!(kind, "codex_cli" | "claude_cli") { codegraph.cloned().into_iter().collect() } else { Vec::new() }
+}
+
+const TESTER_WORK_NOTE: &str = concat!(
+    "
+You work directly in the project folder. Edit only what the task needs. ",
+    "After editing run only quick checks of the files you changed (format check, lint, type check). ",
+    "Do not set up a build environment, and do not run end-to-end tests or the whole project check: a separate checker does that."
+);
 
 impl Live {
+    /// The tools of one delegated role: only the CLI sources can call an MCP server, and none of them gets the lead's own servers.
+    fn mcp_for(&self, kind: &str) -> Vec<McpServerConfig> {
+        cli_mcp(self.codegraph.as_ref(), kind)
+    }
+
+    /// The prompt of a CLI role, with the CodeGraph hint when the tool is attached.
+    fn with_codegraph_note(&self, prompt: String, mcp: &[McpServerConfig]) -> String {
+        if mcp.is_empty() { prompt } else { prompt + CODEGRAPH_NOTE }
+    }
+
     fn session_of(&self, who: Actor) -> &Mutex<Option<String>> {
-        if who == Actor::Luna2 { &self.luna2_session } else { &self.checker_session }
+        if who == Actor::Tester2 { &self.tester2_session } else { &self.checker_session }
     }
 
     fn busy_of(&self, who: Actor) -> &tokio::sync::Mutex<()> {
-        if who == Actor::Luna2 { &self.luna2_busy } else { &self.luna_busy }
+        if who == Actor::Tester2 { &self.tester2_busy } else { &self.tester_busy }
     }
 
-    /// Luna (fixing after two DeepSeek failures) or Luna 2 (a hard task) edits the project itself, in its own Codex thread.
-    async fn work_luna(&self, who: Actor, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult {
+    /// Tester (fixing after two DeepSeek failures) or Tester 2 (a hard task) edits the project itself, in its own Codex thread.
+    async fn work_tester(&self, who: Actor, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult {
         let events = &self.events;
         let mut result = WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
         let Some((provider, model, effort)) = self.checker.clone() else {
-            result.error = Some("no Luna is configured".into());
+            result.error = Some("no checker is configured".into());
             return result;
         };
         let _turn = self.busy_of(who).lock().await;
@@ -321,17 +345,18 @@ impl Live {
         }
         let max = limit(task.hard, self.can_escalate());
         let _ = events.send(ProviderEvent::text("log", format!("Giao {}: {} (lần {attempt}/{max})", who.name(), task.title.trim()))).await;
-        let effort = if who == Actor::Luna2 { Effort::Max } else { effort };
+        let effort = if who == Actor::Tester2 { Effort::Max } else { effort };
+        let mcp = self.mcp_for("codex_cli");
         let request = ProviderRequest {
             provider, model, folder: self.folder.clone(), permission: self.permission, effort,
-            messages: vec![message("user", worker_prompt(&self.mutis, task, "", feedback) + LUNA_WORK_NOTE)],
-            session_id: self.session_of(who).lock().unwrap().clone(), mutis: self.mutis.clone(), mcp: Vec::new(),
-            // shortcut: no write scope for Luna (Codex cannot be scoped); the checker judges the diff instead.
+            messages: vec![message("user", self.with_codegraph_note(worker_prompt(&self.mutis, task, "", feedback) + TESTER_WORK_NOTE, &mcp))],
+            session_id: self.session_of(who).lock().unwrap().clone(), mutis: self.mutis.clone(), mcp,
+            // shortcut: no write scope for Tester (Codex cannot be scoped); the checker judges the diff instead.
             write_scope: Vec::new(), checker_session_id: None,
         };
         let result = self.run_cli("codex_cli", request, who.name(), self.session_of(who), None).await;
-        // Luna's thread is kept in the chat record; Luna 2's lives only in this reply.
-        let kept = if who == Actor::Luna { self.checker_session.lock().unwrap().clone() } else { None };
+        // Tester's thread is kept in the chat record; Tester 2's lives only in this reply.
+        let kept = if who == Actor::Tester { self.checker_session.lock().unwrap().clone() } else { None };
         if let Some(id) = kept {
             let _ = events.send(ProviderEvent { name: "checker_session", data: serde_json::json!({ "session_id": id }) }).await;
         }
@@ -351,14 +376,14 @@ impl Live {
     /// The task board adds the exact model after it.
     fn worker_label(&self) -> String {
         match self.worker.kind.as_str() {
-            _ if self.worker_is_deepseek() => Actor::DeepSeek.name().to_owned(),
+            _ if self.worker_is_deepseek() => Actor::Worker.name().to_owned(),
             "codex_cli" => "Codex".to_owned(),
             "claude_cli" => "Claude".to_owned(),
             _ => self.worker.name.clone(),
         }
     }
 
-    /// The worker is a CLI source (for example Codex Luna): it edits the project in its own thread, like Luna does when it takes a task over.
+    /// The worker is a CLI source (for example Codex Tester): it edits the project in its own thread, like Tester does when it takes a task over.
     async fn work_cli(&self, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult {
         let label = self.worker_label();
         let events = &self.events;
@@ -368,10 +393,11 @@ impl Live {
         }
         let max = limit(task.hard, self.can_escalate());
         let _ = events.send(ProviderEvent::text("log", format!("Giao {label}: {} (lần {attempt}/{max})", task.title.trim()))).await;
+        let mcp = self.mcp_for(&self.worker.kind);
         let request = ProviderRequest {
             provider: self.worker.clone(), model: self.model.clone(), folder: self.folder.clone(), permission: Permission::Write, effort: self.effort,
-            messages: vec![message("user", worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback) + LUNA_WORK_NOTE)],
-            session_id: self.worker_cli_session.lock().unwrap().clone(), mutis: self.mutis.clone(), mcp: Vec::new(),
+            messages: vec![message("user", self.with_codegraph_note(worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback) + TESTER_WORK_NOTE, &mcp))],
+            session_id: self.worker_cli_session.lock().unwrap().clone(), mutis: self.mutis.clone(), mcp,
             // shortcut: a CLI cannot be scoped to files; the checker judges the diff instead.
             write_scope: Vec::new(), checker_session_id: None,
         };
@@ -454,8 +480,8 @@ impl Live {
 impl Backend for Live {
     async fn work(&self, task: &Delegation, attempt: usize, feedback: Option<&str>) -> WorkerResult {
         let who = route(task.hard, attempt, self.can_escalate()).0;
-        if who != Actor::DeepSeek {
-            return self.work_luna(who, task, attempt, feedback).await;
+        if who != Actor::Worker {
+            return self.work_tester(who, task, attempt, feedback).await;
         }
         if self.worker_is_cli() {
             return self.work_cli(task, attempt, feedback).await;
@@ -539,20 +565,21 @@ impl Backend for Live {
     async fn check(&self, task: &Delegation, attempt: usize, work: &WorkerResult) -> CheckResult {
         let Some((provider, model, effort)) = self.checker.clone() else { return CheckResult::unclear("no checker is configured") };
         let who = route(task.hard, attempt, self.can_escalate()).1;
-        let effort = if who == Actor::Luna2 { Effort::Max } else { effort };
+        let effort = if who == Actor::Tester2 { Effort::Max } else { effort };
         let id = check_id(task, attempt);
-        // The live card appears before the checker provider starts, so Luna is visible while it runs.
+        // The live card appears before the checker provider starts, so Tester is visible while it runs.
         let _ = self.events.send(checker_activity(&id, "start", task, attempt, &model, "")).await;
         let _turn = self.busy_of(who).lock().await;
         let session = self.session_of(who).lock().unwrap().clone();
         let folder = std::path::Path::new(&self.folder);
         let custom = crate::verify::command_for(&self.mutis, folder);
         let commands = if custom.trim().is_empty() { crate::verify::detected_commands(folder).into_iter().map(|(_, command)| command).collect() } else { vec![custom] };
+        let mcp = self.mcp_for("codex_cli");
         let request = ProviderRequest {
             // The checker has the permission the user chose for the chat (Full lets it run the tests); the prompt forbids editing.
             provider, model: model.clone(), folder: self.folder.clone(), permission: self.permission, effort,
-            messages: vec![message("user", mutis_checker::prompt(&task.title, &task.files, &task.acceptance, &work.summary, &work.diff, &commands))],
-            session_id: session, mutis: self.mutis.clone(), mcp: Vec::new(), write_scope: Vec::new(), checker_session_id: None,
+            messages: vec![message("user", self.with_codegraph_note(mutis_checker::prompt(&task.title, &task.files, &task.acceptance, &work.summary, &work.diff, &commands), &mcp))],
+            session_id: session, mutis: self.mutis.clone(), mcp, write_scope: Vec::new(), checker_session_id: None,
         };
         let inner = match for_kind("codex_cli") {
             Ok(inner) => inner,
@@ -576,7 +603,7 @@ impl Backend for Live {
                 }
                 "log" => {
                     let line = event.data["text"].as_str().unwrap_or("");
-                    // Keep only the token line so Luna's usage reaches the token table; it is forwarded once by `announce_check`.
+                    // Keep only the token line so Tester's usage reaches the token table; it is forwarded once by `announce_check`.
                     if is_token_line(line) {
                         *self.checker_tokens.lock().unwrap() = Some(line.to_owned());
                     } else if let Some(progress) = checker_progress(line) {
@@ -619,8 +646,8 @@ impl Backend for Live {
             self.cancel.cancel();
             return;
         }
-        // Only Luna's thread is kept in the chat record; Luna 2's lives only in this reply.
-        let session = if who == Actor::Luna { self.checker_session.lock().unwrap().clone() } else { None };
+        // Only Tester's thread is kept in the chat record; Tester 2's lives only in this reply.
+        let session = if who == Actor::Tester { self.checker_session.lock().unwrap().clone() } else { None };
         if let Some(id) = session {
             let _ = self.events.send(ProviderEvent { name: "checker_session", data: serde_json::json!({ "session_id": id }) }).await;
         }
@@ -643,13 +670,13 @@ impl Backend for Live {
     }
 
     fn actor_name(&self, actor: Actor) -> String {
-        if actor == Actor::DeepSeek { self.worker_label() } else { actor.name().to_owned() }
+        if actor == Actor::Worker { self.worker_label() } else { actor.name().to_owned() }
     }
 
     fn actor_model(&self, actor: Actor) -> Option<String> {
         match actor {
-            Actor::DeepSeek => Some(self.model.clone()),
-            Actor::Luna | Actor::Luna2 => self.checker.as_ref().map(|(_, model, _)| model.clone()),
+            Actor::Worker => Some(self.model.clone()),
+            Actor::Tester | Actor::Tester2 => self.checker.as_ref().map(|(_, model, _)| model.clone()),
         }
     }
 
@@ -723,10 +750,11 @@ impl super::Provider for DelegateProvider {
             events: events.clone(), cancel: cancel.clone(), checker: self.checker.clone(),
             worker_session: format!("{}{}:{}:{}", super::worker_session::PREFIX, self.chat_id, self.worker.id, self.model),
             checker_session: Mutex::new(request.checker_session_id.clone()),
-            luna2_session: Mutex::new(None), luna_busy: Default::default(), luna2_busy: Default::default(),
+            tester2_session: Mutex::new(None), tester_busy: Default::default(), tester2_busy: Default::default(),
             checker_tokens: Mutex::new(None),
             can_edit: request.permission != Permission::Read,
             permission: request.permission,
+            codegraph: request.mcp.iter().find(|server| server.name == "codegraph").cloned(),
         });
         let mut attempts: HashMap<String, usize> = HashMap::new();
         let mut note = self.checker_note.clone();
@@ -784,7 +812,7 @@ mod tests {
     fn worker_token_lines_stay_unprefixed_so_the_token_table_counts_them() {
         assert_eq!(worker_log("Token: vào 10 (cache 2), ra 3 (suy luận 0)", "DeepSeek"), "Token: vào 10 (cache 2), ra 3 (suy luận 0)");
         assert_eq!(worker_log("Sửa a.rs", "DeepSeek"), "DeepSeek: Sửa a.rs");
-        assert_eq!(worker_log("Sửa a.rs", "Luna"), "Luna: Sửa a.rs");
+        assert_eq!(worker_log("Sửa a.rs", "Tester"), "Tester: Sửa a.rs");
         assert!(is_token_line("Token: vào 1, ra 2") && !is_token_line("DeepSeek: Token: vào 1, ra 2"));
         assert_eq!(input_tokens("Token: vào 147202 (cache 145408), ra 2478"), Some(147202));
         assert_eq!(input_tokens("Codex: Command: x"), None);
@@ -802,7 +830,7 @@ mod tests {
         let (kept, notes, logs) = guard_ui(tasks(), true, true);
         assert_eq!((kept.len(), notes.len(), logs.len()), (3, 0, 0));
         assert!(kept.iter().all(|t| !t.hard));
-        // Off with a ladder: the UI task becomes hard (Luna 2); the others stay on DeepSeek.
+        // Off with a ladder: the UI task becomes hard (Tester 2); the others stay on DeepSeek.
         let (kept, notes, logs) = guard_ui(tasks(), false, true);
         assert_eq!(kept.iter().map(|t| (t.title.as_str(), t.hard)).collect::<Vec<_>>(), [("logic", false), ("layout", true), ("after", false)]);
         assert!(notes.is_empty() && logs.len() == 1);
@@ -841,9 +869,9 @@ mod tests {
     fn report_headings_are_vietnamese_and_keep_the_evidence() {
         let task = Delegation { title: "Sửa đăng nhập".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
         let edited = WorkerResult { summary: "đã sửa".into(), diff: "+ let a = 1;".into(), error: None, refused: Vec::new() };
-        let text = report(&task, "Luna 2", 1, 3, 2, &edited);
+        let text = report(&task, "Tester 2", 1, 3, 2, &edited);
         // App-generated headings are Vietnamese.
-        assert!(text.contains("Báo cáo của worker Luna 2"), "{text}");
+        assert!(text.contains("Báo cáo của worker Tester 2"), "{text}");
         assert!(text.contains("Trạng thái: đã xong") && text.contains("Các file đã đổi: có, diff:"));
         assert!(text.contains("Tóm tắt của worker:") && text.contains("Ứng dụng đã tự chạy lại worker 2 lần"));
         // Identifiers, the attempt counter and the evidence stay verbatim.
@@ -877,6 +905,16 @@ mod tests {
         assert!(ok(&["web/a.ts", "web/new.ts"]));
         assert!(!ok(&["nope/new.ts"]) && !ok(&["../x.ts"]) && !ok(&["C:/x.ts"]) && !ok(&[]));
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_cli_roles_get_the_codegraph_tool_and_only_when_the_lead_has_it() {
+        let server = McpServerConfig { name: "codegraph".into(), command: "codegraph".into(), args: vec![], env: Default::default(), enabled: true };
+        for kind in ["codex_cli", "claude_cli"] {
+            assert_eq!(cli_mcp(Some(&server), kind).len(), 1);
+            assert!(cli_mcp(None, kind).is_empty(), "no index or option off: no tool");
+        }
+        assert!(cli_mcp(Some(&server), "openai_compat").is_empty(), "an API worker cannot call MCP");
     }
 
     #[test]
@@ -933,7 +971,7 @@ mod tests {
     }
 
     #[test]
-    fn checker_activity_carries_luna_identity_and_never_a_chat_turn() {
+    fn checker_activity_carries_tester_identity_and_never_a_chat_turn() {
         let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
         let event = checker_activity("a#1", "start", &task, 1, "gpt-5-codex", "");
         assert_eq!(event.name, "checker_activity");

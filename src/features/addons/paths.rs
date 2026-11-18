@@ -18,7 +18,7 @@ pub fn valid_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '@'))
 }
 
-pub(super) fn valid_skill_name(name: &str) -> bool {
+pub(crate) fn valid_skill_name(name: &str) -> bool {
     valid_name(name) && !name.eq_ignore_ascii_case("synced") && safe_component(OsStr::new(name))
 }
 

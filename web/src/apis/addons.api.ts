@@ -5,7 +5,7 @@ import {
 } from "@/schema/addons.schema";
 export const addonsApi = {
   async overview(signal?: AbortSignal) { return parseResponse(AddonsSchema, await http.get("/addons", signal)); },
-  /** Copies one add-on from the user's own Claude Code (or removes it). Plugin installs can take a minute. */
+  /** Copies or removes a CLI add-on, or removes a shared skill. */
   async change(body: AddonChange) {
     return parseResponse(AddonChangeResultSchema, await (await http.request("/addons", { method: "POST", body: JSON.stringify(body) })).json());
   },
@@ -17,8 +17,8 @@ export const addonsApi = {
   async installLink(body: { link: string; targets: LinkTarget[]; plugins: string[] }) {
     return parseResponse(AddonChangeResultSchema, await (await http.request("/addons/link/install", { method: "POST", body: JSON.stringify(body) })).json());
   },
-  async installLinkSkill(body: LinkSkillInstall) {
-    const response = await http.request("/addons/link/install-skill", { method: "POST", body: JSON.stringify(body) });
+  async installLinkSkill({ link, skill_id, confirmation }: LinkSkillInstall) {
+    const response = await http.request("/addons/link/install-skill", { method: "POST", body: JSON.stringify({ link, skill_id, confirmation }) });
     return parseResponse(LinkSkillInstallResultSchema, await response.json());
   },
 };

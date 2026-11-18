@@ -4,7 +4,7 @@ import { ChatActivity } from "./chat-activity";
 import { useChatStore, type LiveChecker } from "./chat-store";
 import styles from "./chat-message.module.css";
 
-/** Vietnamese wording of the live Luna cards (kept local: the shared chat text has no live-checker strings). */
+/** Vietnamese wording of the live Tester cards (kept local: the shared chat text has no live-checker strings). */
 const text = {
   title: "Đang kiểm tra",
   stopped: "Đã dừng",
@@ -16,7 +16,7 @@ function CheckerCard({ card }: { card: LiveChecker }) {
   const state = card.state === "running" ? "working" : card.state === "failed" ? "failed" : "idle";
   return <article className={styles.message} data-streaming={card.state === "running"} data-checker-id={card.id}>
     <div className={styles.identity}>
-      {/* Luna is a Codex source: it wears the pet chosen for its model. */}
+      {/* Tester is a Codex source: it wears the pet chosen for its model. */}
       <PetAvatar provider="codex_cli" model={card.model} state={state} />
       <strong>{card.provider_name || "Người kiểm tra"}</strong>
       <span className={styles.petStatus} data-state={state} role="status">
@@ -30,14 +30,14 @@ function CheckerCard({ card }: { card: LiveChecker }) {
   </article>;
 }
 
-/** Live Luna checks shown beside the conversation, outside the collapsed Activity list of any message. */
-export function LunaActivityView({ checkers }: { checkers: LiveChecker[] }) {
+/** Live Tester checks shown beside the conversation, outside the collapsed Activity list of any message. */
+export function TesterActivityView({ checkers }: { checkers: LiveChecker[] }) {
   if (!checkers.length) return null;
   return <section aria-label={text.title} aria-live="polite">
     {checkers.map(card => <CheckerCard key={card.id} card={card} />)}
   </section>;
 }
 
-export function LunaActivity() {
-  return <LunaActivityView checkers={useChatStore(state => state.checkers)} />;
+export function TesterActivity() {
+  return <TesterActivityView checkers={useChatStore(state => state.checkers)} />;
 }

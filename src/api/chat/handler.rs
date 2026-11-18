@@ -1,4 +1,4 @@
-use super::{request, run::Run};
+use super::{request, run::Run, skills};
 use crate::{
     api::{ApiError, ApiResult},
     app::{AppState, JobGuard, RunningChat},
@@ -190,6 +190,20 @@ pub(crate) async fn chat_handler(
         // A message with images stays a plain chat: the tool loop sends text only.
         provider_config.kind = "mcp_agent".into();
     }
+    let dev_preamble = dev_chat.then(|| crate::api::dev::dev_chat_preamble(&folder));
+    let latest = &request
+        .messages
+        .last()
+        .expect("validated user message")
+        .content;
+    // Older dev chats stored the preamble in the first user message.
+    let user_content = dev_preamble
+        .as_deref()
+        .and_then(|preamble| latest.strip_prefix(preamble)?.strip_prefix("\n\n"))
+        .unwrap_or(latest);
+    let expanded_message =
+        skills::expand_message(&state, user_content, &provider_config.kind).await?;
+
     let mutis_config = state.config.read().await.mutis.clone();
     // MutiS High + Codex: the app runs the delegated worker for Codex (see providers::delegate). Any source that is
     // active in Settings › Nguồn AI can be the worker, whatever its kind (API key or CLI).
@@ -257,7 +271,7 @@ pub(crate) async fn chat_handler(
                     )
                 })
             });
-        let note = found.is_none().then(|| "Luna chưa chạy: vào Cài đặt › MutiS › Mức High, mục «Người kiểm tra», chọn nguồn Codex CLI và model.".to_owned());
+        let note = found.is_none().then(|| "Người kiểm tra chưa chạy: vào Cài đặt › MutiS › Mức High, mục «Người kiểm tra», chọn nguồn Codex CLI và model.".to_owned());
         (found, note)
     } else {
         (None, None)
@@ -345,18 +359,6 @@ pub(crate) async fn chat_handler(
             Ok(saved)
         })
         .collect::<ApiResult<Vec<_>>>()?;
-    if dev_chat {
-        let preamble = crate::api::dev::dev_chat_preamble(&folder);
-        if let Some(first) = record
-            .messages
-            .iter_mut()
-            .find(|message| message.role == "user")
-        {
-            if !first.content.starts_with(&preamble) {
-                first.content = format!("{preamble}\n\n{}", first.content);
-            }
-        }
-    }
     record.messages.push(ChatMessage {
         debate_id: None,
         plan_id: None,
@@ -446,6 +448,22 @@ pub(crate) async fn chat_handler(
         write_scope: Vec::new(),
         checker_session_id: record.checker_session_id.clone(),
     };
+    if let Some(content) = expanded_message {
+        if let Some(message) = provider_request.messages.last_mut() {
+            message.content = content;
+        }
+    }
+    if let Some(preamble) = dev_preamble {
+        if let Some(first) = provider_request
+            .messages
+            .iter_mut()
+            .find(|message| message.role == "user")
+        {
+            if !first.content.starts_with(&preamble) {
+                first.content = format!("{preamble}\n\n{}", first.content);
+            }
+        }
+    }
     if memory_config.enabled {
         crate::features::memory::inject(&mut provider_request, &memory_context);
     }
