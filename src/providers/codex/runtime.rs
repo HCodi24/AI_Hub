@@ -127,7 +127,11 @@ impl Provider for CodexProvider {
                     }
                     "thread/tokenUsage/updated" => {
                         let usage = &params["tokenUsage"]["last"];
-                        crate::providers::emit_text(&events,"log",format!("Token: vào {}, ra {}",usage["inputTokens"],usage["outputTokens"])).await?;
+                        crate::providers::emit_text(&events,"log",format!("Token: vào {} (cache {}), ra {}",usage["inputTokens"],usage["cachedInputTokens"].as_u64().unwrap_or(0),usage["outputTokens"])).await?;
+                        // The last model call read the whole thread, so its input is the thread's current size.
+                        if let Some(tokens) = usage["inputTokens"].as_u64() {
+                            crate::providers::emit_text(&events,"thread_tokens",tokens.to_string()).await?;
+                        }
                     }
                     "turn/completed" => {
                         if params["turn"]["status"] == "failed" { bail!("Codex không hoàn thành được yêu cầu; kiểm tra tài khoản, model và kết nối"); }

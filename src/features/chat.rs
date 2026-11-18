@@ -100,6 +100,16 @@ pub struct ChatRecord {
     /// MutiS High: the independent checker (Codex) keeps its own thread, resumed for every check instead of started anew.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checker_session_id: Option<String>,
+    /// MutiS delegation: the CLI worker's own thread per worker source id, so the next message resumes what it just did.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub worker_sessions: std::collections::BTreeMap<String, String>,
+    /// The effort the user picked at the MutiS source (max/xhigh = three AIs, else High). None = a single model, not MutiS.
+    /// `provider_id` above is the lead MutiS resolved to, so this is what tells the two modes apart when the chat is reopened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutis_level: Option<String>,
+    /// Input tokens of the last turn of each CLI thread of this chat (`main`, `worker:<source id>`), to rotate a thread that grew too big.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub thread_tokens: std::collections::BTreeMap<String, u64>,
     /// CLI sessions of the sources this chat left, so switching back resumes them instead of starting over.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub sessions: std::collections::BTreeMap<String, String>,
@@ -246,13 +256,55 @@ impl ChatStore {
     }
 }
 
+/// Key of a CLI thread in `ChatRecord::sessions`: the source, and whether it ran as the lead of MutiS. The same Codex as a
+/// lead and on its own are two threads: the lead's carries the delegation rules, which a single model must not inherit.
+pub fn thread_key(provider_id: &str, mutis: bool) -> String {
+    if mutis {
+        format!("{provider_id}#mutis")
+    } else {
+        provider_id.to_owned()
+    }
+}
+
 impl ChatRecord {
-    /// The user picked another source: park this source's CLI session and resume the new source's earlier one, if any.
-    pub fn switch_source(&mut self, new_provider_id: &str) {
+    /// The thread this chat's `session_id` belongs to.
+    pub fn thread_key(&self) -> String {
+        thread_key(&self.provider_id, self.mutis_level.is_some())
+    }
+
+    /// The user picked another source or mode: park this thread's CLI session and resume the earlier one of `new_key`, if any.
+    pub fn switch_source(&mut self, new_key: &str) {
         if let Some(current) = self.session_id.take() {
-            self.sessions.insert(self.provider_id.clone(), current);
+            self.sessions.insert(self.thread_key(), current);
         }
-        self.session_id = self.sessions.remove(new_provider_id);
+        self.session_id = self.sessions.remove(new_key);
+        self.thread_tokens.remove("main");
+    }
+
+    /// Drops every CLI thread whose last turn read `budget` input tokens or more (0 = never), so the next message starts it afresh
+    /// (the main thread then gets the recent conversation again, see `compose_prompt_for`). Returns what was dropped: (key, tokens).
+    pub fn rotate_big_threads(&mut self, budget: u64) -> Vec<(String, u64)> {
+        let mut dropped = Vec::new();
+        if budget == 0 {
+            return dropped;
+        }
+        let big: Vec<(String, u64)> = self
+            .thread_tokens
+            .iter()
+            .filter(|(_, tokens)| **tokens >= budget)
+            .map(|(key, tokens)| (key.clone(), *tokens))
+            .collect();
+        for (key, tokens) in big {
+            let had_thread = match key.strip_prefix("worker:") {
+                Some(worker) => self.worker_sessions.remove(worker).is_some(),
+                None => self.session_id.take().is_some(),
+            };
+            self.thread_tokens.remove(&key);
+            if had_thread {
+                dropped.push((key, tokens));
+            }
+        }
+        dropped
     }
 }
 
@@ -286,6 +338,9 @@ pub fn new_record(request: &ChatRequest) -> ChatRecord {
         messages: request.messages.clone(),
         session_id: None,
         checker_session_id: None,
+        worker_sessions: Default::default(),
+        mutis_level: None,
+        thread_tokens: Default::default(),
         sessions: Default::default(),
         updated_at: unix_time(),
         plan_task_of: request.task_id.as_ref().and(request.plan_id.clone()),
@@ -339,6 +394,17 @@ fn unix_time() -> u64 {
         .unwrap_or_default()
 }
 
+/// The file tools of a chat at the MutiS source, whose lead is only known on the server: API-key agent sources get them
+/// (read-only when the chat permission is read), CLI sources edit files themselves.
+pub fn file_tools_for(provider: &crate::config::ProviderConfig, permission: Permission) -> FileTools {
+    let agent = provider.kind == "anthropic" || (provider.kind == "openai_compat" && provider.agent_capable);
+    match (agent, permission) {
+        (false, _) => FileTools::None,
+        (true, Permission::Read) => FileTools::Read,
+        (true, _) => FileTools::Write,
+    }
+}
+
 /// Decide how a chat message is run for a source:
 /// - `Ok(None)`: normal chat (no file tools);
 /// - `Ok(Some(permission))`: read-only (`Read`), file-write (`Write`), or command-enabled (`Full`) agent mode;
@@ -383,6 +449,14 @@ mod file_tools_tests {
             agent_capable,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn mutis_file_tools_follow_the_leads_kind_and_the_permission() {
+        assert_eq!(file_tools_for(&source("codex_cli", false), Permission::Write), FileTools::None);
+        assert_eq!(file_tools_for(&source("openai_compat", false), Permission::Write), FileTools::None);
+        assert_eq!(file_tools_for(&source("openai_compat", true), Permission::Read), FileTools::Read);
+        assert_eq!(file_tools_for(&source("anthropic", false), Permission::Full), FileTools::Write);
     }
 
     #[test]
@@ -579,5 +653,39 @@ mod switch_source_tests {
         chat.provider_id = "claude-cli".into();
         chat.switch_source("codex-cli");
         assert_eq!(chat.session_id.as_deref(), Some("codex-session"));
+    }
+
+    #[test]
+    fn the_same_source_as_mutis_lead_and_on_its_own_keep_separate_threads() {
+        let mut chat = record();
+        chat.provider_id = "codex-cli".into();
+        chat.mutis_level = Some("medium".into());
+        chat.session_id = Some("lead-thread".into());
+        // The user leaves MutiS for the same Codex: another thread, not the lead's.
+        chat.switch_source(&thread_key("codex-cli", false));
+        assert_eq!(chat.session_id, None);
+        chat.mutis_level = None;
+        chat.session_id = Some("own-thread".into());
+        chat.switch_source(&thread_key("codex-cli", true));
+        assert_eq!(chat.session_id.as_deref(), Some("lead-thread"));
+        chat.mutis_level = Some("medium".into());
+        chat.switch_source(&thread_key("codex-cli", false));
+        assert_eq!(chat.session_id.as_deref(), Some("own-thread"));
+    }
+
+    #[test]
+    fn a_thread_over_the_budget_is_dropped_and_zero_turns_it_off() {
+        let mut chat = record();
+        chat.worker_sessions.insert("luna".into(), "w".into());
+        chat.thread_tokens.insert("main".into(), 160_000);
+        chat.thread_tokens.insert("worker:luna".into(), 90_000);
+        assert!(chat.rotate_big_threads(0).is_empty(), "0 = off");
+        assert_eq!(chat.session_id.as_deref(), Some("claude-session"));
+        assert_eq!(chat.rotate_big_threads(150_000), vec![("main".to_owned(), 160_000)]);
+        assert_eq!(chat.session_id, None);
+        assert!(chat.worker_sessions.contains_key("luna"), "under the budget: kept");
+        assert_eq!(chat.rotate_big_threads(50_000), vec![("worker:luna".to_owned(), 90_000)]);
+        assert!(chat.worker_sessions.is_empty());
+        assert!(chat.thread_tokens.is_empty());
     }
 }

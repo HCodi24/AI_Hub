@@ -168,7 +168,7 @@ pub fn for_kind(kind: &str) -> Result<Box<dyn Provider>> {
         "openai_compat" => Ok(Box::new(openai_compat::OpenAiCompatibleProvider)),
         "deepseek_agent" | "mcp_agent" => Ok(Box::new(deepseek_agent::DeepSeekAgentProvider)),
         "anthropic" => Ok(Box::new(anthropic::AnthropicProvider)),
-        "codex_cli" => Ok(Box::new(codex::CodexProvider)),
+        "codex_cli" => Ok(Box::new(codex_cli::CodexCliProvider)),
         "claude_cli" => Ok(Box::new(claude_cli::ClaudeCliProvider)),
         _ => bail!("Loại nhà cung cấp không được hỗ trợ: {kind}"),
     }

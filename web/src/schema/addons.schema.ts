@@ -14,10 +14,23 @@ export type AddonHome = z.infer<typeof HomeSchema>;
 export type AddonKind = "plugin" | "skill" | "mcp";
 export type AddonChange = { target: "claude" | "codex"; kind: AddonKind; name: string; action: "add" | "remove" };
 const LinkMarketSchema = z.object({ name: z.string(), plugins: z.array(z.object({ name: z.string(), description: z.string().default("") })) }).nullable();
-/** What a GitHub link can install: one marketplace per CLI that understands it. */
-export const LinkFoundSchema = z.object({ source: z.string(), claude: LinkMarketSchema, codex: LinkMarketSchema });
+const LinkSkillSchema = z.object({ id: z.string(), name: z.string(), path: z.string() });
+export const LinkFoundSchema = z.object({
+  source: z.string(), claude: LinkMarketSchema, codex: LinkMarketSchema, skills: z.array(LinkSkillSchema).default([]),
+});
+const LinkTargetSchema = z.enum(["claude", "codex"]);
+const LinkSkillConflictSchema = z.object({
+  skill_id: z.string(),
+  target: LinkTargetSchema,
+  confirmation: z.string(),
+});
+export const LinkSkillInstallResultSchema = AddonChangeResultSchema.extend({
+  conflict: LinkSkillConflictSchema.optional(),
+});
 const CodexPluginSchema = z.object({ id: z.string(), version: z.string().default(""), enabled: z.boolean().default(true) });
 /** `plugins` are in MutiS's Codex; `available` only in the user's own Codex. */
 export const CodexPluginsSchema = z.object({ plugins: z.array(CodexPluginSchema), available: z.array(CodexPluginSchema).default([]) });
 export type LinkFound = z.infer<typeof LinkFoundSchema>;
-export type LinkTarget = "claude" | "codex";
+export type LinkTarget = z.infer<typeof LinkTargetSchema>;
+export type LinkSkillConflict = z.infer<typeof LinkSkillConflictSchema>;
+export type LinkSkillInstall = { link: string; skill_id: string; target: LinkTarget; confirmation?: string };

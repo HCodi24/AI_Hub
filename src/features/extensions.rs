@@ -207,20 +207,6 @@ async fn run_codegraph(path: &std::path::Path, folder: &std::path::Path, args: &
     }
 }
 
-/// Brings an existing `.codegraph` index up to date before a session's first request.
-/// Returns whether the index is now current. Never fails the chat: no index, no CLI, an error or a
-/// timeout all return false and the AI is told the index may be old.
-pub async fn sync_index(folder: &std::path::Path) -> bool {
-    if !folder.join(".codegraph/codegraph.db").is_file() {
-        return false;
-    }
-    let Some(path) = cli_support::resolve_executable("codegraph", None) else {
-        return false;
-    };
-    let _guard = SYNC_LOCK.lock().await;
-    run_codegraph(&path, folder, &["sync", "-q"], SYNC_TIMEOUT).await.is_ok()
-}
-
 /// What the app prepared for a session's first request.
 #[derive(Default)]
 pub struct Prepared {
@@ -311,8 +297,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn sync_without_an_index_returns_false_and_never_fails() {
-        assert!(!sync_index(std::path::Path::new("Z:/does/not/exist")).await);
+    async fn first_request_rules_say_whether_the_index_is_current() {
         let rules = crate::core::rule::first_request_rules(true, false);
         assert!(rules.contains("may be out of date"));
         assert!(crate::core::rule::first_request_rules(true, true).contains("just synced"));

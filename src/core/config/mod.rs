@@ -33,6 +33,10 @@ pub struct Config {
     pub default_folder: String,
     #[serde(default = "default_chat_idle_timeout_minutes")]
     pub chat_idle_timeout_minutes: u32,
+    /// A CLI thread (Codex, Claude) whose last turn read this many input tokens is replaced by a new one on the next message.
+    /// 0 = never; the CLI may still compact its own context.
+    #[serde(default = "default_thread_token_budget")]
+    pub thread_token_budget: u64,
     #[serde(default)]
     pub planner_provider_id: String,
     #[serde(default)]
@@ -65,6 +69,10 @@ fn pets_on() -> bool {
 
 fn default_chat_idle_timeout_minutes() -> u32 {
     10
+}
+
+fn default_thread_token_budget() -> u64 {
+    150_000
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -142,6 +150,7 @@ impl Config {
             ],
             default_folder: default_folder(),
             chat_idle_timeout_minutes: default_chat_idle_timeout_minutes(),
+            thread_token_budget: default_thread_token_budget(),
             planner_provider_id: String::new(),
             planner_model: String::new(),
             mutis: MutisConfig::default(),

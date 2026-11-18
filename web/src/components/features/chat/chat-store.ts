@@ -87,11 +87,14 @@ export const useChatStore = create<ChatState>((set) => ({
     rememberActiveChat(chat.id);
     set((state) => {
       const selected = readModelSelection(chat.id);
+      // A chat that ran at MutiS reopens at MutiS: the record only holds the lead MutiS resolved to, and `mutis_level` is what the user picked.
+      const mutis = !selected && chat.mutis_level ? { provider_id: "mutis", model: "" } : undefined;
       const settings = {
-        provider_id: selected?.provider_id ?? (chat.provider_id || state.settings.provider_id),
-        model: selected?.model ?? (chat.provider_id ? chat.model : state.settings.model),
+        provider_id: selected?.provider_id ?? mutis?.provider_id ?? (chat.provider_id || state.settings.provider_id),
+        model: selected?.model ?? mutis?.model ?? (chat.provider_id ? chat.model : state.settings.model),
         folder: chat.folder, permission: selected?.permission ?? chat.permission,
-        effort: chat.effort === "default" ? "medium" as const : chat.effort, file_tools: chat.file_tools, dev_chat: chat.dev_chat,
+        effort: chat.mutis_level && (selected?.provider_id ?? "mutis") === "mutis" ? chat.mutis_level : chat.effort === "default" ? "medium" as const : chat.effort,
+        file_tools: chat.file_tools, dev_chat: chat.dev_chat,
       };
       saveModelSelection(chat.id, settings);
       return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], checkers: [], error: "", drawer: false, initialized: true };

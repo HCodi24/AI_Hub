@@ -9,7 +9,7 @@ const id = (value: string) => encodeURIComponent(value);
 export const settingsApi = {
   async config(signal?: AbortSignal) { return parseResponse(FullConfigSchema, await http.get("/config", signal)); },
   /** Partial update: the server keeps every field that is not sent (default_folder is optional too). */
-  async saveConfig(body: { default_folder?: string; chat_idle_timeout_minutes?: number; memory?: MemoryConfig;
+  async saveConfig(body: { default_folder?: string; chat_idle_timeout_minutes?: number; thread_token_budget?: number; memory?: MemoryConfig;
     planner_provider_id?: string; planner_model?: string; mcp_servers?: McpServer[]; pets?: Record<string, string>; pets_enabled?: boolean;
     codegraph_enabled?: boolean }) {
     return parseResponse(FullConfigSchema, await send("/config", "PUT", body));

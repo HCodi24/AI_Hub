@@ -41,7 +41,9 @@ impl Provider for ClaudeCliProvider {
             OsString::from("--include-partial-messages"),
         ];
         args.extend(super::claude::environment::launch_args(&request.mcp));
-        let context = super::claude::sources::project_context(std::path::Path::new(&request.folder), &settings)?;
+        let mut context = super::claude::sources::project_context(std::path::Path::new(&request.folder), &settings)?;
+        let skills_dir = cli_support::claude_config_dir(&config_path)?.join("skills");
+        context.push_str(&crate::features::addons::managed_skill_context(&skills_dir));
         if !context.is_empty() { args.extend([OsString::from("--append-system-prompt"), context.into()]); }
         args.extend(permission_args(request.permission));
         if !request.model.is_empty() {

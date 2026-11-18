@@ -154,7 +154,11 @@ mod tests {
         assert_eq!(config.mutis.worker_rules, crate::core::rule::worker_defaults());
         assert!(!config.mutis.worker_rules.contains("- Write all rules in English."));
 
-        config.mutis.worker_rules.push_str("\n- Write all rules in English.");
+        config.mutis.worker_rules = format!("{}\n- Write all rules in English.", [
+            crate::core::rule::utf8::RULE,
+            crate::core::rule::keep_features::RULE,
+            crate::core::rule::report_unfinished::RULE,
+        ].join("\n"));
         migrate_mutis(&mut config);
         assert_eq!(config.mutis.worker_rules, crate::core::rule::worker_defaults());
 

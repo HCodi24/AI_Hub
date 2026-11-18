@@ -27,7 +27,7 @@ export function useChat() {
     }
     // Only the MutiS source needs its settings before the message is shown.
     const mutis = state.settings.provider_id === "mutis" ? await mutisApi.get() : undefined;
-    let settings = state.settings;
+    const settings = state.settings;
     if (!mutis && (!settings.provider_id || !settings.model.trim())) {
       useChatStore.setState({ error: chatText.selectRequired }); return false;
     }
@@ -41,15 +41,9 @@ export function useChat() {
     const current = useChatStore.getState();
     const controller = new AbortController(); activeChatAbort = controller;
     try {
-      if (mutis) {
-        const resolved = await mutisApi.resolve(settings.effort); const lead = resolved.lead.used_provider;
-        if (!lead) throw new Error(chatText.selectRequired);
-        const role = rolesFor(mutis, settings.effort)?.lead || mutis.roles.lead;
-        settings = { ...settings, provider_id: lead.id, model: role.provider_id === lead.id ? role.model || lead.models[0] || "" : lead.models[0] || "", effort: role.effort };
-        if (!settings.model.trim()) throw new Error(chatText.selectRequired);
-      }
+      // At the MutiS source the server picks the lead (its model, effort and file tools) from `settings.effort`, the level the user chose.
       const source = config.data?.providers.find(item => item.id === settings.provider_id);
-      await chatApi.send({ ...settings, file_tools: settings.folder.trim() ? fileToolsFor(source, settings.permission) : "none", folder: settings.folder.trim(), model: settings.model.trim(),
+      await chatApi.send({ ...settings, file_tools: mutis || !settings.folder.trim() ? "none" : fileToolsFor(source, settings.permission), folder: settings.folder.trim(), model: settings.model.trim(),
         chat_id: current.id, messages: current.messages.slice(0, -1) }, controller.signal, (event, data) => {
         current.event(event, data);
         if (event === "memory") useToast.getState().show(memoryNotice(data, settings.folder));

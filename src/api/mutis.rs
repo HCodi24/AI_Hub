@@ -82,12 +82,85 @@ pub(crate) struct ResolveQuery {
     /// The effort the user picked for MutiS: `max`/`xhigh` = all three AIs, anything else = Codex + DeepSeek only.
     effort: Option<String>,
 }
+/// One role checked against the live sources. Keys are not masked: never send this to the browser.
+pub(crate) struct RoleResolution {
+    configured: Option<ProviderConfig>,
+    status: Option<ConnectionTest>,
+    used: Option<ProviderConfig>,
+}
+
+/// The source a chat at the "MutiS" source runs on, with the model and effort the lead role gives it.
+pub(crate) struct Lead {
+    pub provider: ProviderConfig,
+    pub model: String,
+    pub effort: String,
+}
+
+/// The lead's model comes from its role only when the role's own source is the one in use; a fallback source uses its first model.
+/// A High level whose lead is not set up yet follows the Max roles, as the settings screen shows.
+fn pick_lead(
+    cfg: &config::MutisConfig,
+    effort: &str,
+    configured: Option<&ProviderConfig>,
+    used: ProviderConfig,
+) -> Lead {
+    let roles = if config::MutisConfig::level_for(effort) == "max"
+        || cfg.high_roles.lead.provider_id.trim().is_empty()
+    {
+        &cfg.roles
+    } else {
+        &cfg.high_roles
+    };
+    let role = &roles.lead;
+    let own = configured.is_some_and(|c| c.id == used.id) && !role.model.trim().is_empty();
+    let model = if own {
+        role.model.trim().to_owned()
+    } else {
+        used.models.first().cloned().unwrap_or_default()
+    };
+    Lead {
+        provider: used,
+        model,
+        effort: role.effort.clone(),
+    }
+}
+
+/// Resolves the lead role of the level `effort` picks. None when no source that could lead is connected.
+pub(crate) async fn resolve_lead(state: &AppState, effort: &str) -> Option<Lead> {
+    let cfg = state.config.read().await.mutis.clone();
+    let (_, lead) = resolve_roles(state, effort).await.into_iter().next()?;
+    let used = lead.used?;
+    Some(pick_lead(&cfg, effort, lead.configured.as_ref(), used))
+}
+
 pub(crate) async fn resolve_mutis_roles(
     State(state): State<AppState>,
     Query(query): Query<ResolveQuery>,
 ) -> ApiResult<Json<Value>> {
-    let cfg = state.config.read().await.clone();
     let effort = query.effort.as_deref().unwrap_or("max");
+    // Never send raw API keys to the browser.
+    let mask = |mut provider: ProviderConfig| {
+        provider.api_key = config::masked_key(&provider.api_key);
+        provider
+    };
+    let mut output = serde_json::Map::new();
+    for (name, role) in resolve_roles(&state, effort).await {
+        output.insert(
+            name.into(),
+            serde_json::to_value(ResolvedRole {
+                configured_provider: role.configured.map(mask),
+                live_status: role.status,
+                used_provider: role.used.map(mask),
+            })
+            .unwrap_or(Value::Null),
+        );
+    }
+    Ok(Json(Value::Object(output)))
+}
+
+/// The lead, big and small roles, in that order.
+async fn resolve_roles(state: &AppState, effort: &str) -> Vec<(&'static str, RoleResolution)> {
+    let cfg = state.config.read().await.clone();
     let roles = cfg.mutis.roles_for(effort);
     // High level never falls back to Claude: its whole point is to run without it.
     let high = config::MutisConfig::level_for(effort) == "high";
@@ -100,7 +173,7 @@ pub(crate) async fn resolve_mutis_roles(
             &["codex_cli", "claude_cli"],
         )
     };
-    let mut output = serde_json::Map::new();
+    let mut output = Vec::new();
     for (name, role, fallback) in [
         ("lead", &roles.lead, lead_fallback),
         ("big", &roles.big, big_fallback),
@@ -152,22 +225,16 @@ pub(crate) async fn resolve_mutis_roles(
             .iter()
             .find(|(_, s)| s.as_ref().is_some_and(|s| s.status == "connected"))
             .map(|(p, _)| p.clone());
-        // Never send raw API keys to the browser.
-        let mask = |mut provider: ProviderConfig| {
-            provider.api_key = config::masked_key(&provider.api_key);
-            provider
-        };
-        output.insert(
-            name.into(),
-            serde_json::to_value(ResolvedRole {
-                configured_provider: configured.map(mask),
-                live_status: configured_status,
-                used_provider: used.map(mask),
-            })
-            .unwrap_or(Value::Null),
-        );
+        output.push((
+            name,
+            RoleResolution {
+                configured,
+                status: configured_status,
+                used,
+            },
+        ));
     }
-    Ok(Json(Value::Object(output)))
+    output
 }
 pub(crate) async fn put_mutis(
     State(state): State<AppState>,
@@ -645,5 +712,61 @@ fn rate(events: &[Event], kind: &str, ok: bool) -> f64 {
         0.0
     } else {
         matching.iter().filter(|e| e.ok == ok).count() as f64 / matching.len() as f64
+    }
+}
+
+#[cfg(test)]
+mod lead_tests {
+    use super::*;
+
+    fn source(id: &str, models: &[&str]) -> ProviderConfig {
+        ProviderConfig {
+            id: id.into(),
+            kind: "codex_cli".into(),
+            models: models.iter().map(|m| m.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    fn role(provider: &str, model: &str, effort: &str) -> config::MutisRole {
+        config::MutisRole {
+            provider_id: provider.into(),
+            model: model.into(),
+            effort: effort.into(),
+        }
+    }
+
+    #[test]
+    fn the_lead_keeps_its_role_model_only_while_its_own_source_is_in_use() {
+        let mut cfg = config::MutisConfig::default();
+        cfg.roles.lead = role("a", "role-model", "max");
+        cfg.high_roles.lead = role("b", "high-model", "high");
+        let (a, b) = (source("a", &["a-first"]), source("b", &["b-first"]));
+        // Max uses `roles`, any other effort `high_roles`.
+        let lead = pick_lead(&cfg, "max", Some(&a), a.clone());
+        assert_eq!(
+            (lead.model.as_str(), lead.effort.as_str()),
+            ("role-model", "max")
+        );
+        let lead = pick_lead(&cfg, "medium", Some(&b), b.clone());
+        assert_eq!(
+            (lead.model.as_str(), lead.effort.as_str()),
+            ("high-model", "high")
+        );
+        // The configured source is down: the fallback source starts on its own first model.
+        let lead = pick_lead(&cfg, "medium", Some(&b), a.clone());
+        assert_eq!(lead.model, "a-first");
+    }
+
+    #[test]
+    fn a_high_level_without_its_own_lead_follows_the_max_roles() {
+        let mut cfg = config::MutisConfig::default();
+        cfg.roles.lead = role("a", "role-model", "max");
+        let a = source("a", &["a-first"]);
+        let lead = pick_lead(&cfg, "medium", Some(&a), a.clone());
+        assert_eq!(
+            (lead.model.as_str(), lead.effort.as_str()),
+            ("role-model", "max")
+        );
     }
 }

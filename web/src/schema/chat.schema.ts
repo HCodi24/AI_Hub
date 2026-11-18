@@ -20,10 +20,12 @@ export const ChatSummarySchema = z.object({ id: z.string().uuid(), title: z.stri
 export const ChatRecordSchema = ChatSummarySchema.extend({
   provider_id: z.string(), model: z.string(), folder: z.string(),
   permission: PermissionSchema.default("write"), effort: EffortSchema.default("default"),
+  /** Set when the chat ran at the MutiS source: the effort the user picked there. Absent = a single model. */
+  mutis_level: EffortSchema.nullish().catch(null),
   file_tools: FileToolsSchema.default("none"), messages: z.array(ChatMessageSchema),
 });
 export const ChatRequestSchema = z.object({
-  chat_id: z.string().uuid(), provider_id: z.string().min(1), model: z.string().min(1), folder: z.string(),
+  chat_id: z.string().uuid(), provider_id: z.string().min(1), model: z.string(), folder: z.string(),
   permission: PermissionSchema, effort: EffortSchema, file_tools: FileToolsSchema,
   dev_chat: z.boolean(), messages: z.array(ChatMessageSchema),
 });

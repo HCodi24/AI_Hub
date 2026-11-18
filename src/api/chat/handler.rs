@@ -110,9 +110,12 @@ impl Drop for CancelOnDrop {
     }
 }
 
+/// The `provider_id` of the "MutiS" source: the server picks the lead model, so the request does not say which one runs.
+const MUTIS_SOURCE: &str = "mutis";
+
 pub(crate) async fn chat_handler(
     State(state): State<AppState>,
-    Json(request): Json<ChatRequest>,
+    Json(mut request): Json<ChatRequest>,
 ) -> ApiResult<Response> {
     if !chat::valid_id(&request.chat_id) {
         return Err(ApiError::new(
@@ -120,6 +123,26 @@ pub(crate) async fn chat_handler(
             "chat_id phải là UUID hợp lệ",
         ));
     }
+    // A chat at the MutiS source runs on the lead role's source; only such a chat is a MutiS chat (delegation, rules, role label).
+    // `mutis_level` is the effort the user picked for MutiS (max/xhigh = three AIs, else High); `request.effort` becomes the lead's own.
+    let mutis_level = if request.provider_id == MUTIS_SOURCE {
+        let level = request.effort.clone().unwrap_or_else(|| "max".into());
+        let lead = crate::api::mutis::resolve_lead(&state, &level)
+            .await
+            .ok_or_else(|| {
+                ApiError::new(
+                    StatusCode::BAD_REQUEST,
+                    "MutiS chưa có nguồn lead nào đang kết nối",
+                )
+            })?;
+        request.file_tools = chat::file_tools_for(&lead.provider, request.permission);
+        request.provider_id = lead.provider.id;
+        request.model = lead.model;
+        request.effort = Some(lead.effort);
+        Some(level)
+    } else {
+        None
+    };
     let existing = state.chats.get(&request.chat_id).map_err(|_| {
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -170,9 +193,9 @@ pub(crate) async fn chat_handler(
     let mutis_config = state.config.read().await.mutis.clone();
     // MutiS High + Codex: the app runs the delegated worker for Codex (see providers::delegate). Any source that is
     // active in Settings › Nguồn AI can be the worker, whatever its kind (API key or CLI).
-    let role_effort_name = request.effort.as_deref().unwrap_or("max");
+    let role_effort_name = mutis_level.as_deref().unwrap_or("max");
     let delegate_worker = if provider_config.kind == "codex_cli"
-        && mutis_config.enabled
+        && mutis_level.is_some()
         && request.plan_id.is_none()
         && !plain_chat
         && crate::config::MutisConfig::level_for(role_effort_name) == "high"
@@ -239,25 +262,41 @@ pub(crate) async fn chat_handler(
     } else {
         (None, None)
     };
+    // A CLI thread that grew past the user's token budget starts afresh; the main one is rebuilt from the recent conversation.
+    let mut existing = existing;
+    let token_budget = state.config.read().await.thread_token_budget;
+    let rotated = existing
+        .as_mut()
+        .map(|r| r.rotate_big_threads(token_budget))
+        .unwrap_or_default();
     let provider: Box<dyn providers::Provider> = match &delegate_worker {
-        Some((worker, model, effort)) => Box::new(providers::delegate::DelegateProvider {
+        Some((worker, model, effort)) => {
+            // A Codex worker's thread only resumes inside the Codex home it was made in.
+            let mut worker_session = existing.as_ref().and_then(|r| r.worker_sessions.get(&worker.id).cloned());
+            if worker.kind == "codex_cli" {
+                let settings = state.config.read().await.codex.clone();
+                let prefix = providers::codex::session_prefix(&settings, worker, &folder);
+                worker_session = worker_session.filter(|id| id.starts_with(&prefix));
+            }
+            Box::new(providers::delegate::DelegateProvider {
             worker: worker.clone(),
             model: model.clone(),
             effort: *effort,
             checker: delegate_checker.clone(),
             checker_note: checker_note.clone(),
             chat_id: request.chat_id.clone(),
-        }),
+            worker_session,
+        })},
         None => providers::for_kind(&provider_config.kind).map_err(|_| {
             ApiError::new(StatusCode::BAD_REQUEST, "Loại nhà cung cấp không hợp lệ")
         })?,
     };
-    let switched_source = existing
-        .as_ref()
-        .is_some_and(|r| r.provider_id != request.provider_id);
+    // The thread belongs to the source and to the mode (MutiS lead or a single model), so the same Codex in the two modes never shares one.
+    let thread = chat::thread_key(&request.provider_id, mutis_level.is_some());
+    let switched_source = existing.as_ref().is_some_and(|r| r.thread_key() != thread);
     let mut record = existing.unwrap_or_else(|| chat::new_record(&request));
     if switched_source {
-        record.switch_source(&request.provider_id);
+        record.switch_source(&thread);
     }
     if provider_config.kind == "codex_cli" {
         let settings = state.config.read().await.codex.clone();
@@ -279,6 +318,7 @@ pub(crate) async fn chat_handler(
         }
     }
     record.provider_id = request.provider_id.clone();
+    record.mutis_level = mutis_level.clone();
     record.model = request.model.clone();
     record.folder = if plain_chat {
         String::new()
@@ -422,8 +462,8 @@ pub(crate) async fn chat_handler(
         add_question_rules(&mut provider_request);
         if !plain_chat {
             let rule = crate::core::rule::mutis_high_delegation::for_chat(
-                mutis_config.enabled,
-                crate::config::MutisConfig::level_for(request.effort.as_deref().unwrap_or("max")),
+                mutis_level.is_some(),
+                crate::config::MutisConfig::level_for(role_effort_name),
                 &provider_request.provider.kind,
                 provider_request
                     .mcp
@@ -469,8 +509,12 @@ pub(crate) async fn chat_handler(
     let provider_kind = avatar_source(&provider_request.provider, &provider_request.model);
     let status_model = provider_request.model.clone();
     let status_effort = format!("{:?}", provider_request.effort).to_lowercase();
-    let role_effort = request.effort.as_deref().unwrap_or("max");
-    let status_role = (mutis_config.enabled || request.plan_id.is_some())
+    // A plan task has no MutiS level of its own: its effort picks the roles, as before.
+    let role_effort = mutis_level
+        .as_deref()
+        .or(request.effort.as_deref())
+        .unwrap_or("max");
+    let status_role = (mutis_level.is_some() || request.plan_id.is_some())
         .then(|| {
             ["lead", "big", "small"]
                 .into_iter()
@@ -486,6 +530,18 @@ pub(crate) async fn chat_handler(
                 .map(str::to_owned)
         })
         .flatten();
+    for (key, tokens) in rotated {
+        let which = match key.strip_prefix("worker:") {
+            Some(worker) => format!("worker {worker}"),
+            None => "chính".to_owned(),
+        };
+        let _ = providers::emit_text(
+            &provider_sender,
+            "log",
+            format!("Thread {which} đã đọc {tokens} token (ngưỡng {token_budget}), mở thread mới."),
+        )
+        .await;
+    }
     let idle_timeout_minutes = state.config.read().await.chat_idle_timeout_minutes;
     let provider_events = provider_sender.clone();
     tokio::spawn(async move {

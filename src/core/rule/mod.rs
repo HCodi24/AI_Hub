@@ -1,5 +1,6 @@
 //! Fixed rules for AI providers. One file per rule; each exposes `RULE`.
 pub mod codegraph;
+pub mod bounded_checks;
 pub mod chat_questions;
 pub mod deepseek;
 pub mod deepseek_flash;
@@ -16,6 +17,7 @@ pub fn worker_defaults() -> String {
         utf8::RULE,
         keep_features::RULE,
         report_unfinished::RULE,
+        bounded_checks::RULE,
     ]
     .join("\n")
 }

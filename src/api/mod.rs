@@ -89,6 +89,10 @@ pub fn router(state: AppState) -> Router {
             "/api/addons/link/install",
             post(crate::api::addons::install_link),
         )
+        .route(
+            "/api/addons/link/install-skill",
+            post(crate::api::addons::install_link_skill),
+        )
         // Configuration routes.
         .route(
             "/api/config",

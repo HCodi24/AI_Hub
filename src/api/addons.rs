@@ -228,9 +228,8 @@ pub(crate) async fn change(
     Ok(Json(json!({"ok": true, "output": output})))
 }
 
-/// The Codex CLI and AI Hub's own Codex home (never `~/.codex`).
-async fn codex_cli(state: &AppState) -> ApiResult<(PathBuf, PathBuf)> {
-    let provider = state
+async fn codex_provider(state: &AppState) -> ApiResult<crate::config::ProviderConfig> {
+    state
         .config
         .read()
         .await
@@ -238,7 +237,12 @@ async fn codex_cli(state: &AppState) -> ApiResult<(PathBuf, PathBuf)> {
         .iter()
         .find(|provider| provider.kind == "codex_cli")
         .cloned()
-        .ok_or_else(|| bad("MutiS chưa có nguồn Codex"))?;
+        .ok_or_else(|| bad("MutiS chưa có nguồn Codex"))
+}
+
+/// The Codex CLI and AI Hub's own Codex home (never `~/.codex`).
+async fn codex_cli(state: &AppState) -> ApiResult<(PathBuf, PathBuf)> {
+    let provider = codex_provider(state).await?;
     let codex = executable(state, "codex_cli", "codex").await?;
     let config = crate::config::config_file_path().map_err(|error| bad(error.to_string()))?;
     let home = crate::providers::codex::environment::home(&config, &provider)
@@ -293,24 +297,80 @@ pub(crate) async fn codex_plugins(State(state): State<AppState>) -> Json<Value> 
 /// Removes the downloaded repository when dropped, however the request ends.
 struct TempCheckout(PathBuf);
 
+impl TempCheckout {
+    async fn git_output(&self, args: &[&str]) -> ApiResult<Vec<u8>> {
+        // Clone without a worktree first, then materialize it without user/system filters or hooks.
+        let mut git = checkout_git();
+        git.current_dir(&self.0)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", self.0.join(".git/mutis-empty-config"))
+            .env_remove("GIT_CONFIG_COUNT")
+            .env_remove("GIT_CONFIG_PARAMETERS")
+            .args(args);
+        let output = crate::core::process::run_with_timeout(&mut git, Duration::from_secs(30))
+            .await
+            .map_err(|error| bad(format!("Không đọc được bản sao kho mã: {error}")))?;
+        if !output.status.success() {
+            return Err(bad("Không đọc được bản sao kho mã"));
+        }
+        Ok(output.stdout)
+    }
+}
+
 impl Drop for TempCheckout {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
-/// Downloads a GitHub repository (depth 1) and says which CLIs it can be installed into. Nothing is run from it.
-async fn checkout(link: &str) -> ApiResult<(String, TempCheckout, addons::LinkFound)> {
-    let source = addons::github_source(link).map_err(|error| bad(error.to_string()))?;
-    let dir =
-        TempCheckout(std::env::temp_dir().join(format!("mutis-plugin-{}", uuid::Uuid::new_v4())));
+fn checkout_git() -> tokio::process::Command {
     let mut git = tokio::process::Command::new("git");
-    git.args(["clone", "--depth", "1", "--", &source])
-        .arg(&dir.0)
-        .env("GIT_TERMINAL_PROMPT", "0")
+    git.env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
         .kill_on_drop(true);
+    for name in [
+        "GIT_DIR",
+        "GIT_COMMON_DIR",
+        "GIT_WORK_TREE",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    ] {
+        git.env_remove(name);
+    }
     crate::core::process::configure_hidden(&mut git);
+    git
+}
+
+struct Checkout {
+    source: String,
+    dir: TempCheckout,
+    found: addons::LinkFound,
+    tree: Vec<u8>,
+}
+
+/// Download and inspect a shallow GitHub checkout.
+async fn checkout(link: &str) -> ApiResult<Checkout> {
+    let source = addons::github_source(link).map_err(|error| bad(error.to_string()))?;
+    let temp = std::env::temp_dir()
+        .canonicalize()
+        .map(crate::core::text::strip_verbatim)
+        .map_err(|error| bad(format!("Không tìm được thư mục tạm: {error}")))?;
+    let path = temp.join(format!("mutis-addon-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&path)
+        .map_err(|error| bad(format!("Không tạo được thư mục tạm: {error}")))?;
+    let dir = TempCheckout(path);
+    let mut git = checkout_git();
+    git.args([
+        "clone",
+        "--depth",
+        "1",
+        "--no-checkout",
+        "--template=",
+        "--",
+        &source,
+    ])
+    .arg(&dir.0);
     let output = crate::core::process::run_with_timeout(&mut git, Duration::from_secs(90))
         .await
         .map_err(|error| bad(format!("Không tải được repository: {error}")))?;
@@ -319,8 +379,15 @@ async fn checkout(link: &str) -> ApiResult<(String, TempCheckout, addons::LinkFo
             "Không tải được repository (link sai, repository riêng tư hoặc máy không có git)",
         ));
     }
-    let found = addons::inspect_checkout(&dir.0);
-    Ok((source, dir, found))
+    dir.git_output(&["checkout", "--detach", "HEAD"]).await?;
+    let tree = dir.git_output(&["ls-tree", "-r", "-z", "HEAD"]).await?;
+    let found = addons::inspect_checkout(&dir.0, &source, &tree);
+    Ok(Checkout {
+        source,
+        dir,
+        found,
+        tree,
+    })
 }
 
 #[derive(Deserialize)]
@@ -329,10 +396,13 @@ pub(crate) struct LinkInspect {
 }
 
 pub(crate) async fn inspect_link(Json(input): Json<LinkInspect>) -> ApiResult<Json<Value>> {
-    let (source, _dir, found) = checkout(&input.link).await?;
-    Ok(Json(
-        json!({ "source": source, "claude": found.claude, "codex": found.codex }),
-    ))
+    let Checkout { source, found, .. } = checkout(&input.link).await?;
+    Ok(Json(json!({
+        "source": source,
+        "claude": found.claude,
+        "codex": found.codex,
+        "skills": found.skills,
+    })))
 }
 
 #[derive(Deserialize)]
@@ -350,7 +420,7 @@ pub(crate) async fn install_link(
     State(state): State<AppState>,
     Json(input): Json<LinkInstall>,
 ) -> ApiResult<Json<Value>> {
-    let (source, _dir, found) = checkout(&input.link).await?;
+    let Checkout { source, found, .. } = checkout(&input.link).await?;
     let mut log = Vec::new();
     let mut failed = false;
     for target in &input.targets {
@@ -401,4 +471,75 @@ pub(crate) async fn install_link(
         }
     }
     Ok(Json(json!({ "ok": !failed, "output": log.join("\n") })))
+}
+
+#[derive(Deserialize)]
+pub(crate) struct LinkSkillInstall {
+    link: String,
+    skill_id: String,
+    target: String,
+    confirmation: Option<String>,
+}
+
+pub(crate) async fn install_link_skill(
+    State(state): State<AppState>,
+    Json(input): Json<LinkSkillInstall>,
+) -> ApiResult<Json<Value>> {
+    if input.skill_id.len() != 64 || !input.skill_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(bad("Mã skill không hợp lệ. Hãy kiểm tra lại liên kết."));
+    }
+    let (target, label, skills_dir) = match input.target.as_str() {
+        "claude" => (
+            "claude",
+            "Claude",
+            cli_support::claude_config_dir(&state.config_path)
+                .map_err(|error| bad(error.to_string()))?
+                .join("skills"),
+        ),
+        "codex" => {
+            let provider = codex_provider(&state).await.map_err(|_| {
+                bad("MutiS chưa có nguồn Codex. Hãy thêm nguồn trong Cài đặt › Nguồn AI.")
+            })?;
+            let skills_dir =
+                crate::providers::codex_cli::managed_skills_dir(&state.config_path, &provider.id)
+                    .map_err(|error| bad(error.to_string()))?;
+            ("codex", "Codex", skills_dir)
+        }
+        _ => return Err(bad("Chỉ cài được cho Claude hoặc Codex")),
+    };
+    let Checkout {
+        dir, found, tree, ..
+    } = checkout(&input.link).await?;
+    let skill = found
+        .skills
+        .into_iter()
+        .find(|skill| skill.id == input.skill_id)
+        .ok_or_else(|| bad("Không tìm thấy skill đã chọn. Hãy kiểm tra lại liên kết."))?;
+    let name = skill.name.clone();
+    let confirmation = input.confirmation;
+    let skill_id = skill.id.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        addons::install_checkout_skill(
+            &dir.0,
+            &tree,
+            &skill,
+            &skills_dir,
+            target,
+            confirmation.as_deref(),
+        )
+    })
+    .await
+    .map_err(|_| bad("Không xử lý được skill"))?
+    .map_err(|error| bad(format!("{error:#}")))?;
+    Ok(Json(match result {
+        addons::SkillInstall::Installed => json!({
+            "ok": true,
+            "output": format!("Đã cài skill «{name}» cho {label} trong MutiS. Bạn có thể dùng skill trong phiên mới."),
+        }),
+        addons::SkillInstall::Conflict(confirmation) => json!({
+            "ok": false,
+            "output": format!("{label} trong MutiS đã có mục «{name}». Cần xác nhận để thay thế."),
+            "conflict": { "skill_id": skill_id, "target": target, "confirmation": confirmation },
+        }),
+    }))
 }

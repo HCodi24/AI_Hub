@@ -47,11 +47,13 @@ pub fn clean_claude_environment(command: &mut Command) {
 /// `<AI Hub data dir>\claude-config` (created on demand), e.g. `%APPDATA%\ai-hub\claude-config`.
 pub fn ai_hub_claude_config_dir() -> Option<std::path::PathBuf> {
     let config_path = crate::core::config::config_file_path().ok()?;
-    let dir = crate::core::paths::data_dir(&config_path)
-        .ok()?
-        .join("claude-config");
+    let dir = claude_config_dir(&config_path).ok()?;
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir)
+}
+
+pub fn claude_config_dir(config_path: &Path) -> Result<std::path::PathBuf> {
+    Ok(crate::core::paths::data_dir(config_path)?.join("claude-config"))
 }
 
 pub fn searched_locations(name: &str, explicit_path_was_set: bool) -> String {

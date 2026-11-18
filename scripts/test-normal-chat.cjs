@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('../web/node_modules/typescript');
-let sent, planned = false, shownBeforeResolve = false;
+let sent, planned = false, resolved = false;
 const state = {
   id: '00000000-0000-4000-8000-000000000001', messages: [], streaming: false,
   settings: { provider_id: 'p', model: 'model', folder: '', permission: 'write' },
@@ -19,7 +19,7 @@ const mocks = {
   '@/text/chat': { chatText: {} },
   '@/apis/mutis.api': { mutisApi: {
     get: async () => ({ enabled: true, auto_plan: true, roles: { lead: { provider_id: 'p', model: 'model' } } }),
-    resolve: async () => { shownBeforeResolve = state.messages.length === 2; return { lead: { used_provider: { id: 'p' } } }; },
+    resolve: async () => { resolved = true; return { lead: { used_provider: { id: 'p' } } }; },
   } },
   './card-actions': { startDebate: async () => { planned = true; }, cancelActiveCard: () => false },
   './card-store': { useCardStore: { getState: () => ({ running: false }) } },
@@ -39,14 +39,17 @@ async function run() {
   assert.equal(planned, false, 'ordinary chats skip debate and project auto-planning');
   state.settings.provider_id = 'mutis';
   assert.equal(await chat.send('Hello again'), true);
-  assert.equal(sent.provider_id, 'p');
-  assert.equal(shownBeforeResolve, true, 'the message is on screen before the MutiS source is resolved');
+  // The server picks the lead (and ignores the model sent): the request names the MutiS source, with no file tools of its own.
+  assert.equal(sent.provider_id, 'mutis');
+  assert.equal(sent.file_tools, 'none');
+  assert.equal(resolved, false, 'the browser no longer resolves the lead');
   assert.equal(sent.folder, '');
   assert.equal(planned, false);
   state.settings.folder = 'C:/project';
   await chat.send('Project request');
   assert.equal(planned, true, 'project chats retain debate routing');
   planned = false;
+  state.settings.provider_id = 'p';
   await chat.send('Direct request', true);
   assert.equal(sent.folder, 'C:/project');
   assert.equal(sent.file_tools, 'write');

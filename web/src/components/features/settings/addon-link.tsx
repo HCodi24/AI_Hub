@@ -1,62 +1,177 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { addonsApi } from "@/apis/addons.api";
 import { Button } from "@/components/button/button";
 import { notify } from "@/components/toast/toast";
-import type { LinkFound, LinkTarget } from "@/schema/addons.schema";
+import type { LinkFound, LinkSkillConflict, LinkTarget } from "@/schema/addons.schema";
 import { settingsText as t } from "@/text/settings";
 import { errorText } from "./use-settings";
 import styles from "./settings.module.css";
 const TARGETS: LinkTarget[] = ["claude", "codex"];
 const toggle = <T extends string>(list: T[], value: T, set: (next: T[]) => void) => set(list.includes(value) ? list.filter(item => item !== value) : [...list, value]);
-/** Paste a GitHub link: shows which of Claude / Codex it supports, installs the chosen plugins into MutiS's own copies. */
 export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
   const client = useQueryClient();
-  const [link, setLink] = useState(""); const [found, setFound] = useState<LinkFound | null>(null);
-  const [targets, setTargets] = useState<LinkTarget[]>([]); const [plugins, setPlugins] = useState<string[]>([]);
-  const [busy, setBusy] = useState("");
+  const skillGroup = useId();
+  const [link, setLink] = useState("");
+  const [found, setFound] = useState<LinkFound | null>(null);
+  const [targets, setTargets] = useState<LinkTarget[]>([]);
+  const [plugins, setPlugins] = useState<string[]>([]);
+  const [skillId, setSkillId] = useState("");
+  const [skillTarget, setSkillTarget] = useState<LinkTarget>("claude");
+  const [replacement, setReplacement] = useState<LinkSkillConflict | null>(null);
+  const [busy, setBusy] = useState<"inspect" | "plugins" | "skill" | null>(null);
+  const pendingInspection = useRef<AbortController | null>(null);
+  useEffect(() => () => pendingInspection.current?.abort(), []);
+
+  const labels = t.addons.link;
   const markets = found ? TARGETS.filter(target => found[target]) : [];
+  const skill = found?.skills.find(item => item.id === skillId);
+  const conflict = replacement?.skill_id === skill?.id && replacement?.target === skillTarget ? replacement : null;
+  const installing = busy === "plugins" || busy === "skill";
+
+  function clearResult() {
+    setFound(null);
+    setTargets([]);
+    setPlugins([]);
+    setSkillId("");
+    setSkillTarget("claude");
+    setReplacement(null);
+  }
+
+  function editLink(value: string) {
+    pendingInspection.current?.abort();
+    pendingInspection.current = null;
+    if (busy === "inspect") setBusy(null);
+    setLink(value);
+    clearResult();
+  }
+
   async function inspect() {
-    setBusy("inspect"); setFound(null);
+    if (busy || !link.trim()) return;
+    const controller = new AbortController();
+    pendingInspection.current = controller;
+    clearResult();
+    setBusy("inspect");
     try {
-      const result = await addonsApi.inspectLink(link.trim());
+      const result = await addonsApi.inspectLink(link.trim(), controller.signal);
+      if (controller.signal.aborted) return;
       setFound(result);
       const available = TARGETS.filter(target => result[target]);
       setTargets(available);
       setPlugins([...new Set(available.flatMap(target => result[target]?.plugins.map(plugin => plugin.name) ?? []))]);
-    } catch (error) { notify(errorText(error, t.error)); }
-    finally { setBusy(""); }
+    } catch (error) {
+      if (!controller.signal.aborted) notify(errorText(error, t.error));
+    } finally {
+      if (pendingInspection.current === controller) {
+        pendingInspection.current = null;
+        setBusy(null);
+      }
+    }
   }
-  async function install() {
-    setBusy("install");
+
+  function report(text: string, message = text) {
+    onOutput(text);
+    notify(message);
+  }
+
+  async function installPlugins() {
+    if (!found || busy) return;
+    setBusy("plugins");
     try {
-      const result = await addonsApi.installLink({ link: link.trim(), targets, plugins });
-      onOutput(result.output); notify(result.ok ? t.addons.added(link.trim()) : result.output);
-      if (result.ok) setFound(null);
-    } catch (error) { const message = errorText(error, t.error); onOutput(message); notify(message); }
-    finally { setBusy(""); await client.invalidateQueries({ queryKey: ["codex-plugins"] }); await client.invalidateQueries({ queryKey: ["addons"] }); }
+      const result = await addonsApi.installLink({ link: found.source, targets, plugins });
+      report(result.output, result.ok ? t.addons.added(link.trim()) : result.output);
+      if (result.ok && !found.skills.length) clearResult();
+    } catch (error) {
+      report(errorText(error, t.error));
+    } finally {
+      setBusy(null);
+      await client.invalidateQueries({ queryKey: ["codex-plugins"] });
+      await client.invalidateQueries({ queryKey: ["addons"] });
+    }
   }
+
+  async function installSkill(confirmation?: string) {
+    if (!found || !skill || busy) return;
+    setBusy("skill");
+    setReplacement(null);
+    try {
+      const result = await addonsApi.installLinkSkill({ link: found.source, skill_id: skill.id, target: skillTarget, confirmation });
+      report(result.output);
+      if (result.conflict) setReplacement(result.conflict);
+      if (result.ok) {
+        setSkillId("");
+        const key = skillTarget === "claude" ? "addons" : "codex-plugins";
+        await client.invalidateQueries({ queryKey: [key] });
+      }
+    } catch (error) {
+      report(errorText(error, t.error));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const chosen = new Set(targets.flatMap(target => found?.[target]?.plugins.map(plugin => plugin.name) ?? []));
-  const ready = targets.length > 0 && plugins.some(name => chosen.has(name));
-  return <section className={styles.group} aria-label={t.addons.link.title}><h3>{t.addons.link.title}</h3>
-    <p className={styles.note}>{t.addons.link.intro}</p>
+  const pluginsReady = targets.length > 0 && plugins.some(name => chosen.has(name));
+  return <section className={styles.group} aria-label={labels.title}>
+    <h3>{labels.title}</h3>
+    <p className={styles.note}>{labels.intro}</p>
     <form className={styles.actions} onSubmit={event => { event.preventDefault(); void inspect(); }}>
-      <input value={link} onChange={event => setLink(event.target.value)} placeholder={t.addons.link.placeholder} aria-label={t.addons.link.title} required />
-      <Button type="submit" variant="primary" disabled={Boolean(busy) || !link.trim()}>{busy === "inspect" ? t.addons.link.checking : t.addons.link.check}</Button>
+      <input value={link} onChange={event => editLink(event.target.value)} placeholder={labels.placeholder} aria-label={labels.title} disabled={installing} required />
+      <Button type="submit" variant="primary" disabled={Boolean(busy) || !link.trim()}>{busy === "inspect" ? labels.checking : labels.check}</Button>
     </form>
-    {found && (markets.length === 0 ? <p className={styles.note} role="status">{t.addons.link.none}</p> : <div className={styles.form}>
-      <h4>{t.addons.link.pickTarget}</h4>
-      <div className={styles.actions}>{markets.map(target => <label key={target} className={styles.check}>
-        <input type="checkbox" checked={targets.includes(target)} onChange={() => toggle(targets, target, setTargets)} /> {t.extensions[target]}</label>)}</div>
-      <h4>{t.addons.link.pickPlugins}</h4>
-      <ul className={styles.rows}>{[...chosen].map(name => {
-        const description = markets.map(target => found[target]?.plugins.find(plugin => plugin.name === name)?.description).find(Boolean) ?? "";
-        return <li key={name}><label className={styles.check}><input type="checkbox" checked={plugins.includes(name)} onChange={() => toggle(plugins, name, setPlugins)} />
-          <strong>{name}</strong>{description && <small title={description}>{description}</small>}</label></li>; })}</ul>
-      <p className={styles.note}>{t.addons.link.warn}</p>
-      <Button variant="primary" disabled={Boolean(busy) || !ready} onClick={() => void install()}>{busy === "install" ? t.addons.link.installing : t.addons.link.install}</Button>
-    </div>)}
+    {found && !markets.length && !found.skills.length && <p className={styles.note} role="status">{labels.none}</p>}
+    {found && markets.length > 0 && <div className={styles.form}>
+      <h4>{labels.pickPlugins}</h4>
+      <div className={styles.actions} role="group" aria-label={labels.pickTarget}>
+        {markets.map(target => <label key={target} className={styles.check}>
+          <input type="checkbox" checked={targets.includes(target)} disabled={installing} onChange={() => toggle(targets, target, setTargets)} />
+          {t.extensions[target]}
+        </label>)}
+      </div>
+      <ul className={styles.rows}>
+        {[...chosen].map(name => {
+          const description = markets.map(target => found[target]?.plugins.find(plugin => plugin.name === name)?.description).find(Boolean);
+          return <li key={name}><label className={styles.check}>
+            <input type="checkbox" checked={plugins.includes(name)} disabled={installing} onChange={() => toggle(plugins, name, setPlugins)} />
+            <strong>{name}</strong>{description && <small title={description}>{description}</small>}
+          </label></li>;
+        })}
+      </ul>
+      <p className={styles.note}>{labels.warn}</p>
+      <Button variant="primary" disabled={Boolean(busy) || !pluginsReady} onClick={() => void installPlugins()}>
+        {busy === "plugins" ? labels.installing : labels.installPlugins}
+      </Button>
+    </div>}
+    {found && found.skills.length > 0 && <div className={styles.form}>
+      <h4>{labels.pickSkills}</h4>
+      <div role="radiogroup" aria-label={labels.skillChoice}>
+        <ul className={styles.rows}>
+          {found.skills.map(item => <li key={item.id}><label className={styles.check}>
+            <input type="radio" name={skillGroup} checked={skillId === item.id} disabled={installing}
+              onChange={() => { setSkillId(item.id); setReplacement(null); }} />
+            <strong>{item.name}</strong><small>{item.path}</small>
+          </label></li>)}
+        </ul>
+      </div>
+      <div className={styles.actions}>
+        <label className={styles.inlineLabel}>{labels.skillTarget}
+          <select value={skillTarget} disabled={installing} onChange={event => {
+            setSkillTarget(event.target.value === "codex" ? "codex" : "claude");
+            setReplacement(null);
+          }}>
+            {TARGETS.map(target => <option key={target} value={target}>{t.extensions[target]}</option>)}
+          </select>
+        </label>
+      </div>
+      {skill && conflict ? <div className={styles.confirm} role="group" aria-label={labels.replaceSkill}>
+        <p>{labels.confirmReplace(skill.name, t.extensions[skillTarget])}</p>
+        <Button variant="danger" disabled={installing} onClick={() => void installSkill(conflict.confirmation)}>{labels.replaceSkill}</Button>
+        <Button disabled={installing} onClick={() => setReplacement(null)}>{t.cancel}</Button>
+      </div> : <Button variant="primary" disabled={Boolean(busy) || !skill} onClick={() => void installSkill()}>
+        {busy === "skill" ? labels.installing : labels.installSkill}
+      </Button>}
+    </div>}
   </section>;
 }
 /** Plugins in MutiS's own Codex, plus the ones only the user's own Codex has (copied over with "Thêm"). */

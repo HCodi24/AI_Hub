@@ -51,6 +51,31 @@ pub(super) fn persist_event(
     event: &ProviderEvent,
     last_persist: &mut Instant,
 ) {
+    if event.name == "worker_session" {
+        if let (Some(worker), Some(id)) = (
+            event.data["worker_id"].as_str(),
+            event.data["session_id"].as_str(),
+        ) {
+            record
+                .worker_sessions
+                .insert(worker.to_owned(), id.to_owned());
+            if let Some(tokens) = event.data["tokens"].as_u64() {
+                record
+                    .thread_tokens
+                    .insert(format!("worker:{worker}"), tokens);
+            }
+            persist_clean(store, record);
+            *last_persist = Instant::now();
+        }
+        return;
+    }
+    // Size of the main thread after its last model call; saved with the next write of the record.
+    if event.name == "thread_tokens" {
+        if let Some(tokens) = event.data["text"].as_str().and_then(|t| t.parse().ok()) {
+            record.thread_tokens.insert("main".to_owned(), tokens);
+        }
+        return;
+    }
     if matches!(event.name, "session" | "checker_session") {
         if let Some(session_id) = event.data["session_id"]
             .as_str()
@@ -192,6 +217,10 @@ mod tests {
             "checker_session",
             serde_json::json!({"session_id":"checker"}),
         );
+        send(
+            "worker_session",
+            serde_json::json!({"worker_id":"codex-luna","session_id":"worker"}),
+        );
         send("turn", serde_json::json!({"provider_kind":"deepseek"}));
         send("log", serde_json::json!({"text":"Read file"}));
         send("delta", serde_json::json!({"text":"Worker result"}));
@@ -219,6 +248,10 @@ mod tests {
             saved.checker_session_id.as_deref(),
             Some("checker"),
             "the checker keeps its own thread id"
+        );
+        assert_eq!(
+            saved.worker_sessions.get("codex-luna").map(String::as_str),
+            Some("worker")
         );
         assert_eq!(saved.messages[2].content, "Worker result");
         assert_eq!(saved.messages[2].diff, "+change");

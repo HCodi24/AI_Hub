@@ -205,6 +205,12 @@ fn is_token_line(line: &str) -> bool {
     line.starts_with("Token:")
 }
 
+/// The input tokens of a `Token: vào N (cache C), ra M` line.
+fn input_tokens(line: &str) -> Option<u64> {
+    let digits: String = line.strip_prefix("Token: vào ")?.chars().take_while(char::is_ascii_digit).collect();
+    digits.parse().ok()
+}
+
 /// A worker log line as shown in the chat; token lines stay unprefixed because the token table and task_end only match them at the start.
 fn worker_log(line: &str, label: &str) -> String {
     if is_token_line(line) { line.to_owned() } else { format!("{label}: {line}") }
@@ -254,6 +260,8 @@ pub struct DelegateProvider {
     /// Shown once in the chat when the option is on but the checker cannot run (what to set in the High section).
     pub checker_note: Option<String>,
     pub chat_id: String,
+    /// The CLI worker's thread kept in the chat record from an earlier message; None = start a new one.
+    pub worker_session: Option<String>,
 }
 
 /// What one round needs to talk to the worker and the checker; shared by the round loop and the checker's task.
@@ -263,6 +271,8 @@ struct Live {
     effort: Effort,
     /// The worker's own CLI thread (only when the worker is a CLI source); kept for every task of this reply.
     worker_cli_session: Mutex<Option<String>>,
+    /// Input tokens of the worker thread's last model call (a Codex worker only): its current size, kept in the chat record.
+    worker_cli_tokens: std::sync::atomic::AtomicU64,
     folder: String,
     mutis: MutisConfig,
     events: mpsc::Sender<ProviderEvent>,
@@ -319,7 +329,7 @@ impl Live {
             // shortcut: no write scope for Luna (Codex cannot be scoped); the checker judges the diff instead.
             write_scope: Vec::new(), checker_session_id: None,
         };
-        let result = self.run_cli("codex_cli", request, who.name(), self.session_of(who)).await;
+        let result = self.run_cli("codex_cli", request, who.name(), self.session_of(who), None).await;
         // Luna's thread is kept in the chat record; Luna 2's lives only in this reply.
         let kept = if who == Actor::Luna { self.checker_session.lock().unwrap().clone() } else { None };
         if let Some(id) = kept {
@@ -365,11 +375,19 @@ impl Live {
             // shortcut: a CLI cannot be scoped to files; the checker judges the diff instead.
             write_scope: Vec::new(), checker_session_id: None,
         };
-        self.run_cli(&self.worker.kind, request, &label, &self.worker_cli_session).await
+        let size = (self.worker.kind == "codex_cli").then_some(&self.worker_cli_tokens);
+        let result = self.run_cli(&self.worker.kind, request, &label, &self.worker_cli_session, size).await;
+        // Kept in the chat record, so the next message resumes this thread instead of re-reading the project.
+        let id = self.worker_cli_session.lock().unwrap().clone();
+        if let Some(id) = id {
+            let tokens = self.worker_cli_tokens.load(std::sync::atomic::Ordering::Relaxed);
+            let _ = events.send(ProviderEvent { name: "worker_session", data: serde_json::json!({ "worker_id": self.worker.id, "session_id": id, "tokens": (tokens > 0).then_some(tokens) }) }).await;
+        }
+        result
     }
 
     /// Runs one CLI turn and folds its events into a `WorkerResult`. `session` receives the thread id the CLI reports; `label` prefixes its log lines.
-    async fn run_cli(&self, kind: &str, request: ProviderRequest, label: &str, session: &Mutex<Option<String>>) -> WorkerResult {
+    async fn run_cli(&self, kind: &str, request: ProviderRequest, label: &str, session: &Mutex<Option<String>>, size: Option<&std::sync::atomic::AtomicU64>) -> WorkerResult {
         let events = &self.events;
         let mut result = WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
         let inner = match for_kind(kind) {
@@ -404,6 +422,9 @@ impl Live {
                 }
                 "log" => {
                     let line = event.data["text"].as_str().unwrap_or("");
+                    if let (Some(size), Some(tokens)) = (size, input_tokens(line)) {
+                        size.store(tokens, std::sync::atomic::Ordering::Relaxed);
+                    }
                     let line = if is_token_line(line) { line.to_owned() } else { format!("{label}: {line}") };
                     let _ = events.send(ProviderEvent::text("log", line)).await;
                 }
@@ -697,7 +718,7 @@ impl DelegateProvider {
 impl super::Provider for DelegateProvider {
     async fn run(&self, mut request: ProviderRequest, events: mpsc::Sender<ProviderEvent>, cancel: CancellationToken) -> Result<()> {
         let live = Arc::new(Live {
-            worker: self.worker.clone(), model: self.model.clone(), effort: self.effort, worker_cli_session: Mutex::new(None),
+            worker: self.worker.clone(), model: self.model.clone(), effort: self.effort, worker_cli_session: Mutex::new(self.worker_session.clone()), worker_cli_tokens: Default::default(),
             folder: request.folder.clone(), mutis: request.mutis.clone(),
             events: events.clone(), cancel: cancel.clone(), checker: self.checker.clone(),
             worker_session: format!("{}{}:{}:{}", super::worker_session::PREFIX, self.chat_id, self.worker.id, self.model),
@@ -765,6 +786,8 @@ mod tests {
         assert_eq!(worker_log("Sửa a.rs", "DeepSeek"), "DeepSeek: Sửa a.rs");
         assert_eq!(worker_log("Sửa a.rs", "Luna"), "Luna: Sửa a.rs");
         assert!(is_token_line("Token: vào 1, ra 2") && !is_token_line("DeepSeek: Token: vào 1, ra 2"));
+        assert_eq!(input_tokens("Token: vào 147202 (cache 145408), ra 2478"), Some(147202));
+        assert_eq!(input_tokens("Codex: Command: x"), None);
     }
 
     #[test]
