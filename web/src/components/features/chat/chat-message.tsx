@@ -6,6 +6,7 @@ import { MarkdownView } from "@/components/markdown-view/markdown-view";
 import { chatText } from "@/text/chat";
 import { DebateCard } from "@/components/features/debate/debate-card";
 import { splitImportedFileText } from "@/lib/import-file";
+import { stripDevChatPreamble } from "@/lib/dev-chat-preamble";
 import { AttachmentCard } from "./attachment-card";
 import { ChatActivity } from "./chat-activity";
 import { FileChanges } from "./file-changes";
@@ -23,11 +24,17 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
   const sourceLabel = PROVIDER_LABELS[message.provider] || chatText.assistant;
   const model = message.model.trim();
   const petState = useMemo(() => chatPetState(message, streaming, latest), [message, streaming, latest]);
-  const imported = useMemo(() => user ? splitImportedFileText(message.content) : {
-    text: streaming
-      ? hideDelegation(message.content).replace(/^```mutis-questions\s*$[\s\S]*$/m, "")
-      : parseChatQuestions(hideDelegation(message.content)).text,
-    files: [],
+  const imported = useMemo(() => {
+    if (user) {
+      const split = splitImportedFileText(message.content);
+      return { ...split, text: stripDevChatPreamble(split.text) };
+    }
+    return {
+      text: streaming
+        ? hideDelegation(message.content).replace(/^```mutis-questions\s*$[\s\S]*$/m, "")
+        : parseChatQuestions(hideDelegation(message.content)).text,
+      files: [],
+    };
   }, [user, message.content, streaming]);
   /** DeepSeek token logs already live inside the collapsed activity disclosure, so they are not repeated here. */
   const tokenLine = message.provider === "deepseek" ? undefined : message.logs.filter((line) => /token|usage|chi phí/i.test(line)).at(-1);

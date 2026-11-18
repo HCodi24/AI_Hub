@@ -14,7 +14,7 @@ pub(super) fn add_codex_cli_model_suggestions(config: &mut Config) {
         .iter_mut()
         .filter(|provider| provider.kind == "codex_cli")
     {
-        for model in ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"] {
+        for model in ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.2-sol", "gpt-6.1-terra"] {
             if !provider.models.iter().any(|existing| existing == model) {
                 provider.models.push(model.to_owned());
             }

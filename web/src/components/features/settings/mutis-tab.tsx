@@ -74,7 +74,8 @@ export function MutisTab({ taskBoardEnabled, onTaskBoardEnabledChange }: { taskB
     </div>
     {PROFILES.map(id => <div key={id} role="tabpanel" id={`mutis-panel-${id}`} aria-labelledby={`mutis-tab-${id}`} hidden={profile !== id}>
       <fieldset className={styles.group}><legend>{id === "roles" ? t.mutis.maxRoles : t.mutis.highRoles}</legend>
-        {ROLES.map(role => { const value = draft[id][role];
+        {/* High never runs big code through its own role (the lead plans, the small role works), so that row is hidden there. */}
+        {ROLES.filter(role => id !== "high_roles" || role !== "big").map(role => { const value = draft[id][role];
           const setRole = (patch: Partial<typeof value>, immediate = false) => autosave.update(current => ({
             ...current, [id]: { ...current[id], [role]: { ...current[id][role], ...patch } }
           }), immediate);

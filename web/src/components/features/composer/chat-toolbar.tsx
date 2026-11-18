@@ -18,7 +18,7 @@ import { useShallow } from "zustand/react/shallow";
 import { MutisEfforts } from "./mutis-efforts";
 
 const CLI_MODEL_SUGGESTIONS: Record<string, string[]> = {
-  codex_cli: ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.1-terra"],
+  codex_cli: ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.2-sol", "gpt-6.1-terra"],
   claude_cli: ["opus", "sonnet", "haiku", "claude-fable-5-2"],
 };
 

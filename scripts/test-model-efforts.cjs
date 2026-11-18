@@ -15,4 +15,8 @@ for (const model of ['DeepSeek-V4.1-Flash', 'deepseek-v4.1-flash', 'deepseek-fla
 assert.equal(effortsFor('gpt-model', 'codex_cli'), EFFORTS);
 assert.equal(effortsFor('DeepSeek-V4.1-Flash', 'codex_cli'), EFFORTS);
 assert.equal(effortFor('other-model', 'medium'), 'medium');
+assert.deepEqual(Array.from(effortsFor('gpt-6.2-sol', 'codex_cli')), ['low', 'medium', 'high']);
+for (const value of ['low', 'medium', 'high']) assert.equal(effortFor('gpt-6.2-sol', value, 'codex_cli'), value);
+for (const value of ['default', 'xhigh', 'max']) assert.equal(effortFor('gpt-6.2-sol', value, 'codex_cli'), 'medium');
+assert.equal(effortsFor('gpt-6.1-sol', 'codex_cli'), EFFORTS);
 console.log('PASS model efforts: DeepSeek Low/High/Max, old settings normalized, other models unchanged');

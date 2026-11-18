@@ -5,10 +5,14 @@ import styles from "./chat-message.module.css";
 /** One activity entry per supplied log, in the original order; `Command:`/`Lệnh:` lines are real shell commands. */
 const COMMAND = /^(?:Command|Lệnh):\s*([\s\S]*)$/i;
 
+const FAILURE = /^(?:MCP .* không dùng được|error:)/i;
+
 /** `provider` stays accepted for compatibility; every provider's logs collapse into the same disclosure. */
 export function ChatActivity({ logs }: { logs: string[]; provider?: string }) {
   const entries = logs.map(text => ({ text, command: COMMAND.exec(text)?.[1] }));
-  return <details className={styles.activity}>
+  // A failed MCP start or tool call opens the list by itself so the failure is not hidden.
+  const failed = logs.some(text => FAILURE.test(text));
+  return <details className={styles.activity} open={failed || undefined}>
     <summary className={styles.activitySummary}>
       <span>{`${chatText.activity} (${entries.length})`}</span>
       <ChevronRight size={16} aria-hidden="true" />

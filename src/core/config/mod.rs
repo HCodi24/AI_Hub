@@ -121,6 +121,7 @@ impl Config {
                     models: vec![
                         "gpt-6-luna".to_owned(),
                         "gpt-6.1-sol".to_owned(),
+                        "gpt-6.2-sol".to_owned(),
                         "gpt-6.1-terra".to_owned(),
                     ],
                     ..Default::default()

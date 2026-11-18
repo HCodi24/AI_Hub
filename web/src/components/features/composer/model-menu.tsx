@@ -4,7 +4,7 @@ import { chatText } from "@/text/chat";
 import styles from "./model-menu.module.css";
 
 const MODEL_LABELS: Record<string, string> = {
-  "gpt-6-luna": "GPT-6 Luna", "gpt-6.1-sol": "GPT-6.1 Sol", "gpt-6.1-terra": "GPT-6.1 Terra",
+  "gpt-6-luna": "GPT-6 Luna", "gpt-6.1-sol": "GPT-6.1 Sol", "gpt-6.2-sol": "GPT-6.2 Sol", "gpt-6.1-terra": "GPT-6.1 Terra",
   opus: "Claude Opus", sonnet: "Claude Sonnet", haiku: "Claude Haiku",
   "claude-fable-5-2": "Claude Fable 5.2", "claude-opus-5-5": "Claude Opus 5.5",
   "claude-sonnet-5-5": "Claude Sonnet 5.5", "claude-haiku-5-5": "Claude Haiku 5.5",
