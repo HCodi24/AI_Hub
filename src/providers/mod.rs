@@ -13,6 +13,7 @@ pub(crate) mod discovery;
 pub(crate) mod limits;
 pub mod mcp;
 pub mod openai_compat;
+pub mod quota;
 
 use crate::{
     chat::{ChatMessage, Effort, Permission},

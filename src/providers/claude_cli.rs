@@ -33,6 +33,17 @@ impl Provider for ClaudeCliProvider {
             }
         }
         request.session_id = native;
+        // Past the token budget the thread is compacted in place (`/compact`), as Codex threads are, instead of being dropped.
+        if let Some(id) = request.session_id.clone() {
+            if let Some(size) = super::codex::compact::needs_compaction(&id, super::codex::compact::thread_token_budget(&config_path)) {
+                let _ = events.send(ProviderEvent::text("log", format!("Luồng Claude đã đọc {size} token; đang nén ngữ cảnh."))).await;
+                let note = match compact_session(&request.provider, &home, &request.folder, &id, &request.model, &cancel).await {
+                    Ok(()) => "Đã nén ngữ cảnh luồng Claude.".to_owned(),
+                    Err(error) => format!("Không nén được luồng Claude, dùng tiếp như cũ: {error}"),
+                };
+                let _ = events.send(ProviderEvent::text("log", note)).await;
+            }
+        }
         let mut args = vec![
             OsString::from("-p"),
             OsString::from("--output-format"),
@@ -136,6 +147,56 @@ impl Provider for ClaudeCliProvider {
         }
         result
     }
+}
+
+/// Compacts a saved Claude session with its own `/compact` (same session id afterwards). Used before a turn past the token
+/// budget and by the "Nén ngữ cảnh" button. Verified live: the session keeps its facts after it.
+pub(crate) async fn compact_session(provider: &crate::config::ProviderConfig, home: &std::path::Path, folder: &str, native: &str, model: &str, cancel: &CancellationToken) -> Result<()> {
+    if !cli_support::safe_session_id(native) {
+        bail!("Claude session id không hợp lệ");
+    }
+    let mut args = vec![OsString::from("-p"), "--output-format".into(), "stream-json".into(), "--verbose".into(), "--permission-mode".into(), "plan".into()];
+    if !model.is_empty() && cli_support::valid_model(model) {
+        args.extend([OsString::from("--model"), OsString::from(model)]);
+    }
+    args.extend([OsString::from("--resume"), OsString::from(native)]);
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let seen = done.clone();
+    let (sink, mut drained) = mpsc::channel(64);
+    tokio::spawn(async move { while drained.recv().await.is_some() {} });
+    cli_support::run_jsonl(
+        cli_support::JsonlCommand {
+            config_dir: Some(home.to_owned()),
+            cli_name: "Claude Code CLI",
+            executable_name: "claude",
+            missing_message: "Chưa cài Claude Code CLI: npm i -g @anthropic-ai/claude-code",
+            configured_executable: provider.executable.clone(),
+            folder,
+            args,
+            prompt: "/compact".to_owned(),
+            watchdog_minutes: None,
+        },
+        sink,
+        cancel.clone(),
+        move |line| {
+            if line.contains("\"compact_result\":\"success\"") {
+                seen.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            Vec::new()
+        },
+    )
+    .await?;
+    if !done.load(std::sync::atomic::Ordering::SeqCst) {
+        bail!("Claude không báo nén thành công");
+    }
+    super::codex::compact::forget(native);
+    Ok(())
+}
+
+/// Input tokens of the last model call of a turn = how big the session is now.
+fn context_size(usage: &Value) -> Option<u64> {
+    let last = usage["iterations"].as_array()?.last()?;
+    Some(["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"].iter().filter_map(|key| last[*key].as_u64()).sum())
 }
 
 fn permission_args(permission: Permission) -> Vec<OsString> {
@@ -317,6 +378,9 @@ impl ClaudeParser {
                 } else if !self.delta_seen && !result_text.is_empty() {
                     events.push(ProviderEvent::text("delta", result_text.to_owned()));
                 }
+                if let (Some(id), Some(size)) = (value["session_id"].as_str(), context_size(&value["usage"])) {
+                    super::codex::compact::note_size(id, size);
+                }
                 if let Some(usage) =
                     cli_support::token_usage_log(&value["usage"], value.get("total_cost_usd"))
                 {
@@ -370,6 +434,15 @@ fn parse_claude_line(line: &str) -> Vec<ProviderEvent> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn session_size_is_the_last_model_call_not_the_turn_total() {
+        let usage = serde_json::json!({"input_tokens":99,"iterations":[
+            {"input_tokens":2,"cache_read_input_tokens":1000,"cache_creation_input_tokens":10},
+            {"input_tokens":3,"cache_read_input_tokens":2000,"cache_creation_input_tokens":20}]});
+        assert_eq!(super::context_size(&usage), Some(2023));
+        assert_eq!(super::context_size(&serde_json::json!({"input_tokens":5})), None, "no per-call data: the size is unknown, not guessed");
+    }
+
     use super::{parse_claude_line, ClaudeParser};
     use crate::chat::Permission;
 

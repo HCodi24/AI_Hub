@@ -152,7 +152,7 @@ fn overlap(a: &[String], b: &[String]) -> bool {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Row {
     pub title: String,
-    /// waiting, coding, checking, fixing, done, failed, takeover (the editing coordinator now finishes it) or skipped.
+    /// waiting, coding, checking, fixwait (a fix is queued), fixing, done, failed, takeover (the editing coordinator now finishes it) or skipped.
     pub state: &'static str,
     pub attempt: usize,
     /// PASS, FAIL or UNCLEAR once the checker answered.
@@ -188,6 +188,10 @@ pub(super) trait Backend: Send + Sync + 'static {
     async fn say(&self, line: String);
     async fn announce_check(&self, task: &Delegation, attempt: usize, check: &CheckResult);
     fn cancelled(&self) -> bool;
+    /// Why the source behind this actor cannot be called now (its usage limit is spent), if so.
+    fn limited(&self, _actor: Actor) -> Option<String> { None }
+    /// The actor's source just answered with a usage-limit error: stop calling it for a while.
+    fn note_limit(&self, _actor: Actor, _why: &str) {}
     /// False when the coordinator may not edit files, so it cannot take a task over.
     fn can_edit(&self) -> bool;
     /// Name shown for an actor: the worker is DeepSeek for an API agent, or the source's own name for a CLI worker.
@@ -217,6 +221,11 @@ enum State {
     Checking,
     Clean,
     Failed,
+}
+
+/// Told to the coordinator when a source is out of its usage limit: no retry happened, and the choice is its own.
+fn limit_text(title: &str, who: &str, why: &str) -> String {
+    format!("Task \"{}\" was NOT done: {who} has used up its usage limit and is not called again for a while ({}). The app did not retry and did not hand it over. Tell the user, then wait for the limit to reset, ask for another source, or implement the task yourself if its own limit allows.", title.trim(), truncate_chars(why, 200))
 }
 
 fn key(title: &str) -> String {
@@ -354,6 +363,12 @@ impl<B: Backend> Round<'_, B> {
             self.mark(&task.title, self.spent_state(), max, None, None, None, None, None).await;
             return None;
         }
+        if let Some(why) = self.backend.limited(editor) {
+            self.out.reports.push(limit_text(&task.title, &self.backend.actor_name(editor), &why));
+            self.state.insert(title, State::Failed);
+            self.mark(&task.title, "limited", 0, None, Some(editor), self.backend.actor_model(editor), None, None).await;
+            return None;
+        }
         let problems = self.backend.path_problems(task);
         if !problems.is_empty() {
             self.out.reports.push(format!("Path check failed for \"{}\": the worker was NOT run and this is not counted as an attempt. {}. Resend the block with correct paths.", task.title.trim(), problems.join("; ")));
@@ -384,7 +399,7 @@ impl<B: Backend> Round<'_, B> {
                 return;
             }
             match auto_retry_reason(&work) {
-                Some(why) if auto < MAX_AUTO_RETRIES && attempt < max => {
+                Some(why) if auto < MAX_AUTO_RETRIES && attempt < max && !work.error.as_deref().is_some_and(super::quota::is_limit) => {
                     auto += 1;
                     self.backend.say(format!("Tự giao lại {} ({auto}/{MAX_AUTO_RETRIES}): {}", self.backend.actor_name(editor), truncate_chars(&why, 160))).await;
                     attempt = self.next_attempt(&task, editor, auto).await;
@@ -395,6 +410,13 @@ impl<B: Backend> Round<'_, B> {
         }
         let checker = Actor::Tester;
         self.out.reports.push(report(&task, &self.backend.actor_name(editor), attempt, max, auto, &work));
+        if let Some(why) = work.error.as_deref().filter(|e| auto_retry_reason(&work).is_some() && super::quota::is_limit(e)) {
+            self.backend.note_limit(editor, why);
+            self.out.reports.push(limit_text(&task.title, &self.backend.actor_name(editor), why));
+            self.state.insert(title, State::Failed);
+            self.mark(&task.title, "limited", attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
+            return;
+        }
         if auto_retry_reason(&work).is_some() {
             self.state.insert(title, State::Failed);
             self.mark(&task.title, self.spent_state(), attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
@@ -427,6 +449,9 @@ impl<B: Backend> Round<'_, B> {
 
     async fn handle_check(&mut self, (task, attempt, check): Finished) {
         self.pending -= 1;
+        if let Some(why) = check.error.as_deref().filter(|e| super::quota::is_limit(e)) {
+            self.backend.note_limit(Actor::Tester, why);
+        }
         self.backend.announce_check(&task, attempt, &check).await;
         self.out.reports.push(check_text(&task, attempt, &check));
         let title = key(&task.title);
@@ -461,7 +486,8 @@ impl<B: Backend> Round<'_, B> {
                 }
                 self.queue.push_back(fix);
                 let next_editor = Actor::Worker;
-                self.mark(&task.title, "fixing", attempt, Some(shown), Some(next_editor), self.backend.actor_model(next_editor), Some(checker), checker_model).await;
+                // The fix is queued, not started: it shows as waiting to be fixed until a worker takes it (then `work` marks it "fixing").
+                self.mark(&task.title, "fixwait", attempt, Some(shown), Some(next_editor), self.backend.actor_model(next_editor), Some(checker), checker_model).await;
             } else {
                 self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent and the check still fails. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
                 self.state.insert(title, State::Failed);
@@ -560,6 +586,8 @@ mod tests {
         hold: Option<(String, String)>,
         released: Notify,
         read_only: bool,
+        /// Every worker run fails with a usage-limit error.
+        out_of_limit: bool,
         boards: Mutex<Vec<Vec<Row>>>,
         /// Paths the fake project does not accept.
         bad_paths: Vec<String>,
@@ -594,8 +622,8 @@ mod tests {
             if self.hold.as_ref().is_some_and(|(_, other)| *other == task.title) {
                 self.released.notify_one();
             }
-            let diff = if self.empty.contains(&task.title) { "" } else { "+x" };
-            WorkerResult { summary: String::new(), diff: diff.into(), error: None, refused: Vec::new() }
+            let diff = if self.empty.contains(&task.title) || self.out_of_limit { "" } else { "+x" };
+            WorkerResult { summary: String::new(), diff: diff.into(), error: self.out_of_limit.then(|| "You hit your usage limit".to_owned()), refused: Vec::new() }
         }
         fn has_checker(&self) -> bool {
             self.checker
@@ -776,9 +804,19 @@ mod tests {
         let (fake, _, _) = run(fake, vec![task("A", &[]), task("B", &["A"])]).await;
         let boards = fake.boards.lock().unwrap().clone();
         assert_eq!(boards[0].iter().map(|row| (row.title.as_str(), row.state)).collect::<Vec<_>>(), [("A", "waiting"), ("B", "waiting")]);
-        for (title, state) in [("A", "coding"), ("A", "checking"), ("A", "fixing"), ("A", "done"), ("B", "done")] {
+        for (title, state) in [("A", "coding"), ("A", "checking"), ("A", "fixwait"), ("A", "fixing"), ("A", "done"), ("B", "done")] {
             assert!(boards.iter().any(|rows| rows.iter().any(|row| row.title == title && row.state == state)), "missing {title}:{state}: {boards:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn a_usage_limit_error_is_not_retried_and_is_not_a_takeover() {
+        let fake = Fake { out_of_limit: true, ..Default::default() };
+        let (fake, out, _) = run(fake, vec![task("A", &[])]).await;
+        let works = fake.lines().iter().filter(|l| l.starts_with("work:A")).count();
+        assert_eq!(works, 1, "no automatic retry: {:?}", fake.lines());
+        assert!(fake.boards.lock().unwrap().iter().any(|rows| rows.iter().any(|row| row.state == "limited")));
+        assert!(out.reports.iter().any(|r| r.contains("usage limit") && r.contains("NOT done")));
     }
 
     #[tokio::test]

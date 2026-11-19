@@ -254,6 +254,8 @@ pub struct DelegateProvider {
     /// Shown once in the chat when the option is on but the checker cannot run (what to set in the High section).
     pub checker_note: Option<String>,
     pub chat_id: String,
+    /// The lead (coordinator) source kind: `codex_cli` or `claude_cli`.
+    pub lead_kind: String,
     /// The CLI worker's thread kept in the chat record from an earlier message; None = start a new one.
     pub worker_session: Option<String>,
     /// The same for Worker 2, the second slot of the same worker.
@@ -325,6 +327,14 @@ impl Live {
     }
 
     /// Whether the worker runs as a CLI thread (Codex, Claude) instead of the API agent loop.
+    /// The source an actor calls, for its usage limit: the worker slots share one, the tester has its own.
+    fn source_of(&self, actor: Actor) -> Option<&str> {
+        match actor {
+            Actor::Tester => self.checker.as_ref().map(|(provider, _, _)| provider.id.as_str()),
+            _ => Some(self.worker.id.as_str()),
+        }
+    }
+
     fn worker_is_cli(&self) -> bool {
         matches!(self.worker.kind.as_str(), "codex_cli" | "claude_cli")
     }
@@ -547,6 +557,9 @@ impl Backend for Live {
 
     async fn check(&self, task: &Delegation, attempt: usize, work: &WorkerResult) -> CheckResult {
         let Some((provider, model, effort)) = self.checker.clone() else { return CheckResult::unclear("no checker is configured") };
+        if let Some(why) = super::quota::frozen(&provider.id) {
+            return CheckResult::unclear(&format!("the checker's usage limit is spent, so no check ran: {why}"));
+        }
         let id = check_id(task, attempt);
         // The live card appears before the checker provider starts, so Tester is visible while it runs.
         let _ = self.events.send(checker_activity(&id, "start", task, attempt, &model, "")).await;
@@ -646,6 +659,16 @@ impl Backend for Live {
         self.cancel.is_cancelled()
     }
 
+    fn limited(&self, actor: Actor) -> Option<String> {
+        super::quota::frozen(self.source_of(actor)?)
+    }
+
+    fn note_limit(&self, actor: Actor, why: &str) {
+        if let Some(source) = self.source_of(actor) {
+            super::quota::freeze(source, why);
+        }
+    }
+
     fn can_edit(&self) -> bool {
         self.can_edit
     }
@@ -687,12 +710,13 @@ impl DelegateProvider {
     async fn codex_turn(&self, request: &ProviderRequest, events: &mpsc::Sender<ProviderEvent>, cancel: &CancellationToken) -> Result<(String, Option<String>)> {
         // The coordinator gets its own turn before the call, so its text never mixes with a worker turn.
         if cancel.is_cancelled() { return Ok((String::new(), None)); }
-        if events.send(turn("codex_cli", &request.model, "Codex")).await.is_err() {
+        let lead_name = if self.lead_kind == "claude_cli" { "Claude" } else { "Codex" };
+        if events.send(turn(&self.lead_kind, &request.model, lead_name)).await.is_err() {
             cancel.cancel();
             return Ok((String::new(), None));
         }
         let (sender, mut receiver) = mpsc::channel(32);
-        let inner = for_kind("codex_cli")?;
+        let inner = for_kind(&self.lead_kind)?;
         let (inner_request, inner_cancel) = (request.clone(), cancel.clone());
         let handle = tokio::spawn(async move { inner.run(inner_request, sender, inner_cancel).await });
         let (mut text, mut session) = (String::new(), None);

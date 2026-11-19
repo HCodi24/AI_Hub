@@ -72,6 +72,8 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const running = useCardStore(s => s.running);
   const chatId = useChatStore(s => s.id);
   const folder = useChatStore(s => s.settings.folder);
+  const queue = useChatStore(s => s.queue);
+  const unqueue = useChatStore(s => s.unqueue);
   const [memory, setMemory] = useState(false);
   useEffect(() => { try { setDebate(["1", "true"].includes(localStorage.getItem("debateMode") || "")); } catch { /* Storage unavailable. */ } }, []);
   const [value, setValue] = useState("");
@@ -256,7 +258,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   }, [addFiles, dropTarget]);
   const canSend = Boolean(value.trim()) || attachments.length > 0;
   async function submit() {
-    if (pending.current || importing.current || streaming || Boolean(running) || !canSend) return;
+    if (pending.current || importing.current || Boolean(running) || !canSend) return;
     pending.current = true;
     const origin = useChatStore.getState().id;
     const draft = value, sent = attached.current, picked = recalled; setValue(""); updateAttachments([]); setRecalled([]);
@@ -276,6 +278,9 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   }
   return <><form className={styles.composer} data-dragging={dragging || undefined} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <label className="sr-only" htmlFor="chat-input">{chatText.placeholder}</label>
+    {queue.length > 0 && <div className={styles.queue} aria-label={t.queued}>{queue.map((item, index) => <span key={`${index}-${item.text}`}>
+      <span title={item.text}>{item.text}</span>
+      <button type="button" aria-label={`${t.removeQueued}: ${item.text}`} onClick={() => unqueue(index)}><X size={12} aria-hidden="true" /></button></span>)}</div>}
     {recalled.length > 0 && <div className={styles.recalled} aria-label={t.recalled}>{recalled.map((item, index) => <span key={item.label}>
       <FileEdit size={14} aria-hidden="true" /><span title={item.label}>{item.label}</span>
       <button type="button" aria-label={`${t.removeMemory}: ${item.label}`} onClick={() => setRecalled(current => current.filter((_, i) => i !== index))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
@@ -316,7 +321,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
           : <span key={index}>{part.text}</span>)}
         {value.endsWith("\n") && "\u200b"}
       </div>
-      <textarea id="chat-input" ref={input} value={value} rows={1} disabled={streaming}
+      <textarea id="chat-input" ref={input} value={value} rows={1}
       placeholder={chatText.placeholder}
       aria-autocomplete="list" aria-controls={menuOpen ? skillListId : undefined}
       aria-activedescendant={menuOpen ? `${skillListId}-${activeIndex}` : undefined}

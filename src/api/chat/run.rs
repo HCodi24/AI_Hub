@@ -216,7 +216,7 @@ impl Run {
                         task.get("state")
                             .and_then(Value::as_str)
                             .is_some_and(|state| {
-                                matches!(state, "waiting" | "coding" | "checking" | "fixing")
+                                matches!(state, "waiting" | "coding" | "checking" | "fixwait" | "fixing")
                             });
                     if unfinished {
                         if let Some(fields) = task.as_object_mut() {

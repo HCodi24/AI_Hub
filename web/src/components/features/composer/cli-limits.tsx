@@ -55,6 +55,7 @@ export function CliLimits({ providerId, name }: { providerId: string; name: stri
       </svg>
     </summary>
     <div className={`${styles.panel} ${limitStyles.panel}`} role="region" aria-label={`${t.limits} · ${name}`}>
+      <p className={limitStyles.note}><strong>{name}</strong></p>
       {query.isPending && <p className={limitStyles.note}>{t.loading}</p>}
       {query.isError && <p className={limitStyles.note}>{t.limitError}</p>}
       {windows.map((window, index) => <div key={`${window.label}-${index}`} className={limitStyles.window}>

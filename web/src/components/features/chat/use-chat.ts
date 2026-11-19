@@ -19,7 +19,9 @@ export function useChat() {
   const chats = useQuery({ queryKey: ["chats"], queryFn: ({ signal }) => chatApi.list(signal) });
   async function send(text: string, direct = false, attachments: { id: string; mime: string }[] = []) {
     const state = useChatStore.getState();
-    if (deleting.current || state.streaming || useCardStore.getState().running) return false;
+    if (deleting.current || useCardStore.getState().running) return false;
+    // A run is in progress: the message waits in line and is sent when the run ends (all sources, same rule).
+    if (state.streaming) { state.enqueue({ text, attachments }); return true; }
     let debate = false;
     try { debate = ["1", "true"].includes(localStorage.getItem("debateMode") || ""); } catch { /* Storage unavailable. */ }
     if (state.settings.folder.trim() && !direct && !attachments.length && debate) {
@@ -52,10 +54,14 @@ export function useChat() {
     } catch (error: unknown) {
       current.finish(controller.signal.aborted ? chatText.stopped : error instanceof Error ? error.message : chatText.requestError);
     } finally { activeChatAbort = null; await client.invalidateQueries({ queryKey: ["chats"] }); }
+    // Next waiting message, unless the run failed or was stopped (stop empties the line).
+    const next = useChatStore.getState().error ? undefined : useChatStore.getState().dequeue();
+    if (next) await send(next.text, false, next.attachments);
     return true;
   }
   async function stop() {
     if (cancelActiveCard()) return;
+    useChatStore.getState().clearQueue();
     try { await chatApi.stop(useChatStore.getState().id); activeChatAbort?.abort(); }
     catch (error: unknown) { useChatStore.setState({ error: error instanceof Error ? error.message : chatText.requestError }); }
   }

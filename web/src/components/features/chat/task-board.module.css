@@ -4,6 +4,10 @@
    820px message envelope (ChatMessage max-width minus its horizontal padding). */
 .board { box-sizing: border-box; flex: 0 0 auto; width: calc(100% - 2 * var(--space-6)); max-width: calc(820px - 2 * var(--space-6)); margin: 0 auto var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); min-width: 0; }
 .title { font-size: var(--font-13); }
+.toggle { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: start; cursor: pointer; }
+.toggle small { color: var(--muted); }
+.toggle > svg { margin-inline-start: auto; }
+.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .board ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .board li { display: grid; grid-template-columns: 16px minmax(0, 1fr) 24px fit-content(40%); grid-template-areas: "icon name avatar details"; align-items: start; gap: 0 var(--space-2); min-width: 0; }
 .board li > svg { grid-area: icon; width: 16px; height: 16px; margin-top: 4px; }

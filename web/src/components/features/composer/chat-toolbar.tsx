@@ -87,6 +87,11 @@ export function ChatToolbar({ config }: { config?: Config }) {
   useEffect(() => {
     if (!streaming && effort !== settings.effort) configure({ effort });
   }, [effort, settings.effort, streaming, configure]);
+  // Limits of every CLI source that takes part: the lead, and under MutiS also the workers (and the checker at High), e.g. Claude and Codex together.
+  const limitProviders = isMutis
+    ? [...new Set([activeRoles?.lead, activeRoles?.big, activeRoles?.small, ...(mutis.data?.delegate_checker && level === "high" ? [mutis.data.high_checker] : [])].map(role => role?.provider_id))]
+      .flatMap(id => config?.providers.find(entry => entry.id === id && entry.kind.endsWith("_cli")) ?? [])
+    : provider && cli ? [provider] : [];
   return <><ChatPermission supportsCommands={!!cli || isAgentSource(provider)} menuRef={permissions} otherMenuRef={picker} />
   <details ref={picker} className={styles.picker} onToggle={(event) => {
     if (event.target === event.currentTarget && event.currentTarget.open && permissions.current) permissions.current.open = false;
@@ -113,5 +118,5 @@ export function ChatToolbar({ config }: { config?: Config }) {
           onPick={model => configure({ model })} />}
     </div>
   </details>
-  {provider && cli && <CliLimits key={provider.id} providerId={provider.id} name={provider.name} />}</>;
+  {limitProviders.map(entry => <CliLimits key={entry.id} providerId={entry.id} name={entry.name} />)}</>;
 }

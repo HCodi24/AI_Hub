@@ -80,6 +80,17 @@ pub(crate) async fn compact_chat(
             }
         }
     }
+    // Claude sessions (the lead): the same button, Claude's own `/compact`.
+    for provider in providers.iter().filter(|p| p.kind == "claude_cli") {
+        let (Ok(settings), Ok(home)) = (crate::providers::claude::environment::settings(), crate::providers::claude::environment::home(&state.config_path, provider)) else { continue };
+        let prefix = crate::providers::claude::environment::session_prefix(&settings, provider, &record.folder);
+        for id in threads.iter().filter_map(|id| id.strip_prefix(prefix.as_str())) {
+            match crate::providers::claude_cli::compact_session(provider, &home, &record.folder, id, "", &tokio_util::sync::CancellationToken::new()).await {
+                Ok(()) => compacted += 1,
+                Err(error) => failed.push(error.to_string()),
+            }
+        }
+    }
     Ok(Json(CompactResponse { compacted, failed }))
 }
 pub(crate) async fn list_chats(

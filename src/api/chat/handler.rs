@@ -208,7 +208,7 @@ pub(crate) async fn chat_handler(
     // MutiS High + Codex: the app runs the delegated worker for Codex (see providers::delegate). Any source that is
     // active in Settings › Nguồn AI can be the worker, whatever its kind (API key or CLI).
     let role_effort_name = mutis_level.as_deref().unwrap_or("max");
-    let delegate_worker = if provider_config.kind == "codex_cli"
+    let delegate_worker = if matches!(provider_config.kind.as_str(), "codex_cli" | "claude_cli")
         && mutis_level.is_some()
         && request.plan_id.is_none()
         && !plain_chat
@@ -303,6 +303,7 @@ pub(crate) async fn chat_handler(
             checker: delegate_checker.clone(),
             checker_note: checker_note.clone(),
             chat_id: request.chat_id.clone(),
+            lead_kind: provider_config.kind.clone(),
             worker_session,
             worker2_session,
         })},

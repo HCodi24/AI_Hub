@@ -1,4 +1,5 @@
-import { ArrowRightCircle, CheckCircle2, Circle, Loader2, MinusCircle, XCircle } from "lucide-react";
+import { useState } from "react";
+import { ArrowRightCircle, CheckCircle2, ChevronDown, ChevronUp, Circle, Loader2, MinusCircle, XCircle } from "lucide-react";
 import type { TaskRow } from "@/schema/chat.schema";
 import { chatText } from "@/text/chat";
 import { modelLabel } from "@/components/features/composer/model-menu";
@@ -9,10 +10,10 @@ import type { PetState } from "@/lib/chat-pet-state";
 import { useChatStore } from "./chat-store";
 import styles from "./task-board.module.css";
 
-const ICONS = { waiting: Circle, coding: Loader2, checking: Loader2, fixing: Loader2, done: CheckCircle2, failed: XCircle, takeover: ArrowRightCircle, skipped: MinusCircle, stopped: MinusCircle } as const;
+const ICONS = { waiting: Circle, fixwait: Circle, limited: XCircle, coding: Loader2, checking: Loader2, fixing: Loader2, done: CheckCircle2, failed: XCircle, takeover: ArrowRightCircle, skipped: MinusCircle, stopped: MinusCircle } as const;
 const BUSY = new Set(["coding", "checking", "fixing"]);
 /** Pose of the pet beside a task: running (the sheet's last row) for every busy state, coded, checked or fixed. */
-const PET_STATE: Record<string, PetState> = { waiting: "waiting", coding: "coding", checking: "coding", fixing: "coding", failed: "failed" };
+const PET_STATE: Record<string, PetState> = { waiting: "waiting", fixwait: "waiting", coding: "coding", checking: "coding", fixing: "coding", failed: "failed" };
 
 /** "Codex · GPT-6 Luna": who works, then the exact model; the model alone when its own name already says who. */
 function who(name: string | undefined, model: string | undefined) {
@@ -53,11 +54,17 @@ function TaskItem({ task }: { task: TaskRow }) {
 
 /** Live progress of the tasks Codex handed over: who is coding, what is being checked, what is being fixed. */
 export function TaskBoardView({ tasks }: { tasks: TaskRow[] }) {
+  const [collapsed, setCollapsed] = useState(false);
   if (!tasks.length) return null;
   const t = chatText.taskBoard;
+  const Chevron = collapsed ? ChevronDown : ChevronUp;
   return <section className={styles.board} aria-label={t.title} aria-live="polite">
-    <strong className={styles.title}>{t.title}</strong>
-    <ul>{tasks.map(task => <TaskItem key={task.title} task={task} />)}</ul>
+    <button type="button" className={styles.toggle} aria-expanded={!collapsed} title={collapsed ? t.expand : t.collapse} onClick={() => setCollapsed(!collapsed)}>
+      <strong className={styles.title}>{t.title}</strong>
+      {collapsed && <small>{t.progress(tasks.filter(task => task.state === "done").length, tasks.length)}</small>}
+      <Chevron size={16} aria-hidden="true" />
+    </button>
+    {!collapsed && <ul>{tasks.map(task => <TaskItem key={task.title} task={task} />)}</ul>}
   </section>;
 }
 

@@ -32,6 +32,7 @@ export function applyCheckerActivity(cards: LiveChecker[], activity: CheckerActi
 function stopCheckers(cards: LiveChecker[]): LiveChecker[] {
   return cards.map(card => card.state === "running" ? { ...card, state: "stopped" } : card);
 }
+export type QueuedMessage = { text: string; attachments: { id: string; mime: string }[] };
 type ChatState = {
   id: string; messages: ChatMessage[]; settings: Settings; streaming: boolean; drawer: boolean;
   status: StreamData; error: string; initialized: boolean;
@@ -39,6 +40,9 @@ type ChatState = {
   tasks: TaskRow[];
   /** Live Tester checks, keyed by the checker's own id and independent of messages, status and tasks. */
   checkers: LiveChecker[];
+  /** Messages typed while a run is in progress; each is sent, in order, once the run ends. */
+  queue: QueuedMessage[];
+  enqueue: (item: QueuedMessage) => void; dequeue: () => QueuedMessage | undefined; unqueue: (index: number) => void; clearQueue: () => void;
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
   load: (chat: ChatRecord) => void; reset: () => void;
@@ -68,8 +72,12 @@ function rememberActiveChat(id: string) {
     else sessionStorage.removeItem(ACTIVE_CHAT_KEY);
   } catch { /* Storage unavailable. */ }
 }
-export const useChatStore = create<ChatState>((set) => ({
-  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false, tasks: [], checkers: [],
+export const useChatStore = create<ChatState>((set, get) => ({
+  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false, tasks: [], checkers: [], queue: [],
+  enqueue: (item) => set(state => ({ queue: [...state.queue, item] })),
+  dequeue: () => { const [next, ...rest] = get().queue; if (next) set({ queue: rest }); return next; },
+  unqueue: (index) => set(state => ({ queue: state.queue.filter((_, i) => i !== index) })),
+  clearQueue: () => set({ queue: [] }),
   configure: (settings) => set((state) => {
     const next = { ...state.settings, ...settings };
     saveModelSelection(state.id || DRAFT_ID, next);
@@ -97,7 +105,7 @@ export const useChatStore = create<ChatState>((set) => ({
         file_tools: chat.file_tools, dev_chat: chat.dev_chat,
       };
       saveModelSelection(chat.id, settings);
-      return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], checkers: [], error: "", drawer: false, initialized: true };
+      return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], checkers: [], queue: [], error: "", drawer: false, initialized: true };
     });
   },
   reset: () => {
@@ -105,7 +113,7 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => {
       const settings = { ...state.settings, dev_chat: false };
       saveModelSelection(DRAFT_ID, settings);
-      return { id: "", messages: [], status: {}, tasks: [], checkers: [], error: "", drawer: false, settings };
+      return { id: "", messages: [], status: {}, tasks: [], checkers: [], queue: [], error: "", drawer: false, settings };
     });
   },
   begin: (text, attachments = [], initialProvider = "", initialModel = "") => set((state) => {
@@ -169,7 +177,7 @@ export const useChatStore = create<ChatState>((set) => ({
   }),
   // A row still waiting or busy when the stream ends will never move again (stopped, or the connection dropped).
   finish: (error = "") => set((state) => {
-    const tasks = state.tasks.map(task => ["waiting", "coding", "checking", "fixing"].includes(task.state) ? { ...task, state: "stopped" } : task);
+    const tasks = state.tasks.map(task => ["waiting", "coding", "checking", "fixwait", "fixing"].includes(task.state) ? { ...task, state: "stopped" } : task);
     return { streaming: false, error, tasks, checkers: stopCheckers(state.checkers),
       messages: state.messages.map((message, index) => {
         if (index !== state.messages.length - 1 || message.role !== "assistant") return message;

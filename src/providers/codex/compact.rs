@@ -13,17 +13,21 @@ fn sizes() -> &'static Mutex<HashMap<String, u64>> {
     SIZES.get_or_init(Mutex::default)
 }
 
-pub(super) fn note_size(thread_id: &str, tokens: u64) {
+pub(crate) fn note_size(thread_id: &str, tokens: u64) {
     sizes().lock().unwrap_or_else(|e| e.into_inner()).insert(thread_id.to_owned(), tokens);
 }
 
+pub(crate) fn forget(thread_id: &str) {
+    sizes().lock().unwrap_or_else(|e| e.into_inner()).remove(thread_id);
+}
+
 /// The size the thread had at its last model call, when it is at least `budget` (0 = never compact).
-pub(super) fn needs_compaction(thread_id: &str, budget: u64) -> Option<u64> {
+pub(crate) fn needs_compaction(thread_id: &str, budget: u64) -> Option<u64> {
     let size = sizes().lock().unwrap_or_else(|e| e.into_inner()).get(thread_id).copied()?;
     (budget > 0 && size >= budget).then_some(size)
 }
 
-pub(super) fn thread_token_budget(config_path: &Path) -> u64 {
+pub(crate) fn thread_token_budget(config_path: &Path) -> u64 {
     std::fs::read(config_path)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<crate::config::Config>(&bytes).ok())
@@ -51,7 +55,7 @@ pub(super) async fn compact(client: &mut Client, thread_id: &str, cancel: &Cance
         }
     };
     let result = tokio::time::timeout(Duration::from_secs(300), wait).await.context("Codex nén luồng quá lâu")?;
-    sizes().lock().unwrap_or_else(|e| e.into_inner()).remove(thread_id);
+    forget(thread_id);
     result
 }
 

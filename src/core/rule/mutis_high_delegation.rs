@@ -24,7 +24,7 @@ pub const RULE: &str = concat!(
 );
 
 pub fn for_coordinator(enabled: bool, level: &str, provider_kind: &str) -> &'static str {
-    if enabled && level == "high" && provider_kind == "codex_cli" {
+    if enabled && level == "high" && matches!(provider_kind, "codex_cli" | "claude_cli") {
         RULE
     } else {
         ""
@@ -40,7 +40,7 @@ macro_rules! split_rule {
 
 /// Plain chat with a DeepSeek worker the app can run: Codex hands work over in a fenced block and the app answers with the real report.
 const PROTOCOL_RULE: &str = concat!(
-    "MutiS High delegation protocol (mandatory for Codex in this chat):\n",
+    "MutiS High delegation protocol (mandatory in this chat):\n",
     "- You coordinate. Implementation goes to the DeepSeek worker; you analyse, write acceptance criteria, review and verify. Do not edit project files yourself while delegating, except the big tasks you mark \"hard\" (below).\n",
     split_rule!(),
     "- DeepSeek works from exact edits, so split finer than for a capable model: one function, component or file per task.\n",
@@ -68,7 +68,7 @@ const PROTOCOL_RULE: &str = concat!(
 /// The same protocol for a worker that is not DeepSeek (for example another Codex model). It is a capable model, so a task needs the goal
 /// and its limits, not the exact edit DeepSeek's does.
 const OTHER_PROTOCOL_RULE: &str = concat!(
-    "MutiS High delegation protocol (mandatory for Codex in this chat):\n",
+    "MutiS High delegation protocol (mandatory in this chat):\n",
     "- You coordinate. Implementation goes to the worker, a capable coding model; you analyse, write acceptance criteria, review and verify. Do not edit project files yourself while delegating.\n",
     split_rule!(),
     "- Read the relevant files yourself first. Then end your reply with one fenced block per task:\n",
@@ -145,12 +145,12 @@ mod tests {
     }
 
     #[test]
-    fn delegation_is_scoped_to_enabled_high_codex() {
+    fn delegation_is_scoped_to_enabled_high_cli_leads() {
         assert_eq!(for_coordinator(true, "high", "codex_cli"), RULE);
         assert_eq!(for_coordinator(false, "high", "codex_cli"), "");
         assert_eq!(for_coordinator(true, "max", "codex_cli"), "");
         assert_eq!(for_coordinator(true, "high", "openai_compat"), "");
-        assert_eq!(for_coordinator(true, "high", "claude_cli"), "");
+        assert_eq!(for_coordinator(true, "high", "claude_cli"), RULE, "Claude leads the same way Codex does");
     }
 
     #[test]
