@@ -20,6 +20,44 @@ import styles from "./composer.module.css";
 const MAX_FILES = 5;
 // Match the whitespace used by Rust's trim_start and char::is_whitespace.
 const FIRST_SLASH_TOKEN = new RegExp("^(\\p{White_Space}*)/([^\\p{White_Space}]*)", "u");
+const UNICODE_WHITESPACE = /^\p{White_Space}$/u;
+type SuggestionToken = { start: number; end: number; prefix: string };
+type HighlightPart = { text: string; highlighted: boolean };
+function suggestionTokenAt(value: string, caret: number): SuggestionToken | null {
+  let start = caret;
+  while (start > 0 && !UNICODE_WHITESPACE.test(value[start - 1])) start--;
+  if (value[start] !== "/" || caret <= start || caret > value.length) return null;
+  let end = start + 1;
+  while (end < value.length && !UNICODE_WHITESPACE.test(value[end])) end++;
+  const token = value.slice(start + 1, end);
+  // A second separator indicates a URL or path rather than a skill command.
+  if (token.includes("/") || token.includes("\\")) return null;
+  return { start, end, prefix: value.slice(start + 1, caret).toLowerCase() };
+}
+function skillHighlightParts(value: string, skills: readonly string[] | undefined): HighlightPart[] {
+  const knownSkills = new Set(skills ?? []);
+  const parts: HighlightPart[] = [];
+  const tokenPattern = /\/([^\p{White_Space}]*)/gu;
+  let cursor = 0;
+  for (const match of value.matchAll(tokenPattern)) {
+    const start = match.index;
+    const token = match[1];
+    const end = start + match[0].length;
+    const hasBoundary = start === 0 || UNICODE_WHITESPACE.test(value[start - 1]);
+    if (!hasBoundary || token.includes("/") || token.includes("\\") || !knownSkills.has(token)) continue;
+    if (cursor < start) parts.push({ text: value.slice(cursor, start), highlighted: false });
+    parts.push({ text: match[0], highlighted: true });
+    cursor = end;
+  }
+  if (cursor < value.length || parts.length === 0) parts.push({ text: value.slice(cursor), highlighted: false });
+  return parts;
+}
+function syncHighlight(textarea: HTMLTextAreaElement | null, highlight: HTMLDivElement | null) {
+  if (!textarea || !highlight) return;
+  highlight.style.right = `${textarea.offsetWidth - textarea.clientWidth}px`;
+  highlight.scrollTop = textarea.scrollTop;
+  highlight.scrollLeft = textarea.scrollLeft;
+}
 const UploadSchema = z.object({ id: z.string(), mime: z.string(), url: z.string() });
 type Image = z.infer<typeof UploadSchema>;
 type Attachment = (Image & { kind: "image"; name: string }) | (ImportedFile & { kind: "text"; id: string });
@@ -45,10 +83,11 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const skillListId = useId();
   const addons = useQuery({ queryKey: ["addons"], queryFn: ({ signal }) => addonsApi.overview(signal) });
   const sharedSkills = addons.isSuccess ? addons.data.shared_skills : undefined;
-  const slashToken = FIRST_SLASH_TOKEN.exec(value);
-  const prefix = focused && !streaming && !composing && !suggestionsDismissed && slashToken
-    && selection.start === selection.end && selection.start > slashToken[1].length && selection.start <= slashToken[0].length
-    ? value.slice(slashToken[1].length + 1, selection.start).toLowerCase()
+  const highlightParts = useMemo(() => skillHighlightParts(value, sharedSkills), [value, sharedSkills]);
+  const firstSlashToken = FIRST_SLASH_TOKEN.exec(value);
+  const suggestionToken = selection.start === selection.end ? suggestionTokenAt(value, selection.start) : null;
+  const prefix = focused && !streaming && !composing && !suggestionsDismissed && suggestionToken
+    ? suggestionToken.prefix
     : null;
   const suggestions = useMemo(() => {
     if (prefix === null || !sharedSkills) return [];
@@ -64,6 +103,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const updateAttachments = useCallback((next: Attachment[]) => { attached.current = next; setAttachments(next); }, []);
   const [recalled, setRecalled] = useState<{ label: string; text: string }[]>([]);
   const input = useRef<HTMLTextAreaElement>(null);
+  const highlight = useRef<HTMLDivElement>(null);
   const nextCaret = useRef<number | null>(null);
   const picker = useRef<HTMLInputElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
@@ -80,8 +120,25 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const owner = useRef(chatId);
   useEffect(() => { if (owner.current !== chatId) { owner.current = chatId; attached.current = []; setAttachments([]); setDragging(false); } }, [chatId]);
   useEffect(() => {
-    if (input.current) { input.current.style.height = "auto"; input.current.style.height = `${Math.min(input.current.scrollHeight, 180)}px`; }
+    if (input.current) {
+      input.current.style.height = "auto";
+      input.current.style.height = `${Math.min(input.current.scrollHeight, 180)}px`;
+      syncHighlight(input.current, highlight.current);
+    }
   }, [value]);
+  useEffect(() => {
+    const textarea = input.current;
+    if (!textarea) return;
+    const sync = () => syncHighlight(textarea, highlight.current);
+    sync();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", sync);
+      return () => window.removeEventListener("resize", sync);
+    }
+    const observer = new ResizeObserver(sync);
+    observer.observe(textarea);
+    return () => observer.disconnect();
+  }, []);
   useLayoutEffect(() => {
     const caret = nextCaret.current;
     if (caret === null) return;
@@ -95,10 +152,11 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   }
 
   function selectSkill(name: string) {
-    if (!slashToken) return;
-    const before = `${slashToken[1]}/${name}`;
-    const after = value.slice(slashToken[0].length) || " ";
-    const caret = before.length + 1;
+    if (!suggestionToken) return;
+    const before = `${value.slice(0, suggestionToken.start)}/${name}`;
+    const appendSpace = suggestionToken.end === value.length;
+    const after = value.slice(suggestionToken.end) + (appendSpace ? " " : "");
+    const caret = before.length + (appendSpace ? 1 : 0);
     nextCaret.current = caret;
     setValue(before + after);
     setSelection({ start: caret, end: caret });
@@ -206,7 +264,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
     if (picked.length) {
       const context = `Recalled memory (picked by the user):\n${picked.map(item => `[${item.label}]\n${item.text}`).join("\n\n")}`;
       // The backend resolves slash commands from the first token, even if suggestions are unavailable.
-      prompt = slashToken?.[2]
+      prompt = firstSlashToken?.[2]
         ? `${prompt}\n\n${context}`
         : `${context}\n\n${prompt}`;
     }
@@ -251,6 +309,13 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
           }}><FileEdit size={18} aria-hidden="true" />{chatText.memory}</Button>
         </div>
       </details>
+      <div className={styles.inputWrap}>
+      <div ref={highlight} className={styles.inputHighlight} aria-hidden="true">
+        {highlightParts.map((part, index) => part.highlighted
+          ? <mark key={index}>{part.text}</mark>
+          : <span key={index}>{part.text}</span>)}
+        {value.endsWith("\n") && "\u200b"}
+      </div>
       <textarea id="chat-input" ref={input} value={value} rows={1} disabled={streaming}
       placeholder={chatText.placeholder}
       aria-autocomplete="list" aria-controls={menuOpen ? skillListId : undefined}
@@ -276,7 +341,11 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         trackSelection(event.currentTarget);
       }}
       onPaste={(event) => { const files = [...event.clipboardData.items].flatMap(item => item.kind === "file" ? [item.getAsFile()] : []).filter((file): file is File => file !== null); if (files.length) { event.preventDefault(); void addFiles(files); } }}
-      onKeyDown={handleInputKeyDown} />
+      onKeyDown={handleInputKeyDown}
+      onScroll={(event) => {
+        syncHighlight(event.currentTarget, highlight.current);
+      }} />
+      </div>
       {streaming ? <Button className={styles.sendButton} variant="danger" onClick={() => void stop()} aria-label={chatText.stop} title={chatText.stop}><Square size={18} aria-hidden="true" /></Button> :
         <Button className={styles.sendButton} variant="primary" type="submit" disabled={uploading || !canSend || Boolean(running)} aria-label={chatText.send} title={chatText.send}><ArrowUp size={20} aria-hidden="true" /></Button>}
     </div>
