@@ -94,6 +94,7 @@ pub(crate) async fn login_provider_start(
     Path(id): Path<String>,
 ) -> ApiResult<Json<LoginStartResponse>> {
     let provider = login_provider_config(&state, &id).await?;
+    super::claude::ensure_login_mode(&provider, true)?;
     super::claude::ensure_idle(&state).await?;
     let dir = providers::claude::environment::home(&state.config_path, &provider)
         .map_err(super::claude::error)?;
@@ -214,7 +215,7 @@ pub(crate) async fn login_provider_code(
     Path(id): Path<String>,
     Json(input): Json<LoginCodeInput>,
 ) -> ApiResult<Json<LoginCodeResponse>> {
-    login_provider_config(&state, &id).await?;
+    let provider = login_provider_config(&state, &id).await?;
     let code =
         validate_login_code(&input.code).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e))?;
     let mut sessions = state.claude_login.lock().await;
@@ -285,6 +286,11 @@ pub(crate) async fn login_provider_code(
         connection(false, "error", &message, "")
     };
     let logged_in = status.status == "connected";
+    if logged_in {
+        if let Ok(home) = providers::claude::environment::home(&state.config_path, &provider) {
+            providers::cli_support::set_auth_origin(&home, Some("web"));
+        }
+    }
     Ok(Json(LoginCodeResponse {
         ok: exited && logged_in,
         logged_in,

@@ -6,6 +6,8 @@ const StatusSchema = z.object({
   project_skills: z.boolean(), project_instructions: z.boolean(),
   /** Windows sandbox of the MutiS Codex home: without it Codex cannot write files. */
   sandbox: z.string().default("unknown"),
+  /** Signed-in account; origin = "cli" (copied from this machine) or "web". */
+  email: z.string().nullish(), plan: z.string().nullish(), origin: z.enum(["cli", "web"]).nullish(),
 });
 export type CodexStatus = z.infer<typeof StatusSchema>;
 const path = (id: string) => `/providers/${encodeURIComponent(id)}/codex`;

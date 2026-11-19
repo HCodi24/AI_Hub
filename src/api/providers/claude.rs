@@ -19,6 +19,10 @@ pub(crate) struct Status {
     message: String,
     project_skills: bool,
     project_instructions: bool,
+    /// Signed-in account of this source; `origin` is `cli` (copied from this machine) or `web`.
+    email: Option<String>,
+    plan: Option<String>,
+    origin: Option<String>,
 }
 
 pub(super) fn error(_: anyhow::Error) -> ApiError {
@@ -35,6 +39,21 @@ async fn provider(state: &AppState, id: &str) -> ApiResult<ProviderConfig> {
         .find(|p| p.id == id && p.kind == "claude_cli")
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nguồn Claude"))
+}
+
+/// CLI sources sign in one way only: machine sources reuse the installed CLI's account, web sources use the web.
+pub(super) fn ensure_login_mode(provider: &ProviderConfig, web: bool) -> ApiResult<()> {
+    if provider.web_login == web {
+        return Ok(());
+    }
+    Err(ApiError::new(
+        StatusCode::BAD_REQUEST,
+        if provider.web_login {
+            "Nguồn này đăng nhập qua web, không dùng tài khoản CLI trên máy"
+        } else {
+            "Nguồn này dùng tài khoản CLI trên máy; muốn đăng nhập web hãy thêm ở tab Tài khoản web"
+        },
+    ))
 }
 
 pub(super) async fn ensure_idle(state: &AppState) -> ApiResult<()> {
@@ -57,10 +76,13 @@ pub(super) async fn invalidate(state: &AppState) -> ApiResult<()> {
     Ok(())
 }
 
-pub(super) async fn auth_status(executable: &FsPath, home: &FsPath) -> anyhow::Result<bool> {
+pub(super) async fn auth_status(
+    executable: &FsPath,
+    home: &FsPath,
+) -> anyhow::Result<cli_support::AuthAccount> {
     // Never mistake a machine-wide/keychain login for this source's file credentials.
     if !home.join(".credentials.json").is_file() {
-        return Ok(false);
+        return Ok(cli_support::AuthAccount::default());
     }
     let mut command = cli_support::command_for(executable, &["auth".into(), "status".into()]);
     environment::apply(&mut command, home);
@@ -74,7 +96,7 @@ pub(super) async fn auth_status(executable: &FsPath, home: &FsPath) -> anyhow::R
             .output(),
     )
     .await??;
-    cli_support::parse_auth_logged_in(&output.stdout)
+    cli_support::parse_auth_account(&output.stdout)
         .ok_or_else(|| anyhow::anyhow!("Claude auth status không trả JSON hợp lệ"))
 }
 
@@ -85,33 +107,40 @@ pub(crate) async fn claude_status(
     let p = provider(&state, &id).await?;
     let home = environment::home(&state.config_path, &p).map_err(error)?;
     let executable = cli_support::resolve_executable("claude", Some(&p.executable));
-    let connected = if let Some(executable) = executable.as_ref() {
+    let account = if let Some(executable) = executable.as_ref() {
         auth_status(executable, &home).await.map_err(error)?
     } else {
-        false
+        cli_support::AuthAccount::default()
     };
+    let connected = account.logged_in;
     let pending = state
         .claude_login
         .lock()
         .await
         .as_ref()
         .is_some_and(|s| s.provider_id == id);
+    let origin = connected
+        .then(|| cli_support::auth_origin(&home))
+        .flatten();
     let message = if executable.is_none() {
-        "Chưa tìm thấy Claude CLI trên máy"
+        "Chưa tìm thấy Claude CLI trên máy".to_owned()
     } else if connected {
-        "Claude đã kết nối trong MutiS"
+        cli_support::connected_message(account.email.as_deref(), origin.as_deref())
     } else if pending {
-        "Đang chờ đăng nhập Claude trên trình duyệt"
+        "Đang chờ đăng nhập Claude trên trình duyệt".to_owned()
     } else {
-        "Claude của MutiS chưa đăng nhập"
+        "Claude của MutiS chưa đăng nhập".to_owned()
     };
     let config = state.config.read().await;
     Ok(Json(Status {
         connected,
         pending,
-        message: message.into(),
+        message,
         project_skills: config.claude.project_skills,
         project_instructions: config.claude.project_instructions,
+        email: account.email.filter(|_| connected),
+        plan: account.plan.filter(|_| connected),
+        origin,
     }))
 }
 
@@ -136,6 +165,7 @@ pub(crate) async fn claude_action(
     let home = environment::home(&state.config_path, &p).map_err(error)?;
     match input.action.as_str() {
         "cli" => {
+            ensure_login_mode(&p, false)?;
             let executable = cli_support::resolve_executable("claude", Some(&p.executable))
                 .ok_or_else(|| {
                     ApiError::new(StatusCode::NOT_FOUND, "Chưa tìm thấy Claude CLI trên máy")
@@ -145,10 +175,11 @@ pub(crate) async fn claude_action(
             std::fs::create_dir(&stage).map_err(|e| error(e.into()))?;
             let result = async {
                 environment::import_cli_auth(&stage)?;
-                if !auth_status(&executable, &stage).await? {
+                if !auth_status(&executable, &stage).await?.logged_in {
                     anyhow::bail!("CLI chưa đăng nhập");
                 }
                 environment::import_auth_file(&stage.join(".credentials.json"), &home)?;
+                cli_support::set_auth_origin(&home, Some("cli"));
                 Ok::<_, anyhow::Error>(())
             }
             .await;
@@ -164,6 +195,7 @@ pub(crate) async fn claude_action(
             if credentials.exists() {
                 std::fs::remove_file(credentials).map_err(|e| error(e.into()))?;
             }
+            cli_support::set_auth_origin(&home, None);
         }
         _ => {
             return Err(ApiError::new(

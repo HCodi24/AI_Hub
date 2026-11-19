@@ -29,6 +29,9 @@ pub(crate) struct ProviderInput {
     /// None = keep the stored value (partial updates must not reset it).
     #[serde(default)]
     agent_capable: Option<bool>,
+    /// CLI sources: sign in through the web instead of the machine's CLI account. None = keep the stored value.
+    #[serde(default)]
+    web_login: Option<bool>,
 }
 
 pub(crate) async fn create_provider(
@@ -48,15 +51,17 @@ pub(crate) async fn create_provider(
         ));
     }
     let kind_is_openai = input.kind == "openai_compat";
+    let kind_is_cli = input.kind.ends_with("_cli");
     let provider = ProviderConfig {
         id,
         name: input.name.trim().to_owned(),
-        kind: input.kind,
         base_url: input.base_url.trim().trim_end_matches('/').to_owned(),
         api_key: input.api_key.unwrap_or_default(),
         executable: input.executable.trim().to_owned(),
         models: clean_models(input.models),
         agent_capable: kind_is_openai && input.agent_capable.unwrap_or(false),
+        web_login: kind_is_cli && input.web_login.unwrap_or(false),
+        kind: input.kind,
     };
     config.providers.push(provider);
     persist_config(&state, &config)?;
@@ -88,16 +93,19 @@ pub(crate) async fn update_provider(
     } else {
         submitted_key
     };
+    let old_web_login = config.providers[index].web_login;
     let kind_is_openai = input.kind == "openai_compat";
+    let kind_is_cli = input.kind.ends_with("_cli");
     config.providers[index] = ProviderConfig {
         id,
         name: input.name.trim().to_owned(),
-        kind: input.kind,
         base_url: input.base_url.trim().trim_end_matches('/').to_owned(),
         api_key,
         executable: input.executable.trim().to_owned(),
         models: clean_models(input.models),
         agent_capable: kind_is_openai && input.agent_capable.unwrap_or(old_agent_capable),
+        web_login: kind_is_cli && input.web_login.unwrap_or(old_web_login),
+        kind: input.kind,
     };
     persist_config(&state, &config)?;
     Ok(Json(masked_config(&config)))

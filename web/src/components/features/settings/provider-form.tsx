@@ -85,10 +85,16 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
   const installHint = form.kind === "codex_cli" ? "npm i -g @openai/codex" : "npm i -g @anthropic-ai/claude-code";
   // Keep the saved kind selectable even when the current category does not offer it.
   const kinds = allowedKinds.includes(form.kind) ? allowedKinds : [form.kind, ...allowedKinds];
+  // A web account source is mostly about its sign-in, so that section comes first there.
+  const mode = provider?.web_login ? "web" : "machine";
+  const connection = showConnections && provider && (provider.kind === "claude_cli"
+    ? <ClaudeConnection key={provider.id} providerId={provider.id} mode={mode} />
+    : provider.kind === "codex_cli" ? <CodexConnection key={provider.id} providerId={provider.id} mode={mode} /> : null);
   return <form ref={formRef} className={styles.form} onSubmit={event => { event.preventDefault(); void act("save", async () => {
     const id = await createOrFlush();
     if (id) setNote(t.providers.savedProvider);
   }); }}>
+    {provider?.web_login && connection}
     <label>{t.providers.name}<input required value={form.name} onChange={event => set("name", event.target.value)} /></label>
     <label>{t.providers.kind}<select value={form.kind} disabled={Boolean(provider)} onChange={event => set("kind", event.target.value)}>
       {kinds.map(kind => <option key={kind} value={kind}>{t.providers.kinds[kind as keyof typeof t.providers.kinds] || kind}</option>)}</select></label>
@@ -103,10 +109,10 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
     {isCli(form.kind) && <label>{t.providers.executable}
       <span className={styles.inline}><input value={form.executable} spellCheck={false} placeholder={t.providers.executableHint}
         onChange={event => set("executable", event.target.value)} />
-      {(form.kind !== "codex_cli" || !provider) && <Button disabled={Boolean(busy)} onClick={() => void act("discover", async () => {
+      <Button disabled={Boolean(busy)} onClick={() => void act("discover", async () => {
         const found = await settingsApi.discoverCli(cliName);
         if (found.length === 1 && found[0]) { await pick(found[0]); } else setCandidates(found);
-      })}><Search size={16} aria-hidden="true" />{busy === "discover" ? t.providers.discovering : t.providers.discover}</Button>}</span></label>}
+      })}><Search size={16} aria-hidden="true" />{busy === "discover" ? t.providers.discovering : t.providers.discover}</Button></span></label>}
     {candidates && (candidates.length ? <div className={styles.candidates}><strong>{t.providers.pickInstall}</strong>
       {candidates.map(candidate => <button type="button" key={candidate.path} onClick={() => void pick(candidate)}>
         {candidate.path} · {candidate.version} · {candidate.source}</button>)}</div>
@@ -143,7 +149,6 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
       })}>{t.delete}</Button>
       <Button type="button" onClick={() => setConfirmDelete(false)}>{t.cancel}</Button></div>}
     {(note || status) && <p className={styles.note} role="status" title={status?.detail}>{note || status?.message}</p>}
-    {showConnections && provider?.kind === "claude_cli" && <ClaudeConnection key={provider.id} providerId={provider.id} />}
-    {showConnections && provider?.kind === "codex_cli" && <CodexConnection key={provider.id} providerId={provider.id} />}
+    {!provider?.web_login && connection}
   </form>;
 }

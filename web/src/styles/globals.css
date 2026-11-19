@@ -12,7 +12,8 @@ button:active:enabled, a:active { opacity: .75; }
 button:hover:enabled, summary:hover { background: var(--color-muted); }
 a { color: var(--link); text-underline-offset: 3px; }
 a:hover { opacity: .8; }
-:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+/* No blue focus ring anywhere (user choice); !important also beats the per-component focus rules. */
+:focus, :focus-visible, :focus-within { outline: none !important; }
 button, input, select, textarea { border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); }
 input:not([type=checkbox], [type=radio]), select, textarea { box-shadow: var(--shadow-edge); }
 input, select { padding: var(--space-2) var(--space-3); min-height: 36px; min-width: 0; max-width: 100%; }

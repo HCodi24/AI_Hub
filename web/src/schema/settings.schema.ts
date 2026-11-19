@@ -2,6 +2,8 @@ import { z } from "zod";
 export const ProviderSchema = z.object({
   id: z.string(), name: z.string(), kind: z.string(), base_url: z.string().default(""), api_key: z.string().default(""),
   executable: z.string().default(""), models: z.array(z.string()).default([]), agent_capable: z.boolean().default(false),
+  /** CLI sources: signs in through the web (tab "Web") instead of the machine's CLI account. */
+  web_login: z.boolean().default(false),
 });
 export const MemoryConfigSchema = z.object({
   enabled: z.boolean().default(true), max_scopes_in_prompt: z.number().default(3), max_chars_per_scope: z.number().default(6000),
@@ -33,4 +35,5 @@ export type FullConfig = z.infer<typeof FullConfigSchema>;
 export type McpServer = z.infer<typeof McpServerSchema>;
 export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
 export type ConnectionTest = z.infer<typeof ConnectionTestSchema>;
-export type ProviderInput = Omit<Provider, "id">;
+/** `web_login` is set only when creating a source; leaving it out keeps the stored value. */
+export type ProviderInput = Omit<Provider, "id" | "web_login"> & { web_login?: boolean };

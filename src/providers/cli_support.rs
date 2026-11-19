@@ -32,6 +32,63 @@ pub fn parse_auth_logged_in(output: &[u8]) -> Option<bool> {
     value["loggedIn"].as_bool()
 }
 
+/// Account shown for a signed-in CLI source; never contains credentials.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AuthAccount {
+    pub logged_in: bool,
+    pub email: Option<String>,
+    pub plan: Option<String>,
+}
+
+/// `claude auth status` JSON: `loggedIn` plus the optional `email` and `subscriptionType`.
+pub fn parse_auth_account(output: &[u8]) -> Option<AuthAccount> {
+    let value: Value = serde_json::from_slice(output).ok()?;
+    let text = |key: &str| {
+        value[key]
+            .as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+    };
+    Some(AuthAccount {
+        logged_in: value["loggedIn"].as_bool()?,
+        email: text("email"),
+        plan: text("subscriptionType"),
+    })
+}
+
+/// Marker in a MutiS source home telling where its sign-in came from: `cli` (copied from this machine) or `web`.
+const AUTH_ORIGIN_FILE: &str = ".mutis-origin";
+
+pub fn set_auth_origin(home: &Path, origin: Option<&str>) {
+    let path = home.join(AUTH_ORIGIN_FILE);
+    let _ = match origin {
+        Some(origin) => std::fs::write(path, origin),
+        None => std::fs::remove_file(path),
+    };
+}
+
+/// Short status for a signed-in source, shown under its name: "Đã kết nối · a@b.c · lấy từ máy".
+pub fn connected_message(email: Option<&str>, origin: Option<&str>) -> String {
+    let mut message = String::from("Đã kết nối");
+    if let Some(email) = email {
+        message.push_str(" · ");
+        message.push_str(email);
+    }
+    match origin {
+        Some("cli") => message.push_str(" · lấy từ máy"),
+        Some("web") => message.push_str(" · đăng nhập web"),
+        _ => {}
+    }
+    message
+}
+
+pub fn auth_origin(home: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(home.join(AUTH_ORIGIN_FILE)).ok()?;
+    let text = text.trim();
+    matches!(text, "cli" | "web").then(|| text.to_owned())
+}
+
 pub fn clean_claude_environment(command: &mut Command) {
     let names = env::vars().map(|(name, _)| name).collect::<Vec<_>>();
     for name in environment_names_to_remove(&names) {
@@ -567,6 +624,33 @@ mod claude_support_tests {
         assert_eq!(parse_auth_logged_in(br#"{"loggedIn":false}"#), Some(false));
         assert_eq!(parse_auth_logged_in(b"{}"), None);
         assert_eq!(parse_auth_logged_in(b"not json"), None);
+    }
+
+    #[test]
+    fn parses_auth_status_account_without_credentials() {
+        let account = super::parse_auth_account(
+            br#"{"loggedIn":true,"email":"a@b.c","subscriptionType":"max","token":"secret"}"#,
+        )
+        .unwrap();
+        assert!(account.logged_in);
+        assert_eq!(account.email.as_deref(), Some("a@b.c"));
+        assert_eq!(account.plan.as_deref(), Some("max"));
+        let bare = super::parse_auth_account(br#"{"loggedIn":false,"email":""}"#).unwrap();
+        assert!(!bare.logged_in && bare.email.is_none());
+        assert!(super::parse_auth_account(b"{}").is_none());
+    }
+
+    #[test]
+    fn auth_origin_marker_round_trips() {
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target/auth-origin-test")
+            .join(uuid::Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(super::auth_origin(&dir), None);
+        super::set_auth_origin(&dir, Some("web"));
+        assert_eq!(super::auth_origin(&dir).as_deref(), Some("web"));
+        super::set_auth_origin(&dir, None);
+        assert_eq!(super::auth_origin(&dir), None);
     }
 }
 

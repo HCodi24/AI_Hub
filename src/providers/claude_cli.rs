@@ -98,6 +98,7 @@ impl Provider for ClaudeCliProvider {
         }
         let parser = std::sync::Mutex::new(ClaudeParser {
             permission: request.permission,
+            resumed: request.session_id.is_some(),
             ..Default::default()
         });
         let result = cli_support::run_jsonl(
@@ -193,6 +194,21 @@ pub(crate) async fn compact_session(provider: &crate::config::ProviderConfig, ho
     Ok(())
 }
 
+/// Claude's `total_cost_usd` is the running total of the whole session, not of the turn. The turn's own cost is the
+/// difference from the previous total, kept per session while the app runs.
+/// shortcut: after an app restart the first resumed turn has no baseline, so its cost is left out instead of showing the
+/// whole session's total; persist the total per chat if that gap matters.
+fn turn_cost(session: Option<&str>, total: Option<f64>, resumed: bool) -> Option<f64> {
+    static TOTALS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, f64>>> = std::sync::OnceLock::new();
+    let (session, total) = (session?, total?);
+    let mut totals = TOTALS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    let before = totals.insert(session.to_owned(), total);
+    match before {
+        Some(before) => Some((total - before).max(0.0)),
+        None => (!resumed).then_some(total),
+    }
+}
+
 /// Input tokens of the last model call of a turn = how big the session is now.
 fn context_size(usage: &Value) -> Option<u64> {
     let last = usage["iterations"].as_array()?.last()?;
@@ -219,6 +235,8 @@ fn missing_result_event(result_seen: bool, cancelled: bool) -> bool {
 #[derive(Default)]
 struct ClaudeParser {
     permission: Permission,
+    /// The turn continues a saved session, whose `total_cost_usd` already holds the cost of the earlier turns.
+    resumed: bool,
     denial_hint_seen: bool,
     result_seen: bool,
     partial_seen: bool,
@@ -381,8 +399,8 @@ impl ClaudeParser {
                 if let (Some(id), Some(size)) = (value["session_id"].as_str(), context_size(&value["usage"])) {
                     super::codex::compact::note_size(id, size);
                 }
-                if let Some(usage) =
-                    cli_support::token_usage_log(&value["usage"], value.get("total_cost_usd"))
+                let cost = turn_cost(value["session_id"].as_str(), value["total_cost_usd"].as_f64(), self.resumed).map(Value::from);
+                if let Some(usage) = cli_support::token_usage_log(&value["usage"], cost.as_ref())
                 {
                     events.push(ProviderEvent::text("log", usage));
                 }
@@ -434,6 +452,14 @@ fn parse_claude_line(line: &str) -> Vec<ProviderEvent> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn turn_cost_is_the_growth_of_the_sessions_running_total() {
+        assert_eq!(super::turn_cost(Some("c-new"), Some(2.0), false), Some(2.0), "a new session: the total is the turn");
+        assert_eq!(super::turn_cost(Some("c-new"), Some(2.5), true).map(|c| (c * 100.0).round()), Some(50.0));
+        assert_eq!(super::turn_cost(Some("c-old"), Some(8.0), true), None, "resumed with no baseline: unknown, not the whole total");
+        assert_eq!(super::turn_cost(Some("c-old"), Some(8.4), true).map(|c| (c * 100.0).round()), Some(40.0));
+    }
+
     #[test]
     fn session_size_is_the_last_model_call_not_the_turn_total() {
         let usage = serde_json::json!({"input_tokens":99,"iterations":[

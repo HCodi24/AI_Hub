@@ -49,6 +49,19 @@ pub(crate) struct Status {
     project_instructions: bool,
     /// Windows sandbox of this MutiS Codex home: `ready`, `notConfigured`, `updateRequired` or `unknown`.
     sandbox: String,
+    /// Signed-in account of this source; `origin` is `cli` (copied from this machine) or `web`.
+    email: Option<String>,
+    plan: Option<String>,
+    origin: Option<String>,
+}
+
+/// `account/read` result: `{ account: { type, email?, planType? } }`; never contains tokens.
+fn account_text(account: &Value, key: &str) -> Option<String> {
+    account["account"][key]
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
 }
 
 /// Windows needs a one-time sandbox setup per Codex home before Codex may write files; elsewhere it is always ready.
@@ -103,6 +116,15 @@ async fn new_client(state: &AppState, provider: &ProviderConfig) -> ApiResult<Cl
     Client::start(&executable, &dir, &dir).await.map_err(error)
 }
 
+/// Deletes only this source's credential file; the tokens stay valid wherever else they are used.
+fn remove_local_auth(dir: &std::path::Path) -> anyhow::Result<()> {
+    match std::fs::remove_file(dir.join("auth.json")) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(anyhow::anyhow!("Không xoá được đăng nhập Codex của nguồn này: {e}")),
+    }
+}
+
 fn connected(account: &Value) -> bool {
     matches!(
         account["account"]["type"].as_str(),
@@ -145,6 +167,9 @@ pub(crate) async fn codex_status(
                 project_skills: config.codex.project_skills,
                 project_instructions: config.codex.project_instructions,
                 sandbox: "unknown".into(),
+                email: None,
+                plan: None,
+                origin: None,
             }));
         }
         temporary = new_client(&state, &provider).await?;
@@ -166,14 +191,23 @@ pub(crate) async fn codex_status(
     }
     let pending = connections.get(&id).is_some_and(|s| s.login_id.is_some());
     let url = connections.get(&id).and_then(|s| s.url.clone());
-    let message = if is_connected {
-        "Codex đã kết nối trong MutiS"
-    } else if pending {
-        "Đang chờ đăng nhập trên trình duyệt"
+    let origin = if is_connected {
+        home(&state.config_path, &provider)
+            .ok()
+            .and_then(|dir| cli_support::auth_origin(&dir))
     } else {
-        "Chưa đăng nhập Codex trong MutiS"
-    }
-    .to_owned();
+        None
+    };
+    let email = is_connected
+        .then(|| account_text(&account, "email"))
+        .flatten();
+    let message = if is_connected {
+        cli_support::connected_message(email.as_deref(), origin.as_deref())
+    } else if pending {
+        "Đang chờ đăng nhập trên trình duyệt".to_owned()
+    } else {
+        "Chưa đăng nhập Codex trong MutiS".to_owned()
+    };
     let config = state.config.read().await;
     let status = Status {
         connected: is_connected,
@@ -183,6 +217,11 @@ pub(crate) async fn codex_status(
         project_skills: config.codex.project_skills,
         project_instructions: config.codex.project_instructions,
         sandbox,
+        email,
+        plan: is_connected
+            .then(|| account_text(&account, "planType"))
+            .flatten(),
+        origin,
     };
     drop(config);
     state.provider_status.lock().await.insert(
@@ -221,6 +260,11 @@ pub(crate) async fn codex_action(
             "Thao tác Codex không hợp lệ",
         ));
     }
+    match input.action.as_str() {
+        "cli" => super::claude::ensure_login_mode(&provider, false)?,
+        "web" => super::claude::ensure_login_mode(&provider, true)?,
+        _ => {}
+    }
     if state.active_jobs.load(std::sync::atomic::Ordering::SeqCst) > 0 {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
@@ -258,6 +302,7 @@ pub(crate) async fn codex_action(
             provider.executable = executable.to_string_lossy().into_owned();
             let dir = home(&state.config_path, &provider).map_err(error)?;
             crate::providers::codex::environment::import_cli_auth(&dir).map_err(error)?;
+            cli_support::set_auth_origin(&dir, Some("cli"));
             let mut config = state.config.write().await;
             if let Some(p) = config.providers.iter_mut().find(|p| p.id == id) {
                 p.executable = provider.executable.clone();
@@ -271,11 +316,13 @@ pub(crate) async fn codex_action(
             })?;
         }
         "web" => {
+            // Drop the previous account locally (never revoke: it may be shared with the machine's Codex),
+            // then start Codex without credentials so it begins a fresh sign-in.
+            let dir = home(&state.config_path, &provider).map_err(error)?;
+            remove_local_auth(&dir).map_err(error)?;
+            // The previous account is gone; this marker only counts once the web sign-in connects.
+            cli_support::set_auth_origin(&dir, Some("web"));
             let mut client = new_client(&state, &provider).await?;
-            client
-                .call("account/logout", json!({}))
-                .await
-                .map_err(error)?;
             // Ensure subsequent conversations do not resume an earlier account's context.
             let mut config = state.config.write().await;
             config.codex.revision = config.codex.revision.wrapping_add(1);
@@ -312,10 +359,11 @@ pub(crate) async fn codex_action(
             );
         }
         "logout" => {
-            let mut client = new_client(&state, &provider).await?;
-            let result = client.call("account/logout", json!({})).await;
-            client.close().await;
-            result.map_err(error)?;
+            // Local sign-out only: `account/logout` revokes the tokens server-side, and a source copied
+            // from this machine shares them with the user's own Codex/ChatGPT, which would be signed out too.
+            let dir = home(&state.config_path, &provider).map_err(error)?;
+            remove_local_auth(&dir).map_err(error)?;
+            cli_support::set_auth_origin(&dir, None);
             let mut config = state.config.write().await;
             config.codex.revision = config.codex.revision.wrapping_add(1);
             crate::config::save(&state.config_path, &config).map_err(|_| {

@@ -5,6 +5,7 @@ import { petsApi } from "@/apis/pets.api";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
 import { Picker } from "@/components/picker/picker";
+import { PillTabs } from "@/components/pill-tabs/pill-tabs";
 import { Switch } from "@/components/button/switch";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { notify } from "@/components/toast/toast";
@@ -23,17 +24,9 @@ const PET_FAMILY_KINDS: Record<PetFamily, readonly (typeof PET_KINDS)[number][]>
 /** Settings › Pet: "Pet chat" (pets beside replies) and "Vườn pet" (a later feature, placeholder for now). */
 export function PetsSection() {
   const [tab, setTab] = useState<Tab>("chat");
-  function onTabKey(event: React.KeyboardEvent<HTMLButtonElement>) {
-    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
-    event.preventDefault(); const next = TABS[(TABS.indexOf(tab) + step + TABS.length) % TABS.length];
-    setTab(next); document.getElementById(`pets-tab-${next}`)?.focus();
-  }
   return <div className={styles.form}>
-    <div className={styles.subTabs} role="tablist" aria-label={t.pets.tabsLabel}>
-      {TABS.map(id => <button key={id} type="button" role="tab" id={`pets-tab-${id}`} aria-selected={tab === id} aria-controls={`pets-panel-${id}`}
-        tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)} onKeyDown={onTabKey}>{t.pets.tabs[id]}</button>)}
-    </div>
+    <PillTabs idPrefix="pets" label={t.pets.tabsLabel} value={tab} onChange={setTab}
+      tabs={TABS.map(id => ({ id, label: t.pets.tabs[id] }))} />
     <div role="tabpanel" id={`pets-panel-${tab}`} aria-labelledby={`pets-tab-${tab}`} className={styles.form}>
       {tab === "chat" ? <ChatPets /> : <p className={styles.note}>{t.pets.gardenSoon}</p>}
     </div>
@@ -63,26 +56,13 @@ function ChatPets() {
     for (const key of PET_KINDS) { const value = key === kind ? pet : chosen[key]; if (value) next[key] = value; }
     void save({ pets: next });
   }
-  function onPetFamilyKey(event: React.KeyboardEvent<HTMLButtonElement>) {
-    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
-    event.preventDefault();
-    const next = PET_FAMILIES[(PET_FAMILIES.indexOf(petFamily) + step + PET_FAMILIES.length) % PET_FAMILIES.length];
-    setPetFamily(next);
-    document.getElementById(`pets-source-tab-${next}`)?.focus();
-  }
   const pets = list.data ?? [];
   return <section className={styles.form} aria-label={t.pets.title}><p className={styles.note}>{t.pets.intro}</p>
     <label className={styles.check}><Switch checked={config.data?.pets_enabled ?? true} disabled={!config.data}
       onChange={event => void save({ pets_enabled: event.target.checked })} /><span>{t.pets.enable}</span></label>
     <div className={styles.group}><h4>{t.pets.use}</h4><p>{t.pets.useHint}</p>
-      <div className={styles.subTabs} role="tablist" aria-label={t.pets.familyTabsLabel}>
-        {PET_FAMILIES.map(family => <button key={family} type="button" role="tab" id={`pets-source-tab-${family}`}
-          aria-selected={petFamily === family} aria-controls={`pets-source-panel-${family}`}
-          tabIndex={petFamily === family ? 0 : -1} onClick={() => setPetFamily(family)} onKeyDown={onPetFamilyKey}>
-          {t.pets.families[family]}
-        </button>)}
-      </div>
+      <PillTabs idPrefix="pets-source" label={t.pets.familyTabsLabel} value={petFamily} onChange={setPetFamily}
+        tabs={PET_FAMILIES.map(family => ({ id: family, label: t.pets.families[family] }))} />
       {PET_FAMILIES.map(family => <div key={family} role="tabpanel" id={`pets-source-panel-${family}`}
         aria-labelledby={`pets-source-tab-${family}`} hidden={petFamily !== family}>
         {PET_FAMILY_KINDS[family].filter(kind => PET_KINDS.includes(kind)).map(kind => <label key={kind}>{t.pets.kinds[kind]}

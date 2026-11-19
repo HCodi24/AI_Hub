@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { mutisApi } from "@/apis/mutis.api";
 import { Button } from "@/components/button/button";
+import { PillTabs } from "@/components/pill-tabs/pill-tabs";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { Switch } from "@/components/button/switch";
 import { notify } from "@/components/toast/toast";
@@ -53,14 +54,6 @@ export function MutisTab({ taskBoardEnabled, onTaskBoardEnabledChange }: { taskB
   const { draft, busy } = autosave;
   const hydrate = autosave.hydrate;
   useEffect(() => { if (query.data) hydrate(query.data); }, [query.data, hydrate]);
-  function onProfileKey(event: React.KeyboardEvent<HTMLButtonElement>) {
-    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
-    event.preventDefault();
-    const next = PROFILES[(PROFILES.indexOf(profile) + step + PROFILES.length) % PROFILES.length];
-    setProfile(next);
-    document.getElementById(`mutis-tab-${next}`)?.focus();
-  }
   if (query.isPending && !query.data) return <Skeleton card />;
   if (query.error) return <p role="alert">{query.error.message}</p>;
   const providers = config.data?.providers || [];
@@ -68,10 +61,8 @@ export function MutisTab({ taskBoardEnabled, onTaskBoardEnabledChange }: { taskB
   return <form className={styles.form} onSubmit={event => { event.preventDefault(); void autosave.flush(); }}>
     <label className={styles.check}><Switch checked={taskBoardEnabled} onChange={event => onTaskBoardEnabledChange(event.target.checked)} /><span>{t.mutis.taskBoard}</span></label>
     <p>{t.mutis.levelHint}</p>
-    <div className={styles.subTabs} role="tablist" aria-label={t.mutis.profileLabel}>
-      {PROFILES.map(id => <button key={id} type="button" role="tab" id={`mutis-tab-${id}`} aria-selected={profile === id} aria-controls={`mutis-panel-${id}`}
-        tabIndex={profile === id ? 0 : -1} onClick={() => setProfile(id)} onKeyDown={onProfileKey}>{id === "high_roles" ? "High" : "Max"}</button>)}
-    </div>
+    <PillTabs idPrefix="mutis" label={t.mutis.profileLabel} value={profile} onChange={setProfile}
+      tabs={PROFILES.map(id => ({ id, label: id === "high_roles" ? "High" : "Max" }))} />
     {PROFILES.map(id => <div key={id} role="tabpanel" id={`mutis-panel-${id}`} aria-labelledby={`mutis-tab-${id}`} hidden={profile !== id}>
       <fieldset className={styles.group}><legend>{id === "roles" ? t.mutis.maxRoles : t.mutis.highRoles}</legend>
         {/* High never runs big code through its own role (the lead plans, the small role works), so that row is hidden there. */}

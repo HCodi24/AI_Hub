@@ -102,6 +102,7 @@ impl Config {
                     executable: String::new(),
                     models: vec!["deepseek-ai/deepseek-v4.1-flash-1017".to_owned()],
                     agent_capable: true,
+                    ..Default::default()
                 },
                 ProviderConfig {
                     id: "openai".to_owned(),

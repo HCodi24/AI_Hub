@@ -18,6 +18,10 @@ pub struct ProviderConfig {
     /// the chat folder through this source ("agent mode"). Replaces the old separate `deepseek_agent` source.
     #[serde(default)]
     pub agent_capable: bool,
+    /// CLI sources only: this source signs in through the web (Settings › Tài khoản web) instead of reusing
+    /// the account of the CLI installed on this machine.
+    #[serde(default)]
+    pub web_login: bool,
 }
 
 /// Id of the removed separate "DeepSeek làm việc" source; old chats/plans/roles may still mention it.

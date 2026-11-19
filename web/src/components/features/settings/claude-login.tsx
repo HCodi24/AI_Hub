@@ -1,23 +1,36 @@
 import { useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, LogIn } from "lucide-react";
 import { safeClaudeLoginUrl } from "@/apis/claude.api";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
 import { notify } from "@/components/toast/toast";
 import { settingsText as t } from "@/text/settings";
+import { ReplaceConfirm, type SourceAccount } from "./account-parts";
 import { errorText } from "./use-settings";
 import styles from "./settings.module.css";
-/** Claude Code CLI sign-in: opens the login URL, then the user pastes the confirmation code. */
-export function ClaudeLogin({ providerId, onDone, disabled = false, onPending }: { providerId: string; onDone: () => void; disabled?: boolean; onPending?: (value: boolean) => void }) {
+type LoginSession = { session_id: string; url: string };
+/** Claude Code CLI sign-in: opens the login URL, then the user pastes the confirmation code.
+ *  With `replacing` (the account already signed in) it asks before starting. */
+export function ClaudeLogin({ providerId, onDone, disabled = false, onPending, replacing }: {
+  providerId: string; onDone: () => void; disabled?: boolean; onPending?: (value: boolean) => void; replacing?: SourceAccount;
+}) {
   const locked = useRef(false);
-  const [session, setSession] = useState<{ session_id: string; url: string } | null>(null);
+  const client = useQueryClient();
+  // Kept in the query cache so a sign-in started from the Web list row shows its code field here too.
+  const sessionKey = ["claude-login-session", providerId];
+  const { data: session = null } = useQuery<LoginSession | null>({ queryKey: sessionKey, queryFn: () => null,
+    enabled: false, staleTime: Infinity, gcTime: Infinity });
+  const setSession = (value: LoginSession | null) => client.setQueryData(sessionKey, value);
+  const [asking, setAsking] = useState(false);
   const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [message, setMessage] = useState(""); const [tail, setTail] = useState("");
   async function run(action: () => Promise<void>) {
     if (locked.current) return;
     locked.current = true; setBusy(true); setMessage("");
     try { await action(); } catch (error) { setMessage(errorText(error, t.error)); } finally { locked.current = false; setBusy(false); }
   }
-  if (!session) return <><Button disabled={busy || disabled} onClick={() => {
+  /** Must run inside a click so the browser allows the login popup. */
+  function start() {
     if (locked.current) return;
     const popup = window.open("about:blank", "_blank");
     if (popup) popup.opener = null;
@@ -31,7 +44,12 @@ export function ClaudeLogin({ providerId, onDone, disabled = false, onPending }:
         if (popup) popup.location.href = url;
       } catch (error) { popup?.close(); onPending?.(false); throw error; }
     });
-  }}><LogIn size={16} aria-hidden="true" />Đăng nhập qua web</Button>
+  }
+  if (!session) return <>
+    <div className={styles.actions}><Button disabled={busy || disabled} onClick={() => replacing?.connected ? setAsking(true) : start()}>
+      <LogIn size={16} aria-hidden="true" />{replacing?.connected ? t.providers.account.useWeb : t.providers.account.signInWeb}</Button></div>
+    {asking && replacing?.connected && <ReplaceConfirm account={replacing} disabled={busy || disabled}
+      onConfirm={() => { setAsking(false); start(); }} onCancel={() => setAsking(false)} />}
     {message && <p role="alert">{message}</p>}</>;
   return <div className={styles.confirm} role="group" aria-label={t.providers.login}>
     <a href={session.url} target="_blank" rel="noreferrer">{t.providers.loginOpen} <ExternalLink size={14} aria-hidden="true" /></a>

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { http, parseResponse } from "@/lib/http";
-const StatusSchema = z.object({ connected: z.boolean(), pending: z.boolean(), message: z.string(), project_skills: z.boolean(), project_instructions: z.boolean() });
+const StatusSchema = z.object({ connected: z.boolean(), pending: z.boolean(), message: z.string(), project_skills: z.boolean(), project_instructions: z.boolean(),
+  /** Signed-in account; origin = "cli" (copied from this machine) or "web". */
+  email: z.string().nullish(), plan: z.string().nullish(), origin: z.enum(["cli", "web"]).nullish() });
 export type ClaudeStatus = z.infer<typeof StatusSchema>;
 const path = (id: string) => `/providers/${encodeURIComponent(id)}/claude`;
 export const claudeApi = {
