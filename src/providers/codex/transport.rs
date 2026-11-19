@@ -30,6 +30,10 @@ impl Client {
         let core = [
             "PATH",
             "SystemRoot",
+            // Without these a Windows tool run by Codex writes a literal "%SystemDrive%\ProgramData\..." folder into the project.
+            "SystemDrive",
+            "ProgramData",
+            "ALLUSERSPROFILE",
             "WINDIR",
             "COMSPEC",
             "PATHEXT",
@@ -148,6 +152,10 @@ impl Client {
             .any(|v| v["method"] == "account/login/completed" && v["params"]["success"] == false);
         self.queued.clear();
         failed
+    }
+
+    pub async fn respond(&mut self, request: &Value, result: Value) -> Result<()> {
+        self.write(json!({"id":request["id"],"result":result})).await
     }
 
     pub async fn reject_request(&mut self, value: &Value) -> Result<()> {

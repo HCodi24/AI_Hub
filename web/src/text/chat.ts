@@ -55,6 +55,8 @@ export const chatText = {
   copy: "Sao chép", copied: "Đã chép", copyError: "Không thể sao chép", code: "Mã nguồn",
   taskBoard: { title: "Tiến độ các task", attempt: (n: number) => `lần ${n}`, model: "Model", checkerModel: "Model kiểm tra", check: "Kiểm tra",
     states: { waiting: "Chờ", coding: "Đang code", checking: "Đang kiểm tra", fixing: "Đang sửa", done: "Xong", failed: "Lỗi", takeover: "Đã bàn giao", skipped: "Bỏ qua", stopped: "Đã dừng" } },
+  compact: { label: "Nén ngữ cảnh", busy: "Đang nén…", title: "Nén ngữ cảnh các luồng Codex của chat này (tóm tắt phần cũ, không mở phiên mới)",
+    done: (count: number) => `Đã nén ${count} luồng Codex`, none: "Chat chưa có luồng Codex nào để nén", failed: (reason: string) => `Không nén được: ${reason}` },
   loading: "Đang tải…", streaming: "Đang phản hồi…", stopped: "Đã dừng", empty: "Chưa có cuộc trò chuyện",
   menu: "Mở lịch sử", close: "Đóng lịch sử", theme: "Đổi giao diện sáng / tối",
   requestError: "Không thể thực hiện yêu cầu", invalidData: "Dữ liệu phản hồi không hợp lệ",

@@ -9,6 +9,7 @@ pub mod keep_features;
 pub mod mutis_checker;
 pub mod mutis_high_delegation;
 pub mod report_unfinished;
+pub mod stay_in_folder;
 pub mod utf8;
 
 /// Default text of `mutis.worker_rules`: every rule above, one per line.
@@ -33,7 +34,8 @@ pub fn first_request_rules(indexed: bool, synced: bool) -> String {
         _ => " The app tried to build it and could not; tell the user.",
     };
     format!(
-        "{}\nStatus checked by the MutiS app itself (not stated by the user; no need to run a command to check again): the project {status} a .codegraph folder.{freshness}",
-        codegraph::RULE
+        "{}\nStatus checked by the MutiS app itself (not stated by the user; no need to run a command to check again): the project {status} a .codegraph folder.{freshness}\n{}",
+        codegraph::RULE,
+        stay_in_folder::RULE
     )
 }

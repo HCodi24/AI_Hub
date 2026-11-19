@@ -33,8 +33,9 @@ pub struct Config {
     pub default_folder: String,
     #[serde(default = "default_chat_idle_timeout_minutes")]
     pub chat_idle_timeout_minutes: u32,
-    /// A CLI thread (Codex, Claude) whose last turn read this many input tokens is replaced by a new one on the next message.
-    /// 0 = never; the CLI may still compact its own context.
+    /// A Codex thread whose last model call read this many input tokens is compacted (Codex summarises its own history) before
+    /// its next turn. Only at twice this size, if compacting did not help, is the thread replaced by a new one on the next message.
+    /// 0 = never.
     #[serde(default = "default_thread_token_budget")]
     pub thread_token_budget: u64,
     #[serde(default)]

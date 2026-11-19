@@ -45,7 +45,9 @@ impl Provider for CodexProvider {
             let mcp = request.mcp.iter().filter(|server| server.enabled).map(|server| (
                 server.name.clone(), json!({"command":server.command,"args":server.args,"env":server.env})
             )).collect::<serde_json::Map<String, serde_json::Value>>();
-            let params = json!({"cwd":request.folder,"model":request.model,"approvalPolicy":"never","sandbox":sandbox,
+            // `untrusted`: Codex asks the app before running a command, and the gate declines paths outside the folder.
+            let gate = super::gate::Gate::new(folder, request.messages.iter().filter(|m| m.role == "user").map(|m| m.content.as_str()));
+            let params = json!({"cwd":request.folder,"model":request.model,"approvalPolicy":"untrusted","sandbox":sandbox,
                 "developerInstructions":context,"selectedCapabilityRoots":[],"config":{"mcp_servers":mcp}});
             let mut resumed = native_id.is_some();
             let thread = if let Some(id) = native_id {
@@ -70,6 +72,16 @@ impl Provider for CodexProvider {
                 }
             } else { client.call("thread/start", params).await? };
             let id = thread["thread"]["id"].as_str().context("Codex không trả mã phiên")?.to_owned();
+            // A thread that has grown past the budget is summarised in place before its next turn instead of being dropped.
+            if resumed {
+                if let Some(size) = super::compact::needs_compaction(&id, super::compact::thread_token_budget(&config_path)) {
+                    crate::providers::emit_text(&events, "log", format!("Luồng Codex đã đọc {size} token; đang nén ngữ cảnh.")).await?;
+                    match super::compact::compact(&mut client, &id, &cancel).await {
+                        Ok(()) => crate::providers::emit_text(&events, "log", "Đã nén ngữ cảnh luồng Codex.".into()).await?,
+                        Err(error) => crate::providers::emit_text(&events, "log", format!("Không nén được luồng Codex, dùng tiếp như cũ: {error}")).await?,
+                    }
+                }
+            }
             events.send(ProviderEvent { name:"session", data:json!({"session_id":format!("{prefix}{id}")}) }).await?;
             let mut input = vec![json!({"type":"text","text":cli_support::compose_prompt_for(&request.messages, resumed, "codex_cli")})];
             if let Some(dir) = crate::providers::latest_chat_attachment_dir(&request.messages) {
@@ -94,7 +106,15 @@ impl Provider for CodexProvider {
                     value = tokio::time::timeout(limit, client.next()) => value.context("Codex không phản hồi; đã dừng lượt chạy")??,
                 };
                 if value.get("id").is_some() && value.get("method").is_some() {
-                    client.reject_request(&value).await?;
+                    match gate.judge(value["method"].as_str().unwrap_or(""), &value["params"]) {
+                        Some(verdict) => {
+                            if let super::gate::Verdict::Deny(paths) = &verdict {
+                                crate::providers::emit_text(&events, "log", format!("Đã chặn lệnh đọc ngoài thư mục: {}", crate::core::text::truncate_chars(&paths.join(", "), 220))).await?;
+                            }
+                            client.respond(&value, super::gate::decision(&verdict)).await?;
+                        }
+                        None => client.reject_request(&value).await?,
+                    }
                     continue;
                 }
                 let params = &value["params"];
@@ -130,6 +150,7 @@ impl Provider for CodexProvider {
                         crate::providers::emit_text(&events,"log",format!("Token: vào {} (cache {}), ra {}",usage["inputTokens"],usage["cachedInputTokens"].as_u64().unwrap_or(0),usage["outputTokens"])).await?;
                         // The last model call read the whole thread, so its input is the thread's current size.
                         if let Some(tokens) = usage["inputTokens"].as_u64() {
+                            super::compact::note_size(&id, tokens);
                             crate::providers::emit_text(&events,"thread_tokens",tokens.to_string()).await?;
                         }
                     }

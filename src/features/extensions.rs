@@ -304,6 +304,14 @@ mod tests {
         assert!(crate::core::rule::first_request_rules(false, false).contains("could not"));
     }
 
+    #[test]
+    fn first_request_rules_keep_the_ai_inside_the_project_folder() {
+        for indexed in [true, false] {
+            assert!(crate::core::rule::first_request_rules(indexed, indexed).contains(crate::core::rule::stay_in_folder::RULE));
+        }
+        assert!(!crate::core::rule::worker_defaults().contains(crate::core::rule::stay_in_folder::RULE));
+    }
+
     #[tokio::test]
     async fn prepare_never_fails_for_a_missing_folder() {
         let out = prepare(std::path::Path::new("Z:/does/not/exist")).await;

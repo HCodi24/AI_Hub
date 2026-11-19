@@ -276,9 +276,10 @@ pub(crate) async fn chat_handler(
     } else {
         (None, None)
     };
-    // A CLI thread that grew past the user's token budget starts afresh; the main one is rebuilt from the recent conversation.
+    // Codex compacts a thread past the budget by itself (providers/codex/compact.rs). Only a thread at twice the budget, where
+    // compacting did not help, starts afresh; the main one is rebuilt from the recent conversation.
     let mut existing = existing;
-    let token_budget = state.config.read().await.thread_token_budget;
+    let token_budget = state.config.read().await.thread_token_budget.saturating_mul(2);
     let rotated = existing
         .as_mut()
         .map(|r| r.rotate_big_threads(token_budget))

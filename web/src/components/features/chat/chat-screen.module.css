@@ -3,6 +3,7 @@
 .chatFrame { position: relative; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 /* Chừa hai mép cho thanh cuộn gốc và giữ lại một phần chiều cao để đọc tin nhắn. */
 .dock { position: absolute; inset: auto 0 0; z-index: 1; display: flex; flex-direction: column; max-block-size: calc(100% - min(30%, 5rem)); pointer-events: none; }
+.compactSlot { position: absolute; z-index: 2; right: var(--space-4); bottom: var(--space-2); }
 .dock::before { content: ""; position: absolute; inset: 0 var(--space-4); z-index: -1; background: var(--bg); pointer-events: auto; }
 /* Bảng tiến độ lấy phần chiều cao còn lại sau ô nhập và có thể co về 0. */
 .dockBoard { display: flex; flex: 0 1 auto; flex-direction: column; min-block-size: 0; overflow: clip; }

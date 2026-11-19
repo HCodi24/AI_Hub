@@ -309,7 +309,8 @@ const CLI_WORK_NOTE: &str = concat!(
     "
 You work directly in the project folder. Edit only what the task needs. ",
     "After editing run only quick checks of the files you changed (format check, lint, type check). ",
-    "Do not set up a build environment, and do not run end-to-end tests or the whole project check: a separate checker does that."
+    "Do not set up a build environment, and do not run end-to-end tests or the whole project check: a separate checker does that. ",
+    "Read and edit only inside the project folder; do not look into other folders or repositories."
 );
 
 impl Live {

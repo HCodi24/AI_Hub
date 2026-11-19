@@ -189,6 +189,10 @@ pub fn router(state: AppState) -> Router {
             "/api/chat/{chat_id}/stop",
             post(crate::api::chat::stop_chat),
         )
+        .route(
+            "/api/chats/{chat_id}/compact",
+            post(crate::api::chat::compact_chat),
+        )
         .route("/api/folder-tree", get(crate::api::folder::list_dir))
         .route("/api/pick-folder", post(crate::api::folder::pick_folder))
         .route("/api/mcp/test", post(crate::api::mcp::test))

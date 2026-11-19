@@ -34,6 +34,11 @@ export const chatApi = {
   },
   async stop(id: string) { await http.request(`/chat/${encodeURIComponent(id)}/stop`, { method: "POST" }); },
   async delete(id: string) { await http.request(`/chats/${encodeURIComponent(id)}`, { method: "DELETE" }); },
+  /** Compacts every Codex thread of the chat; `failed` holds the reason of each thread that could not be compacted. */
+  async compact(id: string) {
+    const response = await http.request(`/chats/${encodeURIComponent(id)}/compact`, { method: "POST" });
+    return parseResponse(z.object({ compacted: z.number(), failed: z.array(z.string()) }), await response.json());
+  },
   async send(body: ChatRequest, signal: AbortSignal, onEvent: (event: string, data: StreamData) => void) {
     await postSse("/chat", ChatRequestSchema.parse(body), signal, (event, data) => onEvent(event, parseResponse(StreamDataSchema, data)));
   },
