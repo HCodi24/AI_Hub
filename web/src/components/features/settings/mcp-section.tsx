@@ -13,7 +13,7 @@ const EMPTY = { name: "", command: "", args: "", env: "" };
 const lines = (text: string) => text.split("\n").map(line => line.trim()).filter(Boolean);
 const toEnv = (text: string) => Object.fromEntries(lines(text).flatMap(line => { const at = line.indexOf("="); return at > 0 ? [[line.slice(0, at).trim(), line.slice(at + 1)]] : []; }));
 /** MCP servers MutiS runs itself for API sources; Codex and Claude keep their own. */
-export function McpSection() {
+export function McpSection({ matches = () => true }: { matches?: (text: string) => boolean } = {}) {
   const { query, apply } = useSettingsConfig();
   const [form, setForm] = useState(EMPTY);
   const [tested, setTested] = useState<Record<string, string>>({});
@@ -39,7 +39,7 @@ export function McpSection() {
     <p className={styles.note}>{t.mcp.intro}</p><p className={styles.note}>{t.mcp.readOnlyNote}</p><p className={styles.note}>{t.mcp.warn}</p>
     <ul className={styles.rows}>
       {servers.length === 0 && <li><span className={styles.rowText}>{t.mcp.none}</span></li>}
-      {servers.map(server => <li key={server.name}>
+      {servers.filter(server => matches(server.name)).map(server => <li key={server.name}>
         <span className={styles.rowText}><strong>{server.name}</strong><small title={[server.command, ...server.args].join(" ")}>{[server.command, ...server.args].join(" ")}</small>
           {tested[server.name] && <small role="status">{tested[server.name]}</small>}</span>
         <label className={styles.mcpSwitch} data-on={server.enabled}><Switch checked={server.enabled}

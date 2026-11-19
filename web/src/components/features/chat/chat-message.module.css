@@ -14,10 +14,10 @@
 .activity:not([open]) > .activitySummary { font-size: var(--font-12); }
 .activity:not([open]) > .activitySummary:hover { color: var(--text); }
 .activitySummary::-webkit-details-marker { display: none; }
-.activitySummary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.activitySummary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .activitySummary > svg { flex-shrink: 0; color: var(--muted); }
 .activity[open] > .activitySummary > svg, .activityEntry[open] > .activitySummary > svg { transform: rotate(90deg); }
-.activityList { margin-top: 8px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.activityList { margin-top: 8px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-edge); }
 .message .activityEntry { margin: 0; padding: 0; border: 0; border-radius: 0; }
 .activityEntry + .activityEntry { border-top: 1px solid var(--border); }
 .message .activityEntry > summary { width: 100%; padding: 10px 12px; box-sizing: border-box; }
@@ -28,7 +28,7 @@
 /* Delegated DeepSeek activity: a plain section, so the global `.message details` box never wraps it. */
 .deepseekActivity { margin-top: var(--space-3); min-width: 0; }
 .deepseekActivity .identity { margin-bottom: var(--space-2); }
-.deepseekLogs { display: flex; flex-direction: column; gap: var(--space-2); border: 1px solid var(--border); border-radius: 14px; padding: var(--space-3); min-width: 0; }
+.deepseekLogs { display: flex; flex-direction: column; gap: var(--space-2); border: 1px solid var(--border); border-radius: 14px; padding: var(--space-3); min-width: 0; box-shadow: var(--shadow-edge); }
 .deepseekLog { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-small); color: var(--text); min-width: 0; }
 .attachments { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .message[data-user=true] .attachments { justify-content: flex-end; }

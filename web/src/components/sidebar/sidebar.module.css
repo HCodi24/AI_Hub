@@ -63,7 +63,7 @@
   .resizeHandle { display: block; position: absolute; z-index: 1; top: var(--workspace-top, 12px); right: -4px; bottom: 0; width: 9px; cursor: col-resize; touch-action: none; }
   .resizeHandle::after { content: ""; position: absolute; inset: 0 4px; background: transparent; }
   .resizeHandle:hover::after, .resizeHandle:focus-visible::after, .sidebar[data-resizing] .resizeHandle::after { background: var(--accent); }
-  .resizeHandle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .resizeHandle:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
   .sidebar[data-resizing], .sidebar[data-resizing] * { cursor: col-resize; user-select: none; }
   .content { flex: none; width: calc(var(--sidebar-width, 320px) - 64px); box-sizing: border-box; border-bottom: 1px solid var(--sidebar-line); border-radius: var(--workspace-radius) 0 0 var(--workspace-radius); clip-path: inset(0); visibility: visible; transition: clip-path 450ms cubic-bezier(.2, .8, .2, 1), opacity 350ms ease, visibility 0s; }
   .collapsed { width: 64px; }

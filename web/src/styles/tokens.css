@@ -1,6 +1,7 @@
 /* WCAG sRGB relative luminance, (Llighter + .05)/(Ldarker + .05).
  * dark: foreground/background 17.06:1; foreground/card 14.98:1; foreground/muted 12.77:1; foreground/surface-raised 13.73:1; foreground/code 16.47:1; muted-foreground/background 8.59:1; muted-foreground/card 7.54:1; muted-foreground/muted 6.43:1; muted-foreground/surface-raised 6.91:1; muted-foreground/code 8.29:1.
- * light: foreground/background 17.06:1; foreground/card 17.85:1; foreground/muted 15.17:1; foreground/surface-raised 17.85:1; foreground/code 16.18:1; muted-foreground/background 6.03:1; muted-foreground/card 6.31:1; muted-foreground/muted 5.36:1; muted-foreground/surface-raised 6.31:1; muted-foreground/code 5.72:1.
+ * light: foreground/background 21:1; foreground/muted 18.8:1; foreground/code 19.3:1; muted-foreground/background 6.69:1; muted-foreground/muted 5.97:1; muted-foreground/code 6.13:1; link/background 5.17:1.
+ * Light borders are an 8% hairline; cards and inputs add --shadow-edge for a soft drop-shadow edge (none in dark).
  */
 :root {
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
@@ -24,7 +25,7 @@
   --muted: var(--color-muted-foreground); --border: var(--color-border);
   --accent: var(--color-accent); --accent-soft: var(--color-muted);
   --danger: var(--color-destructive); --danger-bg: var(--color-danger-bg);
-  --green: var(--color-accent); --green-bg: var(--color-green-bg); --code: var(--color-code);
+  --green: var(--color-success); --link: var(--color-link); --focus: var(--color-focus); --green-bg: var(--color-green-bg); --code: var(--color-code);
   color-scheme: dark;
 }
 :root {
@@ -39,6 +40,10 @@
   --color-on-primary: #ffffff;
   --color-accent: #22c55e;
   --color-on-accent: #0f172a;
+  --color-link: #22c55e;
+  --color-focus: #22c55e;
+  --color-success: #22c55e;
+  --shadow-edge: 0 0 #0000;
   --color-destructive: #ff9aab;
   --color-on-destructive: #0f172a;
   --color-warning: #f5cb78;
@@ -56,28 +61,32 @@
 }
 [data-theme="light"] { color-scheme: light; }
 [data-theme="light"] {
-  --color-background: #f8fafc;
-  --color-foreground: #0f172a;
+  --color-background: #ffffff;
+  --color-foreground: #000000;
   --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
-  --color-muted: #e8edf3;
-  --color-muted-foreground: #526176;
-  --color-border: #7b899b;
-  --color-primary: #1e293b;
+  --color-card-foreground: #000000;
+  --color-muted: #f2f2f2;
+  --color-muted-foreground: #5c5c5c;
+  --color-border: #00000014;
+  --color-primary: #000000;
   --color-on-primary: #ffffff;
-  --color-accent: #176b3a;
+  --color-accent: #000000;
   --color-on-accent: #ffffff;
+  --color-link: #2563eb;
+  --color-focus: #2563eb;
+  --color-success: #15803d;
   --color-destructive: #af233d;
   --color-on-destructive: #ffffff;
   --color-warning: #805900;
   --color-info: #24549d;
-  --color-ring: #24549d;
+  --color-ring: #2563eb;
   --color-surface-raised: #ffffff;
   --color-overlay: #020617b8;
-  --color-selection: #cee1fc;
+  --color-selection: #cfe0fd;
   --color-danger-bg: #fff0f3;
-  --color-green-bg: #e6f5eb;
-  --color-code: #f1f4f8;
+  --color-green-bg: #e8f5ec;
+  --color-code: #f5f5f5;
+  --shadow-edge: 0 0 0 1px #0000000a, 0 1px 2px #0000000a, 0 4px 16px #0000000f;
   --color-syntax-keyword: #a62032;
   --color-syntax-string: #164780;
   --color-syntax-number: #6e329c;
@@ -85,28 +94,32 @@
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {
   color-scheme: light;
-  --color-background: #f8fafc;
-  --color-foreground: #0f172a;
+  --color-background: #ffffff;
+  --color-foreground: #000000;
   --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
-  --color-muted: #e8edf3;
-  --color-muted-foreground: #526176;
-  --color-border: #7b899b;
-  --color-primary: #1e293b;
+  --color-card-foreground: #000000;
+  --color-muted: #f2f2f2;
+  --color-muted-foreground: #5c5c5c;
+  --color-border: #00000014;
+  --color-primary: #000000;
   --color-on-primary: #ffffff;
-  --color-accent: #176b3a;
+  --color-accent: #000000;
   --color-on-accent: #ffffff;
+  --color-link: #2563eb;
+  --color-focus: #2563eb;
+  --color-success: #15803d;
   --color-destructive: #af233d;
   --color-on-destructive: #ffffff;
   --color-warning: #805900;
   --color-info: #24549d;
-  --color-ring: #24549d;
+  --color-ring: #2563eb;
   --color-surface-raised: #ffffff;
   --color-overlay: #020617b8;
-  --color-selection: #cee1fc;
+  --color-selection: #cfe0fd;
   --color-danger-bg: #fff0f3;
-  --color-green-bg: #e6f5eb;
-  --color-code: #f1f4f8;
+  --color-green-bg: #e8f5ec;
+  --color-code: #f5f5f5;
+  --shadow-edge: 0 0 0 1px #0000000a, 0 1px 2px #0000000a, 0 4px 16px #0000000f;
   --color-syntax-keyword: #a62032;
   --color-syntax-string: #164780;
   --color-syntax-number: #6e329c;

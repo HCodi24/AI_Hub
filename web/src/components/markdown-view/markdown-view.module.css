@@ -16,6 +16,6 @@
 .markdown :global(.hljs-string), .markdown :global(.hljs-regexp), .markdown :global(.hljs-meta), .markdown :global(.hljs-attr) { color: var(--color-syntax-string); }
 .markdown :global(.hljs-number), .markdown :global(.hljs-literal), .markdown :global(.hljs-built_in), .markdown :global(.hljs-symbol) { color: var(--color-syntax-number); }
 .markdown :global(.hljs-title), .markdown :global(.hljs-section), .markdown :global(.hljs-type) { color: var(--color-info); }
-.markdown :global(.hljs-addition), .markdown :global(.hljs-bullet) { color: var(--accent); }
+.markdown :global(.hljs-addition), .markdown :global(.hljs-bullet) { color: var(--green); }
 .markdown :global(.hljs-comment), .markdown :global(.hljs-quote) { color: var(--muted); font-style: italic; }
 .markdown :global(.hljs-emphasis) { font-style: italic; } .markdown :global(.hljs-strong) { font-weight: 700; }

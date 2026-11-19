@@ -40,7 +40,7 @@
 /* The frame opens the detailed Dashboard dialog; nested controls keep their own cursor. */
 .dashboard :is(a, button, summary, label) { cursor: pointer; }
 .dashboard :is(input, select, textarea) { cursor: auto; }
-.dashboard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dashboard:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Explicit local z-index 0: the scroller stays below the gutter card but keeps its own scrolling. */
 .messages { position: relative; z-index: 0; flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .messages > div { flex: 1; min-height: 0; scrollbar-gutter: stable both-edges; }
@@ -61,5 +61,5 @@
 }
 @media (min-width: 768px) {
   .shell { --workspace-top: 48px; --workspace-radius: 12px; padding: 0 3px 3px 0; }
-  .main { margin-top: var(--workspace-top); height: calc(100% - var(--workspace-top)); border: 1px solid var(--border); border-left: 0; border-radius: 0 var(--workspace-radius) var(--workspace-radius) 0; overflow: hidden; }
+  .main { margin-top: var(--workspace-top); height: calc(100% - var(--workspace-top)); border: 1px solid var(--border); border-left: 0; border-radius: 0 var(--workspace-radius) var(--workspace-radius) 0; overflow: hidden; box-shadow: var(--shadow-edge); }
 }

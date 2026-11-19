@@ -1,4 +1,4 @@
-.card { position: relative; display: inline-flex; align-items: center; gap: 10px; width: 180px; max-width: 100%; min-height: 72px; padding: 8px 36px 8px 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--color-surface-raised); }
+.card { position: relative; display: inline-flex; align-items: center; gap: 10px; width: 180px; max-width: 100%; min-height: 72px; padding: 8px 36px 8px 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--color-surface-raised); box-shadow: var(--shadow-edge); }
 .icon { display: grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; background: var(--color-muted); color: var(--muted); }
 .icon > svg { width: 24px; height: 24px; }
 .label { display: grid; gap: 3px; min-width: 0; }

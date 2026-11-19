@@ -14,6 +14,7 @@ export type AddonHome = z.infer<typeof HomeSchema>;
 export type AddonKind = "plugin" | "skill" | "mcp";
 export type AddonChange =
   | { target: "claude" | "codex"; kind: AddonKind; name: string; action: "add" | "remove" }
+  | { target: "claude"; kind: "plugin"; name: string; action: "enable" | "disable" }
   | { target: "mutis"; kind: "skill"; name: string; action: "remove" };
 const LinkMarketSchema = z.object({ name: z.string(), plugins: z.array(z.object({ name: z.string(), description: z.string().default("") })) }).nullable();
 const LinkSkillSchema = z.object({ id: z.string(), name: z.string(), path: z.string() });

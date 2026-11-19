@@ -6,6 +6,7 @@ import { Button } from "@/components/button/button";
 import { notify } from "@/components/toast/toast";
 import type { LinkFound, LinkSkillConflict, LinkTarget } from "@/schema/addons.schema";
 import { settingsText as t } from "@/text/settings";
+import { AddonRow, splitId } from "./addon-row";
 import { errorText } from "./use-settings";
 import styles from "./settings.module.css";
 const TARGETS: LinkTarget[] = ["claude", "codex"];
@@ -175,7 +176,7 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
   </section>;
 }
 /** Plugins in MutiS's own Codex, plus the ones only the user's own Codex has (copied over with "Thêm"). */
-export function CodexPlugins({ onOutput }: { onOutput: (text: string) => void }) {
+export function CodexPlugins({ onOutput, matches = () => true, search = "" }: { onOutput: (text: string) => void; matches?: (text: string) => boolean; search?: string }) {
   const client = useQueryClient();
   const codex = useQuery({ queryKey: ["codex-plugins"], queryFn: ({ signal }) => addonsApi.codexPlugins(signal) });
   const [busy, setBusy] = useState(""); const [confirm, setConfirm] = useState("");
@@ -191,24 +192,27 @@ export function CodexPlugins({ onOutput }: { onOutput: (text: string) => void })
   const hub = codex.data?.plugins ?? [];
   const available = codex.data?.available ?? [];
   const empty = t.addons.emptyHub.plugin;
-  const availableText = t.addons.availableCodex(available.length);
-  const row = (plugin: { id: string; version: string }, inHub: boolean) => <li key={plugin.id}>
-    <span className={styles.rowText}><strong>{plugin.id}</strong>{plugin.version && <small>{plugin.version}</small>}</span>
+  const shownHub = hub.filter(plugin => matches(plugin.id));
+  const shownAvailable = available.filter(plugin => matches(plugin.id));
+  const availableText = t.addons.availableCodex(shownAvailable.length);
+  const noMatch = search && shownHub.length === 0 && shownAvailable.length === 0 && hub.length + available.length > 0;
+  const row = (plugin: { id: string; version: string }, inHub: boolean) => <AddonRow key={plugin.id} kind="plugin" {...splitId(plugin.id)} detail={plugin.version}>
     {busy === plugin.id ? <Loader2 size={16} className="spin" aria-label={inHub ? t.addons.removing : t.addons.adding} />
       : confirm === plugin.id ? <><Button size="sm" variant="danger" onClick={() => void apply([plugin.id], "remove")}>{t.addons.remove}</Button><Button size="sm" onClick={() => setConfirm("")}>{t.cancel}</Button></>
         : inHub ? <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={t.addons.confirmRemove(plugin.id)} onClick={() => setConfirm(plugin.id)}><Trash2 size={16} aria-hidden="true" />{t.addons.remove}</Button>
           : <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply([plugin.id], "add")}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
-  </li>;
+  </AddonRow>;
   return <section className={styles.addonInventory} aria-label={t.addons.link.codexTitle}>
     {available.length > 0 && <div className={styles.addonInventoryBanner}><span>{t.addons.bannerCodex(available.length)}</span>
       <Button size="sm" variant="primary" disabled={Boolean(busy)} onClick={() => void apply(available.map(plugin => plugin.id), "add")}><Plus size={16} aria-hidden="true" />{t.addons.addAll}</Button></div>}
     <div className={styles.addonInventoryGroup}>
-      <h4>{t.addons.kinds.plugin}</h4>
-      {hub.length > 0 && <ul className={styles.rows}>{hub.map(plugin => row(plugin, true))}</ul>}
-      {available.length > 0 ? <details>
-        <summary>{hub.length === 0 ? `${empty} · ${availableText}` : availableText}</summary>
-        <ul className={styles.rows}>{available.map(plugin => row(plugin, false))}</ul>
-      </details> : hub.length === 0 && <p className={styles.note}>{empty}</p>}
+      {noMatch ? <p className={styles.note}>{t.addons.noMatch(search)}</p> : <>
+        {shownHub.length > 0 && <ul className={styles.addonCard}>{shownHub.map(plugin => row(plugin, true))}</ul>}
+        {shownAvailable.length > 0 ? <details open={Boolean(search) || undefined}>
+          <summary>{shownHub.length === 0 ? `${empty} · ${availableText}` : availableText}</summary>
+          <ul className={styles.addonCard}>{shownAvailable.map(plugin => row(plugin, false))}</ul>
+        </details> : hub.length === 0 && <p className={styles.note}>{empty}</p>}
+      </>}
     </div>
   </section>;
 }

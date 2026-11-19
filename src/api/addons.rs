@@ -123,10 +123,23 @@ pub(crate) async fn change(
     }
     let add = match input.action.as_str() {
         "add" => true,
-        "remove" => false,
+        "remove" | "enable" | "disable" => false,
         _ => return Err(bad("Hành động không hợp lệ")),
     };
     let name = input.name.as_str();
+    if let Some(on) = match input.action.as_str() {
+        "enable" => Some(true),
+        "disable" => Some(false),
+        _ => None,
+    } {
+        if (input.target.as_str(), input.kind.as_str()) != ("claude", "plugin") {
+            return Err(bad("Chỉ bật/tắt được plugin của Claude"));
+        }
+        let claude = executable(&state, "claude_cli", "claude").await?;
+        let verb = if on { "enable" } else { "disable" };
+        let output = run_cli(&claude, &["plugin", verb, name, "--scope", "user"], true).await?;
+        return Ok(Json(json!({"ok": true, "output": output})));
+    }
     let output = match (input.target.as_str(), input.kind.as_str()) {
         ("mutis", "skill") if !add => {
             let config_path = state.config_path.clone();
@@ -273,6 +286,22 @@ async fn codex_list(codex: &std::path::Path, home: Option<&std::path::Path>) -> 
         .unwrap_or_default()
 }
 
+/// Marketplace of OpenAI's account-wide plugins: every ChatGPT login gets them and they cannot be uninstalled.
+const CODEX_DEFAULT_MARKETPLACE: &str = "openai-curated-remote";
+
+/// True for a plugin Codex installs on its own for the signed-in account (an explicit flag when Codex reports one,
+/// otherwise its marketplace).
+fn codex_default_plugin(plugin: &Value) -> bool {
+    let flagged = ["installedByDefault", "installed_by_default", "isDefault", "default"]
+        .iter()
+        .any(|key| plugin[*key].as_bool() == Some(true));
+    flagged
+        || plugin["pluginId"]
+            .as_str()
+            .and_then(|id| id.rsplit_once('@'))
+            .is_some_and(|(_, market)| market == CODEX_DEFAULT_MARKETPLACE)
+}
+
 /// Plugins in AI Hub's Codex, and the ones only the user's own Codex has (what "Thêm" can copy over).
 pub(crate) async fn codex_plugins(State(state): State<AppState>) -> Json<Value> {
     let (mut installed, mut available) = (Vec::new(), Vec::new());
@@ -280,6 +309,9 @@ pub(crate) async fn codex_plugins(State(state): State<AppState>) -> Json<Value> 
         installed = codex_list(&codex, Some(&home)).await;
         available = codex_list(&codex, None).await;
     }
+    // Plugins the account installs by default cannot be removed (the server answers 403), so they are not listed.
+    installed.retain(|plugin| !codex_default_plugin(plugin));
+    available.retain(|plugin| !codex_default_plugin(plugin));
     let view = |plugins: &[Value]| -> Vec<Value> {
         plugins
             .iter()
@@ -526,4 +558,18 @@ pub(crate) async fn install_link_skill(
             "conflict": { "skill_id": skill_id, "confirmation": confirmation },
         }),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::codex_default_plugin;
+    use serde_json::json;
+
+    #[test]
+    fn default_codex_plugins_are_detected() {
+        assert!(codex_default_plugin(&json!({"pluginId": "sites@openai-curated-remote"})));
+        assert!(codex_default_plugin(&json!({"pluginId": "x@market", "installedByDefault": true})));
+        assert!(!codex_default_plugin(&json!({"pluginId": "x@openai-curated"})));
+        assert!(!codex_default_plugin(&json!({"pluginId": "x@my-market"})));
+    }
 }

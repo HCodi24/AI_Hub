@@ -1,4 +1,4 @@
-.card { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; overflow-wrap: anywhere; }
+.card { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; overflow-wrap: anywhere; box-shadow: var(--shadow-edge); }
 .card header { display: flex; justify-content: space-between; gap: 16px; }
 .meta { color: var(--muted); font-size: 12px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
