@@ -18,13 +18,13 @@ type Item = { name: string; detail: string; enabled?: boolean };
 const items = (home: AddonHome, kind: AddonKind): Item[] => kind === "plugin"
   ? home.plugins.map(plugin => ({ name: plugin.id, detail: plugin.version, enabled: plugin.enabled }))
   : kind === "skill" ? home.skills.map(name => ({ name, detail: "" }))
-    : home.mcp.map(server => ({ name: server.name, detail: server.summary }));
+    : home.mcp.map(server => ({ name: server.name, detail: server.summary, enabled: server.enabled }));
 const KINDS: AddonKind[] = ["plugin", "skill", "mcp"];
 const SOURCES = ["claude", "codex", "app"] as const;
 type Source = (typeof SOURCES)[number];
 /** Where each kind actually lives: Codex in MutiS only takes plugins; MutiS itself has shared skills and app MCPs, no plugins.
  * All three source tabs stay visible; the pairs missing here show a short explanation instead of a list. */
-const SOURCES_FOR: Record<AddonKind, Source[]> = { plugin: ["claude", "codex"], mcp: ["claude", "app"], skill: ["claude", "app"] };
+const SOURCES_FOR: Record<AddonKind, Source[]> = { plugin: ["claude", "codex"], mcp: ["claude", "codex", "app"], skill: ["claude", "app"] };
 const PANEL = "addons-panel";
 /** "Thêm" dropdown: jumps to the kind/source pair where that add-on is added. */
 const MENU: Record<Source, { kind?: AddonKind; source: Source }> = { claude: { source: "claude" }, codex: { kind: "plugin", source: "codex" }, app: { kind: "mcp", source: "app" } };
@@ -105,7 +105,7 @@ export function AddonsTab() {
   }
   const count = (k: AddonKind, s: Source): number | undefined => !SOURCES_FOR[k].includes(s) ? undefined
     : s === "claude" ? items(data.hub, k).length
-    : s === "codex" ? codex.data?.plugins.length
+    : s === "codex" ? (k === "mcp" ? codex.data?.mcp.length : codex.data?.plugins.length)
       : k === "skill" ? data.shared_skills.length : config.data?.mcp_servers.length;
   const kindCount = (k: AddonKind) => SOURCES_FOR[k].reduce((sum, s) => sum + (count(k, s) ?? 0), 0);
   const active = source;
@@ -119,13 +119,13 @@ export function AddonsTab() {
     const row = (item: Item, inHub: boolean) => {
       const add: AddonChange = { target: "claude", kind, name: item.name, action: "add" };
       const remove: AddonChange = { target: "claude", kind, name: item.name, action: "remove" };
-      const toggle: AddonChange | null = inHub && kind === "plugin" && item.enabled !== undefined
-        ? { target: "claude", kind: "plugin", name: item.name, action: item.enabled ? "disable" : "enable" } : null;
       const { name, tag } = kind === "plugin" ? splitId(item.name) : { name: item.name, tag: "" };
-      return <AddonRow key={item.name} kind={kind} name={name} tag={tag} detail={item.detail} muted={inHub && item.enabled === false}>
+      // MCP servers run commands on this machine, so each one is off until switched on here (plugins load as soon as they are installed).
+      const toggle: AddonChange | null = inHub && kind === "mcp" ? { target: "claude", kind: "mcp", name: item.name, action: item.enabled ? "disable" : "enable" } : null;
+      return <AddonRow key={item.name} kind={kind} name={name} tag={tag} detail={item.detail} muted={Boolean(toggle) && !item.enabled}>
         {inHub ? removeControl(remove, t.addons.confirmRemove(item.name))
           : busy === key(add) ? <Loader2 size={16} className="spin" aria-label={t.addons.adding} />
-            : <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply([add])}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
+            : <Button size="sm" variant="primary" disabled={Boolean(busy)} onClick={() => void apply([add])}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
         {toggle && (busy === key(toggle) ? <Loader2 size={16} className="spin" aria-label={t.addons.toggling} />
           : <Switch checked={Boolean(item.enabled)} disabled={Boolean(busy)} aria-label={t.addons.toggle(item.name)} onChange={() => void apply([toggle])} />)}
       </AddonRow>;
@@ -141,10 +141,10 @@ export function AddonsTab() {
       <div className={styles.addonInventoryGroup}>
         {noMatch ? <p className={styles.note}>{t.addons.noMatch(search.trim())}</p> : <>
           {shownHub.length > 0 && <ul className={styles.addonCard}>{shownHub.map(item => row(item, true))}</ul>}
-          {shownAvailable.length > 0 ? <details open={Boolean(needle) || undefined}>
-            <summary>{shownHub.length === 0 ? `${empty} · ${availableText}` : availableText}</summary>
+          {shownAvailable.length > 0 ? <>
+            <h4>{shownHub.length === 0 ? `${empty} · ${availableText}` : availableText}</h4>
             <ul className={styles.addonCard}>{shownAvailable.map(item => row(item, false))}</ul>
-          </details> : hub.length === 0 && <p className={styles.note}>{empty}</p>}
+          </> : hub.length === 0 && <p className={styles.note}>{empty}</p>}
         </>}
       </div>
       {kind === "plugin" && <p className={styles.note}>{t.addons.pluginNote}</p>}
@@ -180,6 +180,16 @@ export function AddonsTab() {
         {active === "codex" && <Button size="sm" onClick={() => setSource("app")}>{t.addons.unsupported.goApp}</Button>}
       </div>}
       {active === "claude" && claudePanel()}
+      {active === "codex" && kind === "mcp" && <section className={styles.addonInventory} aria-label={t.addons.tabs.codex}>
+        {(codex.data?.mcp ?? []).filter(server => matches(server.name)).length === 0 ? <p className={styles.note}>{t.addons.emptyCodexMcp}</p>
+          : <ul className={styles.addonCard}>{(codex.data?.mcp ?? []).filter(server => matches(server.name)).map(server => {
+            const toggle: AddonChange = { target: "codex", kind: "mcp", name: server.name, action: server.enabled ? "disable" : "enable" };
+            return <AddonRow key={server.name} kind="mcp" name={server.name} tag="" detail={server.summary} muted={!server.enabled}>
+              {busy === key(toggle) ? <Loader2 size={16} className="spin" aria-label={t.addons.toggling} />
+                : <Switch checked={server.enabled} disabled={Boolean(busy)} aria-label={t.addons.toggle(server.name)}
+                  onChange={() => void apply([toggle]).then(() => client.invalidateQueries({ queryKey: ["codex-plugins"] }))} />}
+            </AddonRow>; })}</ul>}
+      </section>}
       {active === "codex" && kind === "plugin" && <CodexPlugins onOutput={setOutput} matches={matches} search={search.trim()} />}
       {active === "app" && kind === "skill" && <section className={styles.addonInventory} aria-label={t.addons.sharedSkills.title}>
         {data.shared_skills.length === 0 ? <p className={styles.note}>{t.addons.sharedSkills.empty}</p>

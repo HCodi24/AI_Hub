@@ -67,12 +67,12 @@ pub fn launch_args(folder: &Path, plugins: bool) -> Vec<OsString> {
         // Without a Windows sandbox mode Codex falls back to read-only no matter what permission is requested.
         "windows.sandbox=\"elevated\"".into(),
         "project_doc_max_bytes=0".into(),
-        "skills.include_instructions=false".into(),
+        // With plugins installed, let Codex list their skills itself (as Orca does); without any it stays off so repo skills are never auto-loaded.
+        format!("skills.include_instructions={plugins}"),
         "skills.bundled.enabled=false".into(),
         "features.apps=false".into(),
         format!("features.plugins={plugins}"),
         "memories.use_memories=false".into(),
-        "mcp_servers={}".into(),
         format!(
             "projects.{}.trust_level=\"untrusted\"",
             json!(root.to_string_lossy())
@@ -83,6 +83,129 @@ pub fn launch_args(folder: &Path, plugins: bool) -> Vec<OsString> {
         args.extend([OsString::from("-c"), config.into()]);
     }
     args
+}
+
+/// `[mcp_servers.NAME]` table header -> NAME (plain or quoted).
+fn mcp_header(line: &str) -> Option<&str> {
+    let name = line.trim().strip_prefix("[mcp_servers.")?.strip_suffix(']')?;
+    let name = name.trim_matches('"');
+    (!name.contains('.') && !name.is_empty()).then_some(name)
+}
+
+/// MCP servers in the Codex home's `config.toml` as `{name, summary, enabled}` (Codex itself loads them; `enabled = false` turns one off).
+pub fn mcp_servers(home: &Path) -> Vec<serde_json::Value> {
+    let text = std::fs::read_to_string(home.join("config.toml")).unwrap_or_default();
+    let (mut out, mut current) = (Vec::<serde_json::Value>::new(), None::<usize>);
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            current = mcp_header(line).map(|name| { out.push(json!({"name": name, "summary": "", "enabled": true})); out.len() - 1 });
+        } else if let Some(i) = current {
+            if let Some(value) = line.strip_prefix("command") .and_then(|v| v.trim_start().strip_prefix('=')) { out[i]["summary"] = json!(value.trim().trim_matches('"')); }
+            if line.replace(' ', "") == "enabled=false" { out[i]["enabled"] = json!(false); }
+        }
+    }
+    out
+}
+
+/// Writes `enabled = true|false` into one `[mcp_servers.NAME]` table of the Codex home's `config.toml`.
+pub fn set_mcp_enabled(home: &Path, name: &str, on: bool) -> Result<()> {
+    let path = home.join("config.toml");
+    let text = std::fs::read_to_string(&path).context("Chưa có config.toml của Codex")?;
+    let mut lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
+    let start = lines.iter().position(|l| mcp_header(l) == Some(name)).with_context(|| format!("Codex chưa có MCP «{name}»"))?;
+    let end = lines[start + 1..].iter().position(|l| l.trim().starts_with('[')).map_or(lines.len(), |i| start + 1 + i);
+    let line = format!("enabled = {on}");
+    match (start + 1..end).find(|&i| lines[i].replace(' ', "").starts_with("enabled=")) {
+        Some(i) => lines[i] = line,
+        None => lines.insert(start + 1, line),
+    }
+    std::fs::write(&path, lines.join("
+") + "
+")?;
+    Ok(())
+}
+
+/// Plugins that sit in the Codex home cache, as `{pluginId, version, enabled}`: the fallback for when `codex plugin list` shows none.
+pub fn cached_plugins(home: &Path) -> Vec<serde_json::Value> {
+    let config = std::fs::read_to_string(home.join("config.toml")).unwrap_or_default();
+    let mut out = Vec::new();
+    let dirs = |p: PathBuf| std::fs::read_dir(p).into_iter().flatten().flatten().filter(|e| e.path().is_dir()).collect::<Vec<_>>();
+    for market in dirs(home.join("plugins/cache")) {
+        for plugin in dirs(market.path()) {
+            let id = format!("{}@{}", plugin.file_name().to_string_lossy(), market.file_name().to_string_lossy());
+            let mut versions = dirs(plugin.path()).into_iter().map(|e| e.file_name().to_string_lossy().into_owned()).collect::<Vec<_>>();
+            versions.sort();
+            // Off only when config.toml says `enabled = false` right under this plugin's table.
+            let header = format!("[plugins.\"{id}\"]");
+            let off = config.split(&header).nth(1).and_then(|rest| rest.lines().skip(1).take_while(|l| !l.trim().starts_with('[')).find(|l| l.contains("enabled"))).is_some_and(|l| l.contains("false"));
+            out.push(json!({"pluginId": id, "version": versions.pop().unwrap_or_default(), "enabled": !off}));
+        }
+    }
+    out
+}
+
+/// Tell the model which enabled plugin skills exist (name, one-line purpose, path) so it reads one on demand.
+/// Codex itself is launched with skill instructions off, so without this it never learns the plugins are there.
+pub fn plugin_index(home: &Path) -> String {
+    let Ok(config) = std::fs::read_to_string(home.join("config.toml")) else { return String::new() };
+    let (mut enabled, mut current) = (Vec::new(), None::<String>);
+    for line in config.lines().map(str::trim) {
+        if let Some(id) = line.strip_prefix("[plugins.\"").and_then(|l| l.strip_suffix("\"]")) {
+            current = Some(id.to_owned());
+        } else if line.starts_with('[') {
+            current = None;
+        } else if line.replace(' ', "") == "enabled=true" {
+            enabled.extend(current.take());
+        }
+    }
+    let mut plugins = Vec::new();
+    for id in enabled {
+        let Some((name, market)) = id.split_once('@') else { continue };
+        let Ok(versions) = std::fs::read_dir(home.join("plugins/cache").join(market).join(name)) else { continue };
+        let mut versions = versions.flatten().map(|e| e.path()).collect::<Vec<_>>();
+        versions.sort();
+        plugins.extend(versions.pop().map(|v| (name.to_owned(), v)));
+    }
+    skill_index(plugins)
+}
+
+/// The index text for plugins given as (name, install folder); shared by Codex and Claude.
+pub fn skill_index(plugins: Vec<(String, PathBuf)>) -> String {
+    let (mut out, mut seen) = (String::new(), std::collections::HashSet::new());
+    for (name, version) in plugins {
+        let mut files = Vec::new();
+        find_skill_files(&version, &mut files, 0);
+        for file in files {
+            let Ok(text) = std::fs::read_to_string(&file) else { continue };
+            let field = |key: &str| text.lines().take(12).find_map(|l| l.strip_prefix(key)).map(|v| v.trim().trim_matches('"').to_owned());
+            let skill = field("name:").unwrap_or_default();
+            if skill.is_empty() || !seen.insert(format!("{name}:{skill}")) || out.len() > 8000 { continue }
+            let about = field("description:").unwrap_or_default().chars().take(160).collect::<String>();
+            out.push_str(&format!("- {name}:{skill} — {about} ({})
+", file.display()));
+        }
+    }
+    if out.is_empty() { return out }
+    format!("
+Installed plugin skills (enabled in Settings). When a request matches one, read its SKILL.md and follow it:
+{out}")
+}
+
+fn find_skill_files(dir: &Path, files: &mut Vec<PathBuf>, depth: usize) {
+    if depth > 5 || files.len() >= 40 { return }
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut entries = entries.flatten().collect::<Vec<_>>();
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        let Ok(kind) = entry.file_type() else { continue };
+        if kind.is_symlink() { continue }
+        let name = entry.file_name();
+        if kind.is_dir() && name != ".git" && name != "node_modules" {
+            find_skill_files(&entry.path(), files, depth + 1);
+        } else if name == "SKILL.md" {
+            files.push(entry.path());
+        }
+    }
 }
 
 /// Explicitly load only the requested sources, with canonical path checks and bounded size.
@@ -235,6 +358,47 @@ mod tests {
         assert!(filtered_auth(&json!({"OPENAI_API_KEY":"secret"})).is_err());
     }
     #[test]
+    fn mcp_servers_are_listed_and_toggled_in_config_toml() {
+        let home = std::env::temp_dir().join(format!("aihub-codex-mcp-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join("config.toml"), "[mcp_servers.a]
+command = \"x\"
+[mcp_servers.a.env]
+K = \"v\"
+[mcp_servers.b]
+command = \"y\"
+enabled = false
+").unwrap();
+        assert_eq!(mcp_servers(&home).iter().map(|s| s["enabled"] == true).collect::<Vec<_>>(), [true, false]);
+        set_mcp_enabled(&home, "b", true).unwrap();
+        set_mcp_enabled(&home, "a", false).unwrap();
+        let after = mcp_servers(&home);
+        std::fs::remove_dir_all(&home).ok();
+        assert_eq!(after.iter().map(|s| s["enabled"] == true).collect::<Vec<_>>(), [false, true]);
+        assert_eq!(after[0]["summary"], "x");
+    }
+    #[test]
+    fn plugin_index_lists_enabled_plugin_skills_only() {
+        let home = std::env::temp_dir().join(format!("aihub-plugin-index-{}", std::process::id()));
+        for (plugin, skill) in [("on", "alpha"), ("off", "beta")] {
+            let dir = home.join(format!("plugins/cache/m/{plugin}/1.0/skills/{skill}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("SKILL.md"), format!("---
+name: {skill}
+description: \"does {skill}\"
+---
+")).unwrap();
+        }
+        std::fs::write(home.join("config.toml"), "[plugins.\"on@m\"]
+enabled = true
+[plugins.\"off@m\"]
+enabled = false
+").unwrap();
+        let index = plugin_index(&home);
+        std::fs::remove_dir_all(&home).ok();
+        assert!(index.contains("on:alpha") && index.contains("does alpha") && !index.contains("beta"));
+    }
+    #[test]
     fn permission_changes_invalidate_sessions() {
         let provider = ProviderConfig {
             id: "codex".into(),
@@ -278,6 +442,9 @@ mod tests {
         assert!(launch_args(&root, true)
             .iter()
             .any(|arg| arg == "features.plugins=true"));
+        assert!(launch_args(&root, true)
+            .iter()
+            .any(|arg| arg == "skills.include_instructions=true"));
         assert!(args.contains(&"project_doc_max_bytes=0".to_owned()));
         assert!(args.contains(&"skills.include_instructions=false".to_owned()));
     }

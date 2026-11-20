@@ -200,7 +200,7 @@ export function CodexPlugins({ onOutput, matches = () => true, search = "" }: { 
     {busy === plugin.id ? <Loader2 size={16} className="spin" aria-label={inHub ? t.addons.removing : t.addons.adding} />
       : confirm === plugin.id ? <><Button size="sm" variant="danger" onClick={() => void apply([plugin.id], "remove")}>{t.addons.remove}</Button><Button size="sm" onClick={() => setConfirm("")}>{t.cancel}</Button></>
         : inHub ? <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={t.addons.confirmRemove(plugin.id)} onClick={() => setConfirm(plugin.id)}><Trash2 size={16} aria-hidden="true" />{t.addons.remove}</Button>
-          : <Button size="sm" disabled={Boolean(busy)} onClick={() => void apply([plugin.id], "add")}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
+          : <Button size="sm" variant="primary" disabled={Boolean(busy)} onClick={() => void apply([plugin.id], "add")}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
   </AddonRow>;
   return <section className={styles.addonInventory} aria-label={t.addons.link.codexTitle}>
     {available.length > 0 && <div className={styles.addonInventoryBanner}><span>{t.addons.bannerCodex(available.length)}</span>
@@ -208,10 +208,10 @@ export function CodexPlugins({ onOutput, matches = () => true, search = "" }: { 
     <div className={styles.addonInventoryGroup}>
       {noMatch ? <p className={styles.note}>{t.addons.noMatch(search)}</p> : <>
         {shownHub.length > 0 && <ul className={styles.addonCard}>{shownHub.map(plugin => row(plugin, true))}</ul>}
-        {shownAvailable.length > 0 ? <details open={Boolean(search) || undefined}>
-          <summary>{shownHub.length === 0 ? `${empty} · ${availableText}` : availableText}</summary>
+        {shownAvailable.length > 0 ? <>
+          <h4>{shownHub.length === 0 ? `${empty} · ${availableText}` : availableText}</h4>
           <ul className={styles.addonCard}>{shownAvailable.map(plugin => row(plugin, false))}</ul>
-        </details> : hub.length === 0 && <p className={styles.note}>{empty}</p>}
+        </> : hub.length === 0 && <p className={styles.note}>{empty}</p>}
       </>}
     </div>
   </section>;

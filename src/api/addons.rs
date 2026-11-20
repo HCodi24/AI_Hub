@@ -26,13 +26,15 @@ fn bad(message: impl Into<String>) -> ApiError {
     ApiError::new(StatusCode::BAD_REQUEST, message)
 }
 
-fn hub_dir() -> ApiResult<PathBuf> {
-    cli_support::ai_hub_claude_config_dir().ok_or_else(|| {
-        ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Không tạo được thư mục cấu hình Claude của MutiS",
-        )
-    })
+/// The Claude config folder chats run with (`<data>/claude/<source id>`): plugins, MCP and skills must live there to be seen.
+async fn claude_dir(state: &AppState) -> ApiResult<PathBuf> {
+    let provider = state.config.read().await.providers.iter().find(|p| p.kind == "claude_cli").cloned();
+    match provider {
+        Some(provider) => crate::providers::claude::environment::home(&state.config_path, &provider)
+            .map_err(|error| bad(error.to_string())),
+        None => cli_support::ai_hub_claude_config_dir()
+            .ok_or_else(|| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không tạo được thư mục cấu hình Claude của MutiS")),
+    }
 }
 
 pub(crate) async fn overview(State(state): State<AppState>) -> ApiResult<Json<addons::Overview>> {
@@ -42,12 +44,14 @@ pub(crate) async fn overview(State(state): State<AppState>) -> ApiResult<Json<ad
             "Không đọc được danh sách plugin và skill",
         )
     };
-    let dir = cli_support::claude_config_dir(&state.config_path).map_err(|_| error())?;
+    let dir = claude_dir(&state).await.map_err(|_| error())?;
     let skills_dir = addons::shared_skills_dir(&state.config_path).map_err(|_| error())?;
-    tokio::task::spawn_blocking(move || addons::overview(&dir, &skills_dir))
+    let mut overview = tokio::task::spawn_blocking(move || addons::overview(&dir, &skills_dir))
         .await
-        .map(Json)
-        .map_err(|_| error())
+        .map_err(|_| error())?;
+    let enabled = state.config.read().await.claude.enabled_mcp.clone();
+    for server in &mut overview.hub.mcp { server.enabled = enabled.contains(&server.name); }
+    Ok(Json(overview))
 }
 
 /// The CLI configured for the first source of `kind`, or one found on the machine.
@@ -69,12 +73,21 @@ async fn executable(state: &AppState, kind: &str, name: &str) -> ApiResult<PathB
 
 /// Run one CLI command to the end and return its combined output (last 4000 chars). `claude` commands run against
 /// AI Hub's own Claude config.
-async fn run_cli(path: &std::path::Path, args: &[&str], claude: bool) -> ApiResult<String> {
-    run_cli_in(path, args, claude, None).await
+/// Runs a CLI and returns the last 4000 characters of its output (for messages).
+/// `codex_home` runs a Codex command against AI Hub's own Codex home instead of `~/.codex`; for Claude it is the config folder.
+async fn run_cli_in(
+    path: &std::path::Path,
+    args: &[&str],
+    claude: bool,
+    codex_home: Option<&std::path::Path>,
+) -> ApiResult<String> {
+    let text = run_cli_full(path, args, claude, codex_home).await?;
+    let chars: Vec<char> = text.chars().collect();
+    Ok(chars[chars.len().saturating_sub(4000)..].iter().collect())
 }
 
-/// Like `run_cli`; `codex_home` runs a Codex command against AI Hub's own Codex home instead of `~/.codex`.
-async fn run_cli_in(
+/// Same, with the whole output: a JSON listing is cut and unreadable at 4000 characters.
+async fn run_cli_full(
     path: &std::path::Path,
     args: &[&str],
     claude: bool,
@@ -86,7 +99,7 @@ async fn run_cli_in(
         cli_support::clean_claude_environment(&mut command);
     }
     if let Some(home) = codex_home {
-        command.env("CODEX_HOME", home);
+        command.env(if claude { "CLAUDE_CONFIG_DIR" } else { "CODEX_HOME" }, home);
     }
     crate::core::process::configure_hidden(&mut command);
     command
@@ -100,15 +113,13 @@ async fn run_cli_in(
         .map_err(|error| bad(format!("Không chạy được lệnh: {error}")))?;
     let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
     text.push_str(&String::from_utf8_lossy(&output.stderr));
-    let text: String = {
-        let chars: Vec<char> = text.trim().chars().collect();
-        chars[chars.len().saturating_sub(4000)..].iter().collect()
-    };
+    let text = text.trim().to_owned();
     if !output.status.success() {
+        let chars: Vec<char> = text.chars().collect();
         return Err(bad(if text.is_empty() {
             "Lệnh thất bại".to_owned()
         } else {
-            text
+            chars[chars.len().saturating_sub(4000)..].iter().collect()
         }));
     }
     Ok(text)
@@ -127,17 +138,31 @@ pub(crate) async fn change(
         _ => return Err(bad("Hành động không hợp lệ")),
     };
     let name = input.name.as_str();
+    let cdir = claude_dir(&state).await?;
     if let Some(on) = match input.action.as_str() {
         "enable" => Some(true),
         "disable" => Some(false),
         _ => None,
     } {
-        if (input.target.as_str(), input.kind.as_str()) != ("claude", "plugin") {
-            return Err(bad("Chỉ bật/tắt được plugin của Claude"));
+        match (input.target.as_str(), input.kind.as_str()) {
+            ("claude", "mcp") => {
+                let mut config = state.config.write().await;
+                config.claude.enabled_mcp.retain(|n| n != name);
+                if on { config.claude.enabled_mcp.push(name.to_owned()); }
+                crate::config::save(&state.config_path, &config).map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
+                return Ok(Json(json!({"ok": true, "output": ""})));
+            }
+            ("codex", "mcp") => {
+                let (_, home) = codex_cli(&state).await?;
+                crate::providers::codex::environment::set_mcp_enabled(&home, name, on).map_err(|error| bad(format!("{error:#}")))?;
+                return Ok(Json(json!({"ok": true, "output": ""})));
+            }
+            ("claude", "plugin") => {}
+            _ => return Err(bad("Chỉ bật/tắt được plugin của Claude và MCP")),
         }
         let claude = executable(&state, "claude_cli", "claude").await?;
         let verb = if on { "enable" } else { "disable" };
-        let output = run_cli(&claude, &["plugin", verb, name, "--scope", "user"], true).await?;
+        let output = run_cli_in(&claude, &["plugin", verb, name, "--scope", "user"], true, Some(&cdir)).await?;
         return Ok(Json(json!({"ok": true, "output": output})));
     }
     let output = match (input.target.as_str(), input.kind.as_str()) {
@@ -151,7 +176,7 @@ pub(crate) async fn change(
             String::new()
         }
         ("claude", "skill") => {
-            let hub = hub_dir()?;
+            let hub = cdir.clone();
             let personal = addons::personal_claude_dir()
                 .ok_or_else(|| bad("Không tìm được thư mục người dùng"))?;
             let name = name.to_owned();
@@ -184,19 +209,13 @@ pub(crate) async fn change(
                     return Err(bad("Không biết plugin này được cài từ marketplace nào"));
                 }
                 // Already-added marketplaces make this command fail; the install below reports any real problem.
-                let _ = run_cli(&claude, &["plugin", "marketplace", "add", &source], true).await;
-                run_cli(
-                    &claude,
-                    &["plugin", "install", name, "--scope", "user"],
-                    true,
-                )
+                let _ = run_cli_in(&claude, &["plugin", "marketplace", "add", &source], true, Some(&cdir)).await;
+                run_cli_in(&claude,
+                    &["plugin", "install", name, "--scope", "user"], true, Some(&cdir))
                 .await?
             } else {
-                run_cli(
-                    &claude,
-                    &["plugin", "uninstall", name, "--scope", "user"],
-                    true,
-                )
+                run_cli_in(&claude,
+                    &["plugin", "uninstall", name, "--scope", "user"], true, Some(&cdir))
                 .await?
             }
         }
@@ -211,14 +230,11 @@ pub(crate) async fn change(
                 .map_err(|_| bad("Không đọc được MCP server"))?
                 .map_err(|error| bad(error.to_string()))?;
                 let json = definition.to_string();
-                run_cli(
-                    &claude,
-                    &["mcp", "add-json", name, &json, "--scope", "user"],
-                    true,
-                )
+                run_cli_in(&claude,
+                    &["mcp", "add-json", name, &json, "--scope", "user"], true, Some(&cdir))
                 .await?
             } else {
-                run_cli(&claude, &["mcp", "remove", name, "--scope", "user"], true).await?
+                run_cli_in(&claude, &["mcp", "remove", name, "--scope", "user"], true, Some(&cdir)).await?
             }
         }
         ("codex", "plugin") => {
@@ -276,7 +292,7 @@ async fn codex_cli(state: &AppState) -> ApiResult<(PathBuf, PathBuf)> {
 /// `codex plugin list --json` -> its `installed` entries; `home` picks AI Hub's Codex, `None` the user's own.
 /// Any failure (no Codex, no plugins) is an empty list.
 async fn codex_list(codex: &std::path::Path, home: Option<&std::path::Path>) -> Vec<Value> {
-    let Ok(text) = run_cli_in(codex, &["plugin", "list", "--json"], false, home).await else {
+    let Ok(text) = run_cli_full(codex, &["plugin", "list", "--json"], false, home).await else {
         return Vec::new();
     };
     // Codex may print a warning line before the JSON.
@@ -284,6 +300,25 @@ async fn codex_list(codex: &std::path::Path, home: Option<&std::path::Path>) -> 
         .and_then(|start| serde_json::from_str::<Value>(&text[start..]).ok())
         .and_then(|json| json["installed"].as_array().cloned())
         .unwrap_or_default()
+}
+
+async fn claude_hub_has_plugin(state: &AppState, id: &str) -> bool {
+    let Ok(hub_dir) = claude_dir(state).await else {
+        return false;
+    };
+    let Ok(skills_dir) = addons::shared_skills_dir(&state.config_path) else {
+        return false;
+    };
+    let id = id.to_owned();
+    tokio::task::spawn_blocking(move || {
+        addons::overview(&hub_dir, &skills_dir)
+            .hub
+            .plugins
+            .iter()
+            .any(|plugin| plugin.id == id)
+    })
+    .await
+    .unwrap_or(false)
 }
 
 /// Marketplace of OpenAI's account-wide plugins: every ChatGPT login gets them and they cannot be uninstalled.
@@ -299,7 +334,7 @@ fn codex_default_plugin(plugin: &Value) -> bool {
         || plugin["pluginId"]
             .as_str()
             .and_then(|id| id.rsplit_once('@'))
-            .is_some_and(|(_, market)| market == CODEX_DEFAULT_MARKETPLACE)
+            .is_some_and(|(_, market)| market == CODEX_DEFAULT_MARKETPLACE || market.starts_with("openai-bundled") || market == "openai-primary-runtime")
 }
 
 /// Plugins in AI Hub's Codex, and the ones only the user's own Codex has (what "Thêm" can copy over).
@@ -307,6 +342,10 @@ pub(crate) async fn codex_plugins(State(state): State<AppState>) -> Json<Value> 
     let (mut installed, mut available) = (Vec::new(), Vec::new());
     if let Ok((codex, home)) = codex_cli(&state).await {
         installed = codex_list(&codex, Some(&home)).await;
+        // `codex plugin list` can come back short on another machine; the cache folder is the ground truth.
+        for cached in crate::providers::codex::environment::cached_plugins(&home) {
+            if !installed.iter().any(|p| p["pluginId"] == cached["pluginId"]) { installed.push(cached); }
+        }
         available = codex_list(&codex, None).await;
     }
     // Plugins the account installs by default cannot be removed (the server answers 403), so they are not listed.
@@ -333,7 +372,11 @@ pub(crate) async fn codex_plugins(State(state): State<AppState>) -> Json<Value> 
             .as_str()
             .is_some_and(|id| !have.contains(&id))
     });
-    Json(json!({ "plugins": view(&installed), "available": view(&available) }))
+    let mcp = match codex_cli(&state).await {
+        Ok((_, home)) => crate::providers::codex::environment::mcp_servers(&home),
+        Err(_) => Vec::new(),
+    };
+    Json(json!({ "plugins": view(&installed), "available": view(&available), "mcp": mcp }))
 }
 
 /// Removes the downloaded repository when dropped, however the request ends.
@@ -483,7 +526,7 @@ pub(crate) async fn install_link(
             return Err(bad(format!("Chưa chọn plugin nào cho {target}")));
         }
         let (cli, home) = if claude {
-            (executable(&state, "claude_cli", "claude").await?, None)
+            (executable(&state, "claude_cli", "claude").await?, Some(claude_dir(&state).await?))
         } else {
             let (codex, home) = codex_cli(&state).await?;
             (codex, Some(home))
@@ -504,7 +547,24 @@ pub(crate) async fn install_link(
                 vec!["plugin", "add", &id]
             };
             match run_cli_in(&cli, &args, claude, home.as_deref()).await {
-                Ok(_) => log.push(format!("{target}: đã cài {id}")),
+                Ok(output) => {
+                    let installed = if claude {
+                        claude_hub_has_plugin(&state, &id).await
+                    } else {
+                        codex_list(&cli, home.as_deref())
+                            .await
+                            .iter()
+                            .any(|plugin| plugin["pluginId"].as_str() == Some(id.as_str()))
+                    };
+                    if installed {
+                        log.push(format!("{target}: đã cài {id}"));
+                    } else {
+                        failed = true;
+                        log.push(format!(
+                            "{target}: CLI báo xong nhưng {id} chưa có trong danh sách. Kết quả CLI: {output}"
+                        ));
+                    }
+                }
                 Err(error) => {
                     failed = true;
                     log.push(format!("{target}: lỗi {id}: {}", error.message));

@@ -92,6 +92,11 @@ impl Gate {
         Self { cwd, roots }
     }
 
+    /// Allow reading one more folder (the enabled plugins' skill files).
+    pub(crate) fn allow(&mut self, folder: &Path) {
+        if let Some(root) = parts(&crate::core::text::strip_verbatim(folder.to_path_buf()).to_string_lossy()) { self.roots.push(root); }
+    }
+
     /// Paths and names in the command that point outside the allowed folders.
     fn outside(&self, command: &str) -> Vec<String> {
         let mut out = Vec::new();

@@ -41,12 +41,13 @@ impl Provider for CodexProvider {
             if sandbox == "workspace-write" && crate::api::providers::codex_sandbox_status(&mut client).await != "ready" {
                 bail!("Codex riêng của MutiS chưa thiết lập sandbox Windows nên không ghi được file. Vào Cài đặt › Nguồn AI › Codex bấm «Thiết lập sandbox» (cần xác nhận quyền quản trị), hoặc chọn quyền Chỉ đọc.");
             }
-            let context = environment::project_context(folder, &settings)?;
+            let context = environment::project_context(folder, &settings)? + &environment::plugin_index(&home);
             let mcp = request.mcp.iter().filter(|server| server.enabled).map(|server| (
                 server.name.clone(), json!({"command":server.command,"args":server.args,"env":server.env})
             )).collect::<serde_json::Map<String, serde_json::Value>>();
             // `untrusted`: Codex asks the app before running a command, and the gate declines paths outside the folder.
-            let gate = super::gate::Gate::new(folder, request.messages.iter().filter(|m| m.role == "user").map(|m| m.content.as_str()));
+            let mut gate = super::gate::Gate::new(folder, request.messages.iter().filter(|m| m.role == "user").map(|m| m.content.as_str()));
+            gate.allow(&home.join("plugins/cache"));
             let params = json!({"cwd":request.folder,"model":request.model,"approvalPolicy":"untrusted","sandbox":sandbox,
                 "developerInstructions":context,"selectedCapabilityRoots":[],"config":{"mcp_servers":mcp}});
             let mut resumed = native_id.is_some();

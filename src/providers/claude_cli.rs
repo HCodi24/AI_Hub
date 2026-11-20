@@ -51,7 +51,7 @@ impl Provider for ClaudeCliProvider {
             OsString::from("--verbose"),
             OsString::from("--include-partial-messages"),
         ];
-        args.extend(super::claude::environment::launch_args(&request.mcp));
+        args.extend(super::claude::environment::launch_args(&request.mcp, &home, super::claude::environment::enabled_hub_mcp(&home, &settings.enabled_mcp)));
         let context = super::claude::sources::project_context(
             std::path::Path::new(&request.folder),
             &settings,

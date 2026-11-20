@@ -84,6 +84,7 @@ export const settingsText = {
     version: (value: string) => `Phiên bản ${value}`,
     confirmRemove: (name: string) => `Gỡ ${name} khỏi Claude trong MutiS?`,
     output: "Kết quả lệnh", pluginNote: "Cài plugin cần mạng và có thể mất một phút.", source: "Nguồn",
+    emptyCodexMcp: "Codex trong MutiS chưa có MCP server nào trong config.toml",
     emptyHub: { plugin: "Chưa có plugin trong MutiS", skill: "Chưa có skill trong MutiS", mcp: "Chưa có MCP server trong MutiS" },
     available: (count: number) => `Có thể thêm ${count} từ Claude Code cá nhân`,
     availableCodex: (count: number) => `Có thể thêm ${count} từ Codex cá nhân`,

@@ -57,8 +57,23 @@ pub fn session_prefix(settings: &ClaudeConfig, provider: &ProviderConfig, folder
     format!("mutis-claude-{hash}:")
 }
 
-pub fn launch_args(mcp: &[McpServerConfig]) -> Vec<OsString> {
-    let servers = mcp
+/// Every plugin in the hub's `plugins/installed_plugins.json`, switched on: installing is the only switch.
+fn enabled_plugins(home: &Path) -> serde_json::Map<String, Value> {
+    let installed = std::fs::read_to_string(home.join("plugins/installed_plugins.json")).ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    installed.as_ref().and_then(|json| json["plugins"].as_object()).into_iter().flatten()
+        .map(|(id, _)| (id.clone(), Value::Bool(true))).collect()
+}
+
+/// The servers of AI Hub's Claude `.claude.json` that the user switched on (full definition, so env and url stay intact).
+pub fn enabled_hub_mcp(home: &Path, enabled: &[String]) -> serde_json::Map<String, Value> {
+    let state = std::fs::read_to_string(home.join(".claude.json")).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    state.as_ref().and_then(|json| json["mcpServers"].as_object()).into_iter().flatten()
+        .filter(|(name, _)| enabled.contains(name)).map(|(name, server)| (name.clone(), server.clone())).collect()
+}
+
+pub fn launch_args(mcp: &[McpServerConfig], home: &Path, hub_mcp: serde_json::Map<String, Value>) -> Vec<OsString> {
+    let mut servers = mcp
         .iter()
         .filter(|s| s.enabled)
         .map(|s| {
@@ -68,9 +83,11 @@ pub fn launch_args(mcp: &[McpServerConfig]) -> Vec<OsString> {
             )
         })
         .collect::<serde_json::Map<String, Value>>();
-    vec!["--setting-sources".into(), "user".into(), "--disable-slash-commands".into(),
+    // The app's own servers win a name clash.
+    for (name, server) in hub_mcp { servers.entry(name).or_insert(server); }
+    vec!["--setting-sources".into(), "user".into(),
         "--strict-mcp-config".into(), "--mcp-config".into(), json!({"mcpServers":servers}).to_string().into(),
-        "--settings".into(), json!({"disableAllHooks":true,"autoMemoryEnabled":false,"enabledPlugins":{},"claudeMdExcludes":["**"],"disableClaudeAiConnectors":true}).to_string().into()]
+        "--settings".into(), json!({"disableAllHooks":true,"autoMemoryEnabled":false,"enabledPlugins":enabled_plugins(home),"claudeMdExcludes":["**"],"disableClaudeAiConnectors":true}).to_string().into()]
 }
 
 pub fn apply(command: &mut tokio::process::Command, home: &Path) {
@@ -230,15 +247,24 @@ mod tests {
                 enabled: false,
             },
         ];
-        let args: Vec<String> = launch_args(&servers)
+        let args: Vec<String> = launch_args(&servers, Path::new("missing-home"), Default::default())
             .iter()
             .map(|s| s.to_string_lossy().into())
             .collect();
-        assert!(args.contains(&"--disable-slash-commands".into()));
+        assert!(!args.contains(&"--disable-slash-commands".into()), "plugin skills load natively");
         assert!(args.contains(&"--strict-mcp-config".into()));
         let at = args.iter().position(|s| s == "--mcp-config").unwrap();
         let mcp: Value = serde_json::from_str(&args[at + 1]).unwrap();
         assert!(mcp["mcpServers"].get("allowed").is_some());
         assert!(mcp["mcpServers"].get("disabled").is_none());
+    }
+    #[test]
+    fn every_installed_plugin_is_enabled() {
+        let home = std::env::temp_dir().join(format!("aihub-claude-plugins-{}", std::process::id()));
+        std::fs::create_dir_all(home.join("plugins")).unwrap();
+        std::fs::write(home.join("plugins/installed_plugins.json"), r#"{"plugins":{"a@m":[{}]}}"#).unwrap();
+        let enabled = enabled_plugins(&home);
+        std::fs::remove_dir_all(&home).ok();
+        assert_eq!(enabled["a@m"], true);
     }
 }

@@ -27,6 +27,8 @@ pub struct McpServer {
     pub name: String,
     /// `command args…` or the URL — never env values or headers.
     pub summary: String,
+    /// Whether chats load it; filled in by the API from the app config, never read from the file.
+    pub enabled: bool,
 }
 
 #[derive(Serialize, Default, Clone, Debug)]
@@ -95,6 +97,7 @@ pub(super) fn claude_home(dir: &Path, state: &Path) -> Home {
             mcp.push(McpServer {
                 name: name.clone(),
                 summary: mcp_summary(server),
+                enabled: false,
             });
         }
     }
