@@ -14,6 +14,7 @@ use std::{path::PathBuf, sync::atomic::Ordering};
 mod build;
 mod chat;
 mod git;
+mod preview;
 mod settings;
 mod stream;
 mod watcher;
@@ -23,6 +24,7 @@ pub(crate) use chat::{dev_chat_preamble, effective_chat_folder};
 pub(crate) use git::{
     dev_git_checkpoint, dev_git_commit, dev_git_diff, dev_git_reset, dev_repo_info,
 };
+pub(crate) use preview::{dev_preview_action, dev_preview_status};
 pub(crate) use settings::{dev_settings, dev_status, put_dev_settings};
 pub(crate) use stream::dev_events;
 pub(crate) use watcher::spawn_dev_watcher;

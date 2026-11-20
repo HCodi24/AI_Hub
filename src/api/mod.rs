@@ -75,6 +75,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/dev/events", get(crate::api::dev::dev_events))
         .route("/api/dev/rebuild", post(crate::api::dev::dev_rebuild))
         .route("/api/dev/web-build", post(crate::api::dev::dev_web_build))
+        .route(
+            "/api/dev/preview-server",
+            get(crate::api::dev::dev_preview_status).post(crate::api::dev::dev_preview_action),
+        )
         // Plugin & Skill: add-ons loaded by Claude Code and Codex.
         .route(
             "/api/addons",

@@ -11,6 +11,7 @@ export const DevDiffSchema = z.object({
 export const DevGitResultSchema = z.object({
   ok: z.boolean().default(true), skipped: z.boolean().default(false), message: z.string().default(""), hash: z.string().default(""),
 }).passthrough();
+export const DevPreviewServerSchema = z.object({ port: z.number(), running: z.boolean(), owned: z.boolean() });
 export const DevSettingsSchema = z.object({ auto_rebuild: z.boolean().default(false) });
 export type DevRepo = z.infer<typeof DevRepoSchema>;
 export type DevDiff = z.infer<typeof DevDiffSchema>;

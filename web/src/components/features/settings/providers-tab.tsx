@@ -28,10 +28,10 @@ type Selection = Record<SubTab, string | null>;
 const NO_SELECTION: Selection = { cli: null, login: null, api: null };
 
 /** Brand logo from web/public/brand/<kind>.svg; the terminal icon until such a file exists. */
-function SourceLogo({ kind }: { kind: string }) {
+function SourceLogo({ kind, size = 16 }: { kind: string; size?: number }) {
   const [missing, setMissing] = useState(false);
-  if (!isCliKind(kind)) return <KeyRound size={16} />;
-  if (missing) return <Terminal size={16} />;
+  if (!isCliKind(kind)) return <KeyRound size={size} />;
+  if (missing) return <Terminal size={size} />;
   return <img className={styles.sourceLogo} src={`/app/brand/${kind}.svg`} alt="" onError={() => setMissing(true)} />;
 }
 
@@ -286,7 +286,10 @@ export function ProvidersTab() {
       </nav>
       <header className={`${styles.addonHead} ${styles.providersHead}`}>
         <div className={styles.addonHeadText}>
-          <h3 className={styles.panelTitle}>{current?.name ?? t.providers.add}</h3>
+          <h3 className={current ? `${styles.panelTitle} ${styles.titleWithLogo}` : styles.panelTitle}>
+            {current && <span className={styles.titleLogo} aria-hidden="true"><SourceLogo kind={current.kind} size={20} /></span>}
+            {current?.name ?? t.providers.add}
+          </h3>
           {current && <p className={styles.pageMeta}>{tag && <span className={styles.planTag}>{tag.text}</span>}
             {pageTab === "api" && <span>{kindLabel}</span>}
             <span>{pageTab === "api" ? currentStatus?.message || t.providers.notTested

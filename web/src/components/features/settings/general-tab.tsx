@@ -20,7 +20,7 @@ const isGeneralDraft = (value: unknown): value is GeneralDraft => {
     typeof item.threadBudget === "number" && Number.isFinite(item.threadBudget) &&
     !!item.memory && typeof item.memory.enabled === "boolean" && Number.isFinite(item.memory.max_scopes_in_prompt) && Number.isFinite(item.memory.max_chars_per_scope);
 };
-export function GeneralTab() {
+export function GeneralTab({ taskBoardEnabled, onTaskBoardEnabledChange }: { taskBoardEnabled: boolean; onTaskBoardEnabledChange: (enabled: boolean) => void }) {
   const { query, apply } = useSettingsConfig();
   const initial: GeneralDraft = { folder: query.data?.default_folder ?? "", idle: query.data?.chat_idle_timeout_minutes ?? 10,
     threadBudget: query.data?.thread_token_budget ?? 150000,
@@ -42,6 +42,7 @@ export function GeneralTab() {
     <label>{t.general.folder}<input required value={draft.folder} spellCheck={false} onChange={event => autosave.update(current => ({ ...current, folder: event.target.value }))} /></label>
     <label>{t.general.idle}<input type="number" min={0} max={1440} value={draft.idle} onChange={event => autosave.update(current => ({ ...current, idle: Number(event.target.value) }))} /></label>
     <label>{t.general.threadBudget}<input type="number" min={0} max={2000000} step={10000} value={draft.threadBudget} onChange={event => autosave.update(current => ({ ...current, threadBudget: Number(event.target.value) }))} /></label>
+    <label className={styles.check}><Switch checked={taskBoardEnabled} onChange={event => onTaskBoardEnabledChange(event.target.checked)} /><span>{t.mutis.taskBoard}</span></label>
     <fieldset className={styles.group}><legend>{t.general.memory}</legend>
       <label className={styles.check}><Switch checked={draft.memory.enabled}
         onChange={event => autosave.update(current => ({ ...current, memory: { ...current.memory, enabled: event.target.checked } }), true)} /><span>{t.general.memoryEnabled}</span></label>

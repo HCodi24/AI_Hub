@@ -17,8 +17,11 @@ const TABS = [
   { id: "addons", icon: Puzzle }, { id: "extensions", icon: Blocks }, { id: "pets", icon: PawPrint }, { id: "dev", icon: Hammer },
   { id: "dashboard", icon: LayoutDashboard },
 ] as const;
-type TabId = typeof TABS[number]["id"];
+export type TabId = typeof TABS[number]["id"];
+export const isTabId = (value: string | null): value is TabId => TABS.some(tab => tab.id === value);
 type SettingsDialogProps = {
+  /** Tab shown first; the preview page uses it to open the tab being edited. */
+  initialTab?: TabId;
   folder: string;
   close: () => void;
   dashboardEnabled: boolean;
@@ -26,8 +29,8 @@ type SettingsDialogProps = {
   taskBoardEnabled: boolean;
   onTaskBoardEnabledChange: (enabled: boolean) => void;
 };
-export function SettingsDialog({ folder, close, dashboardEnabled, onDashboardEnabledChange, taskBoardEnabled, onTaskBoardEnabledChange }: SettingsDialogProps) {
-  const [tab, setTab] = useState<TabId>("providers");
+export function SettingsDialog({ initialTab = "providers", folder, close, dashboardEnabled, onDashboardEnabledChange, taskBoardEnabled, onTaskBoardEnabledChange }: SettingsDialogProps) {
+  const [tab, setTab] = useState<TabId>(initialTab);
   return <Dialog title={t.title} close={close} wide className={styles.settingsDialog} iconClose>
     <div className={styles.layout}>
     <ScrollArea as="nav" className={styles.tabs} aria-label={t.title}>
@@ -36,7 +39,7 @@ export function SettingsDialog({ folder, close, dashboardEnabled, onDashboardEna
     </ScrollArea>
     <ScrollArea as="section" id="settings-panel" aria-labelledby={`settings-tab-${tab}`} className={styles.panel} key={tab}>
       {tab !== "addons" && tab !== "providers" && <h3 className={styles.panelTitle}>{t.tabs[tab]}</h3>}
-      {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab />}{tab === "mutis" && <MutisTab taskBoardEnabled={taskBoardEnabled} onTaskBoardEnabledChange={onTaskBoardEnabledChange} />}
+      {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab taskBoardEnabled={taskBoardEnabled} onTaskBoardEnabledChange={onTaskBoardEnabledChange} />}{tab === "mutis" && <MutisTab />}
       {tab === "addons" && <AddonsTab />}
       {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "pets" && <PetsSection />}{tab === "dev" && <DevTab />}
       {tab === "sound" && <p className={styles.note}>{t.sound.notice}</p>}

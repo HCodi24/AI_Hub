@@ -8,6 +8,7 @@ pub mod english_rules;
 pub mod keep_features;
 pub mod mutis_checker;
 pub mod mutis_high_delegation;
+pub mod preview;
 pub mod report_unfinished;
 pub mod stay_in_folder;
 pub mod utf8;
@@ -34,8 +35,9 @@ pub fn first_request_rules(indexed: bool, synced: bool) -> String {
         _ => " The app tried to build it and could not; tell the user.",
     };
     format!(
-        "{}\nStatus checked by the MutiS app itself (not stated by the user; no need to run a command to check again): the project {status} a .codegraph folder.{freshness}\n{}",
+        "{}\nStatus checked by the MutiS app itself (not stated by the user; no need to run a command to check again): the project {status} a .codegraph folder.{freshness}\n{}\n{}",
         codegraph::RULE,
-        stay_in_folder::RULE
+        stay_in_folder::RULE,
+        preview::RULE
     )
 }
