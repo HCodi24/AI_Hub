@@ -210,3 +210,4 @@ label.addonSearch { position: relative; display: block; align-self: flex-end; wi
 .addonInventoryGroup details > .rows { margin-top: var(--space-1); }
 .addonInventoryGroup summary { font-size: var(--font-13); overflow-wrap: anywhere; cursor: pointer; border-radius: var(--radius-xs); }
 .addonInventoryGroup summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.addonRow.petEnableRow { grid-template-columns: minmax(0, 1fr) auto; }

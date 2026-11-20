@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import { configApi } from "@/apis/config.api";
@@ -55,6 +55,7 @@ export function PetsSection() {
 }
 /** No pet ships with the app; the user uploads a WebP sheet or imports a pet folder, then picks one per source. */
 function ChatPets({ busy, run }: { busy: string; run: (key: string, action: () => Promise<void>, done: string) => Promise<void> }) {
+  const enabledSwitchId = useId();
   const client = useQueryClient();
   const list = useQuery({ queryKey: ["pets"], queryFn: ({ signal }) => petsApi.list(signal) });
   const config = useQuery({ queryKey: ["config"], queryFn: ({ signal }) => configApi.get(signal) });
@@ -72,8 +73,11 @@ function ChatPets({ busy, run }: { busy: string; run: (key: string, action: () =
   }
   const pets = list.data ?? [];
   return <section className={styles.form} aria-label={t.pets.title}><p className={styles.note}>{t.pets.intro}</p>
-    <label className={styles.check}><Switch checked={config.data?.pets_enabled ?? true} disabled={!config.data}
-      onChange={event => void save({ pets_enabled: event.target.checked })} /><span>{t.pets.enable}</span></label>
+    <ul className={styles.addonCard}><li className={`${styles.addonRow} ${styles.petEnableRow}`}>
+      <label className={styles.addonText} htmlFor={enabledSwitchId}><span className={styles.addonName}><strong>{t.pets.enable}</strong></span></label>
+      <span className={styles.addonControls}><Switch id={enabledSwitchId} checked={config.data?.pets_enabled ?? true} disabled={!config.data}
+        aria-label={t.pets.enable} onChange={event => void save({ pets_enabled: event.target.checked })} /></span>
+    </li></ul>
     <div className={styles.group}><h4>{t.pets.use}</h4>
       <PillTabs idPrefix="pets-source" label={t.pets.familyTabsLabel} value={petFamily} onChange={setPetFamily}
         tabs={PET_FAMILIES.map(family => ({ id: family, label: t.pets.families[family] }))} />

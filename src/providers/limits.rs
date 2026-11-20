@@ -1,24 +1,28 @@
 use super::cli_support;
 use crate::config::ProviderConfig;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 pub(crate) fn invalidate(id: &str) {
-    cache().lock().unwrap_or_else(|e| e.into_inner()).remove(id);
+    let mut entries = cache().lock().unwrap_or_else(|e| e.into_inner());
+    entries.remove(id);
+    persist_cache(&entries);
 }
 
-#[derive(Clone, Default, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub(crate) struct Limits {
     pub windows: Vec<LimitWindow>,
     pub updated_at: Option<u64>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub(crate) struct LimitWindow {
     label: String,
     used_percent: Option<f64>,
@@ -28,7 +32,49 @@ pub(crate) struct LimitWindow {
 
 fn cache() -> &'static Mutex<HashMap<String, Limits>> {
     static CACHE: OnceLock<Mutex<HashMap<String, Limits>>> = OnceLock::new();
-    CACHE.get_or_init(Mutex::default)
+    CACHE.get_or_init(|| Mutex::new(load_cache()))
+}
+
+fn cache_path() -> Option<PathBuf> {
+    Some(
+        crate::config::config_file_path()
+            .ok()?
+            .parent()?
+            .join("limits-cache.json"),
+    )
+}
+
+fn load_cache() -> HashMap<String, Limits> {
+    cache_path()
+        .and_then(|path| fs::read(path).ok())
+        .and_then(|contents| serde_json::from_slice(&contents).ok())
+        .unwrap_or_default()
+}
+
+fn persist_cache(entries: &HashMap<String, Limits>) {
+    let Some(path) = cache_path() else {
+        return;
+    };
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    if fs::create_dir_all(parent).is_err() {
+        return;
+    }
+    let Ok(contents) = serde_json::to_vec_pretty(entries) else {
+        return;
+    };
+    let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
+    if fs::write(&temporary, &contents).is_err() {
+        let _ = fs::remove_file(&temporary);
+        return;
+    }
+    if fs::rename(&temporary, &path).is_err() {
+        // Some platforms do not replace an existing destination during rename.
+        let _ = fs::write(&path, contents);
+        let _ = fs::remove_file(temporary);
+    }
 }
 
 fn now() -> u64 {
@@ -56,9 +102,33 @@ pub(crate) fn record_claude(id: &str, line: &str) {
     };
     if value["type"] == "rate_limit_event" {
         if let Some(window) = claude_window(&value["rate_limit_info"]) {
+            let mut window = window;
+            let cached = cache()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(id)
+                .cloned();
+            retain_known_usage(&mut window, cached.as_ref(), now());
             save(id, vec![window]);
+            let entries = cache().lock().unwrap_or_else(|e| e.into_inner());
+            persist_cache(&entries);
         }
     }
+}
+
+fn retain_known_usage(window: &mut LimitWindow, cached: Option<&Limits>, now: u64) {
+    if window.used_percent.is_some() {
+        return;
+    }
+    window.used_percent = cached
+        .and_then(|limits| {
+            limits.windows.iter().find(|previous| {
+                previous.label == window.label
+                    && previous.used_percent.is_some()
+                    && previous.resets_at.is_some_and(|resets_at| now < resets_at)
+            })
+        })
+        .and_then(|previous| previous.used_percent);
 }
 
 fn claude_window(info: &Value) -> Option<LimitWindow> {
@@ -183,6 +253,35 @@ mod tests {
                 .used_percent,
             None
         );
+    }
+
+    #[test]
+    fn claude_keeps_known_usage_until_the_matching_window_resets() {
+        let mut window = claude_window(&json!({
+            "status":"allowed",
+            "rateLimitType":"five_hour"
+        }))
+        .unwrap();
+        let cached = Limits {
+            windows: vec![LimitWindow {
+                label: "five_hour".to_owned(),
+                used_percent: Some(42.0),
+                status: "allowed_warning".to_owned(),
+                resets_at: Some(200),
+            }],
+            updated_at: Some(100),
+        };
+
+        retain_known_usage(&mut window, Some(&cached), 199);
+        assert_eq!(window.used_percent, Some(42.0));
+
+        let mut expired = claude_window(&json!({
+            "status":"allowed",
+            "rateLimitType":"five_hour"
+        }))
+        .unwrap();
+        retain_known_usage(&mut expired, Some(&cached), 200);
+        assert_eq!(expired.used_percent, None);
     }
 
     #[test]

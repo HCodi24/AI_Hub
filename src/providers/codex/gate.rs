@@ -43,6 +43,12 @@ fn is_stop(c: char) -> bool {
     c.is_whitespace() || "\"'`|;&<>()[]{},".contains(c)
 }
 
+/// `\\host\share...` at `i`. A regex escape such as `\\d+` or `|\\.name` has no `host\share` shape, so it is not a path.
+fn is_unc(chars: &[char], i: usize) -> bool {
+    let host_end = (i + 2..chars.len()).find(|&j| is_stop(chars[j]) || matches!(chars[j], '\\' | '/')).unwrap_or(chars.len());
+    host_end > i + 2 && matches!(chars.get(host_end), Some('\\' | '/')) && chars.get(host_end + 1).is_some_and(|c| !is_stop(*c))
+}
+
 /// Absolute paths written in a text (drive letters and UNC).
 fn absolute_paths(text: &str) -> Vec<String> {
     let chars: Vec<char> = text.chars().collect();
@@ -51,7 +57,7 @@ fn absolute_paths(text: &str) -> Vec<String> {
     while i < chars.len() {
         let drive = chars[i].is_ascii_alphabetic() && chars.get(i + 1) == Some(&':') && matches!(chars.get(i + 2), Some('\\' | '/'))
             && (i == 0 || !chars[i - 1].is_ascii_alphanumeric());
-        let unc = chars[i] == '\\' && chars.get(i + 1) == Some(&'\\') && (i == 0 || is_stop(chars[i - 1]));
+        let unc = chars[i] == '\\' && chars.get(i + 1) == Some(&'\\') && (i == 0 || is_stop(chars[i - 1])) && is_unc(&chars, i);
         if drive || unc {
             let end = (i..chars.len()).find(|&j| is_stop(chars[j])).unwrap_or(chars.len());
             found.push(chars[i..end].iter().collect::<String>());
@@ -156,6 +162,17 @@ mod tests {
             r#"powershell -Command "Get-Content c:/github/ai_hub/Cargo.toml""#,
             "cargo test --quiet",
             r#"Get-ChildItem src\providers -Name; Get-Content ..\AI_Hub\Cargo.toml"#,
+        ] {
+            assert!(denied(&g, command).is_empty(), "{command}");
+        }
+    }
+
+    #[test]
+    fn regex_escapes_in_a_command_are_not_paths() {
+        let g = gate(&[]);
+        for command in [
+            r#"Get-ChildItem src/db/migration | ForEach-Object { if ($_.Name -match '^V(\\d+)__') { [int]$Matches[1] } }"#,
+            r#""C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe" -Command "rg -n 'Yêu cầu|\\.desktopHeader' src""#,
         ] {
             assert!(denied(&g, command).is_empty(), "{command}");
         }

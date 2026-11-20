@@ -38,16 +38,18 @@ export function CliLimits({ providerId, name }: { providerId: string; name: stri
   }, []);
   const now = Date.now() / 1000;
   const fresh = !query.isError && query.data?.updated_at != null && now - query.data.updated_at < 900;
+  const stale = query.data != null && (query.data.updated_at == null || now - query.data.updated_at >= 900);
   const windows = query.data?.windows || [];
-  const current = fresh ? windows.filter(w => w.resets_at == null || w.resets_at > now) : [];
+  const current = windows.filter(w => w.resets_at == null || w.resets_at > now);
   const percent = current.reduce<number | null>((max, w) => w.used_percent == null ? max : Math.max(max ?? 0, w.used_percent), null);
   const rejected = current.some(w => w.status === "rejected");
   const warning = current.some(w => w.status === "allowed_warning") || (percent ?? 0) >= 80;
   const state = rejected ? "limit" : warning ? "warning" : percent != null ? "normal" : "unknown";
   const label = rejected ? t.limitReached : percent != null ? t.limitUsed(Math.round(percent)) : warning ? t.limitWarning : t.limitUnknown;
+  const updatedTime = query.data?.updated_at == null ? null : new Date(query.data.updated_at * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   return <details ref={popup} className={styles.limits}>
     <summary aria-label={`${t.limits}: ${label}`} title={`${t.limits}: ${label}`}>
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" className={styles.limitRing} data-state={state}>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" className={styles.limitRing} data-state={state} data-stale={stale ? "true" : undefined}>
         <circle cx="12" cy="12" r="9" className={styles.limitTrack} />
         {(percent != null || rejected) && <circle cx="12" cy="12" r="9" pathLength="100" strokeDasharray={`${rejected ? 100 : percent} 100`} className={styles.limitProgress} />}
         {state === "unknown" && <text x="12" y="16" textAnchor="middle">?</text>}
@@ -71,7 +73,7 @@ export function CliLimits({ providerId, name }: { providerId: string; name: stri
           {window.used_percent != null && <span style={{ width: `${window.used_percent}%` }} />}
         </div>
       </div>)}
-      {windows.length > 0 && !fresh && !query.isError && <p className={limitStyles.note}>{t.limitStale}</p>}
+      {windows.length > 0 && !fresh && !query.isError && <p className={limitStyles.note}>{t.limitStale}{t.limitUpdated(updatedTime)}</p>}
       {!windows.length && !query.isPending && !query.isError && <p className={limitStyles.note}>{t.limitHint}</p>}
     </div>
   </details>;

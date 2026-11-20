@@ -10,6 +10,7 @@
 .limits > summary::-webkit-details-marker { display: none; }
 .limits > summary:focus-visible { outline: none; background: var(--color-muted); }
 .limitRing { display: block; fill: none; stroke-width: 3; color: var(--color-info); }
+.limitRing[data-stale="true"] { opacity: .7; }
 .limitTrack { stroke: var(--color-muted); }
 .limitProgress { stroke: currentColor; transform: rotate(-90deg); transform-origin: center; }
 .limitRing[data-state="warning"] { color: var(--color-warning); }
