@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { configApi } from "@/apis/config.api";
+import { ChatScreen } from "@/components/features/chat/chat-screen";
 import { DashboardDialog } from "@/components/features/chat/dashboard-dialog";
+import { TaskBoardView } from "@/components/features/chat/task-board";
+import { PreviewPanel } from "@/components/features/preview/preview-panel";
+import type { TaskRow } from "@/schema/chat.schema";
 import { useDashboardPreference } from "@/components/features/chat/use-dashboard-preference";
 import { useTaskBoardPreference } from "@/components/features/chat/use-task-board-preference";
 import { SettingsDialog, isTabId } from "@/components/features/settings/settings-dialog";
@@ -11,12 +15,16 @@ import { SettingsDialog, isTabId } from "@/components/features/settings/settings
 import { installPreviewMock } from "@/lib/preview-mock";
 
 const noop = () => {};
+// One row per state the board can show; `?c=tasks&mock=many` repeats them.
+const TASK_STATES = ["waiting", "coding", "checking", "fixing", "done", "failed", "limited", "takeover", "skipped", "stopped"];
+const SAMPLE_TASKS: TaskRow[] = TASK_STATES.map((state, i) => ({ title: `Việc mẫu ${i + 1}`, state, attempt: i % 3 + 1, check: state === "done" ? "PASS" : null }));
 const THEMES = ["light", "dark", "system"];
 // Installed when the module loads, before any child fetches. `?live=1` keeps the real server for writes too.
 if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("live") !== "1") installPreviewMock();
 
 /**
  * Renders one screen of the app on its own, for the preview panel: `/app/preview/?c=settings&tab=extensions`.
+ * Screens: settings, dashboard, chat (the whole app), tasks (task board), preview (preview panel). `&mock=empty|many|error` reshapes the data.
  * Add a screen by adding a branch below (its dialog is opened at once and its close button does nothing).
  */
 export default function PreviewPage() {
@@ -36,5 +44,8 @@ export default function PreviewPage() {
     dashboardEnabled={dashboardEnabled} onDashboardEnabledChange={setDashboardEnabled}
     taskBoardEnabled={taskBoardEnabled} onTaskBoardEnabledChange={setTaskBoardEnabled} />;
   if (screen === "dashboard") return <DashboardDialog close={noop} />;
-  return <p style={{ padding: 16 }}>Preview: c=settings | dashboard</p>;
+  if (screen === "chat") return <ChatScreen />;
+  if (screen === "tasks") return <div style={{ padding: 16, maxWidth: 640 }}><TaskBoardView tasks={query.get("mock") === "empty" ? [] : query.get("mock") === "many" ? [...SAMPLE_TASKS, ...SAMPLE_TASKS.map(task => ({ ...task, title: `${task.title} b` }))] : SAMPLE_TASKS} /></div>;
+  if (screen === "preview") return <PreviewPanel />;
+  return <p style={{ padding: 16 }}>Preview: c=settings | dashboard | chat | tasks | preview (&amp;mock=empty|many|error)</p>;
 }

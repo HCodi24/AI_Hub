@@ -49,6 +49,11 @@
   .repoFormRow { grid-template-columns: minmax(0, 1fr) auto; }
 }
 .note { color: var(--muted); font-size: var(--font-13); margin: 0; overflow-wrap: anywhere; }
+.petUploadRequirements summary { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: 44px; cursor: pointer; border-radius: var(--radius-xs); }
+.petUploadRequirements summary::-webkit-details-marker { display: none; }
+.petUploadRequirements summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.petUploadRequirements summary svg { flex: 0 0 auto; }
+.petUploadRequirements[open] summary svg { transform: rotate(180deg); }
 .pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: var(--font-13); }
 .confirm { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--color-muted); }
 .confirm p { flex: 1 1 100%; margin: 0; }
@@ -72,8 +77,6 @@
 .cardHead { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .badge { font-size: var(--font-12); padding: 2px var(--space-2); border-radius: var(--radius-xs); border: 1px solid var(--border); color: var(--muted); }
 .badge[data-on=true] { color: var(--green); border-color: var(--green); }
-.mcpSwitch { display: inline-flex; flex: 0 0 auto; align-items: center; gap: var(--space-2); flex-wrap: wrap; min-width: 0; max-width: 100%; font-size: var(--font-12); color: var(--muted); overflow-wrap: anywhere; }
-.mcpSwitch[data-on=true] { color: var(--green); }
 .log { composes: scrollbar from '../../scroll-area.module.css'; margin: 0; padding: var(--space-3); max-height: 320px; overflow: auto; border-radius: var(--radius-small); background: var(--code); font-size: var(--font-12); white-space: pre-wrap; overflow-wrap: anywhere; }
 .log span[data-diff=add] { color: var(--green); }
 .log span[data-diff=remove] { color: var(--danger); }

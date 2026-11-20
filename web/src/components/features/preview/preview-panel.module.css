@@ -1,23 +1,38 @@
-.toggle { display: none; }
+button.toggle { display: none; }
+button.toggle[aria-expanded="true"] line { transform: translateX(-6px); }
+@media (prefers-reduced-motion: no-preference) {
+  button.toggle line { transition: transform 160ms ease-out; }
+}
 .panel { display: none; }
 .handle { display: none; }
 @media (min-width: 768px) {
-  /* The empty top gutter above the workspace holds the toggle. */
-  .toggle { display: inline-flex; position: fixed; top: 6px; right: 12px; z-index: 5; }
+  button.toggle { display: inline-flex; position: absolute; top: calc(var(--workspace-top) + var(--preview-toggle-inset)); right: calc(3px + var(--preview-toggle-inset)); z-index: 2; }
   /* Flush against the chat: the chat's own right border is the divider, so this one has no left border or gap. */
   .panel { position: relative; display: flex; flex-direction: column; flex: none; width: var(--preview-width, 560px); min-width: 0; margin-top: 48px; height: calc(100% - 48px);
     background: var(--bg); border: 1px solid var(--border); border-left: 0; border-radius: 0 12px 12px 0; overflow: hidden; box-shadow: var(--shadow-edge); }
   .handle { display: block; position: absolute; z-index: 1; top: 0; bottom: 0; left: 0; width: 9px; cursor: col-resize; touch-action: none; }
-  .handle::after { content: ""; position: absolute; inset: 0 4px; background: transparent; }
-  .handle:hover::after, .handle:focus-visible::after, .panel[data-resizing] .handle::after { background: var(--accent); }
-  .handle:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  .handle:focus-visible { outline: none; }
+  .handle:is(:hover, :focus-visible), .panel[data-resizing] .handle { box-shadow: inset 1px 0 var(--preview-divider-highlight); }
   .panel[data-resizing], .panel[data-resizing] * { cursor: col-resize; user-select: none; }
   .panel[data-resizing] .frame { pointer-events: none; }
 }
-.bar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border-bottom: 1px solid var(--border); }
+.bar { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2); padding-top: calc(var(--preview-toggle-inset) - 1px); padding-right: calc(var(--preview-toggle-inset) - 1px + 36px + var(--space-2)); border-bottom: 1px solid var(--border); }
 .bar input { flex: 1; min-width: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); font: inherit; }
+.bar:has(button[aria-pressed="true"]) { box-shadow: inset 0 -2px var(--accent); }
+.bar button[aria-pressed="true"] { background: var(--accent); color: var(--color-on-accent); border-color: var(--accent); }
 .server { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-bottom: 1px solid var(--border); font-size: .85rem; }
-.server small { color: var(--muted, inherit); }
+.stopIcon { width: 13px; height: 13px; flex: none; border-radius: 2px; background-color: currentColor; }
+@media (prefers-reduced-motion: no-preference) {
+  .stopIcon[data-running] {
+    background-image: linear-gradient(100deg, transparent 34%, rgb(255 255 255 / .18) 43%, rgb(255 255 255 / .39) 50%, rgb(255 255 255 / .18) 57%, transparent 66%);
+    background-size: 300% 100%;
+    animation: stop-shine 1.4s linear infinite;
+  }
+}
+@keyframes stop-shine {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; flex: none; }
 .dot[data-on] { background: #22c55e; }
 .frame { flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; }

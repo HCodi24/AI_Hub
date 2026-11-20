@@ -93,7 +93,7 @@ export function AddonsTab() {
       <Button size="sm" onClick={() => setConfirm("")}>{t.cancel}</Button>
     </>;
     return <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={label} onClick={() => setConfirm(id)}>
-      <Trash2 size={16} aria-hidden="true" />{t.addons.remove}
+      <Trash2 size={16} aria-hidden="true" />
     </Button>;
   }
   const setKind = setKindState;

@@ -199,7 +199,7 @@ export function CodexPlugins({ onOutput, matches = () => true, search = "" }: { 
   const row = (plugin: { id: string; version: string }, inHub: boolean) => <AddonRow key={plugin.id} kind="plugin" {...splitId(plugin.id)} detail={plugin.version}>
     {busy === plugin.id ? <Loader2 size={16} className="spin" aria-label={inHub ? t.addons.removing : t.addons.adding} />
       : confirm === plugin.id ? <><Button size="sm" variant="danger" onClick={() => void apply([plugin.id], "remove")}>{t.addons.remove}</Button><Button size="sm" onClick={() => setConfirm("")}>{t.cancel}</Button></>
-        : inHub ? <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={t.addons.confirmRemove(plugin.id)} onClick={() => setConfirm(plugin.id)}><Trash2 size={16} aria-hidden="true" />{t.addons.remove}</Button>
+        : inHub ? <Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={t.addons.confirmRemove(plugin.id)} onClick={() => setConfirm(plugin.id)}><Trash2 size={16} aria-hidden="true" /></Button>
           : <Button size="sm" variant="primary" disabled={Boolean(busy)} onClick={() => void apply([plugin.id], "add")}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
   </AddonRow>;
   return <section className={styles.addonInventory} aria-label={t.addons.link.codexTitle}>

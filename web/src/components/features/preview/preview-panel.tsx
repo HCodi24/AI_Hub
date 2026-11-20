@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { PanelRight, RotateCw, X } from "lucide-react";
+import { MousePointerClick, PanelRight, Play, RotateCw } from "lucide-react";
+import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { devApi } from "@/apis/dev.api";
-import { Button } from "@/components/button/button";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { notify } from "@/components/toast/toast";
 import { useChatStore } from "@/components/features/chat/chat-store";
@@ -17,6 +17,8 @@ const KEY_STEP = 24;
 const urlKey = (folder: string) => `ai-hub-preview-url:${folder}`;
 // The assistant ends a turn with a line `preview: <url>` to point the panel at the screen it just edited.
 const PREVIEW_LINE = /^preview:\s*(\S+)\s*$/im;
+
+const PickedSchema = z.object({ url: z.string(), selector: z.string(), text: z.string(), css: z.record(z.string(), z.string()), html: z.string() });
 
 const read = (key: string) => { try { return localStorage.getItem(key) ?? ""; } catch { return ""; } };
 const write = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* storage unavailable: keep it in memory only */ } };
@@ -47,11 +49,14 @@ function ServerStatus({ onUp }: { onUp: () => void }) {
   useEffect(() => { if (running && seen.current) onUp(); seen.current = true; }, [running]); // eslint-disable-line react-hooks/exhaustive-deps -- onUp is a stable reload
   if (!server.data) return null;
   const { port, owned } = server.data;
+  const canStop = owned || running;
   return <div className={styles.server}>
     <span className={styles.dot} data-on={running || undefined} aria-hidden="true" />
-    <span>{owned && !running ? t.starting : t.server(port, running)}</span>
-    {!owned && running && <small>{t.leftover}</small>}
-    <Button size="sm" disabled={run.isPending} onClick={() => run.mutate(owned || running ? "stop" : "start")}>{owned || running ? t.stop : t.start}</Button>
+    <span>{owned && !running ? t.starting : t.server(port)}</span>
+    <IconButton size="sm" aria-label={canStop ? t.stop : t.start} disabled={run.isPending}
+      onClick={() => run.mutate(canStop ? "stop" : "start")}>
+      {canStop ? <span className={styles.stopIcon} data-running={running || undefined} /> : <Play size={16} fill="currentColor" />}
+    </IconButton>
   </div>;
 }
 
@@ -69,6 +74,9 @@ export function PreviewPanel() {
   const [containerWidth, setContainerWidth] = useState(1200);
   const [resizing, setResizing] = useState(false);
   const panel = useRef<HTMLElement>(null);
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [ready, setReady] = useState(false);
+  const [picking, setPicking] = useState(false);
   const drag = useRef<{ x: number; width: number } | null>(null);
   // Same rule as the history sidebar, mirrored: at most two thirds of the window, never narrower than MIN_WIDTH.
   const maxWidth = Math.max(MIN_WIDTH, Math.floor(containerWidth * 2 / 3));
@@ -98,12 +106,40 @@ export function PreviewPanel() {
     setUrl(target); setDraft(target); setOpen(true); write(urlKey(folder), target); write(OPEN_KEY, "1");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only the end of a run may move the panel
   }, [streaming]);
-  const toggle = (next: boolean) => { setOpen(next); write(OPEN_KEY, next ? "1" : "0"); };
+  // The page in the frame reports back by postMessage; only that frame's window is believed.
+  useEffect(() => {
+    const listen = (event: MessageEvent) => {
+      if (event.source !== frame.current?.contentWindow || !event.data) return;
+      if (event.data.type === "mutis-picker-ready") setReady(true);
+      else if (event.data.type === "mutis-pick-end") setPicking(false);
+      else if (event.data.type === "mutis-picked") {
+        setPicking(false);
+        const parsed = PickedSchema.safeParse(event.data.data);
+        if (parsed.success) window.dispatchEvent(new CustomEvent("mutis-preview-selection", {
+          detail: { label: parsed.data.selector, text: t.picked(parsed.data) },
+        }));
+      }
+    };
+    window.addEventListener("message", listen);
+    return () => window.removeEventListener("message", listen);
+  }, []);
+  const pick = () => {
+    const target = frame.current?.contentWindow;
+    const origin = safePreviewUrl(url) ? new URL(safePreviewUrl(url) as string).origin : "";
+    if (!target || !origin) return;
+    target.postMessage({ type: picking ? "mutis-pick-stop" : "mutis-pick-start" }, origin);
+    setPicking(!picking);
+  };
+  const toggle = (next: boolean) => {
+    setOpen(next);
+    if (!next) setPicking(false);
+    write(OPEN_KEY, next ? "1" : "0");
+  };
   const resize = (next: number) => { const value = Math.max(MIN_WIDTH, Math.min(maxWidth, next)); setWidth(value); write(WIDTH_KEY, String(value)); };
   const submit = (event: FormEvent) => { event.preventDefault(); setUrl(draft.trim()); write(urlKey(folder), draft.trim()); setVersion(v => v + 1); };
   const safe = safePreviewUrl(url);
   return <>
-    {!open && <IconButton className={styles.toggle} aria-label={t.toggle} onClick={() => toggle(true)}><PanelRight size={20} /></IconButton>}
+    <IconButton className={styles.toggle} aria-label={open ? t.close : t.toggle} aria-expanded={open} onClick={() => toggle(!open)}><PanelRight size={20} /></IconButton>
     {open && <aside ref={panel} className={styles.panel} aria-label={t.toggle} data-preview data-resizing={resizing || undefined}
       style={{ "--preview-width": `${panelWidth}px` } as CSSProperties}>
       <div className={styles.handle} role="separator" aria-orientation="vertical" aria-label={t.resize}
@@ -124,11 +160,11 @@ export function PreviewPanel() {
         }} />
       <form className={styles.bar} onSubmit={submit}>
         <input aria-label={t.url} value={draft} placeholder={t.placeholder} onChange={event => setDraft(event.target.value)} spellCheck={false} />
+        <IconButton type="button" aria-label={t.pick} aria-pressed={picking} disabled={!ready} title={ready ? (picking ? t.picking : t.pick) : t.noPicker} onClick={pick}><MousePointerClick size={18} /></IconButton>
         <IconButton type="submit" aria-label={t.reload}><RotateCw size={18} /></IconButton>
-        <IconButton aria-label={t.close} onClick={() => toggle(false)}><X size={18} /></IconButton>
       </form>
       <ServerStatus onUp={() => setVersion(v => v + 1)} />
-      {safe ? <iframe key={`${safe}|${version}`} className={styles.frame} src={safe} title={t.toggle}
+      {safe ? <iframe ref={frame} key={`${safe}|${version}`} onLoad={() => setPicking(false)} className={styles.frame} src={safe} title={t.toggle}
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" />
         : <p className={styles.note}>{url ? t.invalid : t.empty}</p>}
     </aside>}

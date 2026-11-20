@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
-import { ArrowUp, Square, Scale, ImagePlus, Plus, X, FileEdit, FileUp } from "lucide-react";
+import { ArrowUp, Square, Scale, ImagePlus, Plus, X, FileEdit, FileUp, MousePointerClick } from "lucide-react";
 import { addonsApi } from "@/apis/addons.api";
 import { droppedFiles, fileReadError, importDirectory, importTextFile, importedFileText, type DroppedFile, type ImportedFile } from "@/lib/import-file";
 import { Button } from "@/components/button/button";
 import { http } from "@/lib/http";
 import { chatText } from "@/text/chat";
+import { previewText } from "@/text/preview";
 import { cardText as t } from "@/text/cards";
 import { notify } from "@/components/toast/toast";
 import { useCardStore } from "@/components/features/chat/card-store";
@@ -77,6 +78,19 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const [memory, setMemory] = useState(false);
   useEffect(() => { try { setDebate(["1", "true"].includes(localStorage.getItem("debateMode") || "")); } catch { /* Storage unavailable. */ } }, []);
   const [value, setValue] = useState("");
+  const [previewSelections, setPreviewSelections] = useState<{ id: string; label: string; text: string }[]>([]);
+  useEffect(() => {
+    const attach = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const { label, text } = event.detail ?? {};
+      if (typeof label !== "string" || typeof text !== "string" || !text) return;
+      const item = { id: crypto.randomUUID(), label: label || previewText.selectedElements, text };
+      setPreviewSelections(current => [...current, item]);
+      input.current?.focus();
+    };
+    window.addEventListener("mutis-preview-selection", attach);
+    return () => window.removeEventListener("mutis-preview-selection", attach);
+  }, []);
   const [focused, setFocused] = useState(false);
   const [composing, setComposing] = useState(false);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
@@ -120,7 +134,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const pending = useRef(false);
   // Uploads are stored per chat id, so images picked for another chat no longer apply.
   const owner = useRef(chatId);
-  useEffect(() => { if (owner.current !== chatId) { owner.current = chatId; attached.current = []; setAttachments([]); setDragging(false); } }, [chatId]);
+  useEffect(() => { if (owner.current !== chatId) { owner.current = chatId; attached.current = []; setAttachments([]); setPreviewSelections([]); setDragging(false); } }, [chatId]);
   useEffect(() => {
     if (input.current) {
       input.current.style.height = "auto";
@@ -256,12 +270,14 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
       target.removeEventListener("drop", drop);
     };
   }, [addFiles, dropTarget]);
-  const canSend = Boolean(value.trim()) || attachments.length > 0;
+  const canSend = Boolean(value.trim()) || attachments.length > 0 || previewSelections.length > 0;
   async function submit() {
     if (pending.current || importing.current || Boolean(running) || !canSend) return;
     pending.current = true;
     const origin = useChatStore.getState().id;
     const draft = value, sent = attached.current, picked = recalled; setValue(""); updateAttachments([]); setRecalled([]);
+    const sentSelections = previewSelections;
+    setPreviewSelections([]);
     let prompt = draft.trim();
     if (picked.length) {
       const context = `Recalled memory (picked by the user):\n${picked.map(item => `[${item.label}]\n${item.text}`).join("\n\n")}`;
@@ -270,8 +286,11 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         ? `${prompt}\n\n${context}`
         : `${context}\n\n${prompt}`;
     }
-    const text = [prompt, importedFileText(sent.filter((file): file is Extract<Attachment, { kind: "text" }> => file.kind === "text"))].filter(Boolean).join("\n\n");
-    const restore = () => { if (useChatStore.getState().id === origin) { setValue(draft); updateAttachments(sent); setRecalled(picked); } };
+    const text = [prompt, ...sentSelections.map(item => item.text), importedFileText(sent.filter((file): file is Extract<Attachment, { kind: "text" }> => file.kind === "text"))].filter(Boolean).join("\n\n");
+    const restore = () => { if (useChatStore.getState().id === origin) {
+      setValue(draft); updateAttachments(sent); setRecalled(picked);
+      setPreviewSelections(current => [...sentSelections, ...current]);
+    } };
     try { if (!(await send(text, false, sent.filter((file): file is Extract<Attachment, { kind: "image" }> => file.kind === "image").map(({ id, mime }) => ({ id, mime }))))) restore(); }
     catch (error) { restore(); notify(error instanceof Error ? error.message : t.error); }
     finally { pending.current = false; input.current?.focus(); }
@@ -284,6 +303,9 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
     {recalled.length > 0 && <div className={styles.recalled} aria-label={t.recalled}>{recalled.map((item, index) => <span key={item.label}>
       <FileEdit size={14} aria-hidden="true" /><span title={item.label}>{item.label}</span>
       <button type="button" aria-label={`${t.removeMemory}: ${item.label}`} onClick={() => setRecalled(current => current.filter((_, i) => i !== index))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
+    {previewSelections.length > 0 && <div className={styles.recalled} aria-label={previewText.selectedElements}>{previewSelections.map(item => <span key={item.id}>
+      <MousePointerClick size={14} aria-hidden="true" /><span className={styles.previewSelector} title={item.label}>{item.label.split(" > ").pop()}</span>
+      <button type="button" aria-label={`${previewText.removeElement}: ${item.label}`} onClick={() => setPreviewSelections(current => current.filter(selection => selection.id !== item.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
     {attachments.length > 0 && <div className={styles.tray} aria-label={chatText.attachedFiles}>{attachments.map(file => file.kind === "text"
       ? <AttachmentCard key={file.id} name={file.name} disabled={uploading} remove={() => updateAttachments(attached.current.filter(item => item.id !== file.id))} />
       : <span key={file.id} title={file.name}><img src={file.url} alt={file.name || chatText.attachments} />

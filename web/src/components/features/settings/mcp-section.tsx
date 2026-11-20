@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useId, useState } from "react";
+import { ChevronUp, Plus, Trash2 } from "lucide-react";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
 import { Switch } from "@/components/button/switch";
@@ -15,6 +15,8 @@ const toEnv = (text: string) => Object.fromEntries(lines(text).flatMap(line => {
 /** MCP servers MutiS runs itself for API sources; Codex and Claude keep their own. */
 export function McpSection({ matches = () => true }: { matches?: (text: string) => boolean } = {}) {
   const { query, apply } = useSettingsConfig();
+  const formId = useId();
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [tested, setTested] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
@@ -33,7 +35,10 @@ export function McpSection({ matches = () => true }: { matches?: (text: string) 
     finally { setBusy(""); }
   }
   async function add(server: McpServer) {
-    if (await save([...servers.filter(item => item.name !== server.name), server])) setForm(EMPTY);
+    if (await save([...servers.filter(item => item.name !== server.name), server])) {
+      setForm(EMPTY);
+      setShowForm(false);
+    }
   }
   return <section className={styles.group} aria-label={t.mcp.title}><h3>{t.mcp.title}</h3>
     <p className={styles.note}>{t.mcp.intro}</p><p className={styles.note}>{t.mcp.readOnlyNote}</p><p className={styles.note}>{t.mcp.warn}</p>
@@ -42,20 +47,26 @@ export function McpSection({ matches = () => true }: { matches?: (text: string) 
       {servers.filter(server => matches(server.name)).map(server => <li key={server.name}>
         <span className={styles.rowText}><strong>{server.name}</strong><small title={[server.command, ...server.args].join(" ")}>{[server.command, ...server.args].join(" ")}</small>
           {tested[server.name] && <small role="status">{tested[server.name]}</small>}</span>
-        <label className={styles.mcpSwitch} data-on={server.enabled}><Switch checked={server.enabled}
-          onChange={event => void save(servers.map(item => item.name === server.name ? { ...item, enabled: event.target.checked } : item))} /> {t.mcp.enabled}</label>
+        <Switch checked={server.enabled} aria-label={`${t.mcp.enabled} ${server.name}`}
+          onChange={event => void save(servers.map(item => item.name === server.name ? { ...item, enabled: event.target.checked } : item))} />
         <Button size="sm" disabled={Boolean(busy)} onClick={() => void test(server)}>{busy === server.name ? t.mcp.testing : t.mcp.test}</Button>
         <Button size="sm" variant="ghost" aria-label={`${t.mcp.remove} ${server.name}`} onClick={() => void save(servers.filter(item => item.name !== server.name))}><Trash2 size={16} aria-hidden="true" /></Button>
       </li>)}
     </ul>
     <div className={styles.actions}>
-      {!servers.some(server => server.name === "codegraph") && <Button size="sm" onClick={() => void add(CODEGRAPH)}><Plus size={16} aria-hidden="true" />{t.mcp.addCodegraph}</Button>}</div>
-    <form className={styles.form} onSubmit={event => { event.preventDefault(); void add({ name: form.name.trim(), command: form.command.trim(), args: lines(form.args), env: toEnv(form.env), enabled: true }); }}>
-      <label>{t.mcp.name}<input value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} required /></label>
-      <label>{t.mcp.command}<input value={form.command} onChange={event => setForm({ ...form, command: event.target.value })} required /></label>
-      <label>{t.mcp.args}<textarea rows={2} value={form.args} onChange={event => setForm({ ...form, args: event.target.value })} /></label>
-      <label>{t.mcp.env}<textarea rows={2} value={form.env} onChange={event => setForm({ ...form, env: event.target.value })} /></label>
-      <Button type="submit" variant="primary"><Plus size={16} aria-hidden="true" />{t.mcp.add}</Button>
-    </form>
+      {!servers.some(server => server.name === "codegraph") && <Button size="sm" onClick={() => void add(CODEGRAPH)}><Plus size={16} aria-hidden="true" />{t.mcp.addCodegraph}</Button>}
+      <Button size="sm" variant="primary" aria-expanded={showForm} aria-controls={formId} onClick={() => setShowForm(open => !open)}>
+        {showForm ? <ChevronUp size={16} aria-hidden="true" /> : <Plus size={16} aria-hidden="true" />}{t.mcp.add}
+      </Button>
+    </div>
+    <div id={formId} hidden={!showForm}>
+      <form className={styles.form} onSubmit={event => { event.preventDefault(); void add({ name: form.name.trim(), command: form.command.trim(), args: lines(form.args), env: toEnv(form.env), enabled: true }); }}>
+        <label>{t.mcp.name}<input value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} required /></label>
+        <label>{t.mcp.command}<input value={form.command} onChange={event => setForm({ ...form, command: event.target.value })} required /></label>
+        <label>{t.mcp.args}<textarea rows={2} value={form.args} onChange={event => setForm({ ...form, args: event.target.value })} /></label>
+        <label>{t.mcp.env}<textarea rows={2} value={form.env} onChange={event => setForm({ ...form, env: event.target.value })} /></label>
+        <Button type="submit" variant="primary">{t.save}</Button>
+      </form>
+    </div>
   </section>;
 }

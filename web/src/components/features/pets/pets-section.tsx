@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { configApi } from "@/apis/config.api";
 import { petsApi } from "@/apis/pets.api";
 import { settingsApi } from "@/apis/settings.api";
@@ -72,7 +72,14 @@ function ChatPets({ busy, run }: { busy: string; run: (key: string, action: () =
     void save({ pets: next });
   }
   const pets = list.data ?? [];
-  return <section className={styles.form} aria-label={t.pets.title}><p className={styles.note}>{t.pets.intro}</p>
+  return <section className={styles.form} aria-label={t.pets.title}>
+    <details className={styles.petUploadRequirements}>
+      <summary className={styles.note}>
+        <span>{t.pets.uploadSummary}</span>
+        <ChevronDown size={16} aria-hidden="true" />
+      </summary>
+      <p className={styles.note}>{t.pets.uploadHint}</p>
+    </details>
     <ul className={styles.addonCard}><li className={`${styles.addonRow} ${styles.petEnableRow}`}>
       <label className={styles.addonText} htmlFor={enabledSwitchId}><span className={styles.addonName}><strong>{t.pets.enable}</strong></span></label>
       <span className={styles.addonControls}><Switch id={enabledSwitchId} checked={config.data?.pets_enabled ?? true} disabled={!config.data}
@@ -90,7 +97,6 @@ function ChatPets({ busy, run }: { busy: string; run: (key: string, action: () =
           </Dropdown></label>)}
       </div>)}
     </div>
-    <p className={styles.note}>{t.pets.uploadHint}</p>
     {list.isPending && <Skeleton card />}{list.error && <p role="alert">{list.error.message}</p>}
     {list.data && !pets.length && <p>{t.pets.none}</p>}
     {pets.length > 0 && (
@@ -99,7 +105,7 @@ function ChatPets({ busy, run }: { busy: string; run: (key: string, action: () =
           <span className={styles.addonIcon} aria-hidden="true"><PetThumb id={pet.id} /></span>
           <span className={styles.addonText}><span className={styles.addonName}><strong>{pet.name}</strong></span></span>
           <span className={styles.addonControls}><Button size="sm" variant="ghost" disabled={Boolean(busy)} aria-label={`${t.pets.remove} ${pet.name}`} onClick={() => void run(pet.id, () => petsApi.remove(pet.id), t.pets.removed(pet.name))}>
-            <Trash2 size={16} aria-hidden="true" />{t.pets.remove}</Button></span>
+            <Trash2 size={16} aria-hidden="true" /></Button></span>
         </li>)}
       </ul>
     )}</section>;
