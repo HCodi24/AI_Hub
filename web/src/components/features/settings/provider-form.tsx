@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, PlugZap, Search, Trash2 } from "lucide-react";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
+import { Dropdown } from "@/components/select/select";
 import { Switch } from "@/components/button/switch";
 import type { ConnectionTest, FullConfig, Provider, ProviderInput } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
@@ -96,8 +97,8 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
   }); }}>
     {provider?.web_login && connection}
     <label>{t.providers.name}<input required value={form.name} onChange={event => set("name", event.target.value)} /></label>
-    <label>{t.providers.kind}<select value={form.kind} disabled={Boolean(provider)} onChange={event => set("kind", event.target.value)}>
-      {kinds.map(kind => <option key={kind} value={kind}>{t.providers.kinds[kind as keyof typeof t.providers.kinds] || kind}</option>)}</select></label>
+    <label>{t.providers.kind}<Dropdown value={form.kind} disabled={Boolean(provider)} onChange={event => set("kind", event.target.value)}>
+      {kinds.map(kind => <option key={kind} value={kind}>{t.providers.kinds[kind as keyof typeof t.providers.kinds] || kind}</option>)}</Dropdown></label>
     {!isCli(form.kind) && <>
       <label>{t.providers.baseUrl}<input value={form.base_url} spellCheck={false} onChange={event => set("base_url", event.target.value)} /></label>
       <label>{t.providers.apiKey}<input type="password" autoComplete="off" value={apiKey}

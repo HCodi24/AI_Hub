@@ -113,6 +113,10 @@ impl Drop for CancelOnDrop {
 /// The `provider_id` of the "MutiS" source: the server picks the lead model, so the request does not say which one runs.
 const MUTIS_SOURCE: &str = "mutis";
 
+fn should_remember_folder(current: &str, folder: &str, plain_chat: bool, dev_chat: bool) -> bool {
+    !plain_chat && !dev_chat && current != folder
+}
+
 pub(crate) async fn chat_handler(
     State(state): State<AppState>,
     Json(mut request): Json<ChatRequest>,
@@ -152,6 +156,16 @@ pub(crate) async fn chat_handler(
     let dev_chat = request.dev_chat || existing.as_ref().is_some_and(|chat| chat.dev_chat);
     let folder = request::resolve_folder(&state, &request, dev_chat)?;
     let plain_chat = !dev_chat && request.folder.trim().is_empty();
+    let current_folder = state.config.read().await.default_folder.clone();
+    if should_remember_folder(&current_folder, &folder, plain_chat, dev_chat) {
+        let mut config = state.config.write().await;
+        if config.default_folder != folder {
+            config.default_folder = folder.clone();
+            if let Err(error) = crate::config::save(&state.config_path, &config) {
+                eprintln!("Không lưu được thư mục làm việc gần đây: {error}");
+            }
+        }
+    }
     let effort = request::check_request(&request)?;
     let mut provider_config = {
         let config = state.config.read().await;
@@ -658,6 +672,14 @@ pub(crate) async fn chat_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remembers_only_a_different_folder_for_non_plain_non_dev_chats() {
+        assert!(should_remember_folder("old", "new", false, false));
+        assert!(!should_remember_folder("same", "same", false, false));
+        assert!(!should_remember_folder("old", "new", true, false));
+        assert!(!should_remember_folder("old", "new", false, true));
+    }
 
     fn source(id: &str, kind: &str, agent_capable: bool) -> crate::config::ProviderConfig {
         crate::config::ProviderConfig {

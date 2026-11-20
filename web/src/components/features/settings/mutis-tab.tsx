@@ -5,6 +5,7 @@ import { Button } from "@/components/button/button";
 import { PillTabs } from "@/components/pill-tabs/pill-tabs";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { Switch } from "@/components/button/switch";
+import { Dropdown } from "@/components/select/select";
 import { notify } from "@/components/toast/toast";
 import { MutisSchema, type Mutis } from "@/schema/mutis.schema";
 import type { Provider } from "@/schema/settings.schema";
@@ -41,12 +42,12 @@ const modelOptions = (providers: Provider[], id: string, current: string) => {
 /** The High-level independent checker: Codex sources only, because the checker keeps and resumes its own Codex thread. */
 function CheckerRow({ providers, value, enabled, change }: { providers: Provider[]; value: Mutis["high_checker"]; enabled: boolean; change: (patch: Partial<Mutis["high_checker"]>, immediate?: boolean) => void }) {
   return <div className={styles.row} aria-disabled={!enabled}><strong>{t.mutis.checkerRole}</strong>
-    <label><span className="sr-only">{t.mutis.provider}</span><select disabled={!enabled} value={value.provider_id} onChange={event => change({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
-      <option value="" />{providers.filter(p => p.kind === "codex_cli").map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-    <label><span className="sr-only">{t.mutis.model}</span><select disabled={!enabled} value={value.model} onChange={event => change({ model: event.target.value }, true)}>
-      {modelOptions(providers, value.provider_id, value.model)}</select></label>
-    <label><span className="sr-only">{t.mutis.effort}</span><select disabled={!enabled} value={effortFor(value.model, value.effort, "codex_cli")} onChange={event => change({ effort: event.target.value as Mutis["high_checker"]["effort"] }, true)}>
-      {effortsFor(value.model, "codex_cli").map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>;
+    <label><span className="sr-only">{t.mutis.provider}</span><Dropdown disabled={!enabled} value={value.provider_id} onChange={event => change({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
+      <option value="" />{providers.filter(p => p.kind === "codex_cli").map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Dropdown></label>
+    <label><span className="sr-only">{t.mutis.model}</span><Dropdown disabled={!enabled} value={value.model} onChange={event => change({ model: event.target.value }, true)}>
+      {modelOptions(providers, value.provider_id, value.model)}</Dropdown></label>
+    <label><span className="sr-only">{t.mutis.effort}</span><Dropdown disabled={!enabled} value={effortFor(value.model, value.effort, "codex_cli")} onChange={event => change({ effort: event.target.value as Mutis["high_checker"]["effort"] }, true)}>
+      {effortsFor(value.model, "codex_cli").map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</Dropdown></label></div>;
 }
 export function MutisTab() {
   const [profile, setProfile] = useState<Profile>("high_roles");
@@ -76,12 +77,12 @@ export function MutisTab() {
             ...current, [id]: { ...current[id], [role]: { ...current[id][role], ...patch } }
           }), immediate);
           return <div key={role} className={styles.row}><strong>{t.mutis.role[role]}</strong>
-            <label><span className="sr-only">{t.mutis.provider}</span><select value={value.provider_id} onChange={event => setRole({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
-              <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-            <label><span className="sr-only">{t.mutis.model}</span><select value={value.model} onChange={event => setRole({ model: event.target.value }, true)}>
-              {modelOptions(providers, value.provider_id, value.model)}</select></label>
-            <label><span className="sr-only">{t.mutis.effort}</span><select value={effortFor(value.model, value.effort, providers.find(p => p.id === value.provider_id)?.kind)} onChange={event => setRole({ effort: event.target.value as typeof value.effort }, true)}>
-              {effortsFor(value.model, providers.find(p => p.id === value.provider_id)?.kind).map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</select></label></div>; })}
+            <label><span className="sr-only">{t.mutis.provider}</span><Dropdown value={value.provider_id} onChange={event => setRole({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
+              <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Dropdown></label>
+            <label><span className="sr-only">{t.mutis.model}</span><Dropdown value={value.model} onChange={event => setRole({ model: event.target.value }, true)}>
+              {modelOptions(providers, value.provider_id, value.model)}</Dropdown></label>
+            <label><span className="sr-only">{t.mutis.effort}</span><Dropdown value={effortFor(value.model, value.effort, providers.find(p => p.id === value.provider_id)?.kind)} onChange={event => setRole({ effort: event.target.value as typeof value.effort }, true)}>
+              {effortsFor(value.model, providers.find(p => p.id === value.provider_id)?.kind).map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</Dropdown></label></div>; })}
         {id === "high_roles" && <CheckerRow providers={providers} value={draft.high_checker} enabled={draft.delegate_checker} change={(patch, immediate) => autosave.update(current => ({ ...current, high_checker: { ...current.high_checker, ...patch } }), immediate)} />}
       </div>
       {id === "high_roles" && <>
@@ -92,10 +93,10 @@ export function MutisTab() {
     <h3>{t.mutis.sharedSettings}</h3>
     <fieldset className={styles.group}><legend>{t.mutis.routing}</legend>
       <div className={styles.grid}>{draft.routing.map((rule, index) => <label key={rule.kind}>{t.mutis.kinds[rule.kind] || rule.kind}
-        <select value={rule.role} onChange={event => autosave.update(current => ({
+        <Dropdown value={rule.role} onChange={event => autosave.update(current => ({
           ...current, routing: current.routing.map((item, i) => i === index ? { ...item, role: event.target.value } : item)
         }), true)}>
-          {ROLES.map(role => <option key={role} value={role}>{t.mutis.role[role]}</option>)}</select></label>)}</div>
+          {ROLES.map(role => <option key={role} value={role}>{t.mutis.role[role]}</option>)}</Dropdown></label>)}</div>
     </fieldset>
     <fieldset className={styles.group}><legend>{t.mutis.switches}</legend>
       {SWITCHES.map(item => <div key={item.key} className={styles.switch}>
@@ -109,10 +110,10 @@ export function MutisTab() {
       <label>{t.mutis.verify_ignore}<textarea rows={2} spellCheck={false} value={draft.verify_ignore.join("\n")}
         onChange={event => edit({ verify_ignore: event.target.value.split(/\r?\n/).map(x => x.trim()).filter(Boolean) })} /></label>
       <div className={styles.grid}>
-        <label>{t.mutis.reviewer}<select value={draft.reviewer_provider_id} onChange={event => edit({ reviewer_provider_id: event.target.value, reviewer_model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
-          <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <label>{t.mutis.reviewerModel}<select value={draft.reviewer_model} onChange={event => edit({ reviewer_model: event.target.value }, true)}>
-          {modelOptions(providers, draft.reviewer_provider_id, draft.reviewer_model)}</select></label>
+        <label>{t.mutis.reviewer}<Dropdown value={draft.reviewer_provider_id} onChange={event => edit({ reviewer_provider_id: event.target.value, reviewer_model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
+          <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Dropdown></label>
+        <label>{t.mutis.reviewerModel}<Dropdown value={draft.reviewer_model} onChange={event => edit({ reviewer_model: event.target.value }, true)}>
+          {modelOptions(providers, draft.reviewer_provider_id, draft.reviewer_model)}</Dropdown></label>
       </div>
     </fieldset>
     <fieldset className={styles.group}><legend>{t.mutis.debate}</legend><div className={styles.grid}>

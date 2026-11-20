@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Stethoscope } from "lucide-react";
 import { mutisApi } from "@/apis/mutis.api";
 import { Button } from "@/components/button/button";
+import { Dropdown } from "@/components/select/select";
 import { notify } from "@/components/toast/toast";
 import { DiagnosisSchema, type Diagnosis } from "@/schema/mutis.schema";
 import { settingsText as t } from "@/text/settings";
@@ -39,8 +40,8 @@ export function MutisDiagnosis() {
   return <section aria-label={t.mutis.diagnosis}><h3>{t.mutis.diagnosis}</h3>
     <div className={styles.actions}><Button disabled={busy} onClick={() => void diagnose()}><Stethoscope size={16} aria-hidden="true" />{busy ? t.mutis.diagnosing : t.mutis.diagnose}</Button>
       {(history.data?.length ?? 0) > 1 && <label className={styles.inlineLabel}>{t.mutis.history}
-        <select value={shown?.ts ?? ""} onChange={event => setCurrent(history.data?.find(item => String(item.ts) === event.target.value) || null)}>
-          {history.data?.map(item => <option key={item.ts} value={item.ts}>{new Date(item.ts * 1000).toLocaleString("vi-VN")} · {item.health}</option>)}</select></label>}</div>
+        <Dropdown value={shown?.ts ?? ""} onChange={event => setCurrent(history.data?.find(item => String(item.ts) === event.target.value) || null)}>
+          {history.data?.map(item => <option key={item.ts} value={item.ts}>{new Date(item.ts * 1000).toLocaleString("vi-VN")} · {item.health}</option>)}</Dropdown></label>}</div>
     {log && <pre className={styles.log} aria-live="polite">{log}</pre>}
     {!shown && !history.isPending && <p className={styles.note}>{t.mutis.noDiagnosis}</p>}
     {shown && <article className={styles.group}><header className={styles.cardHead}><span className={styles.badge} data-on="true">{shown.health}</span></header>

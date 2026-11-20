@@ -35,3 +35,5 @@
   to { background-position: calc(var(--w) * -8) calc(var(--h) * -4); }
 }
 @media (prefers-reduced-motion: reduce) { .pet[data-state] { animation: none; } }
+.thumb { --w: 24px; --h: 26px; display: inline-block; width: var(--w); height: var(--h); background-repeat: no-repeat;
+  background-position: 0 0; background-size: calc(var(--w) * 8) auto; image-rendering: pixelated; }

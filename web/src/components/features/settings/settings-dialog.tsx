@@ -38,7 +38,7 @@ export function SettingsDialog({ initialTab = "providers", folder, close, dashbo
         aria-controls="settings-panel" onClick={() => setTab(id)}><Icon size={20} aria-hidden="true" />{t.tabs[id]}</button>)}
     </ScrollArea>
     <ScrollArea as="section" id="settings-panel" aria-labelledby={`settings-tab-${tab}`} className={styles.panel} key={tab}>
-      {tab !== "addons" && tab !== "providers" && <h3 className={styles.panelTitle}>{t.tabs[tab]}</h3>}
+      {tab !== "addons" && tab !== "providers" && tab !== "pets" && <h3 className={styles.panelTitle}>{t.tabs[tab]}</h3>}
       {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab taskBoardEnabled={taskBoardEnabled} onTaskBoardEnabledChange={onTaskBoardEnabledChange} />}{tab === "mutis" && <MutisTab />}
       {tab === "addons" && <AddonsTab />}
       {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "pets" && <PetsSection />}{tab === "dev" && <DevTab />}

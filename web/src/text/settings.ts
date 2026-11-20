@@ -38,7 +38,7 @@ export const settingsText = {
     loginEmpty: "Chưa có tài khoản web nào.",
   },
   general: {
-    folder: "Thư mục làm việc mặc định", idle: "Dừng lượt chạy khi AI im lặng quá (phút, 0 = không dừng)",
+    idle: "Dừng lượt chạy khi AI im lặng quá (phút, 0 = không dừng)",
     threadBudget: "Nén ngữ cảnh thread Codex khi thread đã đọc quá (token, 0 = không tự nén; hoặc 20.000–2.000.000). Chỉ khi gấp đôi mức này mà nén không giảm thì mới mở thread mới",
     memory: "Bộ nhớ dự án", memoryEnabled: "Bật bộ nhớ dự án", memoryScopes: "Số scope đưa vào prompt (1–10)",
     memoryChars: "Giới hạn ký tự mỗi scope (1000–20000)",
@@ -135,12 +135,11 @@ export const settingsText = {
     warn: "MCP server là chương trình chạy trên máy bạn với quyền của bạn: chỉ thêm thứ bạn tin tưởng.",
   },
   pets: {
-    use: "Pet cho từng nguồn AI", useHint: "Mỗi model Codex và Claude một pet riêng, DeepSeek một pet; dùng cho cả API lẫn CLI. Chưa chọn pet thì không hiện gì: hãy thêm pet của bạn rồi chọn.",
+    use: "Pet cho từng nguồn AI",
     familyTabsLabel: "Nhóm model pet", families: { codex: "Codex", claude: "Claude", deepseek: "DeepSeek" },
     default: "Không dùng pet", kinds: { "codex-luna": "Codex · Luna", "codex-sol": "Codex · Sol", "codex-terra": "Codex · Terra", "claude-opus": "Claude · Opus", "claude-sonnet": "Claude · Sonnet", "claude-haiku": "Claude · Haiku", "claude-fable": "Claude · Fable", deepseek: "DeepSeek" } as Record<string, string>,
-    enable: "Hiện pet cạnh câu trả lời", uploadFile: "Thêm pet từ file WebP…",
+    enable: "Hiện pet cạnh câu trả lời", uploadFile: "Thêm pet",
     uploadHint: "File WebP rộng 1536 px, tối đa 4 MB: 8 cột × 6 hàng (cao 1248 px), mỗi ô 192 × 208. Hàng theo thứ tự: suy nghĩ, trả lời, nghỉ, chờ, lỗi, chạy (đang xử lý, đang code). Sheet 5 hàng (cao 1040 px, không có hàng chạy) vẫn dùng được: lúc đó đang xử lý và đang code dùng hàng trả lời.",
-    importFolder: "Thêm pet của bạn từ thư mục…", importHint: "Chọn thư mục chứa pet.json và spritesheet.png hoặc .webp (cùng kích thước như file WebP ở trên). Thư mục gốc không bị thay đổi.",
     tabsLabel: "Các phần của Pet", tabs: { chat: "Pet chat", garden: "Vườn pet" }, gardenSoon: "Vườn pet sẽ có ở bản sau.",
     imported: (name: string) => `Đã thêm ${name}`, adding: "Đang thêm…",
     title: "Pet", intro: "Linh vật hiện cạnh câu trả lời của AI. Ứng dụng không có sẵn pet nào: bạn tự thêm pet của mình.",

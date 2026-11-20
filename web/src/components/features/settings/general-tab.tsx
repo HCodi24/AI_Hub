@@ -10,24 +10,24 @@ import { errorText, useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
 import { useSettingsAutosave } from "./use-settings-autosave";
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
-type GeneralDraft = { folder: string; idle: number; threadBudget: number; memory: MemoryConfig };
+type GeneralDraft = { idle: number; threadBudget: number; memory: MemoryConfig };
 /** 0 turns the rotation off; anything else stays inside what the server accepts. */
 const budgetFor = (value: number) => (Number.isFinite(value) && value > 0 ? clamp(value, 20000, 2000000) : 0);
 const isGeneralDraft = (value: unknown): value is GeneralDraft => {
   if (!value || typeof value !== "object") return false;
   const item = value as GeneralDraft;
-  return typeof item.folder === "string" && typeof item.idle === "number" && Number.isFinite(item.idle) &&
+  return typeof item.idle === "number" && Number.isFinite(item.idle) &&
     typeof item.threadBudget === "number" && Number.isFinite(item.threadBudget) &&
     !!item.memory && typeof item.memory.enabled === "boolean" && Number.isFinite(item.memory.max_scopes_in_prompt) && Number.isFinite(item.memory.max_chars_per_scope);
 };
 export function GeneralTab({ taskBoardEnabled, onTaskBoardEnabledChange }: { taskBoardEnabled: boolean; onTaskBoardEnabledChange: (enabled: boolean) => void }) {
   const { query, apply } = useSettingsConfig();
-  const initial: GeneralDraft = { folder: query.data?.default_folder ?? "", idle: query.data?.chat_idle_timeout_minutes ?? 10,
+  const initial: GeneralDraft = { idle: query.data?.chat_idle_timeout_minutes ?? 10,
     threadBudget: query.data?.thread_token_budget ?? 150000,
     memory: query.data?.memory ?? { enabled: true, max_scopes_in_prompt: 3, max_chars_per_scope: 6000 } };
   const autosave = useSettingsAutosave<GeneralDraft>({ key: "ai-hub:settings:general", initial, validate: isGeneralDraft,
     save: async value => {
-      const saved = await settingsApi.saveConfig({ default_folder: value.folder.trim(), chat_idle_timeout_minutes: clamp(value.idle, 0, 1440), thread_token_budget: budgetFor(value.threadBudget),
+      const saved = await settingsApi.saveConfig({ chat_idle_timeout_minutes: clamp(value.idle, 0, 1440), thread_token_budget: budgetFor(value.threadBudget),
         memory: { enabled: value.memory.enabled, max_scopes_in_prompt: clamp(value.memory.max_scopes_in_prompt, 1, 10),
           max_chars_per_scope: clamp(value.memory.max_chars_per_scope, 1000, 20000) } });
       apply(saved); return value;
@@ -35,11 +35,10 @@ export function GeneralTab({ taskBoardEnabled, onTaskBoardEnabledChange }: { tas
   const { draft, busy } = autosave;
   const hydrate = autosave.hydrate;
   const data = query.data;
-  useEffect(() => { if (data) hydrate({ folder: data.default_folder, idle: data.chat_idle_timeout_minutes, threadBudget: data.thread_token_budget, memory: data.memory }); }, [data, hydrate]);
+  useEffect(() => { if (data) hydrate({ idle: data.chat_idle_timeout_minutes, threadBudget: data.thread_token_budget, memory: data.memory }); }, [data, hydrate]);
   if (query.isPending) return <Skeleton card />;
   if (query.error) return <p role="alert">{query.error.message}</p>;
   return <form className={styles.form} onSubmit={event => { event.preventDefault(); void autosave.flush(); }}>
-    <label>{t.general.folder}<input required value={draft.folder} spellCheck={false} onChange={event => autosave.update(current => ({ ...current, folder: event.target.value }))} /></label>
     <label>{t.general.idle}<input type="number" min={0} max={1440} value={draft.idle} onChange={event => autosave.update(current => ({ ...current, idle: Number(event.target.value) }))} /></label>
     <label>{t.general.threadBudget}<input type="number" min={0} max={2000000} step={10000} value={draft.threadBudget} onChange={event => autosave.update(current => ({ ...current, threadBudget: Number(event.target.value) }))} /></label>
     <label className={styles.check}><Switch checked={taskBoardEnabled} onChange={event => onTaskBoardEnabledChange(event.target.checked)} /><span>{t.mutis.taskBoard}</span></label>

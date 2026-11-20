@@ -1,5 +1,6 @@
 import { useId } from "react";
 import { z } from "zod";
+import { Dropdown } from "@/components/select/select";
 import { useProviderConnections } from "@/lib/provider-connections";
 import { PermissionSchema, EffortSchema } from "@/schema/chat.schema";
 import type { ProviderSummary } from "@/schema/config.schema";
@@ -12,15 +13,15 @@ export function SourceControls({ providers, roles, value, change, disabled, show
   const modelsId = useId();
   const statuses = useProviderConnections(providers);
   const provider = providers.find(p => p.id === value.assignee);
-  return <div><label>{t.source}<select value={value.assignee} disabled={disabled} onChange={event => {
+  return <div><label>{t.source}<Dropdown value={value.assignee} disabled={disabled} onChange={event => {
     const id = event.target.value; const role = id.startsWith("role:") ? roles?.[id.slice(5) as keyof typeof roles] : undefined;
     const next = providers.find(p => p.id === (role?.provider_id || id));
     change({ ...value, assignee: next?.id || id, model: role?.model || next?.models[0] || "", effort: role?.effort || "default", permission: "write" });
   }}><option value="">{t.source}</option>{providers.map(p => <option key={p.id} value={p.id} disabled={statuses[p.id]?.ok === false}>{p.name}{statuses[p.id]?.ok === false ? ` · ${t.missingSource}` : ""}</option>)}
-    {roles && Object.entries(roles).map(([key, role]) => <option key={key} value={`role:${key}`} disabled={statuses[role.provider_id]?.ok === false}>MutiS · {key}</option>)}</select></label>
+    {roles && Object.entries(roles).map(([key, role]) => <option key={key} value={`role:${key}`} disabled={statuses[role.provider_id]?.ok === false}>MutiS · {key}</option>)}</Dropdown></label>
     <label>{t.model}<input list={modelsId} key={`${value.assignee}:${value.model}`} defaultValue={value.model || ""} disabled={disabled} onBlur={event => { if (event.target.value !== value.model) change({ ...value, model: event.target.value }); }} /><datalist id={modelsId}>{provider?.models.map(model => <option key={model} value={model} />)}</datalist></label>
-    <label>{t.effort}<select value={effortFor(value.model || "", value.effort, provider?.kind)} disabled={disabled} onChange={event => change({ ...value, effort: EffortSchema.parse(event.target.value) })}>{effortsFor(value.model || "", provider?.kind).map(e => <option key={e} value={e}>{chatText[e]}</option>)}</select></label>
-    {showPermission && <label>{t.permission}<select value={value.permission || "write"} disabled={disabled} onChange={event => change({ ...value, permission: PermissionSchema.parse(event.target.value) })}>{PERMISSIONS.map(e => <option key={e} value={e} disabled={e === "full" && !provider?.kind.endsWith("_cli")}>{chatText[e]}</option>)}</select></label>}
+    <label>{t.effort}<Dropdown value={effortFor(value.model || "", value.effort, provider?.kind)} disabled={disabled} onChange={event => change({ ...value, effort: EffortSchema.parse(event.target.value) })}>{effortsFor(value.model || "", provider?.kind).map(e => <option key={e} value={e}>{chatText[e]}</option>)}</Dropdown></label>
+    {showPermission && <label>{t.permission}<Dropdown value={value.permission || "write"} disabled={disabled} onChange={event => change({ ...value, permission: PermissionSchema.parse(event.target.value) })}>{PERMISSIONS.map(e => <option key={e} value={e} disabled={e === "full" && !provider?.kind.endsWith("_cli")}>{chatText[e]}</option>)}</Dropdown></label>}
     {showPermission && provider && !provider.kind.endsWith("_cli") && <small>{t.noCommands}</small>}
   </div>;
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PawPrint } from "lucide-react";
 import type { PetState } from "@/lib/chat-pet-state";
 import { usePetId } from "./use-pet-id";
 import styles from "./pet-avatar.module.css";
@@ -15,4 +16,13 @@ export function PetAvatar({ provider, model = "", state = "idle", small = false 
   return <span className={styles.pet} data-state={state} data-run={rows >= 6 ? "fox" : undefined} style={style} aria-hidden="true">
     <img src={url} alt="" hidden onError={() => setFailed(true)}
       onLoad={event => setRows(Math.max(5, Math.round(event.currentTarget.naturalHeight / CELL_HEIGHT)))} /></span>;
+}
+
+export function PetThumb({ id }: { id: string }) {
+  const [failed, setFailed] = useState(false);
+  const url = `/api/pets/${encodeURIComponent(id)}`;
+  if (failed) return <PawPrint size={16} aria-hidden="true" />;
+  return <span className={styles.thumb} style={{ backgroundImage: `url(${url})` }} aria-hidden="true">
+    <img src={url} alt="" hidden onError={() => setFailed(true)} />
+  </span>;
 }
