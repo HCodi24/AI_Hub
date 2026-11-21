@@ -23,6 +23,7 @@ import { DevBanner, RESUME_KEY } from "@/components/features/dev/dev-banner";
 import { openDevChat } from "@/components/features/dev/dev-chat";
 import { useQuery } from "@tanstack/react-query";
 import { devApi } from "@/apis/dev.api";
+import { notifyIfUpdate } from "@/lib/desktop-update";
 // Descendants that own their own behaviour: clicks inside them never open the large Dashboard dialog.
 const INTERACTIVE = "a, button, input, select, textarea, summary, details, label, [role='button'], [role='link'], [contenteditable='true'], [tabindex]:not([tabindex='-1'])";
 export function ChatScreen() {
@@ -39,6 +40,7 @@ export function ChatScreen() {
   const [dashboardEnabled, setDashboardEnabled] = useDashboardPreference();
   const [taskBoardEnabled, setTaskBoardEnabled] = useTaskBoardPreference();
   const { config, chats, send, stop, load, remove } = useChat();
+  useEffect(() => { void notifyIfUpdate(); }, []);
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
   useLayoutEffect(() => {
     const frame = frameRef.current;

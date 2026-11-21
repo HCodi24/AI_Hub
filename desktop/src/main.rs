@@ -15,8 +15,9 @@ use std::{
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    Manager, RunEvent, WebviewUrl, WebviewWindowBuilder,
+    Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder,
 };
+use tauri_plugin_updater::UpdaterExt;
 
 const SERVER_EXE: &str = if cfg!(windows) { "ai-hub.exe" } else { "ai-hub" };
 
@@ -205,12 +206,46 @@ fn run_server(app: tauri::AppHandle, server: Arc<Server>) {
     }
 }
 
+#[derive(serde::Serialize)]
+struct UpdateInfo {
+    version: String,
+    notes: String,
+}
+
+/// The updater. On Windows the installer replaces `ai-hub.exe` and `MutiS.exe`, so the server (and the Codex / Claude
+/// processes under it) must be stopped before the app exits for the install.
+fn updater(app: &tauri::AppHandle, server: &Arc<Server>) -> Result<tauri_plugin_updater::Updater, String> {
+    let server = server.clone();
+    app.updater_builder()
+        .on_before_exit(move || stop_server(&server))
+        .build()
+        .map_err(|error| error.to_string())
+}
+
+/// `None` when this is the newest version. Called by the web UI (Settings › Cập nhật).
+#[tauri::command]
+async fn update_check(app: tauri::AppHandle, server: State<'_, Arc<Server>>) -> Result<Option<UpdateInfo>, String> {
+    let update = updater(&app, &server)?.check().await.map_err(|error| error.to_string())?;
+    Ok(update.map(|update| UpdateInfo { version: update.version.clone(), notes: update.body.clone().unwrap_or_default() }))
+}
+
+/// Downloads the newest version, checks its signature against the public key in tauri.conf.json, and installs it.
+/// The app closes and the installer restarts it. shortcut: no progress events, the UI only shows "downloading".
+#[tauri::command]
+async fn update_install(app: tauri::AppHandle, server: State<'_, Arc<Server>>) -> Result<(), String> {
+    let update = updater(&app, &server)?.check().await.map_err(|error| error.to_string())?.ok_or("Đang là bản mới nhất")?;
+    update.download_and_install(|_, _| {}, || {}).await.map_err(|error| error.to_string())
+}
+
 fn main() {
     let server = Arc::new(Server { child: Mutex::new(None), quitting: AtomicBool::new(false) });
     let setup_server = server.clone();
     let app = tauri::Builder::default()
         // A second launch only brings the existing window to the front.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(server.clone())
+        .invoke_handler(tauri::generate_handler![update_check, update_install])
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("MutiS")

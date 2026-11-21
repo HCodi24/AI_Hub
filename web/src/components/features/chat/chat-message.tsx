@@ -1,11 +1,12 @@
 import { memo, useMemo, type ReactNode } from "react";
-import { UserRound } from "lucide-react";
+import { ChevronRight, MousePointerClick, UserRound } from "lucide-react";
 import { PetAvatar } from "@/components/features/pets/pet-avatar";
 import type { ChatMessage as Message, StreamData } from "@/schema/chat.schema";
 import { MarkdownView } from "@/components/markdown-view/markdown-view";
 import { chatText } from "@/text/chat";
 import { DebateCard } from "@/components/features/debate/debate-card";
 import { splitImportedFileText } from "@/lib/import-file";
+import { splitPreviewSelectionText } from "@/lib/preview-selection";
 import { stripDevChatPreamble } from "@/lib/dev-chat-preamble";
 import { AttachmentCard } from "./attachment-card";
 import { ChatActivity } from "./chat-activity";
@@ -27,13 +28,14 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
   const imported = useMemo(() => {
     if (user) {
       const split = splitImportedFileText(message.content);
-      return { ...split, text: stripDevChatPreamble(split.text) };
+      return { ...split, ...splitPreviewSelectionText(stripDevChatPreamble(split.text)) };
     }
     return {
       text: streaming
         ? hideDelegation(message.content).replace(/^```mutis-questions\s*$[\s\S]*$/m, "")
         : parseChatQuestions(hideDelegation(message.content)).text,
       files: [],
+      selections: [],
     };
   }, [user, message.content, streaming]);
   /** DeepSeek token logs already live inside the collapsed activity disclosure, so they are not repeated here. */
@@ -44,7 +46,13 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
       {!user && <span className={styles.petStatus} data-state={petState} role="status">{petState !== "idle" && <>· {chatText.petStatus[petState]}</>}</span>}
     </div>
     {message.debate_id ? <DebateCard id={message.debate_id} /> : <>
-      {(!imported.files.length || imported.text) && <MarkdownView source={imported.text} />}
+      {imported.text && <MarkdownView source={imported.text} />}
+      {imported.selections.length > 0 && <section className={styles.selections} aria-label="Phần tử đã chọn">
+        {imported.selections.map((item, index) => <details key={index} className={styles.selection}>
+          <summary title={item.label}><MousePointerClick size={16} aria-hidden="true" /><span>{item.label.split(" > ").pop()}</span><ChevronRight className={styles.selectionArrow} size={16} aria-hidden="true" /></summary>
+          <div className={styles.selectionContent}><p>{item.label}</p><MarkdownView source={item.text} /></div>
+        </details>)}
+      </section>}
       {imported.files.length > 0 && <section className={styles.attachments} aria-label={chatText.attachedFiles}>
         {imported.files.map((file, index) => <AttachmentCard key={`${index}:${file.name}`} name={file.name} />)}
       </section>}

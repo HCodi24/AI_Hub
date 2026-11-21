@@ -31,6 +31,18 @@
 .deepseekLogs { display: flex; flex-direction: column; gap: var(--space-2); border: 1px solid var(--border); border-radius: 14px; padding: var(--space-3); min-width: 0; box-shadow: var(--shadow-edge); }
 .deepseekLog { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-small); color: var(--text); min-width: 0; }
 .attachments { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.selections { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-3); min-width: 0; }
+.message .selection { max-width: 100%; min-width: 0; margin: 0; padding: 0; border-radius: 20px; }
+.selection > summary { display: flex; align-items: center; gap: 8px; max-width: 320px; padding: 8px 14px; list-style: none; }
+.selection > summary::-webkit-details-marker { display: none; }
+.selection > summary > svg { flex-shrink: 0; }
+.selection > summary > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selection > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 20px; }
+.selection[open] { width: 100%; }
+.selection[open] > summary { width: 100%; max-width: none; box-sizing: border-box; }
+.selection > summary > .selectionArrow { margin-left: auto; }
+.selection[open] > summary > .selectionArrow { transform: rotate(90deg); }
+.selectionContent { padding: 0 var(--space-3) var(--space-3); overflow-wrap: anywhere; min-width: 0; }
 .message[data-user=true] .attachments { justify-content: flex-end; }
 .logs, .diff { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--font-small); }
 .diff span { display: block; }

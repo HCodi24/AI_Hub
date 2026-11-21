@@ -287,6 +287,18 @@ AI Hub chạy như một ứng dụng desktop có cửa sổ riêng (Tauri 2 + W
 - Tìm server theo thứ tự: biến `AI_HUB_SERVER`, cùng thư mục với `AI Hub.exe`, rồi `target/release` hoặc `target/debug` ở thư mục cha. Tham số sau `--` được chuyển cho server (ví dụ `"AI Hub.exe" -- --dev`).
 - Bộ cài (NSIS) cài cho người dùng hiện tại, không cần quyền admin, tạo shortcut Start Menu và mục gỡ cài đặt; nếu máy thiếu WebView2 thì bộ cài tự tải. Bộ cài chưa được ký số nên Windows SmartScreen có thể cảnh báo lần đầu.
 
+### Cập nhật tự động (OTA)
+
+App desktop tự kiểm tra bản mới ở **GitHub Releases** của `HCodi24/AI_Hub` (`latest.json`, ký bằng khoá riêng, khoá công khai nằm trong `desktop/tauri.conf.json`). Mỗi ngày một lần khi mở app, nếu có bản mới thì hiện thông báo; vào **Cài đặt › Phát triển › Cập nhật ứng dụng** để kiểm tra tay và cài. Việc cài tắt máy chủ và các tiến trình Codex/Claude rồi khởi động lại app, nên nút Cài bị khoá khi đang có chat chạy.
+
+Phát hành một bản:
+1. Một lần duy nhất: `cd desktop; npx tauri signer generate -w %USERPROFILE%\.tauri\mutis-updater.key` rồi dán khoá công khai (`.key.pub`) vào `plugins.updater.pubkey`. **Giữ khoá riêng bí mật và sao lưu**: mất khoá thì app đã cài không nhận được bản mới nữa.
+2. Tăng `version` trong `desktop/tauri.conf.json` (phiên bản app dùng để so sánh; `Cargo.toml` của hai crate nên đổi theo cho khớp).
+3. Chạy `scripts/build-desktop.ps1` (tự tìm khoá ở `%USERPROFILE%\.tauri\mutis-updater.key`, hoặc biến `TAURI_SIGNING_PRIVATE_KEY`). Khoá có mật khẩu thì đặt trước trong phiên PowerShell đó: `$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<mật khẩu>"` (đừng ghi vào file trong kho). Ghi chú bản đặt trong biến `MUTIS_RELEASE_NOTES`. Kết quả trong `dist/`: bộ cài, file `.sig` và `latest.json`.
+4. Tạo GitHub Release với tag `v<phiên bản>` và tải cả ba file lên. Địa chỉ `releases/latest/download/latest.json` luôn trỏ tới Release mới nhất (không phải bản nháp hay tiền phát hành).
+
+Bộ cài chưa ký số Windows nên SmartScreen có thể cảnh báo; chữ ký của updater là chữ ký riêng của Tauri, không thay thế được. Không có khoá thì `build-desktop.ps1` vẫn build bình thường, chỉ không tạo gói cập nhật.
+
 ## Giao diện mới (web/)
 
 R1 bổ sung React 19 / Next.js 16 Pages Router tại `/app/`, dùng API chat hiện có. Giao diện cũ tiếp tục ở `/` và có liên kết “Giao diện mới (beta)” dưới sidebar.

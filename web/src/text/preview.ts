@@ -3,11 +3,21 @@ export const previewText = {
   start: "Bật", stop: "Tắt", starting: "Đang bật…",
   toggle: "Xem trước", resize: "Đổi độ rộng xem trước",close: "Đóng xem trước", reload: "Tải lại", url: "Địa chỉ trang cần xem",
   placeholder: "localhost:3000/dashboard hoặc localhost:7880/app/preview/?c=settings&tab=mutis",
-  pick: "Chọn phần tử để gửi cho AI", picking: "Bấm vào phần tử trên trang (Esc để thôi)", noPicker: "Trang này chưa nạp mutis-picker.js nên chưa chọn được phần tử",
+  pick: "Bấm để chọn một phần tử, giữ và kéo để chọn cả vùng", picking: "Bấm vào phần tử hoặc giữ và kéo chọn vùng (Esc để thôi)", noPicker: "Trang này chưa nạp mutis-picker.js nên chưa chọn được phần tử",
   selectedElements: "Phần tử đã chọn", removeElement: "Gỡ phần tử",
   picked: (data: { url: string; selector: string; text: string; css: Record<string, string>; html: string }) => [
     `Phần tử trên trang ${data.url}`, `- Selector: ${data.selector}`, data.text && `- Chữ: ${data.text}`,
     `- CSS: ${Object.entries(data.css).map(([name, value]) => `${name}: ${value}`).join("; ")}`, "```html", data.html, "```", "",
+  ].filter(Boolean).join("\n"),
+  regionLabel: (count: number, width: number, height: number) => `Vùng ${width}×${height} (${count} phần tử)`,
+  pickedRegion: (data: { url: string; width: number; height: number; total: number; items: { selector: string; text: string; css: Record<string, string>; html: string; at: { left: number; top: number; width: number; height: number } }[] }) => [
+    `Vùng ${data.width}×${data.height} px trên trang ${data.url}, gồm ${data.total} phần tử${data.total > data.items.length ? ` (chỉ liệt kê ${data.items.length})` : ""}. Vị trí tính từ góc trên trái của vùng:`,
+    ...data.items.flatMap((item, index) => [
+      `${index + 1}. ${item.selector} — trái ${item.at.left}, trên ${item.at.top}, rộng ${item.at.width}, cao ${item.at.height}`,
+      item.text && `   Chữ: ${item.text}`,
+      `   CSS: ${Object.entries(item.css).map(([name, value]) => `${name}: ${value}`).join("; ")}`,
+      "```html", item.html, "```",
+    ]),
   ].filter(Boolean).join("\n"),
   empty: "Nhập địa chỉ trang đang sửa. Muốn đổi theo code không cần build thì dùng dev server (MutiS: npm run dev trong web, cổng 7880).", invalid: "Chỉ mở được địa chỉ http hoặc https.",
 };

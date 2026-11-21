@@ -15,6 +15,7 @@ import { useChatStore } from "@/components/features/chat/chat-store";
 import { ChatToolbar } from "./chat-toolbar";
 import { SkillSuggestions } from "./skill-suggestions";
 import { AttachmentCard } from "@/components/features/chat/attachment-card";
+import { previewSelectionText } from "@/lib/preview-selection";
 import { MemoryPanel } from "@/components/features/memory/memory-panel";
 import type { Config } from "@/schema/config.schema";
 import styles from "./composer.module.css";
@@ -286,7 +287,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         ? `${prompt}\n\n${context}`
         : `${context}\n\n${prompt}`;
     }
-    const text = [prompt, ...sentSelections.map(item => item.text), importedFileText(sent.filter((file): file is Extract<Attachment, { kind: "text" }> => file.kind === "text"))].filter(Boolean).join("\n\n");
+    const text = [prompt, previewSelectionText(sentSelections), importedFileText(sent.filter((file): file is Extract<Attachment, { kind: "text" }> => file.kind === "text"))].filter(Boolean).join("\n\n");
     const restore = () => { if (useChatStore.getState().id === origin) {
       setValue(draft); updateAttachments(sent); setRecalled(picked);
       setPreviewSelections(current => [...sentSelections, ...current]);

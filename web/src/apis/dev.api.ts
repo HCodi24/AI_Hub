@@ -1,6 +1,6 @@
 import { http, parseResponse } from "@/lib/http";
 import { streamEvents } from "@/lib/sse";
-import { DevDiffSchema, DevGitResultSchema, DevPreviewServerSchema, DevRepoSchema, DevSettingsSchema, DevStatusSchema } from "@/schema/dev.schema";
+import { DevPreviewServerSchema, DevRepoSchema, DevStatusSchema } from "@/schema/dev.schema";
 const post = async (path: string, body?: unknown) =>
   (await http.request(path, { method: "POST", ...(body === undefined ? {} : { body: JSON.stringify(body) }) })).json() as Promise<unknown>;
 export const devApi = {
@@ -9,14 +9,6 @@ export const devApi = {
   /** The live preview (Next dev) server: whether it listens, and whether this app started it and can stop it. */
   async previewServer(signal?: AbortSignal) { return parseResponse(DevPreviewServerSchema, await http.get("/dev/preview-server", signal)); },
   async previewServerAction(action: "start" | "stop") { return parseResponse(DevPreviewServerSchema, await post("/dev/preview-server", { action })); },
-  async diff() { return parseResponse(DevDiffSchema, await http.get("/dev/git/diff")); },
-  async checkpoint() { return parseResponse(DevGitResultSchema, await post("/dev/git/checkpoint")); },
-  async reset() { return parseResponse(DevGitResultSchema, await post("/dev/git/reset")); },
-  async commit(message: string) { return parseResponse(DevGitResultSchema, await post("/dev/git/commit", { message })); },
-  async settings(signal?: AbortSignal) { return parseResponse(DevSettingsSchema, await http.get("/dev/settings", signal)); },
-  async saveSettings(auto_rebuild: boolean) {
-    return parseResponse(DevSettingsSchema, await (await http.request("/dev/settings", { method: "PUT", body: JSON.stringify({ auto_rebuild }) })).json());
-  },
   /** Streams `log` / `summary` / `verify` / `rebuild` events until the command ends. */
   run(kind: "test" | "release" | "rebuild" | "web-build", signal: AbortSignal, onEvent: (event: string, data: unknown) => void) {
     return streamEvents(`/dev/${kind}`, undefined, signal, onEvent);

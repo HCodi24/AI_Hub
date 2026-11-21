@@ -43,6 +43,14 @@ export const settingsText = {
     memory: "Bộ nhớ dự án", memoryEnabled: "Bật bộ nhớ dự án", memoryScopes: "Số scope đưa vào prompt (1–10)",
     memoryChars: "Giới hạn ký tự mỗi scope (1000–20000)",
   },
+  update: {
+    title: "Cập nhật ứng dụng", desktopOnly: "Chỉ có trong ứng dụng MutiS trên máy tính.",
+    check: "Kiểm tra cập nhật", checking: "Đang kiểm tra…", latest: "Bạn đang dùng bản mới nhất.",
+    available: (version: string) => `Có bản mới ${version}`, notes: "Có gì mới",
+    install: "Cài và khởi động lại", installing: "Đang tải và cài… ứng dụng sẽ tự mở lại.",
+    busy: "Đang có cuộc trò chuyện chạy. Hãy chờ xong rồi cài, vì việc cài sẽ tắt máy chủ và các tiến trình Codex, Claude.",
+    error: "Không cập nhật được", toast: (version: string) => `Có bản mới ${version}. Vào Cài đặt › Phát triển để cập nhật.`,
+  },
   mutis: {
     profileLabel: "Cấu hình từng mức MutiS", sharedSettings: "Cài đặt dùng chung cho High và Max",
     taskBoard: "Hiện bảng tiến độ các task khi MutiS giao việc", enabled: "Bật MutiS", roles: "Vai trò", checkerRole: "Checker", role: { lead: "Lead", big: "Code lớn", small: "Worker" },

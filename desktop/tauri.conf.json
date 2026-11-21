@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MutiS",
   "mainBinaryName": "MutiS",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.hcodi24.aihub",
   "build": {
     "frontendDist": "./dist"
@@ -16,20 +16,43 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "HCodi24",
     "shortDescription": "MutiS",
     "longDescription": "MutiS — điều phối Codex, Claude và DeepSeek trên máy của bạn.",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
     "resources": {
       "../target/release/ai-hub.exe": "ai-hub.exe"
     },
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
       "nsis": {
         "installMode": "currentUser",
-        "languages": ["English"],
+        "languages": [
+          "English"
+        ],
         "displayLanguageSelector": false
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI3RDNFRDY5MzVDRkU2OEEKUldTSzVzODFhZTNUdDh6cVZ5SGFYMVhLNlE0K3F2aStac3BnSG1TVXZ1WjFnM2VGakhSMGo5N1kK",
+      "endpoints": [
+        "https://github.com/HCodi24/AI_Hub/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

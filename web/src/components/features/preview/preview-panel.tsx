@@ -19,6 +19,13 @@ const urlKey = (folder: string) => `ai-hub-preview-url:${folder}`;
 const PREVIEW_LINE = /^preview:\s*(\S+)\s*$/im;
 
 const PickedSchema = z.object({ url: z.string(), selector: z.string(), text: z.string(), css: z.record(z.string(), z.string()), html: z.string() });
+const RegionSchema = z.object({
+  kind: z.literal("region"), url: z.string(), width: z.number(), height: z.number(), total: z.number(),
+  items: z.array(z.object({
+    selector: z.string(), text: z.string(), css: z.record(z.string(), z.string()), html: z.string(),
+    at: z.object({ left: z.number(), top: z.number(), width: z.number(), height: z.number() }),
+  })),
+});
 
 const read = (key: string) => { try { return localStorage.getItem(key) ?? ""; } catch { return ""; } };
 const write = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* storage unavailable: keep it in memory only */ } };
@@ -114,10 +121,11 @@ export function PreviewPanel() {
       else if (event.data.type === "mutis-pick-end") setPicking(false);
       else if (event.data.type === "mutis-picked") {
         setPicking(false);
+        const region = RegionSchema.safeParse(event.data.data);
         const parsed = PickedSchema.safeParse(event.data.data);
-        if (parsed.success) window.dispatchEvent(new CustomEvent("mutis-preview-selection", {
-          detail: { label: parsed.data.selector, text: t.picked(parsed.data) },
-        }));
+        const detail = region.success ? { label: t.regionLabel(region.data.items.length, region.data.width, region.data.height), text: t.pickedRegion(region.data) }
+          : parsed.success ? { label: parsed.data.selector, text: t.picked(parsed.data) } : null;
+        if (detail) window.dispatchEvent(new CustomEvent("mutis-preview-selection", { detail }));
       }
     };
     window.addEventListener("message", listen);

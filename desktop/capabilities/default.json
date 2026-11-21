@@ -1,13 +1,21 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The local AI Hub web UI may only control its own window (minimize, maximize, close, drag).",
-  "windows": ["main"],
-  "remote": { "urls": ["http://127.0.0.1:*/*"] },
+  "description": "The local MutiS web UI may control its own window (minimize, maximize, close, drag) and check for / install app updates.",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*/*"
+    ]
+  },
   "permissions": [
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    "allow-update-check",
+    "allow-update-install"
   ]
 }
