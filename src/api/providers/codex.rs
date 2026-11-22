@@ -109,7 +109,7 @@ fn error(error: anyhow::Error) -> ApiError {
     ApiError::new(StatusCode::BAD_GATEWAY, error.to_string())
 }
 
-async fn new_client(state: &AppState, provider: &ProviderConfig) -> ApiResult<Client> {
+pub(super) async fn new_client(state: &AppState, provider: &ProviderConfig) -> ApiResult<Client> {
     let executable = cli_support::resolve_executable("codex", Some(&provider.executable))
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Chưa tìm thấy Codex CLI trên máy"))?;
     let dir = home(&state.config_path, provider).map_err(error)?;

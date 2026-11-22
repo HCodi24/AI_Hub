@@ -8,7 +8,7 @@ import { Button } from "@/components/button/button";
 import { PillTabs } from "@/components/pill-tabs/pill-tabs";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { notify } from "@/components/toast/toast";
-import { useProviderConnections } from "@/lib/provider-connections";
+import { useProviderConnectionQueries } from "@/lib/provider-connections";
 import type { ConnectionTest, FullConfig, Provider } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
 import { planLabel } from "./account-parts";
@@ -43,8 +43,8 @@ function SourceCard({ items, selected, statuses, pending, tagOf, emailOf, summar
   pending: boolean; tagOf?: (provider: Provider) => { text: string; title?: string } | null; onSelect: (id: string) => void;
   /** Signed-in account email shown after "Đã đăng nhập". */
   emailOf?: (provider: Provider) => string | null;
-  /** Custom status summary for sources that do not use account sign-in. */
-  summaryOf?: (provider: Provider, status?: ConnectionTest) => { text: string; state: "ok" | "error" | "unknown" };
+  /** Custom status summary where the account labels do not apply. */
+  summaryOf?: (provider: Provider, status?: ConnectionTest) => { text: string; state: "ok" | "error" | "unknown" } | undefined;
   /** Control shown at the right end of a row. */
   actionOf?: (provider: Provider) => ReactNode;
   /** Extra rows after the sources (e.g. not-yet-created web accounts). */
@@ -103,7 +103,20 @@ export function ProvidersTab() {
   const [selection, setSelection] = useState<Selection>(NO_SELECTION);
   const [adding, setAdding] = useState(false);
   const providers = query.data?.providers || [];
-  const statuses = useProviderConnections(providers);
+  const tests = useProviderConnectionQueries(providers, provider => provider.kind === "antigravity_cli");
+  const statuses: Record<string, ConnectionTest | undefined> = Object.fromEntries(
+    providers.map((provider, index) => [provider.id, tests[index]?.data]),
+  );
+  const antigravityChecks = new Map(providers.flatMap((provider, index) =>
+    provider.kind === "antigravity_cli" ? [[provider.id, tests[index]] as const] : [],
+  ));
+  const machineSummary = (provider: Provider, status?: ConnectionTest) => {
+    const check = antigravityChecks.get(provider.id);
+    if (check?.isFetching && !status?.ok) return { text: t.providers.testing, state: "unknown" as const };
+    if (check?.isError) return { text: errorText(check.error, t.error), state: "error" as const };
+    if (status?.status === "error" && check) return { text: status.message, state: "error" as const };
+    return undefined;
+  };
   // Plan (Plus, Pro, Max…) of each CLI source's account; same cache keys as the connection panels below.
   const cliSources = providers.filter(provider => isCliKind(provider.kind) && provider.kind !== "antigravity_cli");
   const accounts = useQueries({ queries: cliSources.map(provider => provider.kind === "codex_cli"
@@ -115,6 +128,8 @@ export function ProvidersTab() {
     const data = accounts[index]?.data;
     return [provider.id, data?.connected ? data.plan : null];
   }));
+  // Antigravity reports its plan with the connection test (no separate status call).
+  for (const provider of providers) if (provider.kind === "antigravity_cli" && statuses[provider.id]?.ok) plans[provider.id] = statuses[provider.id]?.plan;
   const emails: Record<string, string | null | undefined> = Object.fromEntries(cliSources.map((provider, index) => {
     const data = accounts[index]?.data;
     return [provider.id, data?.connected ? data.email : null];
@@ -126,7 +141,12 @@ export function ProvidersTab() {
     const data = accounts[index]?.data;
     if (data) rowStatuses[provider.id] = { ok: data.connected, status: data.connected ? "connected" : "not_configured", message: data.message, detail: "" };
   });
-  const planTag = (provider: Provider) => { const plan = plans[provider.id]; return plan ? { text: planLabel(plan) } : null; };
+  const planTag = (provider: Provider) => {
+    const plan = plans[provider.id];
+    if (!plan) return null;
+    const label = planLabel(plan);
+    return { text: provider.kind === "antigravity_cli" ? label.replace(/^Google AI /i, "") : label };
+  };
   const lists = useMemo<Record<SubTab, readonly Provider[]>>(() => {
     const result: Record<SubTab, Provider[]> = { cli: [], login: [], api: [] };
     for (const provider of providers) result[groupOf(provider)].push(provider);
@@ -231,9 +251,10 @@ export function ProvidersTab() {
     try {
       const id = providerId ?? await addAccount(kind, false);
       if (kind === "antigravity_cli") {
-        // Nothing to copy: the CLI holds its own sign-in, so this only re-checks it (and saves the program path it found).
-        onTested(id, await settingsApi.testProvider(id));
-        await client.invalidateQueries({ queryKey: ["settings-config"] });
+        await client.cancelQueries({ queryKey: ["provider-test", id] });
+        const result = await settingsApi.antigravityAction(id, action);
+        if (result.ok || action === "logout") onTested(id, result);
+        else notify(result.detail ? `${result.message}. ${result.detail}` : result.message);
         return;
       }
       const codex = kind === "codex_cli";
@@ -262,11 +283,11 @@ export function ProvidersTab() {
       title={t.providers.detailShort} onClick={() => select(id, provider.id)}><ChevronRight size={18} aria-hidden="true" /></Button>;
   const machineAction = (provider: Provider) => {
     const connected = rowStatuses[provider.id]?.ok;
-    const recheck = provider.kind === "antigravity_cli";
+    const checking = !connected && antigravityChecks.get(provider.id)?.isFetching;
     return <>
-      <Button size="sm" disabled={adding} onClick={() => void machineRow(provider.kind, provider.id, connected && !recheck ? "logout" : "cli")}>
-        {connected && !recheck ? <LogOut size={16} aria-hidden="true" /> : <LogIn size={16} aria-hidden="true" />}
-        {recheck ? t.providers.test : connected ? t.providers.account.signOut : t.providers.account.signIn}</Button>
+      <Button size="sm" disabled={adding || checking} onClick={() => void machineRow(provider.kind, provider.id, connected ? "logout" : "cli")}>
+        {connected ? <LogOut size={16} aria-hidden="true" /> : <LogIn size={16} aria-hidden="true" />}
+        {checking ? t.providers.testing : connected ? t.providers.account.signOut : t.providers.account.signIn}</Button>
       {detailButton("cli", provider)}</>;
   };
   const rowAction = (provider: Provider) => {
@@ -302,7 +323,7 @@ export function ProvidersTab() {
           {current && <p className={styles.pageMeta}>{tag && <span className={styles.planTag}>{tag.text}</span>}
             {pageTab === "api" && <span>{kindLabel}</span>}
             <span>{pageTab === "api" ? currentStatus?.message || t.providers.notTested
-              : email ?? (rowStatuses[current.id]?.ok ? t.providers.account.signedIn : t.providers.account.notSignedIn)}</span></p>}
+              : machineSummary(current, currentStatus)?.text ?? email ?? (currentStatus?.ok ? t.providers.account.signedIn : t.providers.account.notSignedIn)}</span></p>}
         </div>
       </header>
       <section className={styles.detail}>{form(pageTab, pageTab === "api" ? API_KINDS : MACHINE_KINDS,
@@ -330,7 +351,7 @@ export function ProvidersTab() {
           {query.error && <p role="alert">{query.error.message}</p>}
           <p className={styles.note}>{t.providers.cliHint}</p>
           <SourceCard items={lists.cli} selected={null} statuses={rowStatuses} pending={query.isPending}
-            onSelect={id => select("cli", id)} tagOf={planTag} emailOf={emailOf} actionOf={machineAction}>
+            onSelect={id => select("cli", id)} tagOf={planTag} emailOf={emailOf} summaryOf={machineSummary} actionOf={machineAction}>
             {/* New machine: one click finds the installed CLI and signs in with its account. */}
             {MACHINE_KINDS.filter(kind => !lists.cli.some(provider => provider.kind === kind)).map(kind =>
               <PlaceholderRow key={kind} kind={kind} name={t.providers.account.cliName(kind)} disabled={adding}

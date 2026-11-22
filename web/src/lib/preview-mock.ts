@@ -2,6 +2,21 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json => typeof value === "object" && value !== null && !Array.isArray(value);
 const reply = (value: unknown) => new Response(JSON.stringify(value ?? {}), { status: 200, headers: { "Content-Type": "application/json" } });
 
+export function installReadOnlyPreview() {
+  const real = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    const request = input instanceof Request ? input : null;
+    const url = new URL(request?.url ?? String(input), window.location.origin);
+    const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
+    // Provider status uses POST to run the connection probe. Account actions have separate routes.
+    if (!url.pathname.startsWith("/api/") || method === "GET" || method === "HEAD"
+      || (method === "POST" && /^\/api\/providers\/[^/]+\/test\/?$/.test(url.pathname))) {
+      return real(input, init);
+    }
+    return Promise.resolve(Response.json({ error: "Bản xem trước chỉ cho phép xem dữ liệu" }, { status: 405 }));
+  };
+}
+
 /** What a sign-in/sign-out button would do on the server, for any status object that has `connected`. */
 function applyAction(status: Json, action: unknown): Json {
   if (action === "cli" || action === "web") return { ...status, connected: true, pending: false, email: "preview@example.com", origin: action, message: "Đã đăng nhập (xem trước)" };

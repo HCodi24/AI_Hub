@@ -8,7 +8,7 @@ export const settingsText = {
     list: "Danh sách nguồn", add: "Thêm nguồn", newName: "Nguồn mới", name: "Tên hiển thị", kind: "Loại nguồn",
     kinds: { codex_cli: "Codex CLI", claude_cli: "Claude Code CLI", antigravity_cli: "Antigravity CLI", openai_compat: "OpenAI-compatible (DeepSeek…)", anthropic: "Anthropic API" },
     baseUrl: "Base URL", apiKey: "API key", apiKeyKept: "Key đã lưu — để trống để giữ nguyên", executable: "Đường dẫn CLI",
-    executableHint: "Để trống để tự tìm", models: "Model (mỗi dòng một model)", agent: "Cho phép AI đọc/sửa file trong thư mục chat (chế độ agent)",
+    executableHint: "Để trống để tự tìm", models: "Model (mỗi dòng một model)", modelsListed: "Model", modelsNone: "Chưa có model.", modelsCollapse: "Thu gọn nhóm model", modelsExpand: "Mở nhóm model", modelsOther: "Khác", modelsEmpty: "Chưa có model. Bấm “Tải danh sách model” để lấy từ nguồn.", agent: "Cho phép AI đọc/sửa file trong thư mục chat (chế độ agent)",
     agentHint: "Quyền Toàn quyền cho phép AI chạy lệnh PowerShell trong thư mục chat. Nguồn Anthropic có sẵn chế độ này.", test: "Kiểm tra kết nối", testing: "Đang kiểm tra…", loadModels: "Tải danh sách model",
     loadedModels: (n: number) => `Đã tải ${n} model.`, discover: "Tự tìm trên máy", discovering: "Đang tìm…",
     detail: (name: string) => `Xem chi tiết ${name}`, detailShort: "Xem chi tiết",

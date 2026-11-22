@@ -35,6 +35,21 @@
 .form label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-13); color: var(--muted); min-width: 0; }
 .form input, .form select, .form textarea { width: 100%; color: var(--text); font-size: var(--font-14); }
 .form textarea { min-height: 0; resize: vertical; font-family: var(--font-mono); font-size: var(--font-13); }
+.modelBlock { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; font-size: var(--font-13); color: var(--muted); }
+.modelGroupHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.modelFold { display: inline-flex; align-items: center; padding: 2px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text); cursor: pointer; }
+.modelFold:hover { background: var(--color-muted); }
+.modelChevron { flex: none; transition: transform 120ms ease; }
+.modelFold[aria-expanded="true"] .modelChevron { transform: rotate(180deg); }
+.modelBody { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.modelList[hidden] { display: none; }
+.modelGroup { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.modelGroupHead > strong { color: var(--text); font-size: var(--font-13); font-weight: 600; text-transform: capitalize; }
+.modelList { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-sm, 8px); background: var(--color-surface, transparent); }
+.modelList li { padding: 9px var(--space-3); color: var(--text); font-family: var(--font-mono); font-size: var(--font-13); overflow-wrap: anywhere; }
+.modelList li + li { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.modelList li:hover { background: var(--color-muted); }
+.modelEmpty { margin: 0; padding: var(--space-3); border: 1px dashed var(--border); border-radius: var(--radius-sm, 8px); color: var(--muted); }
 .form label.check { flex-direction: row; align-items: center; gap: var(--space-2); color: var(--text); font-size: var(--font-14); }
 .check { display: flex; flex-direction: row; align-items: center; gap: var(--space-2); flex-wrap: wrap; color: var(--text); font-size: var(--font-14); min-width: 0; }
 .check small { color: var(--muted); }

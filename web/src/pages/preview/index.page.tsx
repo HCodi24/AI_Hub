@@ -12,15 +12,24 @@ import { useDashboardPreference } from "@/components/features/chat/use-dashboard
 import { useTaskBoardPreference } from "@/components/features/chat/use-task-board-preference";
 import { SettingsDialog, isTabId } from "@/components/features/settings/settings-dialog";
 
-import { installPreviewMock } from "@/lib/preview-mock";
+import { installPreviewMock, installReadOnlyPreview } from "@/lib/preview-mock";
 
 const noop = () => {};
 // One row per state the board can show; `?c=tasks&mock=many` repeats them.
 const TASK_STATES = ["waiting", "coding", "checking", "fixing", "done", "failed", "limited", "takeover", "skipped", "stopped"];
 const SAMPLE_TASKS: TaskRow[] = TASK_STATES.map((state, i) => ({ title: `Việc mẫu ${i + 1}`, state, attempt: i % 3 + 1, check: state === "done" ? "PASS" : null }));
 const THEMES = ["light", "dark", "system"];
-// Installed when the module loads, before any child fetches. `?live=1` keeps the real server for writes too.
-if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("live") !== "1") installPreviewMock();
+const isProvidersPreview = (query: URLSearchParams) => {
+  const tab = query.get("tab");
+  return query.get("c") === "settings" && (!isTabId(tab) || tab === "providers");
+};
+
+// Install the fetch guard before any preview queries start.
+if (typeof window !== "undefined") {
+  const query = new URLSearchParams(window.location.search);
+  if (isProvidersPreview(query)) installReadOnlyPreview();
+  else if (query.get("live") !== "1") installPreviewMock();
+}
 
 /**
  * Renders one screen of the app on its own, for the preview panel: `/app/preview/?c=settings&tab=extensions`.

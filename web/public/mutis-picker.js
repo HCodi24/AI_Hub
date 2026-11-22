@@ -30,9 +30,21 @@
     };
   }
   var down = null, dragging = false, SKIP = /^(SCRIPT|STYLE|NOSCRIPT|META|LINK|HEAD|BR|TITLE)$/;
+  /** A modal <dialog> sits in the browser's top layer, above everything else, so the box must live inside it. */
+  var boxHost = null;
+  function hostFor(el) { return (el instanceof Element && el.closest("dialog[open]")) || document.documentElement; }
+  function origin(host) {
+    if (host === document.documentElement) return { left: 0, top: 0 };
+    var s = getComputedStyle(host);
+    if (s.transform === "none" && s.filter === "none" && s.perspective === "none" && !/paint|layout|strict|content/.test(s.contain)) return { left: 0, top: 0 };
+    var r = host.getBoundingClientRect();
+    return { left: r.left + host.clientLeft, top: r.top + host.clientTop };
+  }
   function frame(rect, dashed) {
+    var host = boxHost || document.documentElement, o = origin(host);
+    if (box.parentNode !== host) host.appendChild(box);
     box.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;border:2px " + (dashed ? "dashed" : "solid") +
-      " #3b82f6;background:rgba(59,130,246,.15);left:" + rect.left + "px;top:" + rect.top + "px;width:" + rect.width + "px;height:" + rect.height + "px";
+      " #3b82f6;background:rgba(59,130,246,.15);left:" + (rect.left - o.left) + "px;top:" + (rect.top - o.top) + "px;width:" + rect.width + "px;height:" + rect.height + "px";
   }
   function dragRect(event) {
     var left = Math.min(down.x, event.clientX), top = Math.min(down.y, event.clientY);
@@ -76,12 +88,12 @@
     if (down && !dragging && Math.hypot(event.clientX - down.x, event.clientY - down.y) >= 5) dragging = true;
     if (dragging) return frame(dragRect(event), true);
     var el = event.target;
-    if (el instanceof Element) frame(el.getBoundingClientRect(), false);
+    if (el instanceof Element) { boxHost = hostFor(el); frame(el.getBoundingClientRect(), false); }
   }
   function press(event) {
     if (event.button !== 0) return;
     event.preventDefault(); event.stopPropagation();
-    down = { x: event.clientX, y: event.clientY }; dragging = false;
+    down = { x: event.clientX, y: event.clientY }; dragging = false; boxHost = hostFor(event.target);
   }
   function release(event) {
     if (!down) return;
@@ -113,7 +125,7 @@
     document.removeEventListener("keydown", key, true);
     document.documentElement.style.cursor = "";
     if (box) box.remove();
-    box = null; panel = null; down = null; dragging = false;
+    box = null; panel = null; down = null; dragging = false; boxHost = null;
   }
   window.addEventListener("message", function (event) {
     if (event.source !== window.parent || !event.data) return;

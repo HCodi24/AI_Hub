@@ -20,7 +20,7 @@ export const FullConfigSchema = z.object({
   codegraph_enabled: z.boolean().default(true), claude_usage_api: z.boolean().default(true),
 }).passthrough();
 export const ConnectionTestSchema = z.object({
-  ok: z.boolean(), status: z.string(), message: z.string().default(""), detail: z.string().default(""),
+  ok: z.boolean(), status: z.string(), message: z.string().default(""), detail: z.string().default(""), plan: z.string().nullish(),
 });
 const CliInfoSchema = z.object({ installed: z.boolean(), version: z.string().nullish(), path: z.string().nullish() });
 export const CliStatusSchema = z.object({ codex_cli: CliInfoSchema, claude_cli: CliInfoSchema });

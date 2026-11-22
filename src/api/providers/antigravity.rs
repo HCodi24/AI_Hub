@@ -1,25 +1,115 @@
-//! Antigravity CLI source: it signs in through `agy` itself, so the connection test only asks `agy models`.
+//! Antigravity CLI uses the machine's sign-in. MutiS stores only its local sign-out state.
 use super::connection::{connection, ConnectionTest};
-use crate::{config::ProviderConfig, providers::cli_support};
-use std::{process::Stdio, time::Duration};
+use crate::{
+    api::{ApiError, ApiResult},
+    app::AppState,
+    config::ProviderConfig,
+    providers::{antigravity_cli::{clean_home, SIGNED_OUT_FILE}, cli_support},
+};
+use axum::{extract::{Path, State}, http::StatusCode, Json};
+use serde::Deserialize;
+use std::{io, path::Path as FsPath, process::Stdio, time::Duration};
 use tokio::time::timeout;
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Action {
+    Cli,
+    Logout,
+}
+
+pub(crate) async fn antigravity_action(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(action): Json<Action>,
+) -> ApiResult<Json<ConnectionTest>> {
+    let provider = state.config.read().await.providers.iter()
+        .find(|provider| provider.id == id && provider.kind == "antigravity_cli")
+        .cloned()
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nguồn Antigravity CLI"))?;
+    let error = |error: &dyn std::fmt::Display| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
+    let home = clean_home(&id).map_err(|err| error(&err))?;
+    let marker = home.join(SIGNED_OUT_FILE);
+    let result = match action {
+        Action::Cli => {
+            let result = probe(&provider, &home).await;
+            if result.status == "connected" {
+                match std::fs::remove_file(&marker) {
+                    Ok(()) => {},
+                    Err(err) if err.kind() == io::ErrorKind::NotFound => {},
+                    Err(err) => return Err(error(&err)),
+                }
+            }
+            result
+        }
+        Action::Logout => {
+            std::fs::write(&marker, []).map_err(|err| error(&err))?;
+            signed_out()
+        }
+    };
+    state.provider_status.lock().await.remove(&id);
+    Ok(Json(result))
+}
+
+fn signed_out() -> ConnectionTest {
+    connection(false, "not_configured", "Antigravity CLI chưa đăng nhập trong MutiS", "")
+}
 
 /// Counts the models in `agy models` stdout (one `slug<TAB>name` line each).
 fn model_count(stdout: &str) -> usize {
     stdout.lines().filter(|line| !line.trim().is_empty()).count()
 }
 
-// shortcut: "signed in" is inferred from `agy models` succeeding with a list; agy has no whoami/status command, so no email or plan is shown.
+/// The plan (`Google AI Ultra`, ...) from `agy acp`: its `session/new` answer carries `_meta.antigravity.tier`. No email is available:
+/// no agy command or ACP call prints one. Best effort; `None` when agy does not answer in time.
+async fn plan(path: &FsPath, home: &FsPath) -> Option<String> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let mut command = cli_support::command_for(path, &["acp".into()]);
+    command.env("USERPROFILE", home).env("HOME", home);
+    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
+    let mut child = command.spawn().ok()?;
+    let mut stdin = child.stdin.take()?;
+    let mut lines = BufReader::new(child.stdout.take()?).lines();
+    let folder = std::env::temp_dir();
+    let requests = [
+        serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}}),
+        serde_json::json!({"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": folder, "mcpServers": []}}),
+    ];
+    for request in requests {
+        stdin.write_all(format!("{request}\n").as_bytes()).await.ok()?;
+    }
+    let read = async {
+        while let Ok(Some(line)) = lines.next_line().await {
+            let value: serde_json::Value = serde_json::from_str(&line).ok()?;
+            if value["id"] == 2 {
+                return value["result"]["_meta"]["antigravity"]["tier"]["name"].as_str().map(str::to_owned);
+            }
+        }
+        None
+    };
+    timeout(Duration::from_secs(20), read).await.ok().flatten()
+}
+
+// shortcut: "signed in" is inferred from `agy models` succeeding with a list; agy has no whoami/status command, so no email is shown.
 pub(super) async fn test_connection(provider: &ProviderConfig) -> ConnectionTest {
+    let home = match clean_home(&provider.id) {
+        Ok(home) => home,
+        Err(err) => return connection(false, "error", "Không mở được thư mục Antigravity CLI", &err.to_string()),
+    };
+    match home.join(SIGNED_OUT_FILE).try_exists() {
+        Ok(false) => probe(provider, &home).await,
+        Ok(true) => signed_out(),
+        Err(err) => connection(false, "error", "Không đọc được trạng thái Antigravity CLI", &err.to_string()),
+    }
+}
+
+async fn probe(provider: &ProviderConfig, home: &FsPath) -> ConnectionTest {
     let Some(path) = cli_support::resolve_executable("agy", Some(&provider.executable)) else {
         return connection(false, "error", "Chưa tìm thấy Antigravity CLI (agy) trên máy", "irm https://antigravity.google/cli/install.ps1 | iex");
     };
-    let home = crate::providers::antigravity_cli::clean_home(&provider.id).ok();
     let run = |args: &[&str]| {
         let mut command = cli_support::command_for(&path, &args.iter().map(Into::into).collect::<Vec<_>>());
-        if let Some(home) = &home {
-            command.env("USERPROFILE", home).env("HOME", home);
-        }
+        command.env("USERPROFILE", home).env("HOME", home);
         command.stdin(Stdio::null()).kill_on_drop(true);
         async move { timeout(Duration::from_secs(25), command.output()).await }
     };
@@ -33,7 +123,9 @@ pub(super) async fn test_connection(provider: &ProviderConfig) -> ConnectionTest
                     Ok(Ok(out)) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim().to_owned(),
                     _ => String::new(),
                 };
-                connection(true, "connected", &format!("Đã đăng nhập Antigravity · {count} model"), &usage)
+                let mut result = connection(true, "connected", &format!("Đã đăng nhập Antigravity · {count} model"), &usage);
+                result.plan = plan(&path, home).await;
+                result
             }
             _ => connection(false, "not_configured", "Antigravity chưa đăng nhập", "Chạy `agy` trong terminal và đăng nhập"),
         },

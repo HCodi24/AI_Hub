@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Loader2, PlugZap, Search, Trash2 } from "lucide-react";
+import { ChevronDown, Loader2, PlugZap, Search, Trash2 } from "lucide-react";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
 import { Dropdown } from "@/components/select/select";
@@ -15,6 +15,18 @@ const KINDS = ["codex_cli", "claude_cli", "antigravity_cli", "openai_compat", "a
 const isCli = (kind: string) => kind === "codex_cli" || kind === "claude_cli" || kind === "antigravity_cli";
 const blank = (kind: string): ProviderInput => ({ name: "", kind, base_url: "", api_key: "", executable: "", models: [], agent_capable: false });
 type Candidate = { path: string; version: string; source: string };
+/** Groups model ids by the suffix after the last "-" (gpt-6.2-sol → sol), in order of first appearance; ids without one go last. */
+function modelGroups(models: string[]): { name: string; models: string[] }[] {
+  const groups = new Map<string, string[]>();
+  for (const model of models) {
+    const cut = model.lastIndexOf("-");
+    const name = cut > 0 && cut < model.length - 1 ? model.slice(cut + 1) : "";
+    groups.set(name, [...(groups.get(name) ?? []), model]);
+  }
+  const named = [...groups].filter(([name]) => name).map(([name, list]) => ({ name, models: list }));
+  const other = groups.get("");
+  return other ? [...named, { name: t.providers.modelsOther, models: other }] : named;
+}
 type SafeProviderInput = Omit<ProviderInput, "api_key">;
 const safeProvider = (input: ProviderInput): SafeProviderInput => ({ name: input.name, kind: input.kind, base_url: input.base_url,
   executable: input.executable, models: input.models, agent_capable: input.agent_capable });
@@ -35,7 +47,7 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
   const apiKeyRef = useRef(""); const apiKeyRevision = useRef(0); const editsRevision = useRef(0);
   const [apiKey, setApiKey] = useState("");
   const [modelsText, setModelsText] = useState(() => (provider?.models || []).join("\n"));
-  const [busy, setBusy] = useState(""); const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(""); const [note, setNote] = useState(""); const [closedGroups, setClosedGroups] = useState<string[]>([]);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null); const [confirmDelete, setConfirmDelete] = useState(false);
   const initial = safeProvider(provider ? { ...provider, api_key: "" } : blank(defaultKind));
   const autosave = useSettingsAutosave<SafeProviderInput>({ key: `ai-hub:settings:provider:${provider?.id ?? "new"}`, initial,
@@ -87,6 +99,11 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
   // Keep the saved kind selectable even when the current category does not offer it.
   const kinds = allowedKinds.includes(form.kind) ? allowedKinds : [form.kind, ...allowedKinds];
   // A web account source is mostly about its sign-in, so that section comes first there.
+  const canLoadModels = form.kind === "codex_cli" || form.kind === "openai_compat";
+  // A saved CLI source keeps its default name and kind, so those two fields are not shown.
+  const fixedCli = Boolean(provider) && isCli(form.kind);
+  // Every saved source shows its models as read-only rows; an unsaved source keeps manual entry.
+  const listedModels = Boolean(provider);
   const mode = provider?.web_login ? "web" : "machine";
   const connection = showConnections && provider && (provider.kind === "claude_cli"
     ? <ClaudeConnection key={provider.id} providerId={provider.id} mode={mode} />
@@ -96,9 +113,9 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
     if (id) setNote(t.providers.savedProvider);
   }); }}>
     {provider?.web_login && connection}
-    <label>{t.providers.name}<input required value={form.name} onChange={event => set("name", event.target.value)} /></label>
-    <label>{t.providers.kind}<Dropdown value={form.kind} disabled={Boolean(provider)} onChange={event => set("kind", event.target.value)}>
-      {kinds.map(kind => <option key={kind} value={kind}>{t.providers.kinds[kind as keyof typeof t.providers.kinds] || kind}</option>)}</Dropdown></label>
+    {!fixedCli && <label>{t.providers.name}<input required value={form.name} onChange={event => set("name", event.target.value)} /></label>}
+    {!fixedCli && <label>{t.providers.kind}<Dropdown value={form.kind} disabled={Boolean(provider)} onChange={event => set("kind", event.target.value)}>
+      {kinds.map(kind => <option key={kind} value={kind}>{t.providers.kinds[kind as keyof typeof t.providers.kinds] || kind}</option>)}</Dropdown></label>}
     {!isCli(form.kind) && <>
       <label>{t.providers.baseUrl}<input value={form.base_url} spellCheck={false} onChange={event => set("base_url", event.target.value)} /></label>
       <label>{t.providers.apiKey}<input type="password" autoComplete="off" value={apiKey}
@@ -118,10 +135,21 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
       {candidates.map(candidate => <button type="button" key={candidate.path} onClick={() => void pick(candidate)}>
         {candidate.path} · {candidate.version} · {candidate.source}</button>)}</div>
       : <p className={styles.note}>{t.providers.notFound(installHint)} <Button size="sm" onClick={() => void navigator.clipboard.writeText(installHint)}>{t.providers.copy}</Button></p>)}
-    <label>{t.providers.models}<textarea rows={4} spellCheck={false} value={modelsText} onChange={event => {
-      setModelsText(event.target.value);
-      set("models", event.target.value.split(/\r?\n/).map(model => model.trim()).filter(Boolean));
-    }} /></label>
+    {listedModels ? <div className={styles.modelBlock}>
+      <span>{t.providers.modelsListed}</span>
+      <div id="provider-models" className={styles.modelBody}>
+      {form.models.length ? modelGroups(form.models).map(group => { const open = !closedGroups.includes(group.name); const listId = `provider-models-${group.name}`;
+        return <section key={group.name} className={styles.modelGroup}>
+        <div className={styles.modelGroupHead}><strong>{group.name}</strong>
+          <button type="button" className={styles.modelFold} aria-expanded={open} aria-controls={listId} title={open ? t.providers.modelsCollapse : t.providers.modelsExpand}
+            onClick={() => setClosedGroups(current => open ? [...current, group.name] : current.filter(name => name !== group.name))}>
+            <ChevronDown size={18} aria-hidden="true" className={styles.modelChevron} /></button></div>
+        <ul id={listId} className={styles.modelList} hidden={!open}>{group.models.map(model => <li key={model}>{model}</li>)}</ul></section>; })
+        : <p className={styles.modelEmpty}>{canLoadModels ? t.providers.modelsEmpty : t.providers.modelsNone}</p>}</div></div>
+      : <label>{t.providers.models}<textarea rows={4} spellCheck={false} value={modelsText} onChange={event => {
+        setModelsText(event.target.value);
+        set("models", event.target.value.split(/\r?\n/).map(model => model.trim()).filter(Boolean));
+      }} /></label>}
     {form.kind === "openai_compat" && <label className={styles.check}><Switch checked={form.agent_capable}
       onChange={event => set("agent_capable", event.target.checked, true)} /><span>{t.providers.agent} <small>{t.providers.agentHint}</small></span></label>}
     <div className={styles.actions}>
@@ -130,7 +158,7 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
         if (provider) await autosave.exclusive(() => test(provider.id));
       })}>
         <PlugZap size={16} aria-hidden="true" />{busy === "test" ? t.providers.testing : t.providers.test}</Button>
-      {!isCli(form.kind) && <Button type="button" disabled={Boolean(busy) || !provider} onClick={() => void act("models", async () => {
+      {canLoadModels && <Button type="button" disabled={Boolean(busy) || !provider} onClick={() => void act("models", async () => {
         if (!provider) return;
         const result = await autosave.exclusive(async () => {
           const revision = editsRevision.current;

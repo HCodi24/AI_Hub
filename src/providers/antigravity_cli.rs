@@ -10,6 +10,8 @@ use tokio_util::sync::CancellationToken;
 
 pub struct AntigravityCliProvider;
 
+pub(crate) const SIGNED_OUT_FILE: &str = ".mutis-signed-out";
+
 /// Session ids saved by another source or folder must never be handed to `--conversation`.
 fn session_prefix(request: &ProviderRequest) -> String {
     let text = format!("agy:{}:{}:{}", request.provider.id, request.provider.executable, request.folder);
@@ -93,6 +95,9 @@ impl Provider for AntigravityCliProvider {
             }
         }
         let home = clean_home(&request.provider.id)?;
+        if home.join(SIGNED_OUT_FILE).try_exists()? {
+            bail!("Hãy đăng nhập lại Antigravity CLI trong MutiS");
+        }
         write_mcp_config(&home, &request.mcp)?;
         let mut message = format!("{}\n", json!({"event": "user", "message": {"content": prompt}}));
         let mut conversation = native.clone();

@@ -165,6 +165,10 @@ pub fn router(state: AppState) -> Router {
             post(crate::api::providers::test_provider),
         )
         .route(
+            "/api/providers/{id}/antigravity/action",
+            post(crate::api::providers::antigravity_action),
+        )
+        .route(
             "/api/providers/{id}/login/start",
             post(crate::api::providers::login_provider_start),
         )

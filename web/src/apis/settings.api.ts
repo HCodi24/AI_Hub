@@ -21,6 +21,9 @@ export const settingsApi = {
   },
   async deleteProvider(provider: string) { return parseResponse(FullConfigSchema, await send(`/providers/${id(provider)}`, "DELETE")); },
   async testProvider(provider: string) { return parseResponse(ConnectionTestSchema, await send(`/providers/${id(provider)}/test`, "POST")); },
+  async antigravityAction(provider: string, action: "cli" | "logout") {
+    return parseResponse(ConnectionTestSchema, await send(`/providers/${id(provider)}/antigravity/action`, "POST", action));
+  },
   async models(provider: string) { return parseResponse(ModelsSchema, await http.get(`/providers/${id(provider)}/models`)); },
   async cliStatus(signal?: AbortSignal) { return parseResponse(CliStatusSchema, await http.get("/cli-status", signal)); },
   async discoverCli(name: "codex" | "claude" | "agy") { return parseResponse(CliCandidatesSchema, await http.get(`/cli-discover/${name}`)); },
