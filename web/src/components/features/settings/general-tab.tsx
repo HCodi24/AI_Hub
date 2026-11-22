@@ -43,6 +43,8 @@ export function GeneralTab({ taskBoardEnabled, onTaskBoardEnabledChange }: { tas
     <label>{t.general.idle}<input type="number" min={0} max={1440} value={draft.idle} onChange={event => autosave.update(current => ({ ...current, idle: Number(event.target.value) }))} /></label>
     <label>{t.general.threadBudget}<input type="number" min={0} max={2000000} step={10000} value={draft.threadBudget} onChange={event => autosave.update(current => ({ ...current, threadBudget: Number(event.target.value) }))} /></label>
     <label>{t.general.approvalWait}<input type="number" min={10} max={3600} step={10} value={draft.approvalWait} onChange={event => autosave.update(current => ({ ...current, approvalWait: Number(event.target.value) }))} /></label>
+    <label className={styles.check}><Switch checked={data?.claude_usage_api ?? true}
+      onChange={event => { const on = event.target.checked; void settingsApi.saveConfig({ claude_usage_api: on }).then(apply).catch(error => notify(errorText(error, t.error))); }} /><span>{t.general.claudeUsageApi}</span></label>
     <label className={styles.check}><Switch checked={taskBoardEnabled} onChange={event => onTaskBoardEnabledChange(event.target.checked)} /><span>{t.mutis.taskBoard}</span></label>
     <fieldset className={styles.group}><legend>{t.general.memory}</legend>
       <label className={styles.check}><Switch checked={draft.memory.enabled}

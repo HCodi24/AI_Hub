@@ -11,7 +11,7 @@ export const settingsApi = {
   /** Partial update: the server keeps every field that is not sent (default_folder is optional too). */
   async saveConfig(body: { default_folder?: string; chat_idle_timeout_minutes?: number; thread_token_budget?: number; approval_wait_seconds?: number; memory?: MemoryConfig;
     planner_provider_id?: string; planner_model?: string; mcp_servers?: McpServer[]; pets?: Record<string, string>; pets_enabled?: boolean;
-    codegraph_enabled?: boolean }) {
+    codegraph_enabled?: boolean; claude_usage_api?: boolean }) {
     return parseResponse(FullConfigSchema, await send("/config", "PUT", body));
   },
   async testMcp(server: McpServer) { return parseResponse(McpToolsSchema, await send("/mcp/test", "POST", server)).tools; },

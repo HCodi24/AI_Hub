@@ -65,6 +65,10 @@ pub struct Config {
     /// Master switch for CodeGraph: before a chat's first message the app builds or syncs the index and hands the AI its context.
     #[serde(default = "pets_on")]
     pub codegraph_enabled: bool,
+    /// Claude's usage limits are also asked from Anthropic (`/api/oauth/usage`, with Claude Code's own login) so they show before the first
+    /// chat; off = only the limit events the CLI prints during a run.
+    #[serde(default = "pets_on")]
+    pub claude_usage_api: bool,
 }
 
 fn pets_on() -> bool {
@@ -177,6 +181,7 @@ impl Config {
             pets: Default::default(),
             pets_enabled: true,
             codegraph_enabled: true,
+            claude_usage_api: true,
         }
     }
 }

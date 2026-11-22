@@ -23,6 +23,8 @@ pub(crate) struct ConfigInput {
     #[serde(default)]
     codegraph_enabled: Option<bool>,
     #[serde(default)]
+    claude_usage_api: Option<bool>,
+    #[serde(default)]
     memory: Option<crate::features::memory::MemoryConfig>,
     // Optional on purpose: a partial update (e.g. the UI saving only the working folder) must NOT reset
     // settings it did not send. Only fields that are present are applied.
@@ -147,6 +149,9 @@ pub(crate) async fn put_config(
     }
     if let Some(on) = input.codegraph_enabled {
         config.codegraph_enabled = on;
+    }
+    if let Some(on) = input.claude_usage_api {
+        config.claude_usage_api = on;
     }
     if let Some(minutes) = input.chat_idle_timeout_minutes {
         config.chat_idle_timeout_minutes = minutes;
