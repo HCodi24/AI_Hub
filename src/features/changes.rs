@@ -49,6 +49,33 @@ pub async fn snapshot(folder: &Path) -> Snapshot {
     map
 }
 
+/// The git diff of the changed files, for sources that do not send their own (Claude CLI, Antigravity): the working tree against HEAD,
+/// with each new untracked file as an addition. shortcut: it also holds edits made before the run in the same files, and is cut at
+/// `MAX_DIFF` characters; keep per-run content snapshots if exact per-run diffs matter.
+pub async fn diff_of(folder: &Path, files: &[FileChange]) -> String {
+    const MAX_DIFF: usize = 200_000;
+    let untracked: std::collections::BTreeSet<String> = match git_output(folder, &["-c", "core.quotepath=off", "ls-files", "--others", "--exclude-standard"]).await {
+        Ok(out) => String::from_utf8_lossy(&out.stdout).lines().map(str::to_owned).collect(),
+        Err(_) => return String::new(),
+    };
+    let tracked: Vec<&str> = files.iter().map(|f| f.path.as_str()).filter(|p| !untracked.contains(*p)).collect();
+    let mut diff = String::new();
+    if !tracked.is_empty() {
+        let mut args = vec!["-c", "core.quotepath=off", "diff", "--no-color", "--no-renames", "HEAD", "--"];
+        args.extend(tracked);
+        if let Ok(out) = git_output(folder, &args).await {
+            diff.push_str(&String::from_utf8_lossy(&out.stdout));
+        }
+    }
+    for file in files.iter().filter(|f| untracked.contains(&f.path)) {
+        // `--no-index` exits with 1 when the files differ; only its output matters.
+        if let Ok(out) = git_output(folder, &["-c", "core.quotepath=off", "diff", "--no-color", "--no-index", "--", "/dev/null", &file.path]).await {
+            diff.push_str(&String::from_utf8_lossy(&out.stdout));
+        }
+    }
+    diff.chars().take(MAX_DIFF).collect()
+}
+
 /// Files whose counts moved between the two snapshots, with the difference.
 pub fn changes(before: &Snapshot, after: &Snapshot) -> Vec<FileChange> {
     before.keys().chain(after.keys()).collect::<std::collections::BTreeSet<_>>()
@@ -90,6 +117,27 @@ mod tests {
             vec![("deleted", "deleted"), ("edited", "modified"), ("new-empty", "added"), ("untracked", "deleted")]);
         let legacy: FileChange = serde_json::from_str(r#"{"path":"old","added":1,"removed":0}"#).unwrap();
         assert_eq!(legacy.status, "modified");
+    }
+
+    #[tokio::test]
+    async fn diff_of_covers_edited_new_and_untracked_files() {
+        let dir = std::env::temp_dir().join(format!("changes-diff-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| { std::process::Command::new("git").args(args).current_dir(&dir).output().unwrap(); };
+        git(&["init", "-q"]);
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        git(&["add", "a.txt"]);
+        git(&["-c", "user.email=a@b", "-c", "user.name=t", "commit", "-qm", "base"]);
+        std::fs::write(dir.join("a.txt"), "two\n").unwrap();
+        std::fs::write(dir.join("b.txt"), "new\n").unwrap();
+        let files = vec![
+            FileChange { path: "a.txt".into(), added: 1, removed: 1, status: "modified".into() },
+            FileChange { path: "b.txt".into(), added: 1, removed: 0, status: "added".into() },
+        ];
+        let diff = diff_of(&dir, &files).await;
+        assert!(diff.contains("-one") && diff.contains("+two"), "{diff}");
+        assert!(diff.contains("+++ b/b.txt") && diff.contains("+new"), "{diff}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -79,7 +79,7 @@ pub(crate) struct ResolvedRole {
 }
 #[derive(serde::Deserialize)]
 pub(crate) struct ResolveQuery {
-    /// The effort the user picked for MutiS: `max`/`xhigh` = all three AIs, anything else = Codex + DeepSeek only.
+    /// The effort the user picked for MutiS; every effort runs the single High level.
     effort: Option<String>,
 }
 /// One role checked against the live sources. Keys are not masked: never send this to the browser.
@@ -100,13 +100,11 @@ pub(crate) struct Lead {
 /// A High level whose lead is not set up yet follows the Max roles, as the settings screen shows.
 fn pick_lead(
     cfg: &config::MutisConfig,
-    effort: &str,
+    _effort: &str,
     configured: Option<&ProviderConfig>,
     used: ProviderConfig,
 ) -> Lead {
-    let roles = if config::MutisConfig::level_for(effort) == "max"
-        || cfg.high_roles.lead.provider_id.trim().is_empty()
-    {
+    let roles = if cfg.high_roles.lead.provider_id.trim().is_empty() {
         &cfg.roles
     } else {
         &cfg.high_roles
@@ -137,7 +135,7 @@ pub(crate) async fn resolve_mutis_roles(
     State(state): State<AppState>,
     Query(query): Query<ResolveQuery>,
 ) -> ApiResult<Json<Value>> {
-    let effort = query.effort.as_deref().unwrap_or("max");
+    let effort = query.effort.as_deref().unwrap_or("high");
     // Never send raw API keys to the browser.
     let mask = |mut provider: ProviderConfig| {
         provider.api_key = config::masked_key(&provider.api_key);
@@ -299,11 +297,13 @@ pub(crate) async fn put_mutis(
         }
     }
     let mut config = state.config.write().await;
-    config.planner_provider_id = value.roles.lead.provider_id.clone();
-    config.planner_model = value.roles.lead.model.clone();
+    // The planner and reviewer follow the lead that is in use: High's, or the old Max one while High has none.
+    let lead = if value.high_roles.lead.provider_id.trim().is_empty() { &value.roles.lead } else { &value.high_roles.lead };
+    config.planner_provider_id = lead.provider_id.clone();
+    config.planner_model = lead.model.clone();
     config.mutis = value.clone();
-    config.mutis.reviewer_provider_id = value.roles.lead.provider_id.clone();
-    config.mutis.reviewer_model = value.roles.lead.model.clone();
+    config.mutis.reviewer_provider_id = lead.provider_id.clone();
+    config.mutis.reviewer_model = lead.model.clone();
     config::save(&state.config_path, &config)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
     Ok(Json(value))
@@ -451,9 +451,10 @@ pub(crate) async fn mutis_setting_change(
     let mut config = state.config.write().await;
     let (old, new) = mutis::apply_setting_change(&mut config, &change.path, &change.value)
         .map_err(|message| ApiError::new(StatusCode::BAD_REQUEST, message))?;
-    if change.path == "mutis.roles.lead.provider_id" || change.path == "mutis.roles.lead.model" {
-        config.planner_provider_id = config.mutis.roles.lead.provider_id.clone();
-        config.planner_model = config.mutis.roles.lead.model.clone();
+    if matches!(change.path.as_str(), "mutis.roles.lead.provider_id" | "mutis.roles.lead.model" | "mutis.high_roles.lead.provider_id" | "mutis.high_roles.lead.model") {
+        let lead = if config.mutis.high_roles.lead.provider_id.trim().is_empty() { config.mutis.roles.lead.clone() } else { config.mutis.high_roles.lead.clone() };
+        config.planner_provider_id = lead.provider_id;
+        config.planner_model = lead.model;
         config.mutis.reviewer_provider_id = config.planner_provider_id.clone();
         config.mutis.reviewer_model = config.planner_model.clone();
     }
@@ -742,11 +743,11 @@ mod lead_tests {
         cfg.roles.lead = role("a", "role-model", "max");
         cfg.high_roles.lead = role("b", "high-model", "high");
         let (a, b) = (source("a", &["a-first"]), source("b", &["b-first"]));
-        // Max uses `roles`, any other effort `high_roles`.
-        let lead = pick_lead(&cfg, "max", Some(&a), a.clone());
+        // Whatever the effort, the High roles apply.
+        let lead = pick_lead(&cfg, "max", Some(&b), b.clone());
         assert_eq!(
             (lead.model.as_str(), lead.effort.as_str()),
-            ("role-model", "max")
+            ("high-model", "high")
         );
         let lead = pick_lead(&cfg, "medium", Some(&b), b.clone());
         assert_eq!(

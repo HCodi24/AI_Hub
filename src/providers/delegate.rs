@@ -249,7 +249,7 @@ pub struct DelegateProvider {
     pub model: String,
     /// Reasoning effort of the worker role; used when the worker is a CLI.
     pub effort: Effort,
-    /// The independent checker (a Codex source, its model and effort), when the option is on and configured.
+    /// The independent checker (any source, its model and effort), when the option is on and configured.
     pub checker: Option<(ProviderConfig, String, Effort)>,
     /// Shown once in the chat when the option is on but the checker cannot run (what to set in the High section).
     pub checker_note: Option<String>,
@@ -286,7 +286,7 @@ struct Live {
     checker: Option<(ProviderConfig, String, Effort)>,
     /// Key of the worker's conversation: one per chat, so every task and retry continues what the worker already read.
     worker_session: String,
-    /// The checker's own Codex thread: resumed for every check, kept in the chat record between messages.
+    /// The checker's own thread (sources that keep one): resumed for every check, kept in the chat record between messages.
     checker_session: Mutex<Option<String>>,
     /// A Codex thread runs one turn at a time: the checker checks one task after another.
     tester_busy: tokio::sync::Mutex<()>,
@@ -568,14 +568,15 @@ impl Backend for Live {
         let folder = std::path::Path::new(&self.folder);
         let custom = crate::verify::command_for(&self.mutis, folder);
         let commands = if custom.trim().is_empty() { crate::verify::detected_commands(folder).into_iter().map(|(_, command)| command).collect() } else { vec![custom] };
-        let mcp = self.mcp_for("codex_cli");
+        let kind = provider.kind.clone();
+        let mcp = self.mcp_for(&kind);
         let request = ProviderRequest {
             // The checker has the permission the user chose for the chat (Full lets it run the tests); the prompt forbids editing.
             provider, model: model.clone(), folder: self.folder.clone(), permission: self.permission, effort,
-            messages: vec![message("user", self.with_codegraph_note(mutis_checker::prompt(&task.title, &task.files, &task.acceptance, &work.summary, &work.diff, &commands), &mcp))],
+            messages: vec![message("user", self.with_codegraph_note(mutis_checker::prompt(&task.title, &task.files, &task.acceptance, &work.summary, &work.diff, &commands, self.mutis.checker_app_rules, &self.mutis.checker_rules), &mcp))],
             session_id: session, mutis: self.mutis.clone(), mcp, write_scope: Vec::new(), checker_session_id: None,
         };
-        let inner = match for_kind("codex_cli") {
+        let inner = match for_kind(&kind) {
             Ok(inner) => inner,
             Err(error) => {
                 let _ = self.events.send(checker_activity(&id, "error", task, attempt, &model, &error.to_string())).await;
@@ -604,6 +605,10 @@ impl Backend for Live {
                         // Meaningful tool activity only: the live card shows it, the chat message never receives it.
                         let _ = self.events.send(checker_activity(&id, "progress", task, attempt, &model, &progress)).await;
                     }
+                }
+                // The checker may have to ask before running a command: the question goes to the user, whose answer reaches it by id.
+                "permission_request" | "permission_denied" => {
+                    let _ = self.events.send(event).await;
                 }
                 "error" => {
                     error = event.data["text"].as_str().map(str::to_owned);
@@ -636,7 +641,9 @@ impl Backend for Live {
     async fn announce_check(&self, task: &Delegation, attempt: usize, check: &CheckResult) {
         let model = self.checker.as_ref().map_or("", |(_, model, _)| model.as_str());
         let who = Actor::Tester;
-        if self.events.send(turn("codex_cli", model, who.name())).await.is_err() {
+        let kind = self.checker.as_ref().map_or("codex_cli", |(provider, _, _)| provider.kind.as_str());
+        let name = self.actor_name(who);
+        if self.events.send(turn(kind, model, &name)).await.is_err() {
             self.cancel.cancel();
             return;
         }
@@ -645,7 +652,7 @@ impl Backend for Live {
         if let Some(id) = session {
             let _ = self.events.send(ProviderEvent { name: "checker_session", data: serde_json::json!({ "session_id": id }) }).await;
         }
-        let _ = self.events.send(ProviderEvent::text("delta", format!("**{} kiểm tra**\n\n{}\n", who.name(), check_text(task, attempt, check)))).await;
+        let _ = self.events.send(ProviderEvent::text("delta", format!("**{} kiểm tra**\n\n{}\n", name, check_text(task, attempt, check)))).await;
         let tokens = self.checker_tokens.lock().unwrap().take();
         if let Some(line) = tokens {
             let _ = self.events.send(ProviderEvent::text("log", line)).await;
@@ -682,7 +689,12 @@ impl Backend for Live {
     }
 
     fn actor_name(&self, actor: Actor) -> String {
-        if actor == Actor::Worker { self.worker_label() } else { actor.name().to_owned() }
+        match actor {
+            Actor::Worker => self.worker_label(),
+            // The checker may be any source: show its own name.
+            Actor::Tester => self.checker.as_ref().map_or_else(|| actor.name().to_owned(), |(provider, _, _)| provider.name.clone()),
+            _ => actor.name().to_owned(),
+        }
     }
 
     fn actor_model(&self, actor: Actor) -> Option<String> {
@@ -763,7 +775,8 @@ impl super::Provider for DelegateProvider {
             folder: request.folder.clone(), mutis: request.mutis.clone(),
             events: events.clone(), cancel: cancel.clone(), checker: self.checker.clone(),
             worker_session: format!("{}{}:{}:{}", super::worker_session::PREFIX, self.chat_id, self.worker.id, self.model),
-            checker_session: Mutex::new(request.checker_session_id.clone()),
+            // Only a Codex checker resumes the stored thread; another source (or a switch to one) starts afresh, each check being self-contained.
+            checker_session: Mutex::new(request.checker_session_id.clone().filter(|_| self.checker.as_ref().is_some_and(|(p, _, _)| p.kind == "codex_cli"))),
             tester_busy: Default::default(),
             checker_tokens: Mutex::new(None),
             can_edit: request.permission != Permission::Read,

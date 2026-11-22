@@ -4,6 +4,7 @@ import { ChevronRight, KeyRound, LogIn, LogOut, Plus, Terminal } from "lucide-re
 import { claudeApi, safeClaudeLoginUrl } from "@/apis/claude.api";
 import { codexApi, safeCodexLoginUrl } from "@/apis/codex.api";
 import { settingsApi } from "@/apis/settings.api";
+import { SOURCE_LOGOS } from "@/constants/source-logos";
 import { Button } from "@/components/button/button";
 import { PillTabs } from "@/components/pill-tabs/pill-tabs";
 import { Skeleton } from "@/components/skeleton/skeleton";
@@ -29,12 +30,12 @@ const groupOf = (provider: Provider): SubTab => !isCliKind(provider.kind) ? "api
 type Selection = Record<SubTab, string | null>;
 const NO_SELECTION: Selection = { cli: null, login: null, api: null };
 
-/** Brand logo from web/public/brand/<kind>.svg; the terminal icon until such a file exists. */
 function SourceLogo({ kind, size = 16 }: { kind: string; size?: number }) {
   const [missing, setMissing] = useState(false);
   if (!isCliKind(kind)) return <KeyRound size={size} />;
-  if (missing) return <Terminal size={size} />;
-  return <img className={styles.sourceLogo} src={`/app/brand/${kind}.svg`} alt="" onError={() => setMissing(true)} />;
+  const logo = SOURCE_LOGOS[kind];
+  if (missing || !logo) return <Terminal size={size} />;
+  return <img className={styles.sourceLogo} src={logo} alt="" onError={() => setMissing(true)} />;
 }
 
 /** Full-width card of sources, one row per source (same look as the skill card). */
@@ -134,7 +135,8 @@ export function ProvidersTab() {
     const data = accounts[index]?.data;
     return [provider.id, data?.connected ? data.email : null];
   }));
-  const emailOf = (provider: Provider) => emails[provider.id] || null;
+  // Antigravity reports its email with the connection test (saved when the web account signed in).
+  const emailOf = (provider: Provider) => emails[provider.id] || (provider.kind === "antigravity_cli" ? statuses[provider.id]?.email : null) || null;
   // CLI rows follow their account status directly, so a sign-in finished from the list shows without opening the source.
   const rowStatuses: Record<string, ConnectionTest | undefined> = { ...statuses };
   cliSources.forEach((provider, index) => {
@@ -193,7 +195,6 @@ export function ProvidersTab() {
     if (value === null) return <p className={styles.note}>{t.providers.selectHint}</p>;
     if (value !== "" && !current) return <p className={styles.note}>{t.providers.selectHint}</p>;
     return <ProviderForm key={`${id}:${value || "new"}`} provider={current}
-      status={current ? statuses[current.id] : undefined}
       allowedKinds={allowedKinds} defaultKind={defaultKind} showConnections={showConnections}
       onSaved={onSaved(id)} onDeleted={onDeleted(id)} onTested={onTested} />;
   }
@@ -366,7 +367,7 @@ export function ProvidersTab() {
           <p className={styles.note}>{t.providers.loginNote}</p>
           <SourceCard items={lists.login} selected={null} statuses={rowStatuses} pending={query.isPending}
             onSelect={id => select("login", id)} tagOf={planTag} emailOf={emailOf} actionOf={rowAction}>
-            {CLI_KINDS.filter(kind => !lists.login.some(provider => provider.kind === kind)).map(kind =>
+            {MACHINE_KINDS.filter(kind => !lists.login.some(provider => provider.kind === kind)).map(kind =>
               <PlaceholderRow key={kind} kind={kind} name={t.providers.account.webName(kind)} disabled={adding} onSignIn={() => void signInRow(kind)} onOpen={() => void openPlaceholder(kind, "login")} />)}
           </SourceCard>
         </div>

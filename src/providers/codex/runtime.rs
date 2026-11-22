@@ -90,7 +90,17 @@ impl Provider for CodexProvider {
                     input.push(json!({"type":"localImage","path":image}));
                 }
             }
-            let effort = match request.effort { Effort::Default => None, Effort::Low => Some("low"), Effort::Medium => Some("medium"), Effort::High => Some("high"), Effort::Xhigh => Some("xhigh"), Effort::Max => Some("max") };
+            let effort = match request.effort {
+                Effort::Default => None,
+                Effort::None => Some("none"),
+                Effort::Minimal => Some("minimal"),
+                Effort::Low => Some("low"),
+                Effort::Medium => Some("medium"),
+                Effort::High => Some("high"),
+                Effort::Xhigh => Some("xhigh"),
+                Effort::Max => Some("max"),
+                Effort::Ultra => Some("ultra"),
+            };
             let mut turn = json!({"threadId":id,"input":input});
             if let Some(effort) = effort { turn["effort"] = json!(effort); }
             client.call("turn/start", turn).await?;

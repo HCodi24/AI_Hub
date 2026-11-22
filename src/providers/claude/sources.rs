@@ -4,7 +4,15 @@ use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 
 pub fn project_context(folder: &Path, settings: &ClaudeConfig) -> Result<String> {
-    if !settings.project_skills && !settings.project_instructions {
+    collect_project_context(
+        folder,
+        if settings.project_instructions { &["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md", ".claude/rules"] } else { &[] },
+        if settings.project_skills { &[".claude/skills", ".agents/skills"] } else { &[] },
+    )
+}
+
+pub(crate) fn collect_project_context(folder: &Path, instructions: &[&str], skills: &[&str]) -> Result<String> {
+    if instructions.is_empty() && skills.is_empty() {
         return Ok(String::new());
     }
     let folder = std::fs::canonicalize(folder)?;
@@ -19,33 +27,33 @@ pub fn project_context(folder: &Path, settings: &ClaudeConfig) -> Result<String>
     dirs.reverse();
     let mut files = Vec::new();
     for dir in dirs {
-        if settings.project_instructions {
-            for name in ["CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md"] {
-                if dir.join(name).is_file() {
-                    files.push(dir.join(name));
+        for name in instructions {
+            let path = dir.join(name);
+            if name.ends_with(".md") {
+                if path.is_file() {
+                    files.push(path);
                 }
+            } else {
+                collect(&path, root, &mut files, 0, false)?;
             }
-            collect(&dir.join(".claude/rules"), root, &mut files, 0, false)?;
         }
-        if settings.project_skills {
-            for name in [".claude/skills", ".agents/skills"] {
-                collect(&dir.join(name), root, &mut files, 0, true)?;
-            }
+        for name in skills {
+            collect(&dir.join(name), root, &mut files, 0, true)?;
         }
     }
     let mut context = String::new();
     for path in files {
         let path = std::fs::canonicalize(path)?;
         if !path.starts_with(root) {
-            bail!("Nguồn Claude trỏ ra ngoài dự án");
+            bail!("Tệp ngữ cảnh trỏ ra ngoài dự án");
         }
         if std::fs::metadata(&path)?.len() > 32_000 {
-            bail!("File hướng dẫn Claude vượt 32 KB");
+            bail!("Tệp ngữ cảnh dự án vượt 32 KB");
         }
-        let text = std::fs::read_to_string(&path).context("Hướng dẫn Claude phải dùng UTF-8")?;
+        let text = std::fs::read_to_string(&path).context("Tệp ngữ cảnh dự án phải dùng UTF-8")?;
         let block = format!("\nProject source: {}\n{text}\n", path.display());
         if context.len() + block.len() > 64_000 {
-            bail!("Tổng hướng dẫn Claude vượt 64 KB");
+            bail!("Tổng ngữ cảnh dự án vượt 64 KB");
         }
         context.push_str(&block);
     }
@@ -63,10 +71,10 @@ fn collect(
         return Ok(());
     }
     if depth > 4 || files.len() >= 64 {
-        bail!("Quá nhiều nguồn Claude hoặc thư mục quá sâu");
+        bail!("Quá nhiều tệp ngữ cảnh hoặc thư mục quá sâu");
     }
     if !std::fs::canonicalize(dir)?.starts_with(root) {
-        bail!("Nguồn Claude trỏ ra ngoài dự án");
+        bail!("Thư mục ngữ cảnh trỏ ra ngoài dự án");
     }
     let mut entries = std::fs::read_dir(dir)?.collect::<std::io::Result<Vec<_>>>()?;
     entries.sort_by_key(|e| e.file_name());
@@ -81,7 +89,7 @@ fn collect(
             || (!skills && entry.path().extension().is_some_and(|e| e == "md"))
         {
             if files.len() >= 64 {
-                bail!("Quá nhiều nguồn Claude");
+                bail!("Quá nhiều tệp ngữ cảnh dự án");
             }
             files.push(entry.path());
         }

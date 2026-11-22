@@ -22,6 +22,8 @@ pub(crate) struct ConnectionTest {
     /// The account's plan, for sources that report one (Antigravity).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) plan: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) email: Option<String>,
 }
 
 pub(super) async fn test_provider_uncached(
@@ -185,5 +187,6 @@ pub(super) fn connection(ok: bool, status: &'static str, message: &str, detail: 
         message: message.into(),
         detail: detail.into(),
         plan: None,
+        email: None,
     }
 }

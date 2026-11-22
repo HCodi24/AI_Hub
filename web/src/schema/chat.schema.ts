@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { CHAT_EFFORTS } from "@/constants/chat";
 export const PermissionSchema = z.enum(["read", "write", "full"]);
-export const EffortSchema = z.enum(["default", "low", "medium", "high", "xhigh", "max"]);
+export const EffortSchema = z.enum(CHAT_EFFORTS);
 export const FileToolsSchema = z.enum(["none", "read", "write"]);
 export const FileChangeSchema = z.object({ path: z.string(), status: z.enum(["added", "modified", "deleted"]).optional(), added: z.number(), removed: z.number() });
 export const TaskRowSchema = z.object({

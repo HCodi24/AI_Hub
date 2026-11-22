@@ -61,6 +61,17 @@ pub struct MutisConfig {
     /// Off = a new plan is approved and run at once, and shown as ordinary chat messages.
     #[serde(default = "default_plan_approval")]
     pub plan_approval: bool,
+    /// The user's own rules for the lead and the checker, added after the app's. The worker's are `worker_rules`.
+    #[serde(default)]
+    pub lead_rules: String,
+    #[serde(default)]
+    pub checker_rules: String,
+    /// Off = the lead gets none of the app's general rules (CodeGraph, folder scope, preview) / the checker is not told to run the tests.
+    /// The protocols the app reads back (delegation blocks, questions, the verdict JSON, Vietnamese prose) stay on regardless.
+    #[serde(default = "default_enabled")]
+    pub lead_app_rules: bool,
+    #[serde(default = "default_enabled")]
+    pub checker_app_rules: bool,
     /// MutiS High: an independent checker reviews each DeepSeek result before the coordinator judges it.
     #[serde(default)]
     pub delegate_checker: bool,
@@ -135,6 +146,10 @@ impl Default for MutisConfig {
             auto_plan: false,
             plan_approval: false,
             delegate_checker: false,
+            lead_rules: String::new(),
+            checker_rules: String::new(),
+            lead_app_rules: true,
+            checker_app_rules: true,
             deepseek_ui: false,
             high_checker: default_high_checker(),
             routing: default_routing(),
@@ -156,11 +171,12 @@ impl MutisConfig {
     pub fn effective(&self, flag: bool) -> bool {
         self.enabled && flag
     }
-    pub fn roles_for(&self, effort: &str) -> &MutisRoles {
-        if matches!(effort, "max" | "xhigh") { &self.roles } else { &self.high_roles }
+    /// MutiS has one level, High: every effort uses `high_roles` (the old Max `roles` stay in the file only as High's fallback).
+    pub fn roles_for(&self, _effort: &str) -> &MutisRoles {
+        &self.high_roles
     }
-    pub fn level_for(effort: &str) -> &'static str {
-        if matches!(effort, "max" | "xhigh") { "max" } else { "high" }
+    pub fn level_for(_effort: &str) -> &'static str {
+        "high"
     }
 }
 fn default_deepseek_max_steps() -> u32 {
@@ -224,13 +240,12 @@ fn default_effort() -> String {
 mod level_tests {
     use super::*;
     #[test]
-    fn effort_selects_max_or_high_roles() {
+    fn every_effort_uses_the_high_roles() {
         let mut config = MutisConfig::default();
         config.roles.lead.provider_id = "max".into();
         config.high_roles.lead.provider_id = "high".into();
-        for effort in ["max", "xhigh"] { assert_eq!(config.roles_for(effort).lead.provider_id, "max"); }
-        for effort in ["default", "low", "medium", "high"] { assert_eq!(config.roles_for(effort).lead.provider_id, "high"); }
-        assert_eq!(MutisConfig::level_for("xhigh"), "max");
+        for effort in ["default", "medium", "high", "max", "xhigh"] { assert_eq!(config.roles_for(effort).lead.provider_id, "high"); }
+        assert_eq!(MutisConfig::level_for("xhigh"), "high");
         assert_eq!(MutisConfig::level_for("medium"), "high");
     }
 

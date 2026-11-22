@@ -21,7 +21,12 @@ export const chatText = {
   deleteConfirm: "Xóa cuộc trò chuyện này? Lịch sử tin nhắn sẽ bị xóa và không thể hoàn tác.",
   keepMemory: "Memory vẫn được giữ lại. Bạn có thể xóa riêng trong Bộ nhớ dự án.",
   deleteFailed: "Không thể xóa cuộc trò chuyện.",
-  limitWindowLabels: { "codex · 5h": "Giới hạn 5 giờ", "codex · 7d": "Hàng tuần" },
+  limitWindowLabels: {
+    "codex · 5h": "5h",
+    "codex · 7d": "Weekly",
+    five_hour: "5h",
+    seven_day: "Weekly",
+  },
   permissionHeading: "AI được phép thực hiện những thao tác nào?",
   permissionDescriptions: {
     read: "Chỉ đọc và phân tích nội dung, không thay đổi file.",
@@ -48,7 +53,7 @@ export const chatText = {
   sandboxNote: "Codex chưa thiết lập sandbox Windows nên chưa ghi được file. Vào Cài đặt › Nguồn AI › Codex bấm «Thiết lập sandbox».",
   approveTitle: "AI muốn chạy lệnh ghi này nhưng quyền đang là Chỉ đọc. Cho phép một lần?", approveAllow: "Cho phép lần này", approveDeny: "Từ chối",
   denied: "AI bị chặn vì quyền hiện tại của cuộc trò chuyện.", rerun: (permission: string) => `Chạy lại với quyền «${permission}»`,
-  default: "Default", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max",
+  default: "Default", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", ultra: "Ultra",
   fileTools: "Công cụ file", none: "Tắt", noCommands: "Nguồn này không chạy lệnh",
   greeting: "Bạn muốn cùng làm gì hôm nay?", intro: "Chọn Chat hoặc một thư mục dự án để bắt đầu cuộc trò chuyện.",
   placeholder: "Nhập tin nhắn…", send: "Gửi tin nhắn", stop: "Dừng", hint: "Enter để gửi · Shift + Enter để xuống dòng",

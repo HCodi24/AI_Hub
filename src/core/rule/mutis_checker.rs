@@ -8,15 +8,21 @@ pub const NOTE: &str = concat!(
 );
 
 /// The prompt of one check. The working tree may already hold later tasks' edits, so the diff is the evidence.
-pub fn prompt(title: &str, files: &[String], acceptance: &[String], summary: &str, diff: &str, commands: &[String]) -> String {
+pub fn prompt(title: &str, files: &[String], acceptance: &[String], summary: &str, diff: &str, commands: &[String], app_rules: bool, own_rules: &str) -> String {
     let criteria = if acceptance.is_empty() { "- (none given: judge by the title)".to_owned() } else { acceptance.iter().map(|c| format!("- {c}")).collect::<Vec<_>>().join("\n") };
     // The worker cannot run commands, so running the tests is this checker's job.
-    let testing = if commands.is_empty() {
+    let testing = if !app_rules {
+        String::new()
+    } else if commands.is_empty() {
         "The worker cannot run commands: you run the tests. Find the project's own test, type-check or build commands (package.json scripts, scripts/, Cargo.toml) and run the ones that cover this diff.".to_owned()
     } else {
         format!("The worker cannot run commands: you run the tests. Run the project's check command(s) from the project folder:\n{}", commands.iter().map(|c| format!("- {c}")).collect::<Vec<_>>().join("\n"))
     };
-    format!(
+    let own = if own_rules.trim().is_empty() { String::new() } else { format!("Rules from the user for this check:
+{}
+
+", own_rules.trim()) };
+    let prompt = format!(
         concat!(
             "You are an independent checker. Judge ONE finished task against its acceptance criteria, the diff below and the real test results.\n",
             "The working tree may already contain edits of later tasks: base your verdict on the diff; read files only for context. You cannot and must not edit any file: run only commands that check (tests, type checks, linters).\n",
@@ -31,7 +37,8 @@ pub fn prompt(title: &str, files: &[String], acceptance: &[String], summary: &st
         ),
         testing = testing, title = title.trim(), files = files.join(", "), criteria = criteria,
         summary = crate::core::text::truncate_chars(summary, 2000), diff = crate::core::text::truncate_chars(diff, 12000),
-    )
+    );
+    format!("{own}{prompt}")
 }
 
 #[cfg(test)]
@@ -40,21 +47,32 @@ mod tests {
 
     #[test]
     fn prompt_carries_the_task_the_criteria_and_the_diff_and_asks_for_json_only() {
-        let text = prompt(" T ", &["a.rs".into()], &["builds".into()], "done", "+line", &["npm test".into()]);
+        let text = prompt(" T ", &["a.rs".into()], &["builds".into()], "done", "+line", &["npm test".into()], true, "");
         assert!(text.contains("Task: T") && text.contains("Files: a.rs") && text.contains("- builds") && text.contains("+line"));
         assert!(text.contains("ONLY this JSON") && text.contains("\"verdict\""));
         assert!(text.contains("you run the tests") && text.contains("- npm test"));
-        assert!(prompt("T", &[], &[], "", "", &[]).contains("none given") && prompt("T", &[], &[], "", "", &[]).contains("Find the project's own"));
+        assert!(prompt("T", &[], &[], "", "", &[], true, "").contains("none given") && prompt("T", &[], &[], "", "", &[], true, "").contains("Find the project's own"));
     }
 
     #[test]
     fn prompt_asks_for_vietnamese_prose_but_keeps_the_json_contract() {
-        let text = prompt("T", &["a.rs".into()], &["builds".into()], "done", "+line", &[]);
+        let text = prompt("T", &["a.rs".into()], &["builds".into()], "done", "+line", &[], true, "");
         assert!(text.contains("Write the values of notes, problem and fix in Vietnamese"));
         assert!(text.contains("even when the task instructions are in English"));
         // The machine contract is untouched: keys, verdict tokens and severity values stay English.
         assert!(text.contains("\"verdict\":\"PASS\" or \"FAIL\"") && text.contains("\"severity\":\"high|medium|low\""));
         assert!(text.contains("Keep the JSON keys, the verdict PASS or FAIL and the severity high, medium or low exactly as shown"));
         assert!(text.contains("keep file paths, commands, model names and literal tool or error output verbatim"));
+    }
+
+    #[test]
+    fn own_rules_lead_the_prompt_and_the_app_switch_drops_the_test_instruction() {
+        let own = prompt("T", &[], &[], "", "", &[], true, " no console.log ");
+        assert!(own.starts_with("Rules from the user for this check:
+no console.log
+
+You are an independent checker"));
+        let off = prompt("T", &[], &[], "", "", &[], false, "");
+        assert!(!off.contains("you run the tests") && off.contains("Reply with ONLY this JSON"));
     }
 }

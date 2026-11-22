@@ -207,6 +207,16 @@ impl Run {
         };
         let files = crate::features::changes::changes(&files_before, &files_after);
         if !files.is_empty() {
+            // A source that sent no diff of its own still gets one, from git.
+            if record.messages.last().is_some_and(|message| message.diff.trim().is_empty()) {
+                let diff = crate::features::changes::diff_of(std::path::Path::new(&record.folder), &files).await;
+                if !diff.is_empty() {
+                    let _ = sse_sender.send(chat::sse_event("diff", &json!({ "text": diff }))).await;
+                    if let Some(message) = record.messages.last_mut() {
+                        message.diff = diff;
+                    }
+                }
+            }
             let _ = sse_sender
                 .send(chat::sse_event("files", &json!({ "files": files })))
                 .await;

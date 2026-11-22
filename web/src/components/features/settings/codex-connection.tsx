@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { codexApi, safeCodexLoginUrl } from "@/apis/codex.api";
 import { Button } from "@/components/button/button";
-import { Switch } from "@/components/button/switch";
+import { CliProjectOptions } from "./cli-project-options";
 import { settingsText as t } from "@/text/settings";
 import { AccountSummary, ReplaceConfirm } from "./account-parts";
 import styles from "./settings.module.css";
@@ -65,15 +65,13 @@ export function CodexConnection({ providerId, mode }: { providerId: string; mode
   }
 
   const url = safeCodexLoginUrl(state?.url);
-  return <section className={styles.group} aria-label="Kết nối Codex trong MutiS" aria-busy={busy}>
-    <h3>Codex trong MutiS</h3>
-    <AccountSummary account={state} />
+  return <section className={mode === "machine" ? styles.cliMachineGroup : styles.group} aria-label="Kết nối Codex trong MutiS" aria-busy={busy}>
+    {mode === "web" && <><h3>Codex trong MutiS</h3>
+      <AccountSummary account={state} /></>}
     <div className={styles.actions}>
-      {mode === "machine"
-        ? <Button disabled={busy || Boolean(state?.pending)} onClick={() => signIn("cli")}>{t.providers.account.useMachine}</Button>
-        : <Button disabled={busy || Boolean(state?.pending)} onClick={() => signIn("web")}>{state?.connected ? t.providers.account.useWeb : t.providers.account.signInWeb}</Button>}
+      {mode === "web" && <Button disabled={busy || Boolean(state?.pending)} onClick={() => signIn("web")}>{state?.connected ? t.providers.account.useWeb : t.providers.account.signInWeb}</Button>}
       {state?.pending && <Button disabled={busy} onClick={() => void act("cancel")}>Hủy đăng nhập</Button>}
-      {state?.connected && <Button disabled={busy} onClick={() => void act("logout")}>Đăng xuất khỏi MutiS</Button>}
+      {mode === "web" && state?.connected && <Button disabled={busy} onClick={() => void act("logout")}>Đăng xuất khỏi MutiS</Button>}
       {state?.connected && state.sandbox !== "ready" && state.sandbox !== "unknown" && <Button disabled={busy} onClick={() => void act("sandbox")}>Thiết lập sandbox</Button>}
     </div>
     {asking && state?.connected && <ReplaceConfirm account={state} disabled={busy}
@@ -82,10 +80,8 @@ export function CodexConnection({ providerId, mode }: { providerId: string; mode
       Codex riêng của MutiS chưa có sandbox Windows nên chưa ghi được file (chỉ đọc). Bấm «Thiết lập sandbox» rồi chọn Có ở hộp thoại quyền quản trị của Windows; việc này chỉ làm một lần.</p>}
     {(busy || !state?.connected) && <p className={styles.note} role="status">{busy ? "Đang xử lý…" : state?.message || (query.isPending ? "Đang kiểm tra Codex…" : "Chưa kiểm tra được Codex")}</p>}
     {state?.pending && url && <a href={url} target="_blank" rel="noopener noreferrer">Mở trang đăng nhập</a>}
-    <label className={styles.check}><Switch checked={state?.project_skills || false} disabled={!state || busy || state.pending}
-      onChange={event => void update("project_skills", event.target.checked)} /><span>Nạp skill của dự án</span></label>
-    <label className={styles.check}><Switch checked={state?.project_instructions || false} disabled={!state || busy || state.pending}
-      onChange={event => void update("project_instructions", event.target.checked)} /><span>Nạp hướng dẫn dự án (AGENTS.md)</span></label>
+    <CliProjectOptions state={state} instructionsFile="AGENTS.md" disabled={busy || Boolean(state?.pending)}
+      onChange={(key, checked) => void update(key, checked)} />
     <p className={styles.note}>Hai tùy chọn áp dụng cho các nguồn Codex trong MutiS. Thay đổi sẽ tạo ngữ cảnh Codex mới khi chat tiếp; lịch sử và memory của app được giữ.</p>
     {(error || query.error) && <p role="alert">{error || query.error?.message}</p>}
   </section>;

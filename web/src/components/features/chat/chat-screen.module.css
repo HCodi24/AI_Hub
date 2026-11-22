@@ -62,7 +62,10 @@
 @media (min-width: 768px) {
   .shell { --workspace-top: 48px; --workspace-radius: 12px; --preview-toggle-inset: 12px; --preview-divider-highlight: color-mix(in srgb, var(--accent) 40%, var(--border)); position: relative; padding: 0 3px 3px 0; }
   .main { margin-top: var(--workspace-top); height: calc(100% - var(--workspace-top)); border: 1px solid var(--border); border-left: 0; border-radius: 0 var(--workspace-radius) var(--workspace-radius) 0; overflow: hidden; box-shadow: var(--shadow-edge); }
-  .shell:not(:has(> [data-preview])) .main { padding-top: calc(36px + 2 * var(--preview-toggle-inset)); }
+  /* Clear the Preview toggle only where Compact also sits at the top right. */
+  @container chatframe (width < 1140px) {
+    .shell:not(:has(> [data-preview])) .compactSlot { top: calc(36px + 2 * var(--preview-toggle-inset)); }
+  }
   /* The preview panel sits flush on the right, so the chat's right corners become square. */
   .shell:has(> [data-preview]) .main { border-radius: 0; }
   .main:has(~ [data-preview][data-resizing], ~ [data-preview] > [role="separator"]:is(:hover, :focus-visible)) { border-right-color: var(--preview-divider-highlight); }

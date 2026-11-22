@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { mutisApi } from "@/apis/mutis.api";
 import { Button } from "@/components/button/button";
-import { PillTabs } from "@/components/pill-tabs/pill-tabs";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { Switch } from "@/components/button/switch";
 import { Dropdown } from "@/components/select/select";
@@ -18,8 +17,7 @@ import styles from "./settings.module.css";
 import { useSettingsAutosave } from "./use-settings-autosave";
 import { effortsFor, effortFor } from "@/constants/chat";
 const ROLES = ["lead", "big", "small"] as const;
-const PROFILES = ["high_roles", "roles"] as const;
-type Profile = (typeof PROFILES)[number];
+const PROFILES = ["high_roles"] as const;
 type BoolKey = "delegate_checker" | "deepseek_ui" | "verify_gate" | "auto_review" | "auto_fix" | "retry_api" | "codex_watchdog" | "codex_auto_resume" | "deepseek_agent" | "event_log";
 type NumKey = "fix_rounds_max" | "retry_attempts" | "retry_base_ms" | "watchdog_minutes" | "resume_max" | "deepseek_max_file_lines" | "deepseek_max_steps" | "debate_rounds";
 /** One switch with the numeric limits that only matter while it is on. */
@@ -39,18 +37,17 @@ const modelOptions = (providers: Provider[], id: string, current: string) => {
   return <>{current && !models.includes(current) && <option value={current}>{current}</option>}{!current && <option value="" />}
     {models.map(m => <option key={m} value={m}>{m}</option>)}</>;
 };
-/** The High-level independent checker: Codex sources only, because the checker keeps and resumes its own Codex thread. */
+/** The independent checker: any source, like the worker. */
 function CheckerRow({ providers, value, enabled, change }: { providers: Provider[]; value: Mutis["high_checker"]; enabled: boolean; change: (patch: Partial<Mutis["high_checker"]>, immediate?: boolean) => void }) {
   return <div className={styles.row} aria-disabled={!enabled}><strong>{t.mutis.checkerRole}</strong>
     <label><span className="sr-only">{t.mutis.provider}</span><Dropdown disabled={!enabled} value={value.provider_id} onChange={event => change({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
-      <option value="" />{providers.filter(p => p.kind === "codex_cli").map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Dropdown></label>
+      <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Dropdown></label>
     <label><span className="sr-only">{t.mutis.model}</span><Dropdown disabled={!enabled} value={value.model} onChange={event => change({ model: event.target.value }, true)}>
       {modelOptions(providers, value.provider_id, value.model)}</Dropdown></label>
-    <label><span className="sr-only">{t.mutis.effort}</span><Dropdown disabled={!enabled} value={effortFor(value.model, value.effort, "codex_cli")} onChange={event => change({ effort: event.target.value as Mutis["high_checker"]["effort"] }, true)}>
-      {effortsFor(value.model, "codex_cli").map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</Dropdown></label></div>;
+    <label><span className="sr-only">{t.mutis.effort}</span><Dropdown disabled={!enabled} value={effortFor(value.model, value.effort, providers.find(p => p.id === value.provider_id)?.kind)} onChange={event => change({ effort: event.target.value as Mutis["high_checker"]["effort"] }, true)}>
+      {effortsFor(value.model, providers.find(p => p.id === value.provider_id)?.kind).map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</Dropdown></label></div>;
 }
 export function MutisTab() {
-  const [profile, setProfile] = useState<Profile>("high_roles");
   const client = useQueryClient();
   const { query: config } = useSettingsConfig();
   const query = useQuery({ queryKey: ["mutis"], queryFn: ({ signal }) => mutisApi.get(signal) });
@@ -66,9 +63,7 @@ export function MutisTab() {
   const providers = config.data?.providers || [];
   const edit = (patch: Partial<Mutis>, immediate = false) => autosave.update(current => ({ ...current, ...patch }), immediate);
   return <form className={styles.form} onSubmit={event => { event.preventDefault(); void autosave.flush(); }}>
-    <PillTabs idPrefix="mutis" label={t.mutis.profileLabel} value={profile} onChange={setProfile}
-      tabs={PROFILES.map(id => ({ id, label: id === "high_roles" ? "High" : "Max" }))} />
-    {PROFILES.map(id => <div key={id} role="tabpanel" id={`mutis-panel-${id}`} aria-labelledby={`mutis-tab-${id}`} hidden={profile !== id}><div className={styles.form}>
+    {PROFILES.map(id => <div key={id}><div className={styles.form}>
       <div className={styles.roleTable}>
         <div className={`${styles.row} ${styles.roleHead}`} aria-hidden="true"><span /><span>{t.mutis.provider}</span><span>{t.mutis.model}</span><span>{t.mutis.effort}</span></div>
         {/* High never runs big code through its own role (the lead plans, the small role works), so that row is hidden there. */}
@@ -120,7 +115,14 @@ export function MutisTab() {
       <label>{t.mutis.debate_rounds}<input type="number" min={1} max={3} value={draft.debate_rounds} onChange={event => edit({ debate_rounds: Number(event.target.value) })} /></label>
       <label>{t.mutis.debate_judge_model}<input value={draft.debate_judge_model} placeholder={t.mutis.debateJudgeHint} onChange={event => edit({ debate_judge_model: event.target.value })} /></label>
     </div></fieldset>
-    <label>{t.mutis.worker_rules}<textarea rows={5} value={draft.worker_rules} onChange={event => edit({ worker_rules: event.target.value })} /></label>
+    <fieldset className={styles.group}><legend>{t.mutis.rulesByRole}</legend>
+      <p>{t.mutis.rulesHint}</p>
+      <label>{t.mutis.lead_rules}<textarea rows={4} value={draft.lead_rules} onChange={event => edit({ lead_rules: event.target.value })} /></label>
+      <label className={styles.check}><Switch checked={draft.lead_app_rules} onChange={event => edit({ lead_app_rules: event.target.checked }, true)} /><span>{t.mutis.lead_app_rules}</span></label>
+      <label>{t.mutis.worker_rules}<textarea rows={5} value={draft.worker_rules} onChange={event => edit({ worker_rules: event.target.value })} /></label>
+      <label>{t.mutis.checker_rules}<textarea rows={4} value={draft.checker_rules} onChange={event => edit({ checker_rules: event.target.value })} /></label>
+      <label className={styles.check}><Switch checked={draft.checker_app_rules} onChange={event => edit({ checker_app_rules: event.target.checked }, true)} /><span>{t.mutis.checker_app_rules}</span></label>
+    </fieldset>
     <div className={styles.actions}><Button type="submit" variant="primary" disabled={busy}>{t.save}</Button></div>
     <MutisDiagnosis />
     <MutisStats />

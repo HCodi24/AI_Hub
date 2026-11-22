@@ -1,4 +1,4 @@
-//! Claude Code CLI sign-in: start the CLI, hand back the sign-in link, then send it the confirmation code.
+//! Claude Code CLI and Antigravity (web account) sign-in: start the CLI, hand back the sign-in link, then send it the confirmation code.
 use super::connection::{connection, test_provider_uncached};
 use crate::{
     api::{ApiError, ApiResult},
@@ -50,11 +50,21 @@ fn extract_https_url(text: &str) -> Option<&str> {
         .unwrap_or(candidate.len());
     Some(candidate[..end].trim_end_matches(['.', ',', ';', ')', ']', '"', '\'']))
 }
-fn allowed_login_url(value: &str) -> bool {
+fn allowed_login_url(value: &str, domains: &[&str]) -> bool {
     reqwest::Url::parse(value).ok().is_some_and(|url| {
         url.scheme() == "https" && url.username().is_empty() && url.password().is_none()
-            && url.host_str().is_some_and(|host| ["claude.com", "claude.ai", "anthropic.com"].iter()
+            && url.host_str().is_some_and(|host| domains.iter()
                 .any(|domain| host == *domain || host.ends_with(&format!(".{domain}"))))
+    })
+}
+const CLAUDE_DOMAINS: &[&str] = &["claude.com", "claude.ai", "anthropic.com"];
+const GOOGLE_DOMAINS: &[&str] = &["accounts.google.com"];
+/// `Logged in as a@b.c.` (agy's last line after a web sign-in).
+fn logged_in_email(lines: &[String]) -> Option<String> {
+    lines.iter().rev().find_map(|line| {
+        let rest = line.trim().strip_prefix("Logged in as ")?;
+        let email = rest.trim_end_matches('.').trim();
+        email.contains('@').then(|| email.to_owned())
     })
 }
 fn validate_login_code(code: &str) -> Result<String, &'static str> {
@@ -80,10 +90,10 @@ async fn login_provider_config(state: &AppState, id: &str) -> ApiResult<Provider
         .find(|p| p.id == id)
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nguồn AI"))?;
-    if provider.kind != "claude_cli" {
+    if provider.kind != "claude_cli" && !(provider.kind == "antigravity_cli" && provider.web_login) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "Chỉ Claude Code CLI mới đăng nhập được",
+            "Chỉ Claude Code CLI và tài khoản Web của Antigravity mới đăng nhập được",
         ));
     }
     Ok(provider)
@@ -94,24 +104,39 @@ pub(crate) async fn login_provider_start(
     Path(id): Path<String>,
 ) -> ApiResult<Json<LoginStartResponse>> {
     let provider = login_provider_config(&state, &id).await?;
-    super::claude::ensure_login_mode(&provider, true)?;
-    super::claude::ensure_idle(&state).await?;
-    let dir = providers::claude::environment::home(&state.config_path, &provider)
-        .map_err(super::claude::error)?;
-    super::claude::invalidate(&state).await?;
-    let path = providers::cli_support::resolve_executable("claude", Some(&provider.executable))
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy Claude Code CLI"))?;
+    let agy = provider.kind == "antigravity_cli";
+    let (cli, domains) = if agy { ("agy", GOOGLE_DOMAINS) } else { ("claude", CLAUDE_DOMAINS) };
+    let dir = if agy {
+        providers::antigravity_cli::clean_home(&provider.id).map_err(super::claude::error)?
+    } else {
+        super::claude::ensure_login_mode(&provider, true)?;
+        super::claude::ensure_idle(&state).await?;
+        let dir = providers::claude::environment::home(&state.config_path, &provider)
+            .map_err(super::claude::error)?;
+        super::claude::invalidate(&state).await?;
+        dir
+    };
+    let path = providers::cli_support::resolve_executable(cli, Some(&provider.executable))
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, if agy { "Không tìm thấy Antigravity CLI (agy)" } else { "Không tìm thấy Claude Code CLI" }))?;
     if let Some(mut old) = state.claude_login.lock().await.take() {
         let _ = old.child.kill().await;
     }
-    let args = ["auth", "login", "--claudeai"].map(OsString::from);
+    let args: Vec<OsString> = if agy { ["acp", "--login"].map(OsString::from).into() } else { ["auth", "login", "--claudeai"].map(OsString::from).into() };
     let mut command = providers::cli_support::command_for(&path, &args);
-    providers::cli_support::clean_claude_environment(&mut command);
-    command.env("CLAUDE_CONFIG_DIR", &dir).current_dir(&dir);
-    #[cfg(windows)]
-    command.env("BROWSER", "cmd /c rem");
-    #[cfg(not(windows))]
-    command.env("BROWSER", "true");
+    if agy {
+        // A web account keeps its sign-in in its own home, apart from the machine's (see `cli_support::agy_environment`).
+        providers::antigravity_cli::sync_login_mode(&provider);
+        let _ = std::fs::remove_file(dir.join(providers::antigravity_cli::SIGNED_OUT_FILE));
+        providers::cli_support::agy_environment(&mut command, &dir);
+        command.current_dir(&dir);
+    } else {
+        providers::cli_support::clean_claude_environment(&mut command);
+        command.env("CLAUDE_CONFIG_DIR", &dir).current_dir(&dir);
+        #[cfg(windows)]
+        command.env("BROWSER", "cmd /c rem");
+        #[cfg(not(windows))]
+        command.env("BROWSER", "true");
+    }
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -193,11 +218,11 @@ pub(crate) async fn login_provider_start(
             "Claude CLI không trả link đăng nhập trong 20 giây",
         )
     })?;
-    if !allowed_login_url(&url) {
+    if !allowed_login_url(&url, domains) {
         let _ = session.child.start_kill();
         return Err(ApiError::new(
             StatusCode::BAD_GATEWAY,
-            "Claude CLI trả link đăng nhập không được phép",
+            "CLI trả link đăng nhập không được phép",
         ));
     }
     session.last_activity = Instant::now();
@@ -261,6 +286,7 @@ pub(crate) async fn login_provider_code(
             .output_tail
             .push(crate::core::text::truncate_chars(&line, 2_000));
     }
+    let email = logged_in_email(&session.output_tail);
     let mut lines = session.output_tail.clone();
     lines.extend(session.stderr_tail.lock().await.iter().cloned());
     let output_tail = lines
@@ -286,7 +312,13 @@ pub(crate) async fn login_provider_code(
         connection(false, "error", &message, "")
     };
     let logged_in = status.status == "connected";
-    if logged_in {
+    if logged_in && provider.kind == "antigravity_cli" {
+        if let (Some(email), Ok(home)) = (email, providers::antigravity_cli::clean_home(&provider.id)) {
+            let _ = std::fs::write(home.join(super::antigravity::EMAIL_FILE), email);
+            // The status was read before the email was saved; drop it so the next read shows the account.
+            state.provider_status.lock().await.remove(&provider.id);
+        }
+    } else if logged_in {
         if let Ok(home) = providers::claude::environment::home(&state.config_path, &provider) {
             providers::cli_support::set_auth_origin(&home, Some("web"));
         }
@@ -295,7 +327,7 @@ pub(crate) async fn login_provider_code(
         ok: exited && logged_in,
         logged_in,
         message: if logged_in {
-            "Đã đăng nhập Claude Code CLI".into()
+            if provider.kind == "antigravity_cli" { "Đã đăng nhập Antigravity".into() } else { "Đã đăng nhập Claude Code CLI".into() }
         } else {
             message.clone()
         },
@@ -321,7 +353,7 @@ pub(crate) async fn login_provider_cancel(
 
 #[cfg(test)]
 mod claude_login_tests {
-    use super::{allowed_login_url, extract_https_url, validate_login_code};
+    use super::{allowed_login_url, extract_https_url, logged_in_email, validate_login_code, CLAUDE_DOMAINS, GOOGLE_DOMAINS};
 
     #[test]
     fn extracts_login_url_from_cli_intro_and_prompt_output() {
@@ -333,13 +365,23 @@ mod claude_login_tests {
         );
         let url = extract_https_url(output).unwrap();
         assert!(url.starts_with("https://claude.com/cai/oauth/authorize?"));
-        assert!(allowed_login_url(url));
+        assert!(allowed_login_url(url, CLAUDE_DOMAINS));
+    }
+
+    #[test]
+    fn antigravity_sign_in_allows_only_google_accounts_and_reads_the_email() {
+        assert!(allowed_login_url("https://accounts.google.com/o/oauth2/auth?client_id=x", GOOGLE_DOMAINS));
+        assert!(!allowed_login_url("https://claude.com/login", GOOGLE_DOMAINS));
+        assert!(!allowed_login_url("https://accounts.google.com.evil.example/", GOOGLE_DOMAINS));
+        let lines = vec!["Then paste the code".to_owned(), "Logged in as a.b@gmail.com.".to_owned()];
+        assert_eq!(logged_in_email(&lines).as_deref(), Some("a.b@gmail.com"));
+        assert_eq!(logged_in_email(&["Logged in as nobody".to_owned()]), None);
     }
 
     #[test]
     fn allows_only_claude_and_anthropic_hosts() {
         for host in ["claude.com", "accounts.claude.ai", "platform.anthropic.com"] {
-            assert!(allowed_login_url(&format!("https://{host}/oauth")));
+            assert!(allowed_login_url(&format!("https://{host}/oauth"), CLAUDE_DOMAINS));
         }
         for url in [
             "http://claude.com/login",
@@ -347,7 +389,7 @@ mod claude_login_tests {
             "https://example.com/?next=claude.com",
             "https://claude.ai:password@evil.example/login",
         ] {
-            assert!(!allowed_login_url(url));
+            assert!(!allowed_login_url(url, CLAUDE_DOMAINS));
         }
     }
 

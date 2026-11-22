@@ -61,7 +61,12 @@ fn uses_codegraph(request: &ProviderRequest) -> bool {
 /// First user message of the conversation gets the fixed rules in front of it. Before that the app builds or syncs
 /// the project's CodeGraph index; problems go to the chat's activity log through `events`.
 async fn add_first_request_rules(request: &mut ProviderRequest, events: &mpsc::Sender<ProviderEvent>) {
-    if !uses_codegraph(request) || request.messages.iter().filter(|m| m.role == "user").count() != 1 {
+    add_first_request_rules_if(request, events, true).await;
+}
+
+/// `app_rules` off (MutiS lead switch): the first message is left as it is.
+async fn add_first_request_rules_if(request: &mut ProviderRequest, events: &mpsc::Sender<ProviderEvent>, app_rules: bool) {
+    if !app_rules || !uses_codegraph(request) || request.messages.iter().filter(|m| m.role == "user").count() != 1 {
         return;
     }
     let prepared = crate::features::extensions::prepare(std::path::Path::new(&request.folder)).await;
@@ -128,9 +133,9 @@ pub(crate) async fn chat_handler(
         ));
     }
     // A chat at the MutiS source runs on the lead role's source; only such a chat is a MutiS chat (delegation, rules, role label).
-    // `mutis_level` is the effort the user picked for MutiS (max/xhigh = three AIs, else High); `request.effort` becomes the lead's own.
+    // `mutis_level` is the effort the user picked for MutiS (always High); `request.effort` becomes the lead's own.
     let mutis_level = if request.provider_id == MUTIS_SOURCE {
-        let level = request.effort.clone().unwrap_or_else(|| "max".into());
+        let level = request.effort.clone().unwrap_or_else(|| "high".into());
         let lead = crate::api::mutis::resolve_lead(&state, &level)
             .await
             .ok_or_else(|| {
@@ -221,7 +226,7 @@ pub(crate) async fn chat_handler(
     let mutis_config = state.config.read().await.mutis.clone();
     // MutiS High + Codex: the app runs the delegated worker for Codex (see providers::delegate). Any source that is
     // active in Settings › Nguồn AI can be the worker, whatever its kind (API key or CLI).
-    let role_effort_name = mutis_level.as_deref().unwrap_or("max");
+    let role_effort_name = mutis_level.as_deref().unwrap_or("high");
     let delegate_worker = if matches!(provider_config.kind.as_str(), "codex_cli" | "claude_cli")
         && mutis_level.is_some()
         && request.plan_id.is_none()
@@ -263,14 +268,13 @@ pub(crate) async fn chat_handler(
     } else {
         None
     };
-    // The optional independent checker: the High section's "checker" role, which must be a Codex source (it keeps and resumes its own thread).
+    // The optional independent checker: the High section's "checker" role, any source (a thread is resumed only where the source keeps one).
     let (delegate_checker, checker_note) = if delegate_worker.is_some()
         && mutis_config.delegate_checker
     {
         let role = &mutis_config.high_checker;
         let config = state.config.read().await;
         let found = crate::config::resolve_provider_id(&config.providers, &role.provider_id)
-            .filter(|p| p.kind == "codex_cli")
             .and_then(|p| {
                 let model = if role.model.trim().is_empty() {
                     p.models.first().cloned().unwrap_or_default()
@@ -285,7 +289,7 @@ pub(crate) async fn chat_handler(
                     )
                 })
             });
-        let note = found.is_none().then(|| "Người kiểm tra chưa chạy: vào Cài đặt › MutiS › Mức High, mục «Người kiểm tra», chọn nguồn Codex CLI và model.".to_owned());
+        let note = found.is_none().then(|| "Người kiểm tra chưa chạy: vào Cài đặt › MutiS › Mức High, mục «Người kiểm tra», chọn nguồn và model.".to_owned());
         (found, note)
     } else {
         (None, None)
@@ -544,19 +548,30 @@ pub(crate) async fn chat_handler(
     }
     // Plan task workers cannot stop to ask the user, so they skip the first-request rules.
     if request.plan_id.is_none() && !plain_chat && state.config.read().await.codegraph_enabled {
-        add_first_request_rules(&mut provider_request, &provider_sender).await;
+        add_first_request_rules_if(&mut provider_request, &provider_sender, mutis_level.is_none() || mutis_config.lead_app_rules).await;
         attach_codegraph(&mut provider_request);
+    }
+    // The user's own rules for the MutiS lead go in front of the first message, after the app's.
+    if mutis_level.is_some() && request.plan_id.is_none() && !plain_chat && !mutis_config.lead_rules.trim().is_empty()
+        && provider_request.messages.iter().filter(|m| m.role == "user").count() == 1
+    {
+        if let Some(message) = provider_request.messages.iter_mut().find(|m| m.role == "user") {
+            message.content = format!("Rules from the user:
+{}
+
+{}", mutis_config.lead_rules.trim(), message.content);
+        }
     }
     let event_provider_id = provider_request.provider.id.clone();
     let provider_name = provider_request.provider.name.clone();
     let provider_kind = avatar_source(&provider_request.provider, &provider_request.model);
     let status_model = provider_request.model.clone();
     let status_effort = format!("{:?}", provider_request.effort).to_lowercase();
-    // A plan task has no MutiS level of its own: its effort picks the roles, as before.
+    // A plan task has no MutiS level of its own; it also runs the High roles.
     let role_effort = mutis_level
         .as_deref()
         .or(request.effort.as_deref())
-        .unwrap_or("max");
+        .unwrap_or("high");
     let status_role = (mutis_level.is_some() || request.plan_id.is_some())
         .then(|| {
             ["lead", "big", "small"]

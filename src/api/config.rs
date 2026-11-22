@@ -8,6 +8,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ConfigInput {
+    antigravity: Option<AntigravityInput>,
     #[serde(default)]
     default_folder: Option<String>,
     #[serde(default)]
@@ -38,6 +39,12 @@ pub(crate) struct ConfigInput {
     thread_token_budget: Option<u64>,
     #[serde(default)]
     approval_wait_seconds: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AntigravityInput {
+    project_skills: Option<bool>,
+    project_instructions: Option<bool>,
 }
 
 pub(crate) async fn get_config(State(state): State<AppState>) -> Json<Config> {
@@ -127,7 +134,16 @@ pub(crate) async fn put_config(
             .validate()
             .map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e.to_string()))?;
     }
-    let mut config = state.config.write().await;
+    let mut stored = state.config.write().await;
+    let mut config = stored.clone();
+    if let Some(options) = input.antigravity {
+        if let Some(enabled) = options.project_skills {
+            config.antigravity.project_skills = enabled;
+        }
+        if let Some(enabled) = options.project_instructions {
+            config.antigravity.project_instructions = enabled;
+        }
+    }
     if let Some(memory) = input.memory {
         config.memory = memory;
     }
@@ -165,16 +181,23 @@ pub(crate) async fn put_config(
     if let Some(provider_id) = input.planner_provider_id {
         config.planner_provider_id = provider_id;
         config.mutis.roles.lead.provider_id = config.planner_provider_id.clone();
+        if !config.mutis.high_roles.lead.provider_id.trim().is_empty() {
+            config.mutis.high_roles.lead.provider_id = config.planner_provider_id.clone();
+        }
         config.mutis.reviewer_provider_id = config.planner_provider_id.clone();
     }
     if let Some(model) = input.planner_model {
         config.planner_model = model;
         config.mutis.roles.lead.model = config.planner_model.clone();
+        if !config.mutis.high_roles.lead.provider_id.trim().is_empty() {
+            config.mutis.high_roles.lead.model = config.planner_model.clone();
+        }
         config.mutis.reviewer_model = config.planner_model.clone();
     }
     config::save(&state.config_path, &config)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))?;
     let mut response = config.clone();
+    *stored = config;
     for provider in &mut response.providers {
         provider.api_key = config::masked_key(&provider.api_key);
     }

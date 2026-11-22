@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -14,6 +15,9 @@ pub struct ProviderConfig {
     pub executable: String,
     #[serde(default)]
     pub models: Vec<String>,
+    /// Effort metadata reported by Codex App Server, keyed by model id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_efforts: BTreeMap<String, ModelEffort>,
     /// OpenAI-compatible sources only: the AI may use file tools (list/read/edit/write, never commands) inside
     /// the chat folder through this source ("agent mode"). Replaces the old separate `deepseek_agent` source.
     #[serde(default)]
@@ -22,6 +26,13 @@ pub struct ProviderConfig {
     /// the account of the CLI installed on this machine.
     #[serde(default)]
     pub web_login: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ModelEffort {
+    pub supported: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
 }
 
 /// Id of the removed separate "DeepSeek làm việc" source; old chats/plans/roles may still mention it.

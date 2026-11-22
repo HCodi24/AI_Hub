@@ -14,7 +14,6 @@ import { FileChanges } from "./file-changes";
 import { TaskBoardView } from "./task-board";
 import { chatPetState } from "@/lib/chat-pet-state";
 import { parseChatQuestions } from "@/lib/chat-questions";
-import { modelLabel } from "@/components/features/composer/model-menu";
 import styles from "./chat-message.module.css";
 /** MutiS High: the app reads Codex's `mutis-delegate` blocks itself and shows the worker's result, so the raw JSON stays hidden. */
 const hideDelegation = (text: string) => text.replace(/```mutis-delegate[\s\S]*?(?:```|$)/g, "").trim();
@@ -42,7 +41,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
   const tokenLine = message.provider === "deepseek" ? undefined : message.logs.filter((line) => /token|usage|chi phí/i.test(line)).at(-1);
   return <article className={styles.message} data-user={user} data-streaming={streaming}>
     <div className={styles.identity}>{user ? <UserRound size={18} aria-hidden="true" /> : <PetAvatar key={`${message.provider}:${model}`} provider={message.provider} model={model} state={petState} />}
-      <strong>{user ? chatText.you : model ? `${sourceLabel} · ${modelLabel(model)}` : sourceLabel}</strong>
+      <strong>{user ? chatText.you : model ? `${sourceLabel} · ${model}` : sourceLabel}</strong>
       {!user && <span className={styles.petStatus} data-state={petState} role="status">{petState !== "idle" && <>· {chatText.petStatus[petState]}</>}</span>}
     </div>
     {message.debate_id ? <DebateCard id={message.debate_id} /> : <>

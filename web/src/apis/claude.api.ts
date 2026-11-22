@@ -18,6 +18,6 @@ export function safeClaudeLoginUrl(value: string): string | null {
   try {
     const url = new URL(value);
     return url.protocol === "https:" && !url.username && !url.password
-      && ["claude.ai", "claude.com", "anthropic.com"].some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`)) ? url.href : null;
+      && ["claude.ai", "claude.com", "anthropic.com", "accounts.google.com"].some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`)) ? url.href : null;
   } catch { return null; }
 }

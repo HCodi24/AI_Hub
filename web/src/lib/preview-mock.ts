@@ -9,7 +9,9 @@ export function installReadOnlyPreview() {
     const url = new URL(request?.url ?? String(input), window.location.origin);
     const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
     // Provider status uses POST to run the connection probe. Account actions have separate routes.
-    if (!url.pathname.startsWith("/api/") || method === "GET" || method === "HEAD"
+    // The model catalog endpoint also writes the fetched catalog into the source configuration.
+    const readsConfig = (method === "GET" || method === "HEAD") && !/^\/api\/providers\/[^/]+\/models\/?$/.test(url.pathname);
+    if (!url.pathname.startsWith("/api/") || readsConfig
       || (method === "POST" && /^\/api\/providers\/[^/]+\/test\/?$/.test(url.pathname))) {
       return real(input, init);
     }

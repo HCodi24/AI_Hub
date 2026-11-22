@@ -13,8 +13,11 @@ pub struct AntigravityCliProvider;
 pub(crate) const SIGNED_OUT_FILE: &str = ".mutis-signed-out";
 
 /// Session ids saved by another source or folder must never be handed to `--conversation`.
-fn session_prefix(request: &ProviderRequest) -> String {
-    let text = format!("agy:{}:{}:{}", request.provider.id, request.provider.executable, request.folder);
+pub(crate) fn session_prefix(provider: &crate::config::ProviderConfig, folder: &str, settings: &crate::config::AntigravityConfig) -> String {
+    let mut text = format!("agy:{}:{}:{}", provider.id, provider.executable, folder);
+    if settings.project_skills || settings.project_instructions {
+        text.push_str(&format!(":project-context:{}:{}", settings.project_skills, settings.project_instructions));
+    }
     let hash = ring::digest::digest(&ring::digest::SHA256, text.as_bytes());
     let key = hash.as_ref()[..8].iter().map(|b| format!("{b:02x}")).collect::<String>();
     format!("mutis-agy-{key}:")
@@ -22,6 +25,15 @@ fn session_prefix(request: &ProviderRequest) -> String {
 
 /// Clean per-source home (`<data>/antigravity/<id>`): agy keeps its chats, plugins, settings and MCP list under `~/.gemini`,
 /// so pointing USERPROFILE/HOME here keeps them apart from the user's own agy. The login lives in the OS keyring and still works.
+/// Keeps the home's login mode in step with the source: a web source marks it "web" (see `cli_support::agy_environment`).
+pub fn sync_login_mode(provider: &crate::config::ProviderConfig) {
+    if provider.kind == "antigravity_cli" {
+        if let Ok(home) = clean_home(&provider.id) {
+            cli_support::set_auth_origin(&home, provider.web_login.then_some("web"));
+        }
+    }
+}
+
 pub fn clean_home(provider_id: &str) -> Result<std::path::PathBuf> {
     let id: String = provider_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
     let dir = crate::core::paths::data_dir(&crate::core::config::config_file_path()?)?.join("antigravity").join(id);
@@ -68,7 +80,9 @@ impl Provider for AntigravityCliProvider {
         if !request.model.is_empty() && !cli_support::valid_model(&request.model) {
             bail!("Tên model chỉ được chứa chữ, số, ., _, :, / và -");
         }
-        let prefix = session_prefix(&request);
+        let config: crate::config::Config = serde_json::from_slice(&std::fs::read(crate::config::config_file_path()?)?)?;
+        let settings = &config.antigravity;
+        let prefix = session_prefix(&request.provider, &request.folder, settings);
         let native = request.session_id.as_deref().and_then(|id| id.strip_prefix(&prefix)).map(str::to_owned);
         // `--print=` leaves the prompt empty so it arrives on stdin as a stream-json message (no command-line length limit).
         let mut args: Vec<OsString> = ["--print=", "--input-format", "stream-json", "--output-format", "stream-json", "--mode", mode(request.permission)]
@@ -83,6 +97,16 @@ impl Provider for AntigravityCliProvider {
             }
         }
         let mut prompt = cli_support::compose_prompt_for(&request.messages, native.is_some(), "antigravity_cli");
+        if native.is_none() {
+            let context = super::claude::sources::collect_project_context(
+                std::path::Path::new(&request.folder),
+                if settings.project_instructions { &["AGENTS.md", "GEMINI.md", ".agents/AGENTS.md", ".agents/GEMINI.md", ".agents/rules"] } else { &[] },
+                if settings.project_skills { &[".agents/skills"] } else { &[] },
+            )?;
+            if !context.is_empty() {
+                prompt = format!("{context}\n\n{prompt}");
+            }
+        }
         if let Some(directory) = super::latest_chat_attachment_dir(&request.messages) {
             let paths = super::latest_image_paths(&request.messages, &directory)?;
             args.extend([OsString::from("--add-dir"), directory.as_os_str().to_owned()]);
@@ -99,6 +123,18 @@ impl Provider for AntigravityCliProvider {
             bail!("Hãy đăng nhập lại Antigravity CLI trong MutiS");
         }
         write_mcp_config(&home, &request.mcp)?;
+        // Past the token budget the conversation is compacted in place (`/compact`), as Codex and Claude threads are.
+        if let Some(id) = native.as_deref() {
+            let budget = crate::config::config_file_path().map_or(0, |path| super::codex::compact::thread_token_budget(&path));
+            if let Some(size) = super::codex::compact::needs_compaction(id, budget) {
+                let _ = events.send(ProviderEvent::text("log", format!("Luồng Antigravity đã thêm {size} token; đang nén ngữ cảnh."))).await;
+                let note = match compact_session(&request.provider, &home, &request.folder, id, &cancel).await {
+                    Ok(()) => "Đã nén ngữ cảnh luồng Antigravity.".to_owned(),
+                    Err(error) => format!("Không nén được luồng Antigravity, dùng tiếp như cũ: {error}"),
+                };
+                let _ = events.send(ProviderEvent::text("log", note)).await;
+            }
+        }
         let mut message = format!("{}\n", json!({"event": "user", "message": {"content": prompt}}));
         let mut conversation = native.clone();
         // agy cannot be asked in the middle of a turn (headless, it auto-denies): a denied command is put to the user, then the turn
@@ -142,6 +178,7 @@ impl Provider for AntigravityCliProvider {
             .await;
             let (result_seen, denied, seen_conversation) = {
                 let parser = parser.lock().expect("Antigravity parser mutex poisoned");
+                if let (Some(id), Some(input)) = (parser.conversation.as_deref(), parser.input_tokens) { note_input(id, input); }
                 (parser.result_seen, parser.denied.clone(), parser.conversation.clone())
             };
             if cancel.is_cancelled() || result.is_err() || denied.is_empty() || round == 2 {
@@ -184,6 +221,59 @@ fn tool_target(step: &Value) -> Option<(String, String)> {
     Some((format!("mcp({server}/{tool})"), format!("MCP {server}: {tool}")))
 }
 
+/// agy's `input_tokens` only ever grows (it does not drop after a compaction), so the size the budget is checked against is the growth since
+/// the last compaction: `(raw input, raw input right after the last compaction)` per conversation, kept while the app runs.
+fn sizes() -> &'static std::sync::Mutex<std::collections::HashMap<String, (u64, u64)>> {
+    static SIZES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (u64, u64)>>> = std::sync::OnceLock::new();
+    SIZES.get_or_init(Default::default)
+}
+
+fn note_input(conversation: &str, input: u64) {
+    let mut sizes = sizes().lock().unwrap_or_else(|e| e.into_inner());
+    let base = sizes.get(conversation).map_or(0, |(_, base)| *base);
+    sizes.insert(conversation.to_owned(), (input, base));
+    super::codex::compact::note_size(conversation, input.saturating_sub(base));
+}
+
+/// Compacts a saved conversation with agy's own `/compact` (same conversation id afterwards). Used before a turn past the token budget
+/// and by the "Nén ngữ cảnh" button.
+pub(crate) async fn compact_session(provider: &crate::config::ProviderConfig, home: &std::path::Path, folder: &str, conversation: &str, cancel: &CancellationToken) -> Result<()> {
+    if !cli_support::safe_session_id(conversation) {
+        bail!("Antigravity conversation id không hợp lệ");
+    }
+    let outcome = std::sync::Arc::new(std::sync::Mutex::new(None::<u64>));
+    let seen = outcome.clone();
+    let (sink, mut drained) = mpsc::channel(64);
+    tokio::spawn(async move { while drained.recv().await.is_some() {} });
+    cli_support::run_jsonl(
+        cli_support::JsonlCommand {
+            config_dir: Some(home.to_owned()),
+            cli_name: "Antigravity CLI",
+            executable_name: "agy",
+            missing_message: "Chưa cài Antigravity CLI: irm https://antigravity.google/cli/install.ps1 | iex",
+            configured_executable: provider.executable.clone(),
+            folder,
+            args: ["--print=/compact", "--conversation", conversation, "--output-format", "json"].map(OsString::from).into(),
+            prompt: String::new(),
+            watchdog_minutes: None,
+            interact: None,
+        },
+        sink,
+        cancel.clone(),
+        move |line| {
+            if let Ok(value) = serde_json::from_str::<Value>(line) {
+                if value["status"] == "SUCCESS" { *seen.lock().unwrap_or_else(|e| e.into_inner()) = Some(value["usage"]["input_tokens"].as_u64().unwrap_or(0)); }
+            }
+            Vec::new()
+        },
+    )
+    .await?;
+    let Some(input) = *outcome.lock().unwrap_or_else(|e| e.into_inner()) else { bail!("Antigravity không báo nén thành công") };
+    sizes().lock().unwrap_or_else(|e| e.into_inner()).insert(conversation.to_owned(), (input, input));
+    super::codex::compact::forget(conversation);
+    Ok(())
+}
+
 #[derive(Default)]
 struct Parser {
     permission: Permission,
@@ -196,6 +286,8 @@ struct Parser {
     started: Vec<(String, String)>,
     /// A file write was refused by the Read rule.
     write_blocked: bool,
+    /// `usage.input_tokens` of the result: grows with the conversation.
+    input_tokens: Option<u64>,
     /// Step index of the last text, so text from the next step starts a new paragraph.
     last_text_step: Option<u64>,
 }
@@ -274,6 +366,7 @@ impl Parser {
             events.push(ProviderEvent { name: "permission_denied", data: json!({ "need": need }) });
         }
         let usage = &result["usage"];
+        self.input_tokens = usage["input_tokens"].as_u64();
         let normalized = json!({
             "input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"],
             "cached_input_tokens": usage["cache_read_tokens"], "thinking_tokens": usage["thinking_tokens"],
@@ -400,6 +493,22 @@ mod tests {
         parser.parse(r#"{"event":"step_update","step_update":{"step_type":"tool","state":"ERROR","tool_info":{"parameters":{"Path":"C:/a.txt"},"error":{"message":"permission check failed for write_file"}}}}"#);
         let events = parser.parse(r#"{"event":"result","result":{"status":"SUCCESS","response":"no"}}"#);
         assert!(events.iter().any(|e| e.name == "permission_denied" && e.data["need"] == "write"));
+    }
+
+    #[test]
+    fn the_budget_counts_growth_since_the_last_compaction() {
+        let id = "test-conversation-size";
+        note_input(id, 100_000);
+        assert_eq!(super::super::codex::compact::needs_compaction(id, 150_000), None);
+        note_input(id, 200_000);
+        assert_eq!(super::super::codex::compact::needs_compaction(id, 150_000), Some(200_000));
+        // After a compaction the running input stays high, but only the growth after it counts.
+        sizes().lock().unwrap().insert(id.to_owned(), (210_000, 210_000));
+        super::super::codex::compact::forget(id);
+        note_input(id, 240_000);
+        assert_eq!(super::super::codex::compact::needs_compaction(id, 150_000), None);
+        assert_eq!(super::super::codex::compact::needs_compaction(id, 20_000), Some(30_000));
+        super::super::codex::compact::forget(id);
     }
 
     #[test]

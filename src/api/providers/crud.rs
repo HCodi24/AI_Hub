@@ -62,7 +62,9 @@ pub(crate) async fn create_provider(
         agent_capable: kind_is_openai && input.agent_capable.unwrap_or(false),
         web_login: kind_is_cli && input.web_login.unwrap_or(false),
         kind: input.kind,
+        ..Default::default()
     };
+    crate::providers::antigravity_cli::sync_login_mode(&provider);
     config.providers.push(provider);
     persist_config(&state, &config)?;
     Ok(Json(masked_config(&config)))
@@ -96,17 +98,29 @@ pub(crate) async fn update_provider(
     let old_web_login = config.providers[index].web_login;
     let kind_is_openai = input.kind == "openai_compat";
     let kind_is_cli = input.kind.ends_with("_cli");
+    let executable = input.executable.trim().to_owned();
+    let models = clean_models(input.models);
+    let web_login = kind_is_cli && input.web_login.unwrap_or(old_web_login);
+    let old = &config.providers[index];
+    let model_efforts = if old.kind == input.kind && old.executable == executable && old.web_login == web_login {
+        old.model_efforts.iter().filter(|(id, _)| models.contains(id))
+            .map(|(id, effort)| (id.clone(), effort.clone())).collect()
+    } else {
+        Default::default()
+    };
     config.providers[index] = ProviderConfig {
         id,
         name: input.name.trim().to_owned(),
         base_url: input.base_url.trim().trim_end_matches('/').to_owned(),
         api_key,
-        executable: input.executable.trim().to_owned(),
-        models: clean_models(input.models),
+        executable,
+        models,
+        model_efforts,
         agent_capable: kind_is_openai && input.agent_capable.unwrap_or(old_agent_capable),
-        web_login: kind_is_cli && input.web_login.unwrap_or(old_web_login),
+        web_login,
         kind: input.kind,
     };
+    crate::providers::antigravity_cli::sync_login_mode(&config.providers[index]);
     persist_config(&state, &config)?;
     Ok(Json(masked_config(&config)))
 }
@@ -115,6 +129,12 @@ pub(crate) async fn remove_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Config>> {
+    if matches!(id.as_str(), "codex-cli" | "claude-cli" | "antigravity-cli") {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "Không thể xoá nguồn CLI mặc định",
+        ));
+    }
     let mut config = state.config.write().await;
     let previous_len = config.providers.len();
     config.providers.retain(|provider| provider.id != id);

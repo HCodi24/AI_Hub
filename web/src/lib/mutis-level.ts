@@ -1,7 +1,7 @@
 import type { Mutis } from "@/schema/mutis.schema";
 
-export function levelFor(effort: string): "high" | "max" { return effort === "max" || effort === "xhigh" ? "max" : "high"; }
-export function rolesFor(mutis: Mutis | undefined, effort: string): Mutis["roles"] | undefined {
+/** MutiS has one level, High: every effort uses `high_roles` (the old `roles` only while High has no lead of its own). */
+export function rolesFor(mutis: Mutis | undefined, _effort?: string): Mutis["roles"] | undefined {
   if (!mutis) return undefined;
-  return levelFor(effort) === "max" || !mutis.high_roles?.lead.provider_id ? mutis.roles : mutis.high_roles;
+  return mutis.high_roles?.lead.provider_id ? mutis.high_roles : mutis.roles;
 }

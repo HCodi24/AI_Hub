@@ -54,9 +54,9 @@ pub(crate) async fn compact_chat(
         .get(&chat_id)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể đọc lịch sử chat"))?
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy chat"))?;
-    let (providers, settings) = {
+    let (providers, settings, antigravity) = {
         let config = state.config.read().await;
-        (config.providers.clone(), config.codex.clone())
+        (config.providers.clone(), config.codex.clone(), config.antigravity.clone())
     };
     let mut threads: Vec<&String> = record.session_id.iter().chain(&record.checker_session_id).chain(record.worker_sessions.values()).collect();
     threads.sort();
@@ -86,6 +86,17 @@ pub(crate) async fn compact_chat(
         let prefix = crate::providers::claude::environment::session_prefix(&settings, provider, &record.folder);
         for id in threads.iter().filter_map(|id| id.strip_prefix(prefix.as_str())) {
             match crate::providers::claude_cli::compact_session(provider, &home, &record.folder, id, "", &tokio_util::sync::CancellationToken::new()).await {
+                Ok(()) => compacted += 1,
+                Err(error) => failed.push(error.to_string()),
+            }
+        }
+    }
+    // Antigravity conversations: agy's own `/compact`.
+    for provider in providers.iter().filter(|p| p.kind == "antigravity_cli") {
+        let prefix = crate::providers::antigravity_cli::session_prefix(provider, &record.folder, &antigravity);
+        let Ok(home) = crate::providers::antigravity_cli::clean_home(&provider.id) else { continue };
+        for id in threads.iter().filter_map(|id| id.strip_prefix(prefix.as_str())) {
+            match crate::providers::antigravity_cli::compact_session(provider, &home, &record.folder, id, &tokio_util::sync::CancellationToken::new()).await {
                 Ok(()) => compacted += 1,
                 Err(error) => failed.push(error.to_string()),
             }

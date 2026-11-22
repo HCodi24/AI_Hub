@@ -3,14 +3,9 @@ import { Check, ChevronRight } from "lucide-react";
 import { chatText } from "@/text/chat";
 import styles from "./model-menu.module.css";
 
-const MODEL_LABELS: Record<string, string> = {
-  "gpt-6-luna": "GPT-6 Luna", "gpt-6.1-sol": "GPT-6.1 Sol", "gpt-6.2-sol": "GPT-6.2 Sol", "gpt-6.1-terra": "GPT-6.1 Terra",
-  opus: "Claude Opus", sonnet: "Claude Sonnet", haiku: "Claude Haiku",
-  "claude-fable-5-2": "Claude Fable 5.2", "claude-opus-5-5": "Claude Opus 5.5",
-  "claude-sonnet-5-5": "Claude Sonnet 5.5", "claude-haiku-5-5": "Claude Haiku 5.5",
-};
-
-export function modelLabel(model: string) { return MODEL_LABELS[model] || model; }
+function formatModelLabel(label: string) {
+  return label.replace(/\bgpt\b/gi, "GPT").replace(/\b[a-z]/g, letter => letter.toUpperCase());
+}
 
 type Props = {
   models: string[]; value: string; label: string; disabled: boolean;
@@ -24,7 +19,6 @@ export function ModelMenu({ models, value, label, disabled, open, setOpen, ancho
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();
   const [position, setPosition] = useState<CSSProperties>({});
-  const items = [...new Set([value, ...models].filter(Boolean))];
   useLayoutEffect(() => {
     if (!open) return;
     function place() {
@@ -54,7 +48,7 @@ export function ModelMenu({ models, value, label, disabled, open, setOpen, ancho
   return <div ref={root}>
     <button ref={trigger} type="button" className={styles.trigger} disabled={disabled} aria-haspopup="menu"
       aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}>
-      <span>{label}</span><ChevronRight size={14} aria-hidden="true" />
+      <span>{formatModelLabel(label)}</span><ChevronRight size={14} aria-hidden="true" />
     </button>
     {open && <div ref={menu} id={id} className={styles.menu} style={position} role="menu" aria-label={chatText.selectModel}
       onKeyDown={event => {
@@ -69,11 +63,11 @@ export function ModelMenu({ models, value, label, disabled, open, setOpen, ancho
         buttons[next]?.focus();
       }}>
       <div className={styles.heading}>{chatText.selectModel}</div>
-      {items.map(model => <button key={model} type="button" role="menuitemradio" aria-checked={model === value} disabled={disabled}
+      {models.map(model => <button key={model} type="button" role="menuitemradio" aria-checked={model === value} disabled={disabled}
         onClick={() => { onPick(model); close(); }}>
-        <span>{modelLabel(model)}</span>{model === value && <Check size={18} aria-hidden="true" />}
+        <span>{formatModelLabel(model)}</span>{model === value && <Check size={18} aria-hidden="true" />}
       </button>)}
-      {!items.length && <div className={styles.heading}>{chatText.noModels}</div>}
+      {!models.length && <div className={styles.heading}>{chatText.noModels}</div>}
     </div>}
   </div>;
 }

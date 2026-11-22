@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Loader2, PlugZap, Search, Trash2 } from "lucide-react";
 import { settingsApi } from "@/apis/settings.api";
 import { Button } from "@/components/button/button";
 import { Dropdown } from "@/components/select/select";
 import { Switch } from "@/components/button/switch";
+import { isModelVisible, useModelVisibility } from "@/lib/model-visibility";
+import { antigravityModel } from "@/lib/antigravity-models";
 import type { ConnectionTest, FullConfig, Provider, ProviderInput } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
+import { AntigravityConnection, AntigravityProjectOptions } from "./antigravity-connection";
 import { ClaudeConnection } from "./claude-connection";
 import { CodexConnection } from "./codex-connection";
 import { errorText } from "./use-settings";
@@ -15,12 +19,21 @@ const KINDS = ["codex_cli", "claude_cli", "antigravity_cli", "openai_compat", "a
 const isCli = (kind: string) => kind === "codex_cli" || kind === "claude_cli" || kind === "antigravity_cli";
 const blank = (kind: string): ProviderInput => ({ name: "", kind, base_url: "", api_key: "", executable: "", models: [], agent_capable: false });
 type Candidate = { path: string; version: string; source: string };
-/** Groups model ids by the suffix after the last "-" (gpt-6.2-sol → sol), in order of first appearance; ids without one go last. */
-function modelGroups(models: string[]): { name: string; models: string[] }[] {
+/** Group of a model id. Claude ids name their family (claude-sonnet-5 → sonnet, claude-3-5-haiku → haiku, opus[1m] → opus); others use the suffix after the last "-" (gpt-6.2-sol → sol); "" means none. */
+function groupName(model: string, kind = ""): string {
+  const id = model.replace(/\[.*\]$/, "");
+  // Antigravity serves several vendors: group by vendor instead of family/suffix.
+  if (kind === "antigravity_cli") return /^gemini/i.test(id) ? "gemini" : /^claude/i.test(id) ? "claude" : /^(gpt|chatgpt|openai|o\d)/i.test(id) ? "chatgpt" : "";
+  if (/^claude-/i.test(id)) return id.split("-").slice(1).find(part => /^[a-z]+$/i.test(part)) ?? "";
+  if (/^[a-z]+$/i.test(id)) return id;
+  const cut = id.lastIndexOf("-");
+  return cut > 0 && cut < id.length - 1 ? id.slice(cut + 1) : "";
+}
+/** Groups model ids in order of first appearance; ids without a group go last. */
+function modelGroups(models: string[], nameOf = (model: string) => groupName(model)): { name: string; models: string[] }[] {
   const groups = new Map<string, string[]>();
   for (const model of models) {
-    const cut = model.lastIndexOf("-");
-    const name = cut > 0 && cut < model.length - 1 ? model.slice(cut + 1) : "";
+    const name = nameOf(model);
     groups.set(name, [...(groups.get(name) ?? []), model]);
   }
   const named = [...groups].filter(([name]) => name).map(([name, list]) => ({ name, models: list }));
@@ -35,19 +48,31 @@ const isSafeProvider = (value: unknown): value is SafeProviderInput => !!value &
   "base_url" in value && typeof value.base_url === "string" && "executable" in value && typeof value.executable === "string" &&
   "models" in value && Array.isArray(value.models) && value.models.every(item => typeof item === "string") &&
   "agent_capable" in value && typeof value.agent_capable === "boolean" && !("api_key" in value);
-export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
+export function ProviderForm({ provider, onSaved, onDeleted, onTested,
   allowedKinds = KINDS, defaultKind = "openai_compat", showConnections = true }: {
-  provider: Provider | null; status?: ConnectionTest;
+  provider: Provider | null;
   onSaved: (config: FullConfig, id: string) => void; onDeleted: (config: FullConfig) => void;
   onTested: (id: string, result: ConnectionTest) => void;
   /** Kind options offered for a new source; a saved source keeps its own kind. */
   allowedKinds?: readonly string[]; defaultKind?: string; showConnections?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const client = useQueryClient();
+  const hiddenModels = useModelVisibility(state => state.hiddenModels);
+  const setModelVisible = useModelVisibility(state => state.setModelVisible);
   const apiKeyRef = useRef(""); const apiKeyRevision = useRef(0); const editsRevision = useRef(0);
   const [apiKey, setApiKey] = useState("");
   const [modelsText, setModelsText] = useState(() => (provider?.models || []).join("\n"));
   const [busy, setBusy] = useState(""); const [note, setNote] = useState(""); const [closedGroups, setClosedGroups] = useState<string[]>([]);
+  const modelGroupsKey = provider ? `ai-hub:settings:model-groups:${provider.id}` : null;
+  useEffect(() => {
+    let groups: string[] = [];
+    try {
+      const saved: unknown = modelGroupsKey && JSON.parse(localStorage.getItem(modelGroupsKey) ?? "null");
+      if (Array.isArray(saved)) groups = saved.filter((id): id is string => typeof id === "string");
+    } catch {}
+    setClosedGroups(groups);
+  }, [modelGroupsKey]);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null); const [confirmDelete, setConfirmDelete] = useState(false);
   const initial = safeProvider(provider ? { ...provider, api_key: "" } : blank(defaultKind));
   const autosave = useSettingsAutosave<SafeProviderInput>({ key: `ai-hub:settings:provider:${provider?.id ?? "new"}`, initial,
@@ -99,15 +124,50 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
   // Keep the saved kind selectable even when the current category does not offer it.
   const kinds = allowedKinds.includes(form.kind) ? allowedKinds : [form.kind, ...allowedKinds];
   // A web account source is mostly about its sign-in, so that section comes first there.
-  const canLoadModels = form.kind === "codex_cli" || form.kind === "openai_compat";
+  const canLoadModels = form.kind === "codex_cli" || form.kind === "claude_cli" || form.kind === "antigravity_cli" || form.kind === "openai_compat";
   // A saved CLI source keeps its default name and kind, so those two fields are not shown.
   const fixedCli = Boolean(provider) && isCli(form.kind);
+  const canDelete = provider && provider.kind !== "antigravity_cli" && !["codex-cli", "claude-cli", "antigravity-cli"].includes(provider.id);
   // Every saved source shows its models as read-only rows; an unsaved source keeps manual entry.
   const listedModels = Boolean(provider);
   const mode = provider?.web_login ? "web" : "machine";
   const connection = showConnections && provider && (provider.kind === "claude_cli"
     ? <ClaudeConnection key={provider.id} providerId={provider.id} mode={mode} />
-    : provider.kind === "codex_cli" ? <CodexConnection key={provider.id} providerId={provider.id} mode={mode} /> : null);
+    : provider.kind === "codex_cli" ? <CodexConnection key={provider.id} providerId={provider.id} mode={mode} />
+    : provider.kind === "antigravity_cli" && provider.web_login ? <AntigravityConnection key={provider.id} providerId={provider.id} /> : null);
+  function modelRow(model: string, ids: string[]) {
+    return <li key={model} className={styles.modelRow}>
+      <span>{model}</span>
+      {provider && <Switch checked={ids.some(id => isModelVisible(hiddenModels, provider.id, id))}
+        aria-label={t.providers.modelVisible(model)} onChange={event => {
+          for (const id of ids) setModelVisible(provider.id, id, event.target.checked);
+        }} />}
+    </li>;
+  }
+  function modelRows(models: string[]) {
+    if (form.kind !== "antigravity_cli") return models.map(model => modelRow(model, [model]));
+    const rows = new Map<string, string[]>();
+    for (const id of models) {
+      const model = antigravityModel(id).id;
+      const variants = rows.get(model) ?? [];
+      variants.push(id);
+      rows.set(model, variants);
+    }
+    return [...rows].map(([model, variants]) => modelRow(model, variants));
+  }
+  function modelToggle(name: string, listId: string) {
+    const open = !closedGroups.includes(listId);
+    const action = open ? t.providers.modelsCollapse : t.providers.modelsExpand;
+    return <button type="button" className={styles.modelFold} aria-expanded={open} aria-controls={listId}
+      aria-label={`${action}: ${name}`} title={action}
+      onClick={() => {
+        const next = open ? [...closedGroups, listId] : closedGroups.filter(id => id !== listId);
+        setClosedGroups(next);
+        try { if (modelGroupsKey) localStorage.setItem(modelGroupsKey, JSON.stringify(next)); } catch {}
+      }}>
+      <ChevronDown size={18} aria-hidden="true" className={styles.modelChevron} />
+    </button>;
+  }
   return <form ref={formRef} className={styles.form} onSubmit={event => { event.preventDefault(); void act("save", async () => {
     const id = await createOrFlush();
     if (id) setNote(t.providers.savedProvider);
@@ -137,14 +197,28 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
       : <p className={styles.note}>{t.providers.notFound(installHint)} <Button size="sm" onClick={() => void navigator.clipboard.writeText(installHint)}>{t.providers.copy}</Button></p>)}
     {listedModels ? <div className={styles.modelBlock}>
       <span>{t.providers.modelsListed}</span>
-      <div id="provider-models" className={styles.modelBody}>
-      {form.models.length ? modelGroups(form.models).map(group => { const open = !closedGroups.includes(group.name); const listId = `provider-models-${group.name}`;
+      <div id="provider-models">
+      {form.models.length ? modelGroups(form.models, model => groupName(model, form.kind)).map(group => {
+        const listId = `provider-models-${group.name}`;
+        const hasFamilies = form.kind === "antigravity_cli" && (group.name === "claude" || group.name === "gemini");
+        const familyOf = group.name === "gemini"
+          ? (model: string) => model.match(/^gemini-\d+(?:\.\d+)*-([a-z][a-z0-9]*)(?:-|$)/i)?.[1]?.toLowerCase() ?? ""
+          : undefined;
         return <section key={group.name} className={styles.modelGroup}>
-        <div className={styles.modelGroupHead}><strong>{group.name}</strong>
-          <button type="button" className={styles.modelFold} aria-expanded={open} aria-controls={listId} title={open ? t.providers.modelsCollapse : t.providers.modelsExpand}
-            onClick={() => setClosedGroups(current => open ? [...current, group.name] : current.filter(name => name !== group.name))}>
-            <ChevronDown size={18} aria-hidden="true" className={styles.modelChevron} /></button></div>
-        <ul id={listId} className={styles.modelList} hidden={!open}>{group.models.map(model => <li key={model}>{model}</li>)}</ul></section>; })
+          <div className={styles.modelGroupHead}><strong>{group.name}</strong>{modelToggle(group.name, listId)}</div>
+          <ul id={listId} className={styles.modelList} hidden={closedGroups.includes(listId)}>
+            {hasFamilies ? modelGroups(group.models, familyOf).map(family => {
+              const familyId = `${listId}-${encodeURIComponent(family.name)}`;
+              return <li key={family.name} className={styles.modelFamily}>
+                <div className={styles.modelSub}><strong>{family.name}</strong>{modelToggle(family.name, familyId)}</div>
+                <ul id={familyId} className={styles.modelFamilyList} hidden={closedGroups.includes(familyId)}>
+                  {modelRows(family.models)}
+                </ul>
+              </li>;
+            }) : modelRows(group.models)}
+          </ul>
+        </section>;
+      })
         : <p className={styles.modelEmpty}>{canLoadModels ? t.providers.modelsEmpty : t.providers.modelsNone}</p>}</div></div>
       : <label>{t.providers.models}<textarea rows={4} spellCheck={false} value={modelsText} onChange={event => {
         setModelsText(event.target.value);
@@ -153,16 +227,13 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
     {form.kind === "openai_compat" && <label className={styles.check}><Switch checked={form.agent_capable}
       onChange={event => set("agent_capable", event.target.checked, true)} /><span>{t.providers.agent} <small>{t.providers.agentHint}</small></span></label>}
     <div className={styles.actions}>
-      <Button type="submit" variant="primary" disabled={Boolean(busy) || autosave.busy}>{busy === "save" && <Loader2 size={16} className="spin" aria-hidden="true" />}{t.save}</Button>
-      <Button type="button" disabled={Boolean(busy) || !provider} onClick={() => void act("test", async () => {
-        if (provider) await autosave.exclusive(() => test(provider.id));
-      })}>
-        <PlugZap size={16} aria-hidden="true" />{busy === "test" ? t.providers.testing : t.providers.test}</Button>
-      {canLoadModels && <Button type="button" disabled={Boolean(busy) || !provider} onClick={() => void act("models", async () => {
+      {!provider && <Button type="submit" variant="primary" disabled={Boolean(busy) || autosave.busy}>{busy === "save" && <Loader2 size={16} className="spin" aria-hidden="true" />}{t.save}</Button>}
+      {canLoadModels && <Button type="button" variant="primary" disabled={Boolean(busy) || !provider} onClick={() => void act("models", async () => {
         if (!provider) return;
-        const result = await autosave.exclusive(async () => {
+        await autosave.exclusive(async () => {
           const revision = editsRevision.current;
           const loaded = await settingsApi.models(provider.id);
+          void client.invalidateQueries({ queryKey: ["config"] });
           if (editsRevision.current === revision) {
             setModelsText(loaded.models.join("\n"));
             change(current => ({ ...current, models: loaded.models }));
@@ -170,14 +241,19 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
           }
         });
       })}>{t.providers.loadModels}</Button>}
-      {provider && <Button type="button" variant="danger" disabled={Boolean(busy)} onClick={() => setConfirmDelete(true)}><Trash2 size={16} aria-hidden="true" />{t.delete}</Button>}
+      <Button type="button" disabled={Boolean(busy) || !provider} onClick={() => void act("test", async () => {
+        if (provider) await autosave.exclusive(() => test(provider.id));
+      })}>
+        <PlugZap size={16} aria-hidden="true" />{busy === "test" ? t.providers.testing : t.providers.test}</Button>
+      {canDelete && <Button type="button" variant="danger" disabled={Boolean(busy)} onClick={() => setConfirmDelete(true)}><Trash2 size={16} aria-hidden="true" />{t.delete}</Button>}
     </div>
-    {confirmDelete && provider && <div className={styles.confirm} role="group"><p>{t.providers.confirmDelete(provider.name)}</p>
+    {confirmDelete && canDelete && provider && <div className={styles.confirm} role="group"><p>{t.providers.confirmDelete(provider.name)}</p>
       <Button type="button" variant="danger" onClick={() => void act("delete", async () => {
         await autosave.exclusive(async () => onDeleted(await settingsApi.deleteProvider(provider.id)));
       })}>{t.delete}</Button>
       <Button type="button" onClick={() => setConfirmDelete(false)}>{t.cancel}</Button></div>}
-    {(note || status) && <p className={styles.note} role="status" title={status?.detail}>{note || status?.message}</p>}
+    {note && <p className={styles.note} role="status">{note}</p>}
     {!provider?.web_login && connection}
+    {showConnections && provider?.kind === "antigravity_cli" && <AntigravityProjectOptions />}
   </form>;
 }

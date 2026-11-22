@@ -68,12 +68,12 @@ impl Provider for ClaudeCliProvider {
             args.extend([OsString::from("--model"), OsString::from(&request.model)]);
         }
         let effort = match request.effort {
-            super::Effort::Default => None,
-            super::Effort::Low => Some("low"),
+            super::Effort::Default | super::Effort::None => None,
+            super::Effort::Low | super::Effort::Minimal => Some("low"),
             super::Effort::Medium => Some("medium"),
             super::Effort::High => Some("high"),
             super::Effort::Xhigh => Some("xhigh"),
-            super::Effort::Max => Some("max"),
+            super::Effort::Max | super::Effort::Ultra => Some("max"),
         };
         if let Some(effort) = effort {
             args.extend([OsString::from("--effort"), OsString::from(effort)]);

@@ -83,6 +83,15 @@ pub fn connected_message(email: Option<&str>, origin: Option<&str>) -> String {
     message
 }
 
+/// agy's own home for one source. A source signed in through the web also gets `SSH_CONNECTION`, which makes agy keep its login in this
+/// home (`.gemini/antigravity-cli/antigravity-oauth-token`) instead of the OS keyring every agy on the machine shares.
+pub fn agy_environment(command: &mut Command, home: &Path) {
+    command.env("USERPROFILE", home).env("HOME", home);
+    if auth_origin(home).as_deref() == Some("web") {
+        command.env("SSH_CONNECTION", "127.0.0.1 1 127.0.0.1 22");
+    }
+}
+
 pub fn auth_origin(home: &Path) -> Option<String> {
     let text = std::fs::read_to_string(home.join(AUTH_ORIGIN_FILE)).ok()?;
     let text = text.trim();
@@ -266,7 +275,7 @@ pub async fn run_jsonl(
     }
     if command_spec.executable_name.eq_ignore_ascii_case("agy") {
         if let Some(dir) = &command_spec.config_dir {
-            command.env("USERPROFILE", dir).env("HOME", dir);
+            agy_environment(&mut command, dir);
         }
     }
     command

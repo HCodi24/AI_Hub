@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ArrowRightCircle, CheckCircle2, ChevronDown, ChevronUp, Circle, Loader2, MinusCircle, XCircle } from "lucide-react";
 import type { TaskRow } from "@/schema/chat.schema";
 import { chatText } from "@/text/chat";
-import { modelLabel } from "@/components/features/composer/model-menu";
 import { PetAvatar } from "@/components/features/pets/pet-avatar";
 import { usePetId } from "@/components/features/pets/use-pet-id";
 import { kindFromModel } from "@/lib/pet-choice";
@@ -17,9 +16,8 @@ const PET_STATE: Record<string, PetState> = { waiting: "waiting", fixwait: "wait
 
 /** "Codex · GPT-6 Luna": who works, then the exact model; the model alone when its own name already says who. */
 function who(name: string | undefined, model: string | undefined) {
-  const label = model ? modelLabel(model) : "";
-  if (!label) return name;
-  return !name || label.toLowerCase().includes(name.toLowerCase()) ? label : `${name} · ${label}`;
+  if (!model) return name;
+  return !name || model.toLowerCase().includes(name.toLowerCase()) ? model : `${name} · ${model}`;
 }
 
 function TaskItem({ task }: { task: TaskRow }) {

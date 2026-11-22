@@ -19,8 +19,17 @@ pub use store::*;
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AntigravityConfig {
+    pub project_skills: bool,
+    pub project_instructions: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
+    #[serde(default)]
+    pub antigravity: AntigravityConfig,
     #[serde(default)]
     pub claude: ClaudeConfig,
     #[serde(default)]
@@ -101,6 +110,7 @@ impl Config {
     pub fn seeded() -> Self {
         Self {
             claude: ClaudeConfig::default(),
+            antigravity: AntigravityConfig::default(),
             codex: CodexConfig::default(),
             memory: Default::default(),
             providers: vec![

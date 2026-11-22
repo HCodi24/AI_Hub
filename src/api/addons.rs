@@ -100,7 +100,7 @@ async fn run_cli_full(
     }
     if let Some(home) = codex_home {
         if path.file_stem().is_some_and(|stem| stem.eq_ignore_ascii_case("agy")) {
-            command.env("USERPROFILE", home).env("HOME", home);
+            cli_support::agy_environment(&mut command, home);
         } else {
             command.env(if claude { "CLAUDE_CONFIG_DIR" } else { "CODEX_HOME" }, home);
         }

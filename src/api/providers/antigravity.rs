@@ -11,6 +11,9 @@ use serde::Deserialize;
 use std::{io, path::Path as FsPath, process::Stdio, time::Duration};
 use tokio::time::timeout;
 
+/// The signed-in account's email, saved by the web sign-in (agy prints "Logged in as <email>." and has no command that shows it later).
+pub(crate) const EMAIL_FILE: &str = ".mutis-email";
+
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Action {
@@ -42,6 +45,17 @@ pub(crate) async fn antigravity_action(
             }
             result
         }
+        // A web account owns its sign-in (a token file in its own home): signing out deletes it. A machine source only remembers the sign-out.
+        Action::Logout if provider.web_login => {
+            for file in [home.join(".gemini").join("antigravity-cli").join("antigravity-oauth-token"), home.join(EMAIL_FILE)] {
+                match std::fs::remove_file(&file) {
+                    Ok(()) => {}
+                    Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+                    Err(err) => return Err(error(&err)),
+                }
+            }
+            signed_out()
+        }
         Action::Logout => {
             std::fs::write(&marker, []).map_err(|err| error(&err))?;
             signed_out()
@@ -60,12 +74,48 @@ fn model_count(stdout: &str) -> usize {
     stdout.lines().filter(|line| !line.trim().is_empty()).count()
 }
 
+/// Model ids in `agy models` stdout: the first tab-separated column of each row, without headers, blanks and duplicates.
+fn parse_models(stdout: &str) -> Vec<String> {
+    let mut models: Vec<String> = Vec::new();
+    for line in stdout.lines() {
+        let id = line.split('\t').next().unwrap_or("").trim();
+        let header = id.eq_ignore_ascii_case("id") || id.eq_ignore_ascii_case("model");
+        if !id.is_empty() && !header && !id.contains(char::is_whitespace) && !models.iter().any(|known| known == id) {
+            models.push(id.to_owned());
+        }
+    }
+    models
+}
+
+/// Model ids from `agy models` for the provider's own sign-in home.
+pub(super) async fn list_models(provider: &ProviderConfig) -> ApiResult<Vec<String>> {
+    let bad_gateway = |message: String| ApiError::new(StatusCode::BAD_GATEWAY, message);
+    let home = clean_home(&provider.id).map_err(|err| bad_gateway(err.to_string()))?;
+    if home.join(SIGNED_OUT_FILE).try_exists().unwrap_or(false) {
+        return Err(bad_gateway("Antigravity CLI chưa đăng nhập trong MutiS".into()));
+    }
+    let path = cli_support::resolve_executable("agy", Some(&provider.executable))
+        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Chưa tìm thấy Antigravity CLI (agy) trên máy"))?;
+    let mut command = cli_support::command_for(&path, &["models".into()]);
+    cli_support::agy_environment(&mut command, &home);
+    command.stdin(Stdio::null()).kill_on_drop(true);
+    let output = timeout(Duration::from_secs(25), command.output())
+        .await
+        .map_err(|_| bad_gateway("Hết thời gian chờ `agy models`".into()))?
+        .map_err(|err| bad_gateway(format!("Không chạy được agy: {err}")))?;
+    let models = parse_models(&String::from_utf8_lossy(&output.stdout));
+    if !output.status.success() || models.is_empty() {
+        return Err(bad_gateway("Antigravity không trả model nào; hãy đăng nhập Antigravity rồi thử lại".into()));
+    }
+    Ok(models)
+}
+
 /// The plan (`Google AI Ultra`, ...) from `agy acp`: its `session/new` answer carries `_meta.antigravity.tier`. No email is available:
 /// no agy command or ACP call prints one. Best effort; `None` when agy does not answer in time.
 async fn plan(path: &FsPath, home: &FsPath) -> Option<String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     let mut command = cli_support::command_for(path, &["acp".into()]);
-    command.env("USERPROFILE", home).env("HOME", home);
+    cli_support::agy_environment(&mut command, home);
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
     let mut child = command.spawn().ok()?;
     let mut stdin = child.stdin.take()?;
@@ -109,7 +159,7 @@ async fn probe(provider: &ProviderConfig, home: &FsPath) -> ConnectionTest {
     };
     let run = |args: &[&str]| {
         let mut command = cli_support::command_for(&path, &args.iter().map(Into::into).collect::<Vec<_>>());
-        command.env("USERPROFILE", home).env("HOME", home);
+        cli_support::agy_environment(&mut command, home);
         command.stdin(Stdio::null()).kill_on_drop(true);
         async move { timeout(Duration::from_secs(25), command.output()).await }
     };
@@ -125,6 +175,7 @@ async fn probe(provider: &ProviderConfig, home: &FsPath) -> ConnectionTest {
                 };
                 let mut result = connection(true, "connected", &format!("Đã đăng nhập Antigravity · {count} model"), &usage);
                 result.plan = plan(&path, home).await;
+                result.email = std::fs::read_to_string(home.join(EMAIL_FILE)).ok().map(|text| text.trim().to_owned()).filter(|text| !text.is_empty());
                 result
             }
             _ => connection(false, "not_configured", "Antigravity chưa đăng nhập", "Chạy `agy` trong terminal và đăng nhập"),

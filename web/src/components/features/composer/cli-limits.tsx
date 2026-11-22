@@ -43,8 +43,9 @@ export function CliLimits({ providerId, name }: { providerId: string; name: stri
   const current = windows.filter(w => w.resets_at == null || w.resets_at > now);
   const percent = current.reduce<number | null>((max, w) => w.used_percent == null ? max : Math.max(max ?? 0, w.used_percent), null);
   const rejected = current.some(w => w.status === "rejected");
-  const warning = current.some(w => w.status === "allowed_warning") || (percent ?? 0) >= 80;
-  const state = rejected ? "limit" : warning ? "warning" : percent != null ? "normal" : "unknown";
+  const warning = percent == null ? current.some(w => w.status === "allowed_warning") : percent >= 70;
+  const state = rejected || (percent != null && percent >= 90) ? "limit"
+    : warning ? "warning" : percent === 0 ? "unused" : percent != null ? "normal" : "unknown";
   const label = rejected ? t.limitReached : percent != null ? t.limitUsed(Math.round(percent)) : warning ? t.limitWarning : t.limitUnknown;
   const updatedTime = query.data?.updated_at == null ? null : new Date(query.data.updated_at * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   return <details ref={popup} className={styles.limits}>

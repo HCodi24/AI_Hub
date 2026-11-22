@@ -33,11 +33,14 @@ pub enum FileTools {
 pub enum Effort {
     #[default]
     Default,
+    None,
+    Minimal,
     Low,
     Medium,
     High,
     Xhigh,
     Max,
+    Ultra,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -353,11 +356,14 @@ pub fn new_record(request: &ChatRequest) -> ChatRecord {
 pub fn parse_effort(value: &str) -> Option<Effort> {
     match value {
         "default" => Some(Effort::Default),
+        "none" => Some(Effort::None),
+        "minimal" => Some(Effort::Minimal),
         "low" => Some(Effort::Low),
         "medium" => Some(Effort::Medium),
         "high" => Some(Effort::High),
         "xhigh" => Some(Effort::Xhigh),
         "max" => Some(Effort::Max),
+        "ultra" => Some(Effort::Ultra),
         _ => None,
     }
 }

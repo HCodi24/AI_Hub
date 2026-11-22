@@ -1,5 +1,4 @@
 import { useState, type CSSProperties, type RefObject } from "react";
-import { Bot } from "lucide-react";
 import { useProviderConnections } from "@/lib/provider-connections";
 import type { ProviderSummary } from "@/schema/config.schema";
 import { chatText } from "@/text/chat";
@@ -25,7 +24,9 @@ export function SourceMenu({ providers, mutisEnabled, mutisName, value, title, d
   }
   return <>
     <button type="button" className={styles.trigger} disabled={disabled} aria-label={chatText.source} title={title}
-      aria-haspopup="listbox" aria-expanded={open} onClick={toggle}><Bot size={18} /></button>
+      aria-haspopup="listbox" aria-expanded={open} onClick={toggle}>
+      <img src="/app/brand/mutis-logo.svg" width={24} height={24} alt="" />
+    </button>
     {open && <div className={styles.menu} style={position} role="listbox" aria-label={chatText.source}>
       {items.map((entry) => <button key={entry.id} type="button" role="option" aria-selected={value === entry.id} disabled={disabled}
         onClick={() => { onPick(entry.id); setOpen(false); }}>{entry.name}</button>)}

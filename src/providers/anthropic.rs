@@ -106,13 +106,13 @@ impl Provider for AnthropicProvider {
             "max_tokens": 8192,
             "stream": true
         });
-        if request.effort != Effort::Default {
+        if !matches!(request.effort, Effort::Default | Effort::None) {
             let budget = match request.effort {
-                Effort::Low => 2048,
+                Effort::Low | Effort::Minimal => 2048,
                 Effort::Medium => 8192,
                 Effort::High => 16000,
-                Effort::Xhigh | Effort::Max => 32000,
-                Effort::Default => 0,
+                Effort::Xhigh | Effort::Max | Effort::Ultra => 32000,
+                Effort::Default | Effort::None => 0,
             };
             body["thinking"] = json!({"type":"enabled", "budget_tokens": budget});
             body["max_tokens"] = json!(budget + 8192);

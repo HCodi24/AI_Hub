@@ -5,14 +5,10 @@ import type { Mutis } from "@/schema/mutis.schema";
 import { mutisApi } from "@/apis/mutis.api";
 import { effortFor, effortsFor } from "@/constants/chat";
 import { chatText } from "@/text/chat";
-import { modelLabel } from "./model-menu";
 import styles from "./chat-toolbar.module.css";
 
 type Role = Mutis["roles"]["lead"];
-const roleNames = {
-  high: ["lead", "small"],
-  max: ["lead", "big", "small"],
-} as const;
+const roleNames = ["lead", "small"] as const;
 
 function RoleSlider({ role, provider, disabled, save }: {
   role: Role; provider?: Config["providers"][number]; disabled: boolean;
@@ -23,7 +19,7 @@ function RoleSlider({ role, provider, disabled, save }: {
   const [draft, setDraft] = useState(selected);
   useEffect(() => setDraft(selected), [selected]);
   const index = Math.max(0, choices.indexOf(draft));
-  const label = modelLabel(role.model) || provider?.name || chatText.source;
+  const label = role.model || provider?.name || chatText.source;
   async function commit(value: string) {
     if (!await save(choices[Number(value)])) setDraft(selected);
   }
@@ -44,11 +40,11 @@ function RoleSlider({ role, provider, disabled, save }: {
 }
 
 /** Persist model effort in the active MutiS profile, including shared lead/code roles. */
-export function MutisEfforts({ mutis, level, config, disabled }: { mutis: Mutis; level: "high" | "max"; config?: Config; disabled: boolean }) {
+export function MutisEfforts({ mutis, config, disabled }: { mutis: Mutis; config?: Config; disabled: boolean }) {
   const client = useQueryClient();
-  const profile = level === "high" && mutis.high_roles.lead.provider_id ? "high_roles" : "roles";
+  const profile = mutis.high_roles.lead.provider_id ? "high_roles" : "roles";
   const roles = mutis[profile];
-  const activeRoleNames = roleNames[level];
+  const activeRoleNames = roleNames;
   const unique = activeRoleNames.filter((name, index) => activeRoleNames.findIndex(other => roles[other].provider_id === roles[name].provider_id && roles[other].model === roles[name].model) === index);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
