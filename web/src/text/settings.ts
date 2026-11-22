@@ -40,6 +40,7 @@ export const settingsText = {
   general: {
     idle: "Dừng lượt chạy khi AI im lặng quá (phút, 0 = không dừng)",
     threadBudget: "Nén ngữ cảnh thread Codex khi thread đã đọc quá (token, 0 = không tự nén; hoặc 20.000–2.000.000). Chỉ khi gấp đôi mức này mà nén không giảm thì mới mở thread mới",
+    approvalWait: "Chờ bạn cho phép lệnh ghi (giây, 10–3600); hết giờ mà chưa trả lời thì lệnh bị từ chối",
     memory: "Bộ nhớ dự án", memoryEnabled: "Bật bộ nhớ dự án", memoryScopes: "Số scope đưa vào prompt (1–10)",
     memoryChars: "Giới hạn ký tự mỗi scope (1000–20000)",
   },

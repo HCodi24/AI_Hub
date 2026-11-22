@@ -194,6 +194,7 @@ pub fn router(state: AppState) -> Router {
             "/api/chat/{chat_id}/stop",
             post(crate::api::chat::stop_chat),
         )
+        .route("/api/approvals/{id}", post(crate::api::chat::answer_approval))
         .route(
             "/api/chats/{chat_id}/compact",
             post(crate::api::chat::compact_chat),

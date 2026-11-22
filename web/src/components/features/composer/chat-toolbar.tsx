@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { SourceMenu } from "./source-menu";
 import { ModelMenu, modelLabel as getModelLabel } from "./model-menu";
 import { isAgentSource } from "@/lib/agent-source";
+import { codexApi } from "@/apis/codex.api";
 import { mutisApi } from "@/apis/mutis.api";
 import { ChatPermission } from "./chat-permission";
 import { useShallow } from "zustand/react/shallow";
@@ -66,6 +67,12 @@ export function ChatToolbar({ config }: { config?: Config }) {
   const provider = config?.providers.find((entry) => entry.id === (settings.provider_id === "mutis" ? activeRoles?.lead.provider_id : settings.provider_id));
   const models = provider ? [...new Set([...provider.models, ...(CLI_MODEL_SUGGESTIONS[provider.kind] || [])])] : [];
   const cli = provider?.kind.endsWith("_cli");
+  // Codex cannot write files on Windows until its sandbox is set up; ask only when the chat could write.
+  const codexSandbox = useQuery({ queryKey: ["codex-sandbox", provider?.id], enabled: provider?.kind === "codex_cli" && settings.permission !== "read",
+    queryFn: ({ signal }) => codexApi.status(provider!.id, signal), staleTime: 30_000 });
+  const chatOnly = !!provider && settings.provider_id !== "mutis" && !cli && !isAgentSource(provider);
+  const permissionLimit = chatOnly ? { note: chatText.chatOnlyNote, chatOnly: true }
+    : codexSandbox.data && ["notConfigured", "updateRequired"].includes(codexSandbox.data.sandbox) ? { note: chatText.sandboxNote } : undefined;
   useEffect(() => {
     if (config) initialize(config.default_folder, config.providers[0]?.id || "", config.providers[0]?.models[0] || "");
   }, [config, initialize]);
@@ -93,7 +100,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
     ? [...new Set([activeRoles?.lead, activeRoles?.big, activeRoles?.small, ...(mutis.data?.delegate_checker && level === "high" ? [mutis.data.high_checker] : [])].map(role => role?.provider_id))]
       .flatMap(id => config?.providers.find(entry => entry.id === id && entry.kind.endsWith("_cli")) ?? [])
     : provider && cli ? [provider] : [];
-  return <><ChatPermission supportsCommands={!!cli || isAgentSource(provider)} menuRef={permissions} otherMenuRef={picker} />
+  return <><ChatPermission supportsCommands={!!cli || isAgentSource(provider)} limit={permissionLimit} menuRef={permissions} otherMenuRef={picker} />
   <details ref={picker} className={styles.picker} onToggle={(event) => {
     if (event.target === event.currentTarget && event.currentTarget.open && permissions.current) permissions.current.open = false;
     if (event.target === event.currentTarget && !event.currentTarget.open) { setModelMenuOpen(false); setSourceMenuOpen(false); }

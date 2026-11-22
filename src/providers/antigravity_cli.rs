@@ -40,13 +40,24 @@ fn write_mcp_config(home: &std::path::Path, servers: &[crate::config::McpServerC
     Ok(())
 }
 
-/// shortcut: Read maps to agy's `plan` mode, which also writes its plan file under ~/.gemini/antigravity-cli; no stricter read-only mode exists.
+/// The app's three levels on agy's modes. agy's `plan` mode only asks in words, so Read is `accept-edits` with every file write denied
+/// by rule (see `permission_rules`); commands still ask. Write allows edits; Full is `auto`.
 fn mode(permission: Permission) -> &'static str {
     match permission {
-        Permission::Read => "plan",
+        Permission::Read => "accept-edits",
         Permission::Write => "accept-edits",
         Permission::Full => "auto",
     }
+}
+
+/// agy's `--settings` permission rules for one turn: the app's CodeGraph is fine, `extra` are what the user just allowed, and Read denies
+/// every file write (agy checks file edits, too, as `write_file`). No command is pre-allowed: a wildcard rule such as `command(dir *)` also
+/// lets `dir . > a.txt` through, and agy already lets its own read-only tools and commands (list_dir, view_file, git status) pass.
+fn permission_rules(permission: Permission, extra: &[String]) -> Value {
+    let mut allow = vec!["mcp(codegraph/codegraph_explore)".to_owned()];
+    allow.extend(extra.iter().cloned());
+    let deny: &[&str] = if permission == Permission::Read { &["write_file(*)"] } else { &[] };
+    json!({"permissions": {"allow": allow, "deny": deny}})
 }
 
 #[async_trait]
@@ -68,7 +79,6 @@ impl Provider for AntigravityCliProvider {
             if !cli_support::safe_session_id(id) {
                 bail!("Antigravity conversation id không hợp lệ");
             }
-            args.extend([OsString::from("--conversation"), OsString::from(id)]);
         }
         let mut prompt = cli_support::compose_prompt_for(&request.messages, native.is_some(), "antigravity_cli");
         if let Some(directory) = super::latest_chat_attachment_dir(&request.messages) {
@@ -84,40 +94,89 @@ impl Provider for AntigravityCliProvider {
         }
         let home = clean_home(&request.provider.id)?;
         write_mcp_config(&home, &request.mcp)?;
-        let message = format!("{}\n", json!({"event": "user", "message": {"content": prompt}}));
-        let parser = std::sync::Mutex::new(Parser { permission: request.permission, ..Default::default() });
-        let result = cli_support::run_jsonl(
-            cli_support::JsonlCommand {
-                config_dir: Some(home),
-                cli_name: "Antigravity CLI",
-                executable_name: "agy",
-                missing_message: "Chưa cài Antigravity CLI: irm https://antigravity.google/cli/install.ps1 | iex",
-                configured_executable: request.provider.executable.clone(),
-                folder: &request.folder,
-                args,
-                prompt: message,
-                watchdog_minutes: None,
-            },
-            events.clone(),
-            cancel.clone(),
-            |line| {
-                let mut parsed = parser.lock().expect("Antigravity parser mutex poisoned").parse(line);
-                for event in &mut parsed {
-                    if event.name == "session" {
-                        if let Some(id) = event.data["session_id"].as_str() {
-                            event.data = json!({"session_id": format!("{prefix}{id}")});
+        let mut message = format!("{}\n", json!({"event": "user", "message": {"content": prompt}}));
+        let mut conversation = native.clone();
+        // agy cannot be asked in the middle of a turn (headless, it auto-denies): a denied command is put to the user, then the turn
+        // is resumed with an allow-rule for exactly that command.
+        let mut allowed: Vec<String> = Vec::new();
+        let mut round = 0;
+        loop {
+            let mut round_args = args.clone();
+            if let Some(id) = conversation.as_deref() {
+                round_args.extend([OsString::from("--conversation"), OsString::from(id)]);
+            }
+            round_args.extend([OsString::from("--settings"), OsString::from(permission_rules(request.permission, &allowed).to_string())]);
+            let parser = std::sync::Mutex::new(Parser { permission: request.permission, ..Default::default() });
+            let result = cli_support::run_jsonl(
+                cli_support::JsonlCommand {
+                    config_dir: Some(home.clone()),
+                    cli_name: "Antigravity CLI",
+                    executable_name: "agy",
+                    missing_message: "Chưa cài Antigravity CLI: irm https://antigravity.google/cli/install.ps1 | iex",
+                    configured_executable: request.provider.executable.clone(),
+                    folder: &request.folder,
+                    args: round_args,
+                    prompt: message.clone(),
+                    watchdog_minutes: None,
+                    interact: None,
+                },
+                events.clone(),
+                cancel.clone(),
+                |line| {
+                    let mut parsed = parser.lock().expect("Antigravity parser mutex poisoned").parse(line);
+                    for event in &mut parsed {
+                        if event.name == "session" {
+                            if let Some(id) = event.data["session_id"].as_str() {
+                                event.data = json!({"session_id": format!("{prefix}{id}")});
+                            }
                         }
                     }
+                    parsed
+                },
+            )
+            .await;
+            let (result_seen, denied, seen_conversation) = {
+                let parser = parser.lock().expect("Antigravity parser mutex poisoned");
+                (parser.result_seen, parser.denied.clone(), parser.conversation.clone())
+            };
+            if cancel.is_cancelled() || result.is_err() || denied.is_empty() || round == 2 {
+                if !result_seen && !cancel.is_cancelled() {
+                    let _ = events.send(ProviderEvent::text("error", "Antigravity CLI kết thúc đột ngột (không có kết quả)")).await;
                 }
-                parsed
-            },
-        )
-        .await;
-        if !parser.lock().expect("Antigravity parser mutex poisoned").result_seen && !cancel.is_cancelled() {
-            let _ = events.send(ProviderEvent::text("error", "Antigravity CLI kết thúc đột ngột (không có kết quả)")).await;
+                return result;
+            }
+            let mut granted = Vec::new();
+            for (rule, shown) in denied {
+                let Some(yes) = super::approvals::confirm(&events, &cancel, shown.clone()).await else { return Ok(()) };
+                let note = if yes { "Bạn đã cho phép bước này một lần." } else { "Bạn đã từ chối bước này." };
+                let _ = events.send(ProviderEvent::text("log", note.to_owned())).await;
+                if yes { granted.push((rule, shown)); } else {
+                    let need = if request.permission == Permission::Read { "write" } else { "full" };
+                    let _ = events.send(ProviderEvent { name: "permission_denied", data: json!({ "need": need }) }).await;
+                }
+            }
+            if granted.is_empty() {
+                // agy answered nothing after the refusal; say so instead of leaving an empty reply.
+                let _ = events.send(ProviderEvent::text("delta", "Bạn đã từ chối nên mình chưa chạy bước đó.".to_owned())).await;
+                return result;
+            }
+            let list = granted.iter().map(|(_, shown)| format!("- {shown}")).collect::<Vec<_>>().join("\n");
+            message = format!("{}\n", json!({"event": "user", "message": {"content": format!("The user has now allowed these steps, so do them again and carry on with the task:\n{list}")}}));
+            allowed.extend(granted.into_iter().map(|(rule, _)| rule));
+            conversation = seen_conversation.or(conversation);
+            round += 1;
         }
-        result
     }
+}
+
+/// What a tool step is about, as (agy allow-rule, text shown to the user): a shell command or an MCP tool.
+fn tool_target(step: &Value) -> Option<(String, String)> {
+    let parameters = &step["tool_info"]["parameters"];
+    if let Some(command) = parameters["CommandLine"].as_str() {
+        return Some((format!("command({command})"), command.to_owned()));
+    }
+    let (server, tool) = (parameters["ServerName"].as_str()?, parameters["ToolName"].as_str()?);
+    Some((format!("mcp({server}/{tool})"), format!("MCP {server}: {tool}")))
 }
 
 #[derive(Default)]
@@ -125,6 +184,13 @@ struct Parser {
     permission: Permission,
     result_seen: bool,
     delta_seen: bool,
+    conversation: Option<String>,
+    /// Commands the mode refused this turn: the run asks the user about them instead of offering a rerun.
+    denied: Vec<(String, String)>,
+    /// Commands begun and not yet finished: agy sometimes refuses a command without ever reporting the failed step.
+    started: Vec<(String, String)>,
+    /// A file write was refused by the Read rule.
+    write_blocked: bool,
     /// Step index of the last text, so text from the next step starts a new paragraph.
     last_text_step: Option<u64>,
 }
@@ -141,7 +207,10 @@ impl Parser {
             "init" => value["conversation_id"]
                 .as_str()
                 .filter(|id| cli_support::safe_session_id(id))
-                .map(|id| vec![ProviderEvent { name: "session", data: json!({"session_id": id}) }])
+                .map(|id| {
+                    self.conversation = Some(id.to_owned());
+                    vec![ProviderEvent { name: "session", data: json!({"session_id": id}) }]
+                })
                 .unwrap_or_default(),
             "step_update" => self.step(&value["step_update"]),
             "result" => self.result(&value["result"]),
@@ -159,7 +228,20 @@ impl Parser {
                 self.last_text_step = index;
                 vec![ProviderEvent::text("delta", format!("{separator}{text}"))]
             }
+            "tool" if step["state"] == "DONE" => {
+                if let Some(target) = tool_target(step) { self.started.retain(|known| *known != target); }
+                Vec::new()
+            }
+            "tool" if step["state"] == "ERROR" => {
+                let refused = step["tool_info"]["error"]["message"].as_str().is_some_and(|message| message.contains("permission"));
+                if refused && step["tool_info"]["parameters"]["Path"].is_string() { self.write_blocked = true; }
+                if let (true, Some(target)) = (refused, tool_target(step)) {
+                    if !self.denied.contains(&target) { self.denied.push(target); }
+                }
+                Vec::new()
+            }
             "tool" if step["state"] == "ACTIVE" => {
+                if let Some(target) = tool_target(step) { self.started.push(target); }
                 vec![ProviderEvent::text("log", format!("Công cụ: {}", step["tool_name"].as_str().unwrap_or("?")))]
             }
             _ => Vec::new(),
@@ -177,8 +259,12 @@ impl Parser {
         } else if !self.delta_seen && !response.is_empty() {
             events.push(ProviderEvent::text("delta", response.to_owned()));
         }
+        if result["denied_actions"].as_array().is_some_and(|actions| !actions.is_empty()) && self.denied.is_empty() {
+            self.denied = std::mem::take(&mut self.started);
+        }
         // A tool that needed a permission this mode lacks: the chat offers a rerun one level up.
-        if result["denied_actions"].as_array().is_some_and(|actions| !actions.is_empty()) && self.permission != Permission::Full {
+        let blocked = result["denied_actions"].as_array().is_some_and(|actions| !actions.is_empty()) && self.denied.is_empty();
+        if (blocked || self.write_blocked) && self.permission != Permission::Full && self.denied.is_empty() {
             let need = if self.permission == Permission::Read { "write" } else { "full" };
             events.push(ProviderEvent { name: "permission_denied", data: json!({ "need": need }) });
         }
@@ -278,12 +364,42 @@ mod tests {
             let denied = events.iter().find(|e| e.name == "permission_denied");
             assert_eq!(denied.map(|e| e.data["need"].as_str().unwrap()), need);
         }
+        // A refused command is asked about by the run itself, so the result adds no rerun card.
+        let mut parser = Parser { permission: Permission::Read, ..Default::default() };
+        parser.parse(r#"{"event":"step_update","step_update":{"step_type":"tool","state":"ERROR","tool_info":{"parameters":{"CommandLine":"echo hi > a.txt"},"error":{"message":"permission check failed for command"}}}}"#);
+        assert_eq!(parser.denied, [("command(echo hi > a.txt)".to_owned(), "echo hi > a.txt".to_owned())]);
+        assert!(parser.parse(line).iter().all(|e| e.name != "permission_denied"));
+        // No failed step was reported: the command that never finished is the refused one.
+        let mut parser = Parser { permission: Permission::Write, ..Default::default() };
+        parser.parse(r#"{"event":"step_update","step_update":{"step_type":"tool","state":"ACTIVE","tool_info":{"parameters":{"CommandLine":"echo hi > b.txt"}}}}"#);
+        assert!(parser.parse(line).iter().all(|e| e.name != "permission_denied"));
+        assert_eq!(parser.denied, [("command(echo hi > b.txt)".to_owned(), "echo hi > b.txt".to_owned())]);
+        // An MCP tool the mode refused is asked about the same way.
+        let mut parser = Parser { permission: Permission::Write, ..Default::default() };
+        parser.parse(r#"{"event":"step_update","step_update":{"step_type":"tool","state":"ACTIVE","tool_info":{"parameters":{"ServerName":"jira","ToolName":"search"}}}}"#);
+        parser.parse(line);
+        assert_eq!(parser.denied, [("mcp(jira/search)".to_owned(), "MCP jira: search".to_owned())]);
         assert!(run(&[r#"{"event":"result","result":{"status":"SUCCESS","response":"ok","denied_actions":[]}}"#]).iter().all(|(n, _)| n != "permission_denied"));
     }
 
     #[test]
+    fn read_denies_file_writes_and_no_command_is_pre_allowed() {
+        let rules = |permission| permission_rules(permission, &["command(npm test)".to_owned()])["permissions"].clone();
+        assert_eq!(rules(Permission::Read)["deny"], json!(["write_file(*)"]));
+        assert_eq!(rules(Permission::Write)["deny"], json!([]));
+        let allow = |permission| rules(permission)["allow"].to_string();
+        assert_eq!(allow(Permission::Read), r#"["mcp(codegraph/codegraph_explore)","command(npm test)"]"#);
+        assert!(allow(Permission::Full).contains("mcp(codegraph/codegraph_explore)"));
+        // A write refused by the Read rule offers the level above.
+        let mut parser = Parser { permission: Permission::Read, ..Default::default() };
+        parser.parse(r#"{"event":"step_update","step_update":{"step_type":"tool","state":"ERROR","tool_info":{"parameters":{"Path":"C:/a.txt"},"error":{"message":"permission check failed for write_file"}}}}"#);
+        let events = parser.parse(r#"{"event":"result","result":{"status":"SUCCESS","response":"no"}}"#);
+        assert!(events.iter().any(|e| e.name == "permission_denied" && e.data["need"] == "write"));
+    }
+
+    #[test]
     fn permissions_map_to_agy_modes() {
-        assert_eq!(mode(Permission::Read), "plan");
+        assert_eq!(mode(Permission::Read), "accept-edits");
         assert_eq!(mode(Permission::Write), "accept-edits");
         assert_eq!(mode(Permission::Full), "auto");
     }

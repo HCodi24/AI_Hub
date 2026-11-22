@@ -50,5 +50,7 @@ export const StreamDataSchema = z.object({
   action: z.string().optional(), status: z.string().optional(), files: z.array(FileChangeSchema).optional(),
   /** `permission_denied`: the one level up that would let the blocked step run. */
   need: z.enum(["write", "full"]).optional(),
+  /** `permission_request`: the run waits for the user to allow or refuse `command`. */
+  id: z.string().optional(), command: z.string().optional(),
 });
 export type StreamData = z.infer<typeof StreamDataSchema>;

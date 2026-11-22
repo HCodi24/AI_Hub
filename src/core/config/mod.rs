@@ -38,6 +38,9 @@ pub struct Config {
     /// 0 = never.
     #[serde(default = "default_thread_token_budget")]
     pub thread_token_budget: u64,
+    /// Seconds a run waits for the user to allow or refuse a command it paused on; no answer counts as "no".
+    #[serde(default = "default_approval_wait_seconds")]
+    pub approval_wait_seconds: u32,
     #[serde(default)]
     pub planner_provider_id: String,
     #[serde(default)]
@@ -70,6 +73,10 @@ fn pets_on() -> bool {
 
 fn default_chat_idle_timeout_minutes() -> u32 {
     10
+}
+
+pub(crate) fn default_approval_wait_seconds() -> u32 {
+    120
 }
 
 fn default_thread_token_budget() -> u64 {
@@ -160,6 +167,7 @@ impl Config {
             default_folder: default_folder(),
             chat_idle_timeout_minutes: default_chat_idle_timeout_minutes(),
             thread_token_budget: default_thread_token_budget(),
+            approval_wait_seconds: default_approval_wait_seconds(),
             planner_provider_id: String::new(),
             planner_model: String::new(),
             mutis: MutisConfig::default(),

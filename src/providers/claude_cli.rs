@@ -46,6 +46,10 @@ impl Provider for ClaudeCliProvider {
         }
         let mut args = vec![
             OsString::from("-p"),
+            OsString::from("--input-format"),
+            OsString::from("stream-json"),
+            OsString::from("--permission-prompt-tool"),
+            OsString::from("stdio"),
             OsString::from("--output-format"),
             OsString::from("stream-json"),
             OsString::from("--verbose"),
@@ -110,8 +114,10 @@ impl Provider for ClaudeCliProvider {
                 configured_executable: request.provider.executable.clone(),
                 folder: &request.folder,
                 args,
-                prompt,
+                prompt: format!("{}
+", serde_json::json!({"type": "user", "message": {"role": "user", "content": prompt}})),
                 watchdog_minutes: None,
+                interact: Some(interaction(request.permission)),
             },
             events.clone(),
             cancel.clone(),
@@ -176,6 +182,7 @@ pub(crate) async fn compact_session(provider: &crate::config::ProviderConfig, ho
             args,
             prompt: "/compact".to_owned(),
             watchdog_minutes: None,
+            interact: None,
         },
         sink,
         cancel.clone(),
@@ -215,9 +222,53 @@ fn context_size(usage: &Value) -> Option<u64> {
     Some(["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"].iter().filter_map(|key| last[*key].as_u64()).sum())
 }
 
+/// shortcut: a Write into a `plans` folder or ExitPlanMode is read as "it wanted to act but plan mode stopped it"; a plan written for a pure question would show the card too.
+fn plan_instead_of_acting(block: &serde_json::Value) -> bool {
+    let path = block["input"]["file_path"].as_str().unwrap_or("").replace('\\', "/");
+    block["name"] == "ExitPlanMode" || (block["name"] == "Write" && path.contains("/plans/"))
+}
+
+/// Tools that only look: never worth asking about.
+const LOOK_ONLY: [&str; 6] = ["Read", "Glob", "Grep", "LS", "TodoWrite", "WebSearch"];
+
+fn permission_reply(request_id: &str, allow: bool, input: &Value) -> String {
+    let body = if allow {
+        serde_json::json!({"behavior": "allow", "updatedInput": input})
+    } else {
+        serde_json::json!({"behavior": "deny", "message": "The user declined this action."})
+    };
+    serde_json::json!({"type": "control_response", "response": {"subtype": "success", "request_id": request_id, "response": body}}).to_string()
+}
+
+/// Claude asks before each tool the permission mode does not cover (`--permission-prompt-tool stdio`): the user answers from the chat.
+fn interaction(permission: Permission) -> cli_support::Interact {
+    Box::new(move |line| {
+        let value: Value = serde_json::from_str(line).ok()?;
+        if value["type"] != "control_request" || value["request"]["subtype"] != "can_use_tool" {
+            return None;
+        }
+        let id = value["request_id"].as_str()?.to_owned();
+        let tool = value["request"]["tool_name"].as_str().unwrap_or("");
+        let input = value["request"]["input"].clone();
+        if LOOK_ONLY.contains(&tool) {
+            return Some(cli_support::Reaction::Reply(permission_reply(&id, true, &input)));
+        }
+        // Questions and plan approval have no one to answer them in a headless run.
+        if matches!(tool, "AskUserQuestion" | "ExitPlanMode" | "EnterPlanMode") {
+            return Some(cli_support::Reaction::Reply(permission_reply(&id, false, &input)));
+        }
+        let shown = match input["file_path"].as_str() {
+            Some(path) => format!("{tool}: {}", cli_support::one_line(path, 220)),
+            None => summarize_tool_use(&serde_json::json!({"name": tool, "input": input})),
+        };
+        let need = if permission == Permission::Read { "write" } else { "full" };
+        Some(cli_support::Reaction::Ask { shown, need, reply: Box::new(move |allow| permission_reply(&id, allow, &input)) })
+    })
+}
+
 fn permission_args(permission: Permission) -> Vec<OsString> {
     let mode = match permission {
-        Permission::Read => "plan",
+        Permission::Read => "manual",
         Permission::Write | Permission::Full => "acceptEdits",
     };
     let mut args = vec!["--permission-mode".into(), mode.into()];
@@ -320,6 +371,11 @@ impl ClaudeParser {
                             }
                             "tool_use" => {
                                 events.push(ProviderEvent::text("log", summarize_tool_use(block)));
+                                // Plan mode never reports an error: it writes its plan file (or asks to leave plan mode) instead of acting.
+                                if plan_instead_of_acting(block) && self.permission == Permission::Read && !self.denial_hint_seen {
+                                    self.denial_hint_seen = true;
+                                    events.push(ProviderEvent { name: "permission_denied", data: serde_json::json!({ "need": "write" }) });
+                                }
                                 // A skill/plugin run shows as its own line in the reply, free of model tokens.
                                 if let Some(skill) = skill_name(block) {
                                     let lead = if self.delta_seen { "\n\n" } else { "" };
@@ -383,6 +439,11 @@ impl ClaudeParser {
                 let subtype = value["subtype"].as_str().unwrap_or("unknown");
                 let is_error = value["is_error"].as_bool().unwrap_or(false);
                 let result_text = value["result"].as_str().unwrap_or_default();
+                // shortcut: plan mode often just says so in its reply (no tool call, no error); matching "plan mode" in the final text can also hit a reply that merely mentions it.
+                if self.permission == Permission::Read && !self.denial_hint_seen && result_text.to_lowercase().contains("plan mode") {
+                    self.denial_hint_seen = true;
+                    events.push(ProviderEvent { name: "permission_denied", data: serde_json::json!({ "need": "write" }) });
+                }
                 if subtype != "success" || is_error {
                     let label = match subtype {
                         "error_max_turns" => "Claude dừng vì hết số lượt (max turns)".to_owned(),
@@ -478,7 +539,7 @@ mod tests {
     #[test]
     fn permission_arguments_only_allow_commands_for_full() {
         for (permission, mode) in [
-            (Permission::Read, "plan"),
+            (Permission::Read, "manual"),
             (Permission::Write, "acceptEdits"),
             (Permission::Full, "acceptEdits"),
         ] {
@@ -492,6 +553,50 @@ mod tests {
             }
             assert!(!args.iter().any(|arg| arg.contains("bypassPermissions")));
         }
+    }
+
+    #[test]
+    fn claude_asks_before_a_tool_the_mode_does_not_cover() {
+        use crate::providers::cli_support::Reaction;
+        let request = |tool: &str| serde_json::json!({"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool","tool_name":tool,"input":{"command":"echo hi > a.txt"}}}).to_string();
+        let ask = super::interaction(Permission::Read);
+        assert!(ask(r#"{"type":"assistant"}"#).is_none());
+        match ask(&request("Bash")) {
+            Some(Reaction::Ask { shown, need, reply }) => {
+                assert!(shown.contains("echo hi"));
+                assert_eq!(need, "write");
+                let yes: serde_json::Value = serde_json::from_str(&reply(true)).unwrap();
+                assert_eq!(yes["response"]["request_id"], "r1");
+                assert_eq!(yes["response"]["response"]["behavior"], "allow");
+                assert_eq!(yes["response"]["response"]["updatedInput"]["command"], "echo hi > a.txt");
+                assert!(reply(false).contains("deny"));
+            }
+            _ => panic!("a shell command must be put to the user"),
+        }
+        assert!(matches!(ask(&request("Read")), Some(Reaction::Reply(text)) if text.contains("allow")));
+        assert!(matches!(ask(&request("AskUserQuestion")), Some(Reaction::Reply(text)) if text.contains("deny")));
+        assert!(matches!(super::interaction(Permission::Write)(&request("Bash")), Some(Reaction::Ask { need: "full", .. })));
+    }
+
+    #[test]
+    fn plan_mode_writing_its_plan_offers_one_level_up_only_in_read() {
+        let line = serde_json::json!({"type":"assistant","message":{"content":[{
+            "type":"tool_use","name":"Write","input":{"file_path":"C:\\data\\plans\\x.md","content":"plan"}}]}}).to_string();
+        for (permission, expected) in [(Permission::Read, true), (Permission::Write, false)] {
+            let mut parser = ClaudeParser { permission, ..Default::default() };
+            let denied: Vec<_> = parser.parse(&line).into_iter().filter(|e| e.name == "permission_denied").collect();
+            assert_eq!(denied.len(), usize::from(expected));
+            if expected { assert_eq!(denied[0].data["need"], "write"); }
+            assert!(parser.parse(&line).iter().all(|e| e.name != "permission_denied"));
+        }
+        let said = r#"{"type":"result","subtype":"success","result":"Plan mode is active, so I haven't created c.txt."}"#;
+        for (permission, expected) in [(Permission::Read, 1), (Permission::Write, 0)] {
+            let events = ClaudeParser { permission, ..Default::default() }.parse(said);
+            assert_eq!(events.iter().filter(|e| e.name == "permission_denied").count(), expected);
+        }
+        let other = serde_json::json!({"type":"assistant","message":{"content":[{
+            "type":"tool_use","name":"Write","input":{"file_path":"src/a.rs","content":"x"}}]}}).to_string();
+        assert!(ClaudeParser { permission: Permission::Read, ..Default::default() }.parse(&other).iter().all(|e| e.name != "permission_denied"));
     }
 
     #[test]

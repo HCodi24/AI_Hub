@@ -186,6 +186,12 @@ impl Run {
                 }
             }
         }
+        // Stopped by the user or dropped by the browser: save that on the reply so a reload does not show it as complete.
+        if task_cancel.is_cancelled() && !received_error {
+            if let Some(message) = record.messages.last_mut().filter(|m| m.role == "assistant" && m.error.is_none()) {
+                message.error = Some(chat::STOPPED_NOTE.to_owned());
+            }
+        }
         if should_emit_empty_reply(received_delta, received_error, task_cancel.is_cancelled()) {
             let event = ProviderEvent::text(
                 "error",

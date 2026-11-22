@@ -34,6 +34,8 @@ pub(crate) struct ConfigInput {
     chat_idle_timeout_minutes: Option<u32>,
     #[serde(default)]
     thread_token_budget: Option<u64>,
+    #[serde(default)]
+    approval_wait_seconds: Option<u32>,
 }
 
 pub(crate) async fn get_config(State(state): State<AppState>) -> Json<Config> {
@@ -55,6 +57,12 @@ pub(crate) async fn put_config(
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "Thời gian chờ chat phải từ 0 đến 120 phút",
+        ));
+    }
+    if input.approval_wait_seconds.is_some_and(|seconds| !(10..=3600).contains(&seconds)) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Thời gian chờ bạn trả lời phải từ 10 đến 3600 giây",
         ));
     }
     // 0 = never rotate; below 20k a thread would restart on almost every message.
@@ -145,6 +153,9 @@ pub(crate) async fn put_config(
     }
     if let Some(tokens) = input.thread_token_budget {
         config.thread_token_budget = tokens;
+    }
+    if let Some(seconds) = input.approval_wait_seconds {
+        config.approval_wait_seconds = seconds;
     }
     if let Some(provider_id) = input.planner_provider_id {
         config.planner_provider_id = provider_id;

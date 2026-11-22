@@ -201,6 +201,15 @@ fn append_cmd_line(command: &mut Command, command_line: &str) {
     command.arg(command_line);
 }
 
+/// What a source that can be asked in the middle of a run does with one of its output lines.
+pub enum Reaction {
+    /// Answer at once (a tool that is always fine, or never available here).
+    Reply(String),
+    /// Put `shown` to the user; `reply` turns their yes/no into the line written back. A "no" also offers `need` one level up.
+    Ask { shown: String, need: &'static str, reply: Box<dyn Fn(bool) -> String + Send> },
+}
+pub type Interact = Box<dyn Fn(&str) -> Option<Reaction> + Send + Sync>;
+
 pub struct JsonlCommand<'a> {
     pub config_dir: Option<std::path::PathBuf>,
     pub cli_name: &'static str,
@@ -211,6 +220,8 @@ pub struct JsonlCommand<'a> {
     pub args: Vec<OsString>,
     pub prompt: String,
     pub watchdog_minutes: Option<u32>,
+    /// Two-way sources: stdin stays open until the result, and these lines are answered as they come.
+    pub interact: Option<Interact>,
 }
 
 pub async fn run_jsonl(
@@ -283,15 +294,16 @@ pub async fn run_jsonl(
         return Err(anyhow!("{cli_name} không thể mở stdin"));
     };
 
+    let mut live = None;
     let write_result = tokio::select! {
         _ = cancel.cancelled() => {
             terminate_child_tree(&mut child).await;
             let _ = stderr_task.await;
             return Ok(());
         }
-        result = write_prompt(stdin, command_spec.prompt) => result,
+        result = write_prompt(stdin, command_spec.prompt, command_spec.interact.is_some()) => result,
     };
-    if let Err(error) = write_result {
+    if let Err(error) = write_result.map(|open| live = open) {
         terminate_child_tree(&mut child).await;
         let _ = stderr_task.await;
         return Err(error).with_context(|| format!("Không thể gửi nội dung đến {cli_name}"));
@@ -338,6 +350,24 @@ pub async fn run_jsonl(
         };
         let line = line_result;
         let Some(line) = line else { break };
+        if let Some(interact) = &command_spec.interact {
+            match interact(&line) {
+                Some(Reaction::Reply(text)) => { write_reply(&mut live, &text).await; continue; }
+                Some(Reaction::Ask { shown, need, reply }) => {
+                    let Some(allowed) = super::approvals::confirm(&events, &cancel, shown).await else { was_cancelled = true; break 'read };
+                    let note = if allowed { "Bạn đã cho phép bước này một lần." } else { "Bạn đã từ chối bước này." };
+                    let _ = events.send(ProviderEvent::text("log", note.to_owned())).await;
+                    if !allowed {
+                        let _ = events.send(ProviderEvent { name: "permission_denied", data: serde_json::json!({ "need": need }) }).await;
+                    }
+                    write_reply(&mut live, &reply(allowed)).await;
+                    continue;
+                }
+                None => {}
+            }
+            // The turn is over: closing stdin lets the CLI exit.
+            if serde_json::from_str::<Value>(&line).is_ok_and(|value| value["type"] == "result") { live = None; }
+        }
         for event in parse_line(&line) {
             tokio::select! {
                 _ = cancel.cancelled() => {
@@ -492,7 +522,11 @@ fn transcript(messages: &[crate::chat::ChatMessage]) -> String {
             "system" => "System".to_owned(),
             _ => "User".to_owned(),
         };
-        let line = format!("{who}: {}\n", crate::core::text::truncate_chars(message.content.trim(), limit));
+        let cut = if message.error.as_deref() == Some(crate::chat::STOPPED_NOTE) { " [stopped before it finished]" } else { "" };
+        let files = if message.files.is_empty() { String::new() } else {
+            format!(" [files it changed: {}]", message.files.iter().take(12).map(|f| f.path.as_str()).collect::<Vec<_>>().join(", "))
+        };
+        let line = format!("{who}: {}{cut}{files}\n", crate::core::text::truncate_chars(message.content.trim(), limit));
         used += line.chars().count();
         lines.push(line);
     }
@@ -549,9 +583,23 @@ pub fn safe_session_id(session_id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
 }
 
-async fn write_prompt(mut stdin: ChildStdin, prompt: String) -> std::io::Result<()> {
+/// Sends the prompt; `keep_open` leaves stdin for later answers, otherwise it is closed so the CLI starts at once.
+async fn write_prompt(mut stdin: ChildStdin, prompt: String, keep_open: bool) -> std::io::Result<Option<ChildStdin>> {
     stdin.write_all(prompt.as_bytes()).await?;
-    stdin.shutdown().await
+    if keep_open {
+        stdin.flush().await?;
+        return Ok(Some(stdin));
+    }
+    stdin.shutdown().await?;
+    Ok(None)
+}
+
+async fn write_reply(stdin: &mut Option<ChildStdin>, line: &str) {
+    if let Some(stdin) = stdin {
+        let _ = stdin.write_all(format!("{line}
+").as_bytes()).await;
+        let _ = stdin.flush().await;
+    }
 }
 
 async fn collect_stderr(stderr: ChildStderr) -> Vec<String> {
@@ -619,6 +667,25 @@ mod claude_support_tests {
         let newer = version_dir_key("2.1.317").unwrap();
         assert!(newer > older);
         assert!(version_dir_key("not-a-version").is_none());
+    }
+
+    #[test]
+    fn a_stopped_reply_is_marked_as_cut_short_in_the_replayed_history() {
+        let messages: Vec<crate::chat::ChatMessage> = serde_json::from_value(serde_json::json!([
+            {"role":"user","content":"write a story"},
+            {"role":"assistant","content":"Once upon","error": crate::chat::STOPPED_NOTE},
+            {"role":"user","content":"continue"}
+        ]))
+        .unwrap();
+        let prompt = super::compose_prompt_for(&messages, false, "claude_cli");
+        assert!(prompt.contains("Once upon [stopped before it finished]"));
+        let with_files: Vec<crate::chat::ChatMessage> = serde_json::from_value(serde_json::json!([
+            {"role":"user","content":"edit"},
+            {"role":"assistant","content":"done","files":[{"path":"src/a.rs","added":1,"removed":0}]},
+            {"role":"user","content":"next"}
+        ]))
+        .unwrap();
+        assert!(super::compose_prompt_for(&with_files, false, "claude_cli").contains("[files it changed: src/a.rs]"));
     }
 
     #[test]

@@ -48,6 +48,9 @@ pub struct ChatAttachment {
     pub path: String,
 }
 
+/// `error` saved on an assistant reply the user stopped (or whose connection dropped): a reload still shows it was cut short.
+pub const STOPPED_NOTE: &str = "Đã dừng";
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChatMessage {
     pub role: String,

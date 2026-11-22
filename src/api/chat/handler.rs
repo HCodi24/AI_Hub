@@ -537,6 +537,11 @@ pub(crate) async fn chat_handler(
             }
         }
     }
+    // A source that starts without its own session only gets a written copy of the earlier chat: say so, since it cannot see what others ran.
+    let others = provider_request.messages.iter().any(|m| m.role == "assistant" && !m.provider.is_empty() && m.provider != provider_request.provider.kind);
+    if provider_request.session_id.is_none() && others && provider_request.provider.kind.ends_with("_cli") {
+        let _ = providers::emit_text(&provider_sender, "log", format!("Chuyển sang {}: AI này chỉ nhận bản chép hội thoại và danh sách file đã đổi, không thấy lệnh hay công cụ nguồn trước đã chạy.", provider_request.provider.name)).await;
+    }
     // Plan task workers cannot stop to ask the user, so they skip the first-request rules.
     if request.plan_id.is_none() && !plain_chat && state.config.read().await.codegraph_enabled {
         add_first_request_rules(&mut provider_request, &provider_sender).await;

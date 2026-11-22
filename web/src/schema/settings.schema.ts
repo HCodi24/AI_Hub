@@ -15,7 +15,7 @@ export const McpServerSchema = z.object({
 export const McpToolsSchema = z.object({ tools: z.array(z.object({ name: z.string(), description: z.string().default(""), read_only: z.boolean().default(false) })) });
 export const FullConfigSchema = z.object({
   providers: z.array(ProviderSchema), default_folder: z.string().default(""),
-  chat_idle_timeout_minutes: z.number().default(10), thread_token_budget: z.number().default(150000), planner_provider_id: z.string().default(""),
+  chat_idle_timeout_minutes: z.number().default(10), thread_token_budget: z.number().default(150000), approval_wait_seconds: z.number().default(120), planner_provider_id: z.string().default(""),
   planner_model: z.string().default(""), memory: MemoryConfigSchema.default({}), mcp_servers: z.array(McpServerSchema).default([]), pets: z.record(z.string(), z.string()).default({}), pets_enabled: z.boolean().default(true),
   codegraph_enabled: z.boolean().default(true),
 }).passthrough();

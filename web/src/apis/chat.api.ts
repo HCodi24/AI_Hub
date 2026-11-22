@@ -32,6 +32,7 @@ export const chatApi = {
   async tokenHistory(id: string, signal?: AbortSignal) {
     return parseResponse(TokenHistorySchema, await http.get(`/chats/${encodeURIComponent(id)}/token-history`, signal));
   },
+  async approve(id: string, allow: boolean) { await http.request(`/approvals/${encodeURIComponent(id)}`, { method: "POST", body: JSON.stringify({ allow }) }); },
   async stop(id: string) { await http.request(`/chat/${encodeURIComponent(id)}/stop`, { method: "POST" }); },
   async delete(id: string) { await http.request(`/chats/${encodeURIComponent(id)}`, { method: "DELETE" }); },
   /** Compacts every Codex thread of the chat; `failed` holds the reason of each thread that could not be compacted. */

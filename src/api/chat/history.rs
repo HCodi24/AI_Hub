@@ -197,3 +197,17 @@ mod tests {
         assert_eq!((result.compacted, result.failed.len()), (0, 0));
     }
 }
+
+#[derive(serde::Deserialize)]
+pub(crate) struct Approval {
+    allow: bool,
+}
+
+/// The user's answer to a `permission_request` of a running chat.
+pub(crate) async fn answer_approval(Path(id): Path<String>, Json(body): Json<Approval>) -> ApiResult<StatusCode> {
+    if crate::providers::approvals::answer(&id, body.allow) {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::new(StatusCode::NOT_FOUND, "Không có yêu cầu nào đang chờ (đã trả lời hoặc hết hạn)"))
+    }
+}

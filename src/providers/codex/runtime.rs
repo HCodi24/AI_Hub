@@ -108,6 +108,25 @@ impl Provider for CodexProvider {
                     value = tokio::time::timeout(limit, client.next()) => value.context("Codex không phản hồi; đã dừng lượt chạy")??,
                 };
                 if value.get("id").is_some() && value.get("method").is_some() {
+                    // Read must stay read-only unless the user says otherwise: a write the sandbox would have stopped is put to them.
+                    let method = value["method"].as_str().unwrap_or("");
+                    let file_edit = method == "item/fileChange/requestApproval";
+                    let command = value["params"]["command"].as_str().unwrap_or("");
+                    if request.permission == Permission::Read && (file_edit || (method == "item/commandExecution/requestApproval" && super::gate::writes(command))) {
+                        let shown = if file_edit { value["params"]["reason"].as_str().unwrap_or("Sửa file").to_owned() } else { crate::core::text::truncate_chars(command, 300) };
+                        let Some(allowed) = crate::providers::approvals::confirm(&events, &cancel, shown).await else { return Ok(()) };
+                        if allowed {
+                            // The command now runs outside the sandbox: a later failure is the command's own, never a permission block.
+                            denial_sent = true;
+                            crate::providers::emit_text(&events, "log", "Bạn đã cho phép lệnh ghi này một lần.".into()).await?;
+                            client.respond(&value, super::gate::decision(&super::gate::Verdict::Allow)).await?;
+                        } else {
+                            crate::providers::emit_text(&events, "log", "Lệnh ghi bị từ chối (Chỉ đọc).".into()).await?;
+                            let _ = events.send(crate::providers::ProviderEvent { name: "permission_denied", data: json!({"need": "write"}) }).await;
+                            client.respond(&value, super::gate::decision(&super::gate::Verdict::Deny(Vec::new()))).await?;
+                        }
+                        continue;
+                    }
                     match gate.judge(value["method"].as_str().unwrap_or(""), &value["params"]) {
                         Some(verdict) => {
                             if let super::gate::Verdict::Deny(paths) = &verdict {

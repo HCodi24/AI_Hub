@@ -44,6 +44,8 @@ type ChatState = {
   queue: QueuedMessage[];
   /** Set when the run was blocked by the chat's permission; cleared by the next run or chat switch. */
   denied: "write" | "full" | null;
+  /** A command the run is waiting on: the user allows or refuses it from a card. */
+  approval: { id: string; command: string } | null;
   enqueue: (item: QueuedMessage) => void; dequeue: () => QueuedMessage | undefined; unqueue: (index: number) => void; clearQueue: () => void;
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
@@ -75,7 +77,7 @@ function rememberActiveChat(id: string) {
   } catch { /* Storage unavailable. */ }
 }
 export const useChatStore = create<ChatState>((set, get) => ({
-  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false, tasks: [], checkers: [], queue: [], denied: null,
+  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false, tasks: [], checkers: [], queue: [], denied: null, approval: null,
   enqueue: (item) => set(state => ({ queue: [...state.queue, item] })),
   dequeue: () => { const [next, ...rest] = get().queue; if (next) set({ queue: rest }); return next; },
   unqueue: (index) => set(state => ({ queue: state.queue.filter((_, i) => i !== index) })),
@@ -107,7 +109,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         file_tools: chat.file_tools, dev_chat: chat.dev_chat,
       };
       saveModelSelection(chat.id, settings);
-      return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], checkers: [], queue: [], denied: null, error: "", drawer: false, initialized: true };
+      return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], checkers: [], queue: [], denied: null, approval: null, error: "", drawer: false, initialized: true };
     });
   },
   reset: () => {
@@ -115,14 +117,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => {
       const settings = { ...state.settings, dev_chat: false };
       saveModelSelection(DRAFT_ID, settings);
-      return { id: "", messages: [], status: {}, tasks: [], checkers: [], queue: [], denied: null, error: "", drawer: false, settings };
+      return { id: "", messages: [], status: {}, tasks: [], checkers: [], queue: [], denied: null, approval: null, error: "", drawer: false, settings };
     });
   },
   begin: (text, attachments = [], initialProvider = "", initialModel = "") => set((state) => {
     const id = state.id || crypto.randomUUID();
     rememberActiveChat(id);
     if (!state.id) saveModelSelection(id, state.settings);
-    return { id, streaming: true, status: {}, tasks: [], checkers: [], denied: null, error: "",
+    return { id, streaming: true, status: {}, tasks: [], checkers: [], denied: null, approval: null, error: "",
       messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text, attachments }),
         ChatMessageSchema.parse({ role: "assistant", content: "", provider: initialProvider, model: initialModel })] };
   }),
@@ -140,7 +142,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           model: data.model || "", idle_s: 0, last_activity: "" } };
     }
     if (event === "heartbeat") return { status: { ...state.status, ...data } };
-    if (event === "permission_denied") return { denied: data.need ?? null };
+    if (event === "permission_denied") return { denied: data.need ?? null, approval: null };
+    if (event === "permission_request") return data.id ? { denied: null, approval: { id: data.id, command: data.command ?? "" } } : {};
     if (event === "tasks") return { tasks: data.tasks ?? [] };
     if (event === "task_snapshot") {
       const messages = [...state.messages];
@@ -181,7 +184,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // A row still waiting or busy when the stream ends will never move again (stopped, or the connection dropped).
   finish: (error = "") => set((state) => {
     const tasks = state.tasks.map(task => ["waiting", "coding", "checking", "fixwait", "fixing"].includes(task.state) ? { ...task, state: "stopped" } : task);
-    return { streaming: false, error, tasks, checkers: stopCheckers(state.checkers),
+    return { streaming: false, approval: null, error, tasks, checkers: stopCheckers(state.checkers),
       messages: state.messages.map((message, index) => {
         if (index !== state.messages.length - 1 || message.role !== "assistant") return message;
         return { ...message, ...(tasks.length ? { tasks } : {}), ...(error ? { error } : {}) };

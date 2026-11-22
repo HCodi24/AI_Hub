@@ -1,5 +1,6 @@
 pub(crate) mod agent;
 pub mod anthropic;
+pub(crate) mod approvals;
 pub mod antigravity_cli;
 pub mod claude_cli;
 pub(crate) mod claude;
