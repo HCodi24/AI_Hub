@@ -68,6 +68,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/dev/git/commit", post(crate::api::dev::dev_git_commit))
         .route("/api/dev/test", post(crate::api::dev::dev_test))
         .route("/api/dev/release", post(crate::api::dev::dev_release))
+        .route("/api/dev/desktop-build", post(crate::api::dev::dev_desktop_build))
         .route(
             "/api/dev/settings",
             get(crate::api::dev::dev_settings).put(crate::api::dev::put_dev_settings),

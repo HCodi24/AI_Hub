@@ -19,7 +19,7 @@ mod settings;
 mod stream;
 mod watcher;
 
-pub(crate) use build::{dev_rebuild, dev_release, dev_test, dev_web_build};
+pub(crate) use build::{dev_desktop_build, dev_rebuild, dev_release, dev_test, dev_web_build};
 pub(crate) use chat::{dev_chat_preamble, effective_chat_folder};
 pub(crate) use git::{
     dev_git_checkpoint, dev_git_commit, dev_git_diff, dev_git_reset, dev_repo_info,

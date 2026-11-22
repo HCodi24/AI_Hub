@@ -170,6 +170,8 @@ export const settingsText = {
     untracked: "File chưa theo dõi", truncated: "Diff đã giới hạn ở 200 KB.", checkpoint: "Tạo checkpoint", reset: "Khôi phục về checkpoint",
     confirmReset: "Bỏ mọi thay đổi chưa commit và quay về commit cuối?", commit: "Commit", commitMessage: "Nội dung commit",
     test: "Chạy test", release: "Build bản phát hành", rebuild: "Build & khởi động lại", autoRebuild: "Tự build lại khi AI sửa xong",
+    desktopBuild: "Build bản cài (tự tăng phiên bản)", desktopBuilding: "Đang build bản cài, có thể mất vài phút…", desktopDone: (version: string, dir: string) => `Đã build ${version}. Bộ cài ở ${dir}`, desktopFail: "Build bản cài thất bại. Xem log bên dưới.",
+    signingPassword: "Mật khẩu khoá ký (bỏ trống nếu khoá không có)",
     webBuild: "Build giao diện", webOk: "Build giao diện xong", webFail: "Build giao diện thất bại",
     banner: "Chế độ phát triển", rustChanged: (n: number) => `Code Rust đã thay đổi (${n} tệp)`, webChanged: "Mã giao diện đã thay đổi",
     reloadPending: "Giao diện đã đổi · sẽ tự tải lại khi AI chạy xong", devChat: "Chat phát triển", noRepo: "Không lấy được đường dẫn repo",

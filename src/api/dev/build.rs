@@ -8,6 +8,7 @@ use crate::{
 };
 use axum::{
     extract::State,
+    Json,
     http::StatusCode,
     response::{sse::KeepAlive, sse::Sse, IntoResponse, Response},
 };
@@ -73,6 +74,63 @@ pub(crate) async fn dev_release(State(state): State<AppState>) -> ApiResult<Resp
             .stderr(Stdio::piped());
         let ok = stream_process(cmd, tx.clone()).await;
         let _=tx.send(json!({"event":"summary","data":{"ok":ok,"exe":out.to_string_lossy(),"note":"Nếu báo Access is denied, hãy đóng exe release đang chạy trước."}}).to_string()).await;
+    });
+    Ok(sse_channel(rx))
+}
+
+/// Raises the last number of the first `<key> "x.y.z"` in `text` (Cargo.toml `version = `, tauri.conf.json `"version": `); returns the new version.
+fn bump_patch(text: &str, key: &str) -> Option<(String, String)> {
+    let start = text.find(key)? + key.len();
+    let quote = start + text[start..].find('"')? + 1;
+    let end = quote + text[quote..].find('"')?;
+    let mut parts: Vec<u64> = text[quote..end].split('.').map(|n| n.parse().ok()).collect::<Option<_>>()?;
+    *parts.last_mut()? += 1;
+    let version = parts.iter().map(u64::to_string).collect::<Vec<_>>().join(".");
+    Some((format!("{}{}{}", &text[..quote], version, &text[end..]), version))
+}
+
+/// True while the desktop build runs: the build edits Cargo.toml and web/out, which would make the dev watcher rebuild and restart the server mid-build.
+pub(super) static DESKTOP_BUILDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Local-only: bump the app version (root and desktop Cargo.toml, tauri.conf.json), then run `scripts/build-desktop.ps1`.
+pub(crate) async fn dev_desktop_build(State(state): State<AppState>, body: Option<Json<Value>>) -> ApiResult<Response> {
+    // The signing-key password lives only in this request and the child process environment.
+    let password = body.and_then(|Json(v)| v["password"].as_str().map(str::to_owned)).filter(|p| !p.is_empty());
+    let repo = dev_repo_path(&state)?;
+    if DESKTOP_BUILDING.swap(true, Ordering::SeqCst) {
+        return Err(ApiError::new(StatusCode::CONFLICT, "Đang build bản cài"));
+    }
+    let files = [("Cargo.toml", "
+version ="), ("desktop/Cargo.toml", "
+version ="), ("desktop/tauri.conf.json", "\"version\":")];
+    let mut version = String::new();
+    for (file, key) in files {
+        let path = repo.join(file);
+        let bumped = std::fs::read_to_string(&path).map_err(|e| format!("Không đọc được {file}: {e}"))
+            .and_then(|text| bump_patch(&text, key).ok_or_else(|| format!("Không thấy số phiên bản trong {file}")))
+            .and_then(|(next, new_version)| std::fs::write(&path, next).map(|_| new_version).map_err(|e| format!("Không ghi được {file}: {e}")));
+        match bumped {
+            Ok(new_version) => version = new_version,
+            Err(message) => {
+                DESKTOP_BUILDING.store(false, Ordering::SeqCst);
+                return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, message));
+            }
+        }
+    }
+    let (tx, rx) = mpsc::channel::<String>(64);
+    tokio::spawn(async move {
+        let _ = tx.send(json!({"event":"log","data":{"text":format!("Phiên bản mới: {version}")}}).to_string()).await;
+        let mut cmd = tokio::process::Command::new("powershell");
+        cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/build-desktop.ps1"])
+            .current_dir(&repo)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        if let Some(password) = password {
+            cmd.env("TAURI_SIGNING_PRIVATE_KEY_PASSWORD", password);
+        }
+        let ok = stream_process(cmd, tx.clone()).await;
+        DESKTOP_BUILDING.store(false, Ordering::SeqCst);
+        let _ = tx.send(json!({"event":"summary","data":{"ok":ok,"version":version,"dir":repo.join("dist").to_string_lossy()}}).to_string()).await;
     });
     Ok(sse_channel(rx))
 }
@@ -240,4 +298,20 @@ pub(super) async fn run_dev_build(state: &AppState, repo: &std::path::Path) -> V
         std::process::exit(75);
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bump_patch;
+
+    #[test]
+    fn bump_raises_only_the_first_version_number() {
+        let toml = "[package]\nname = \"x\"\nversion = \"0.1.9\"\n[dependencies]\ntauri = { version = \"2\" }\n";
+        let (text, version) = bump_patch(toml, "\nversion =").unwrap();
+        assert_eq!(version, "0.1.10");
+        assert!(text.contains("version = \"0.1.10\"") && text.contains("{ version = \"2\" }"));
+        let (json, version) = bump_patch("{\n  \"version\": \"0.1.2\",\n}", "\"version\":").unwrap();
+        assert_eq!((json.as_str(), version.as_str()), ("{\n  \"version\": \"0.1.3\",\n}", "0.1.3"));
+        assert!(bump_patch("version = \"abc\"", "version =").is_none());
+    }
 }

@@ -1,6 +1,6 @@
 //! Background watcher that notices Rust/web changes and optionally auto-rebuilds.
 
-use super::build::{npm_build_command, run_dev_build};
+use super::build::{npm_build_command, run_dev_build, DESKTOP_BUILDING};
 use crate::app::AppState;
 use serde_json::json;
 use std::{
@@ -19,6 +19,12 @@ pub(crate) fn spawn_dev_watcher(state: AppState, repo: PathBuf) {
         let mut pending_web: Option<Instant> = None;
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
+            if DESKTOP_BUILDING.load(Ordering::SeqCst) {
+                // Ignore what the desktop build itself changes (versions, web/out).
+                (old_rust, old_web, old_out) = (crate::dev::snapshot(&repo), crate::dev::snapshot_web_src(&repo), crate::dev::snapshot_web_out(&repo));
+                (pending, pending_web, out_changed_at) = (None, None, None);
+                continue;
+            }
             let rust = crate::dev::snapshot(&repo);
             let rust_changes = crate::dev::changed_files(&old_rust, &rust);
             let web = crate::dev::snapshot_web_src(&repo);

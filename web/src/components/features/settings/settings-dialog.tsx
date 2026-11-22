@@ -7,6 +7,7 @@ import { Switch } from "@/components/button/switch";
 import { settingsText as t } from "@/text/settings";
 import { AddonsTab } from "./addons-tab";
 import { UpdateSection } from "./update-section";
+import { DesktopBuild } from "./desktop-build";
 import { ExtensionsTab } from "./extensions-tab";
 import { GeneralTab } from "./general-tab";
 import { MutisTab } from "./mutis-tab";
@@ -41,7 +42,7 @@ export function SettingsDialog({ initialTab = "providers", folder, close, dashbo
       {tab !== "addons" && tab !== "providers" && tab !== "pets" && <h3 className={styles.panelTitle}>{t.tabs[tab]}</h3>}
       {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab taskBoardEnabled={taskBoardEnabled} onTaskBoardEnabledChange={onTaskBoardEnabledChange} />}{tab === "mutis" && <MutisTab />}
       {tab === "addons" && <AddonsTab />}
-      {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "pets" && <PetsSection />}{tab === "dev" && <UpdateSection />}
+      {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "pets" && <PetsSection />}{tab === "dev" && <><UpdateSection /><DesktopBuild /></>}
       {tab === "sound" && <p className={styles.note}>{t.sound.notice}</p>}
       {tab === "dashboard" && <form className={styles.form}>
         <label className={styles.check}><Switch checked={dashboardEnabled}

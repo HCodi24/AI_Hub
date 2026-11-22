@@ -10,7 +10,7 @@ export const devApi = {
   async previewServer(signal?: AbortSignal) { return parseResponse(DevPreviewServerSchema, await http.get("/dev/preview-server", signal)); },
   async previewServerAction(action: "start" | "stop") { return parseResponse(DevPreviewServerSchema, await post("/dev/preview-server", { action })); },
   /** Streams `log` / `summary` / `verify` / `rebuild` events until the command ends. */
-  run(kind: "test" | "release" | "rebuild" | "web-build", signal: AbortSignal, onEvent: (event: string, data: unknown) => void) {
-    return streamEvents(`/dev/${kind}`, undefined, signal, onEvent);
+  run(kind: "test" | "release" | "rebuild" | "web-build" | "desktop-build", signal: AbortSignal, onEvent: (event: string, data: unknown) => void, body?: unknown) {
+    return streamEvents(`/dev/${kind}`, body, signal, onEvent);
   },
 };
