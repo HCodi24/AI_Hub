@@ -48,5 +48,7 @@ export const StreamDataSchema = z.object({
   effort: z.string().optional(), role: z.string().nullish(), elapsed_s: z.number().optional(),
   idle_s: z.number().optional(), last_activity: z.string().optional(), scope: z.string().optional(),
   action: z.string().optional(), status: z.string().optional(), files: z.array(FileChangeSchema).optional(),
+  /** `permission_denied`: the one level up that would let the blocked step run. */
+  need: z.enum(["write", "full"]).optional(),
 });
 export type StreamData = z.infer<typeof StreamDataSchema>;

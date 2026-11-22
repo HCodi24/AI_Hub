@@ -10,6 +10,7 @@ export const addonsApi = {
     return parseResponse(AddonChangeResultSchema, await (await http.request("/addons", { method: "POST", body: JSON.stringify(body) })).json());
   },
   async codexPlugins(signal?: AbortSignal) { return parseResponse(CodexPluginsSchema, await http.get("/addons/codex", signal)); },
+  async antigravityPlugins(signal?: AbortSignal) { return parseResponse(CodexPluginsSchema, await http.get("/addons/antigravity", signal)); },
   async inspectLink(link: string, signal?: AbortSignal) {
     const response = await http.request("/addons/link/inspect", { method: "POST", body: JSON.stringify({ link }), signal });
     return parseResponse(LinkFoundSchema, await response.json());

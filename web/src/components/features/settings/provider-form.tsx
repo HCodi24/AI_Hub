@@ -11,8 +11,8 @@ import { CodexConnection } from "./codex-connection";
 import { errorText } from "./use-settings";
 import { useSettingsAutosave } from "./use-settings-autosave";
 import styles from "./settings.module.css";
-const KINDS = ["codex_cli", "claude_cli", "openai_compat", "anthropic"] as const;
-const isCli = (kind: string) => kind === "codex_cli" || kind === "claude_cli";
+const KINDS = ["codex_cli", "claude_cli", "antigravity_cli", "openai_compat", "anthropic"] as const;
+const isCli = (kind: string) => kind === "codex_cli" || kind === "claude_cli" || kind === "antigravity_cli";
 const blank = (kind: string): ProviderInput => ({ name: "", kind, base_url: "", api_key: "", executable: "", models: [], agent_capable: false });
 type Candidate = { path: string; version: string; source: string };
 type SafeProviderInput = Omit<ProviderInput, "api_key">;
@@ -82,8 +82,8 @@ export function ProviderForm({ provider, status, onSaved, onDeleted, onTested,
   const pick = (candidate: Candidate) => act("discover", async () => {
     change(current => ({ ...current, executable: candidate.path })); setCandidates(null);
   });
-  const cliName = form.kind === "codex_cli" ? "codex" : "claude";
-  const installHint = form.kind === "codex_cli" ? "npm i -g @openai/codex" : "npm i -g @anthropic-ai/claude-code";
+  const cliName = form.kind === "codex_cli" ? "codex" : form.kind === "antigravity_cli" ? "agy" : "claude";
+  const installHint = form.kind === "codex_cli" ? "npm i -g @openai/codex" : form.kind === "antigravity_cli" ? "irm https://antigravity.google/cli/install.ps1 | iex" : "npm i -g @anthropic-ai/claude-code";
   // Keep the saved kind selectable even when the current category does not offer it.
   const kinds = allowedKinds.includes(form.kind) ? allowedKinds : [form.kind, ...allowedKinds];
   // A web account source is mostly about its sign-in, so that section comes first there.

@@ -6,7 +6,7 @@ export const settingsText = {
   sound: { notice: "Chưa có tùy chọn âm thanh." },
   providers: {
     list: "Danh sách nguồn", add: "Thêm nguồn", newName: "Nguồn mới", name: "Tên hiển thị", kind: "Loại nguồn",
-    kinds: { codex_cli: "Codex CLI", claude_cli: "Claude Code CLI", openai_compat: "OpenAI-compatible (DeepSeek…)", anthropic: "Anthropic API" },
+    kinds: { codex_cli: "Codex CLI", claude_cli: "Claude Code CLI", antigravity_cli: "Antigravity CLI", openai_compat: "OpenAI-compatible (DeepSeek…)", anthropic: "Anthropic API" },
     baseUrl: "Base URL", apiKey: "API key", apiKeyKept: "Key đã lưu — để trống để giữ nguyên", executable: "Đường dẫn CLI",
     executableHint: "Để trống để tự tìm", models: "Model (mỗi dòng một model)", agent: "Cho phép AI đọc/sửa file trong thư mục chat (chế độ agent)",
     agentHint: "Quyền Toàn quyền cho phép AI chạy lệnh PowerShell trong thư mục chat. Nguồn Anthropic có sẵn chế độ này.", test: "Kiểm tra kết nối", testing: "Đang kiểm tra…", loadModels: "Tải danh sách model",
@@ -30,9 +30,9 @@ export const settingsText = {
       addName: (kind: string, n: number) => `${kind} ${n}`,
       webName: (kind: string) => ({ codex_cli: "Codex", claude_cli: "Claude" } as Record<string, string>)[kind] || kind,
       notSignedIn: "Chưa đăng nhập", signedIn: "Đã đăng nhập", signIn: "Đăng nhập", signOut: "Đăng xuất", switchAccount: "Đổi tài khoản",
-      cliName: (kind: string) => ({ codex_cli: "Codex CLI", claude_cli: "Claude Code CLI" } as Record<string, string>)[kind] || kind,
+      cliName: (kind: string) => ({ codex_cli: "Codex CLI", claude_cli: "Claude Code CLI", antigravity_cli: "Antigravity CLI" } as Record<string, string>)[kind] || kind,
       added: (name: string) => `Đã thêm "${name}". Bấm "Đăng nhập qua web" để đăng nhập.`,
-      shortKinds: { codex_cli: "Codex", claude_cli: "Claude" } as Record<string, string>,
+      shortKinds: { codex_cli: "Codex", claude_cli: "Claude", antigravity_cli: "Antigravity" } as Record<string, string>,
     },
     loginSelectHint: "Chọn một tài khoản bên trái hoặc thêm tài khoản mới.",
     loginEmpty: "Chưa có tài khoản web nào.",
@@ -78,7 +78,7 @@ export const settingsText = {
   },
   addons: {
     head: {
-      subtitle: "Quản lý plugin, skill và MCP", github: "Cài từ GitHub", add: "Thêm", menu: "Thêm plugin, skill hoặc MCP",      items: { claude: "Từ Claude Code cá nhân", codex: "Từ Codex cá nhân", app: "MCP server của MutiS" },
+      subtitle: "Quản lý plugin, skill và MCP", github: "Cài từ GitHub", add: "Thêm", menu: "Thêm plugin, skill hoặc MCP",      items: { claude: "Từ Claude Code cá nhân", codex: "Từ Codex cá nhân", antigravity: "Từ Claude Code sang Antigravity", app: "MCP server của MutiS" },
     },
     intro: "Claude trong MutiS dùng tài khoản và cấu hình riêng, nên chưa có plugin, skill và MCP server bạn đã cài cho Claude Code. Thêm chúng vào đây để Claude trong MutiS dùng được.",
     claude: "Claude trong MutiS", plugin: "Plugin", skill: "Skill", mcp: "MCP server",
@@ -97,8 +97,11 @@ export const settingsText = {
     available: (count: number) => `Có thể thêm ${count} từ Claude Code cá nhân`,
     availableCodex: (count: number) => `Có thể thêm ${count} từ Codex cá nhân`,
     bannerCodex: (count: number) => `Codex cá nhân của bạn có ${count} plugin chưa có trong MutiS`,
-    tabsLabel: "Nơi dùng", tabs: { claude: "Claude", codex: "Codex", app: "MutiS" },
+    availableAgy: (count: number) => `Có thể thêm ${count} từ Claude Code cá nhân`,
+    bannerAgy: (count: number) => `Claude Code cá nhân của bạn có ${count} plugin chưa có trong Antigravity`,
+    tabsLabel: "Nơi dùng", tabs: { claude: "Claude", codex: "Codex", antigravity: "Antigravity", app: "MutiS" },
     unsupported: {
+      antigravity: { mcp: "Antigravity trong MutiS dùng MCP chung của ứng dụng ở mục MutiS.", skill: "Skill của Antigravity nằm trong plugin; xem mục Plugins." },
       appPlugin: "MutiS không có plugin dùng chung. Plugin được cài riêng cho Claude hoặc Codex; phần dùng chung của MutiS là Skills và MCPs.",
       codex: { mcp: "Codex trong MutiS dùng MCP chung của ứng dụng ở mục MutiS.", skill: "Codex trong MutiS dùng skill trong kho chung ở mục MutiS." },
       goApp: "Mở mục MutiS",

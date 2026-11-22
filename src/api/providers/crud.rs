@@ -143,7 +143,7 @@ fn validate_provider(id: &str, input: &ProviderInput) -> ApiResult<()> {
     }
     if !matches!(
         input.kind.as_str(),
-        "openai_compat" | "anthropic" | "codex_cli" | "claude_cli"
+        "openai_compat" | "anthropic" | "codex_cli" | "claude_cli" | "antigravity_cli"
     ) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,

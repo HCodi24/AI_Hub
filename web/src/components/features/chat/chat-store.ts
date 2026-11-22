@@ -42,6 +42,8 @@ type ChatState = {
   checkers: LiveChecker[];
   /** Messages typed while a run is in progress; each is sent, in order, once the run ends. */
   queue: QueuedMessage[];
+  /** Set when the run was blocked by the chat's permission; cleared by the next run or chat switch. */
+  denied: "write" | "full" | null;
   enqueue: (item: QueuedMessage) => void; dequeue: () => QueuedMessage | undefined; unqueue: (index: number) => void; clearQueue: () => void;
   configure: (settings: Partial<Settings>) => void;
   initialize: (folder: string, provider_id: string, model: string) => void;
@@ -73,7 +75,7 @@ function rememberActiveChat(id: string) {
   } catch { /* Storage unavailable. */ }
 }
 export const useChatStore = create<ChatState>((set, get) => ({
-  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false, tasks: [], checkers: [], queue: [],
+  id: "", messages: [], settings: defaults, streaming: false, drawer: false, status: {}, error: "", initialized: false, tasks: [], checkers: [], queue: [], denied: null,
   enqueue: (item) => set(state => ({ queue: [...state.queue, item] })),
   dequeue: () => { const [next, ...rest] = get().queue; if (next) set({ queue: rest }); return next; },
   unqueue: (index) => set(state => ({ queue: state.queue.filter((_, i) => i !== index) })),
@@ -105,7 +107,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         file_tools: chat.file_tools, dev_chat: chat.dev_chat,
       };
       saveModelSelection(chat.id, settings);
-      return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], checkers: [], queue: [], error: "", drawer: false, initialized: true };
+      return { id: chat.id, messages: chat.messages, settings, status: {}, tasks: [], checkers: [], queue: [], denied: null, error: "", drawer: false, initialized: true };
     });
   },
   reset: () => {
@@ -113,14 +115,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => {
       const settings = { ...state.settings, dev_chat: false };
       saveModelSelection(DRAFT_ID, settings);
-      return { id: "", messages: [], status: {}, tasks: [], checkers: [], queue: [], error: "", drawer: false, settings };
+      return { id: "", messages: [], status: {}, tasks: [], checkers: [], queue: [], denied: null, error: "", drawer: false, settings };
     });
   },
   begin: (text, attachments = [], initialProvider = "", initialModel = "") => set((state) => {
     const id = state.id || crypto.randomUUID();
     rememberActiveChat(id);
     if (!state.id) saveModelSelection(id, state.settings);
-    return { id, streaming: true, status: {}, tasks: [], checkers: [], error: "",
+    return { id, streaming: true, status: {}, tasks: [], checkers: [], denied: null, error: "",
       messages: [...state.messages, ChatMessageSchema.parse({ role: "user", content: text, attachments }),
         ChatMessageSchema.parse({ role: "assistant", content: "", provider: initialProvider, model: initialModel })] };
   }),
@@ -138,6 +140,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           model: data.model || "", idle_s: 0, last_activity: "" } };
     }
     if (event === "heartbeat") return { status: { ...state.status, ...data } };
+    if (event === "permission_denied") return { denied: data.need ?? null };
     if (event === "tasks") return { tasks: data.tasks ?? [] };
     if (event === "task_snapshot") {
       const messages = [...state.messages];

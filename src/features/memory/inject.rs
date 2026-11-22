@@ -11,7 +11,7 @@ pub fn memory_context(config: &Path, folder: &str, settings: &MemoryConfig) -> S
 }
 
 pub fn inject(request: &mut crate::providers::ProviderRequest, context: &str) {
-    let cli = matches!(request.provider.kind.as_str(), "codex_cli" | "claude_cli");
+    let cli = matches!(request.provider.kind.as_str(), "codex_cli" | "claude_cli" | "antigravity_cli");
     if !context.is_empty() && (!cli || request.session_id.is_none()) {
         let message = if cli {
             request.messages.iter_mut().rev().find(|m| m.role == "user")
@@ -32,7 +32,7 @@ mod tests {
     use super::*;
     #[test]
     fn provider_copy_injection_obeys_session_and_message_positions() {
-        for kind in ["codex_cli", "claude_cli", "openai_compat", "deepseek_agent", "anthropic"] {
+        for kind in ["codex_cli", "claude_cli", "antigravity_cli", "openai_compat", "deepseek_agent", "anthropic"] {
             for session in [None, Some("session".to_owned())] {
                 let messages: Vec<crate::chat::ChatMessage> = serde_json::from_value(serde_json::json!([
                     {"role":"user","content":"first"}, {"role":"assistant","content":"answer"},
@@ -53,7 +53,7 @@ mod tests {
                     checker_session_id: None,
                 };
                 inject(&mut request, "MEMORY_CONTEXT");
-                let cli = matches!(kind, "codex_cli" | "claude_cli");
+                let cli = matches!(kind, "codex_cli" | "claude_cli" | "antigravity_cli");
                 assert_eq!(request.messages[0].content.contains("MEMORY_CONTEXT"), !cli);
                 assert_eq!(request.messages[2].content.contains("MEMORY_CONTEXT"), cli && session.is_none());
                 assert!(request.messages[2].content.ends_with(INSTRUCTION));

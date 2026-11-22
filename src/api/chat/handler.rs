@@ -55,7 +55,7 @@ fn worker_candidates(
 
 /// Only the CLI sources get CodeGraph's MCP tool from the app; API sources and the DeepSeek agent cannot call it.
 fn uses_codegraph(request: &ProviderRequest) -> bool {
-    matches!(request.provider.kind.as_str(), "codex_cli" | "claude_cli")
+    matches!(request.provider.kind.as_str(), "codex_cli" | "claude_cli" | "antigravity_cli")
 }
 
 /// First user message of the conversation gets the fixed rules in front of it. Before that the app builds or syncs

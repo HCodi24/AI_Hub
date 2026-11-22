@@ -20,6 +20,7 @@ import { MutisEfforts } from "./mutis-efforts";
 const CLI_MODEL_SUGGESTIONS: Record<string, string[]> = {
   codex_cli: ["gpt-6-luna", "gpt-6.1-sol", "gpt-6.2-sol", "gpt-6.1-terra"],
   claude_cli: ["opus", "sonnet", "haiku", "claude-fable-5-2"],
+  antigravity_cli: ["gemini-4-neon-high", "gemini-4-carbon-high", "gemini-4-argon-high", "gemini-4-hydrogen-high"],
 };
 
 /** Sidebar access on mobile. */

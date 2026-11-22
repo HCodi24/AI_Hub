@@ -20,14 +20,14 @@ const items = (home: AddonHome, kind: AddonKind): Item[] => kind === "plugin"
   : kind === "skill" ? home.skills.map(name => ({ name, detail: "" }))
     : home.mcp.map(server => ({ name: server.name, detail: server.summary, enabled: server.enabled }));
 const KINDS: AddonKind[] = ["plugin", "skill", "mcp"];
-const SOURCES = ["claude", "codex", "app"] as const;
+const SOURCES = ["claude", "codex", "antigravity", "app"] as const;
 type Source = (typeof SOURCES)[number];
 /** Where each kind actually lives: Codex in MutiS only takes plugins; MutiS itself has shared skills and app MCPs, no plugins.
  * All three source tabs stay visible; the pairs missing here show a short explanation instead of a list. */
-const SOURCES_FOR: Record<AddonKind, Source[]> = { plugin: ["claude", "codex"], mcp: ["claude", "codex", "app"], skill: ["claude", "app"] };
+const SOURCES_FOR: Record<AddonKind, Source[]> = { plugin: ["claude", "codex", "antigravity"], mcp: ["claude", "codex", "app"], skill: ["claude", "app"] };
 const PANEL = "addons-panel";
 /** "Thêm" dropdown: jumps to the kind/source pair where that add-on is added. */
-const MENU: Record<Source, { kind?: AddonKind; source: Source }> = { claude: { source: "claude" }, codex: { kind: "plugin", source: "codex" }, app: { kind: "mcp", source: "app" } };
+const MENU: Record<Source, { kind?: AddonKind; source: Source }> = { claude: { source: "claude" }, codex: { kind: "plugin", source: "codex" }, antigravity: { kind: "plugin", source: "antigravity" }, app: { kind: "mcp", source: "app" } };
 function AddMenu({ onPick }: { onPick: (source: Source) => void }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -61,6 +61,7 @@ export function AddonsTab() {
   const query = useQuery({ queryKey: ["addons"], queryFn: ({ signal }) => addonsApi.overview(signal) });
   // Same cache keys as CodexPlugins and McpSection, so the tab counts stay in sync with what those panels show.
   const codex = useQuery({ queryKey: ["codex-plugins"], queryFn: ({ signal }) => addonsApi.codexPlugins(signal) });
+  const agy = useQuery({ queryKey: ["antigravity-plugins"], queryFn: ({ signal }) => addonsApi.antigravityPlugins(signal) });
   const { query: config } = useSettingsConfig();
   const [busy, setBusy] = useState(""); const [output, setOutput] = useState(""); const [confirm, setConfirm] = useState(""); const [showLink, setShowLink] = useState(false);
   const [kind, setKindState] = useState<AddonKind>("plugin"); const [source, setSource] = useState<Source>("claude");
@@ -106,6 +107,7 @@ export function AddonsTab() {
   const count = (k: AddonKind, s: Source): number | undefined => !SOURCES_FOR[k].includes(s) ? undefined
     : s === "claude" ? items(data.hub, k).length
     : s === "codex" ? (k === "mcp" ? codex.data?.mcp.length : codex.data?.plugins.length)
+    : s === "antigravity" ? (k === "plugin" ? agy.data?.plugins.length : undefined)
       : k === "skill" ? data.shared_skills.length : config.data?.mcp_servers.length;
   const kindCount = (k: AddonKind) => SOURCES_FOR[k].reduce((sum, s) => sum + (count(k, s) ?? 0), 0);
   const active = source;
@@ -176,8 +178,8 @@ export function AddonsTab() {
     </label>
     <div role="tabpanel" id={PANEL} aria-labelledby={`addons-kind-tab-${kind} addons-source-tab-${active}`} className={styles.form}>
       {!supported && <div className={styles.addonInventoryBanner}>
-        <span>{active === "app" ? t.addons.unsupported.appPlugin : t.addons.unsupported.codex[kind === "skill" ? "skill" : "mcp"]}</span>
-        {active === "codex" && <Button size="sm" onClick={() => setSource("app")}>{t.addons.unsupported.goApp}</Button>}
+        <span>{active === "app" ? t.addons.unsupported.appPlugin : t.addons.unsupported[active === "antigravity" ? "antigravity" : "codex"][kind === "skill" ? "skill" : "mcp"]}</span>
+        {active !== "app" && active !== "claude" && <Button size="sm" onClick={() => setSource("app")}>{t.addons.unsupported.goApp}</Button>}
       </div>}
       {active === "claude" && claudePanel()}
       {active === "codex" && kind === "mcp" && <section className={styles.addonInventory} aria-label={t.addons.tabs.codex}>
@@ -191,6 +193,7 @@ export function AddonsTab() {
             </AddonRow>; })}</ul>}
       </section>}
       {active === "codex" && kind === "plugin" && <CodexPlugins onOutput={setOutput} matches={matches} search={search.trim()} />}
+      {active === "antigravity" && kind === "plugin" && <CodexPlugins target="antigravity" onOutput={setOutput} matches={matches} search={search.trim()} />}
       {active === "app" && kind === "skill" && <section className={styles.addonInventory} aria-label={t.addons.sharedSkills.title}>
         {data.shared_skills.length === 0 ? <p className={styles.note}>{t.addons.sharedSkills.empty}</p>
           : !data.shared_skills.some(matches) ? <p className={styles.note}>{t.addons.noMatch(search.trim())}</p>

@@ -8,6 +8,7 @@ import { TesterActivity } from "./tester-activity";
 import { QuickReplies, type SendReply } from "./quick-replies";
 import { parseChatQuestions } from "@/lib/chat-questions";
 import { ChatQuestions } from "./chat-questions";
+import { PermissionRetry } from "./permission-retry";
 import { useChatScrollFollow } from "./use-chat-scroll-follow";
 import styles from "./chat-screen.module.css";
 
@@ -33,8 +34,11 @@ const MessageRow = memo(function MessageRow({ index, send, taskBoardEnabled }: {
   const status = useChatStore(s => s.streaming && index === s.messages.length - 1 ? s.status : undefined);
   const questions = useMemo(() => message?.role === "assistant" ? parseChatQuestions(message.content).questions : [], [message?.role, message?.content]);
   const canReply = message?.role === "assistant" && !streaming && !message.error && !message.plan_id && !message.debate_id;
+  const denied = useChatStore(s => latest && !s.streaming ? s.denied : null);
+  const askedText = useChatStore(s => s.messages[index - 1]?.role === "user" ? s.messages[index - 1].content : "");
   return message ? <ChatMessage message={message} chatId={id} streaming={streaming} latest={latest} status={status} taskBoardEnabled={taskBoardEnabled}
-    replies={canReply && questions.length > 0
+    replies={message.role === "assistant" && denied && askedText ? <PermissionRetry key={`${id}:${index}:denied`} need={denied} text={askedText} send={send} />
+      : canReply && questions.length > 0
       ? <ChatQuestions key={`${id}:${index}`} questions={questions} send={send} active={latest && !streaming} chatId={id} />
       : latest && canReply ? <QuickReplies key={`${id}:${index}`} content={message.content} send={send} /> : undefined} /> : null;
 });

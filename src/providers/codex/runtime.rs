@@ -98,6 +98,7 @@ impl Provider for CodexProvider {
             let mut last_message = String::new();
             let mut final_reply = String::new();
             let mut resumes = 0;
+            let mut denial_sent = false;
             loop {
                 let limit = if request.mutis.effective(request.mutis.codex_watchdog) {
                     Duration::from_secs(u64::from(request.mutis.watchdog_minutes) * 60)
@@ -141,6 +142,11 @@ impl Provider for CodexProvider {
                         } else if item["type"] == "commandExecution" {
                             let command = item["command"].as_str().unwrap_or("");
                             crate::providers::emit_text(&events,"log",format!("Command: {}",crate::core::text::truncate_chars(command,220))).await?;
+                            // shortcut: a failed command in the read-only sandbox is taken as a permission block (the app-server gives no reason); other causes show the same card.
+                            if request.permission == crate::chat::Permission::Read && item["status"] == "failed" && !denial_sent {
+                                denial_sent = true;
+                                let _ = events.send(crate::providers::ProviderEvent { name: "permission_denied", data: json!({"need": "write"}) }).await;
+                            }
                         }
                     }
                     "turn/diff/updated" => {

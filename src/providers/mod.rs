@@ -1,5 +1,6 @@
 pub(crate) mod agent;
 pub mod anthropic;
+pub mod antigravity_cli;
 pub mod claude_cli;
 pub(crate) mod claude;
 pub(crate) mod cli_support;
@@ -171,6 +172,7 @@ pub fn for_kind(kind: &str) -> Result<Box<dyn Provider>> {
         "anthropic" => Ok(Box::new(anthropic::AnthropicProvider)),
         "codex_cli" => Ok(Box::new(codex_cli::CodexCliProvider)),
         "claude_cli" => Ok(Box::new(claude_cli::ClaudeCliProvider)),
+        "antigravity_cli" => Ok(Box::new(antigravity_cli::AntigravityCliProvider)),
         _ => bail!("Loại nhà cung cấp không được hỗ trợ: {kind}"),
     }
 }

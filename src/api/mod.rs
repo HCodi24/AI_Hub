@@ -85,6 +85,7 @@ pub fn router(state: AppState) -> Router {
             get(crate::api::addons::overview).post(crate::api::addons::change),
         )
         .route("/api/addons/codex", get(crate::api::addons::codex_plugins))
+        .route("/api/addons/antigravity", get(crate::api::addons::antigravity_plugins))
         .route(
             "/api/addons/link/inspect",
             post(crate::api::addons::inspect_link),

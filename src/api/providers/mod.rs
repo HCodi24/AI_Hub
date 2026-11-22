@@ -1,4 +1,5 @@
 //! Web API for AI sources (providers): editing, model lists, connection tests, Claude sign-in and CLI discovery.
+mod antigravity;
 mod cli;
 mod codex;
 mod claude;

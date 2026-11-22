@@ -44,6 +44,7 @@ export const chatText = {
   local: "Không gian làm việc của bạn", source: "Nguồn AI",
   model: "Model", permission: "Quyền", effort: "Reasoning effort", folder: "Thư mục làm việc",
   read: "Chỉ đọc", write: "Được sửa file", full: "Toàn quyền (chạy lệnh)",
+  denied: "AI bị chặn vì quyền hiện tại của cuộc trò chuyện.", rerun: (permission: string) => `Chạy lại với quyền «${permission}»`,
   default: "Default", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max",
   fileTools: "Công cụ file", none: "Tắt", noCommands: "Nguồn này không chạy lệnh",
   greeting: "Bạn muốn cùng làm gì hôm nay?", intro: "Chọn Chat hoặc một thư mục dự án để bắt đầu cuộc trò chuyện.",

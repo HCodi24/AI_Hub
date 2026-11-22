@@ -297,6 +297,9 @@ impl ClaudeParser {
                         });
                     if denied {
                         self.denial_hint_seen = true;
+                        // One level up only: the chat offers a rerun at that level, never straight to full.
+                        let need = if self.permission == Permission::Read { "write" } else { "full" };
+                        events.push(ProviderEvent { name: "permission_denied", data: serde_json::json!({ "need": need }) });
                         events.push(ProviderEvent::text(
                             "log",
                             "Lệnh bị chặn: chọn Quyền › Toàn quyền (chạy lệnh) để cho phép AI chạy lệnh.",
@@ -507,10 +510,13 @@ mod tests {
                 }]}})
                 .to_string();
                 let first = parser.parse(&line);
-                assert_eq!(first.len(), usize::from(permission != Permission::Full));
+                assert_eq!(first.len(), 2 * usize::from(permission != Permission::Full));
                 if permission != Permission::Full {
-                    assert_eq!(first[0].name, "log");
-                    assert_eq!(first[0].data["text"],
+                    // Offers exactly one level up: Read -> write, Write -> full.
+                    assert_eq!(first[0].name, "permission_denied");
+                    assert_eq!(first[0].data["need"], if permission == Permission::Read { "write" } else { "full" });
+                    assert_eq!(first[1].name, "log");
+                    assert_eq!(first[1].data["text"],
                         "Lệnh bị chặn: chọn Quyền › Toàn quyền (chạy lệnh) để cho phép AI chạy lệnh.");
                 }
                 assert!(parser.parse(&line).is_empty());

@@ -176,25 +176,27 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
   </section>;
 }
 /** Plugins in MutiS's own Codex, plus the ones only the user's own Codex has (copied over with "Thêm"). */
-export function CodexPlugins({ onOutput, matches = () => true, search = "" }: { onOutput: (text: string) => void; matches?: (text: string) => boolean; search?: string }) {
+export function CodexPlugins({ onOutput, matches = () => true, search = "", target = "codex" }: { onOutput: (text: string) => void; matches?: (text: string) => boolean; search?: string; target?: "codex" | "antigravity" }) {
   const client = useQueryClient();
-  const codex = useQuery({ queryKey: ["codex-plugins"], queryFn: ({ signal }) => addonsApi.codexPlugins(signal) });
+  const agy = target === "antigravity";
+  const queryKey = [agy ? "antigravity-plugins" : "codex-plugins"];
+  const codex = useQuery({ queryKey, queryFn: ({ signal }) => agy ? addonsApi.antigravityPlugins(signal) : addonsApi.codexPlugins(signal) });
   const [busy, setBusy] = useState(""); const [confirm, setConfirm] = useState("");
   async function apply(ids: string[], action: "add" | "remove") {
     setConfirm("");
     for (const id of ids) {
       setBusy(id);
-      try { const result = await addonsApi.change({ target: "codex", kind: "plugin", name: id, action }); onOutput(result.output); notify(action === "add" ? t.addons.added(id) : t.addons.removed(id)); }
+      try { const result = await addonsApi.change({ target, kind: "plugin", name: id, action }); onOutput(result.output); notify(action === "add" ? t.addons.added(id) : t.addons.removed(id)); }
       catch (error) { const message = errorText(error, t.error); onOutput(message); notify(message); break; }
     }
-    setBusy(""); await client.invalidateQueries({ queryKey: ["codex-plugins"] });
+    setBusy(""); await client.invalidateQueries({ queryKey });
   }
   const hub = codex.data?.plugins ?? [];
   const available = codex.data?.available ?? [];
   const empty = t.addons.emptyHub.plugin;
   const shownHub = hub.filter(plugin => matches(plugin.id));
   const shownAvailable = available.filter(plugin => matches(plugin.id));
-  const availableText = t.addons.availableCodex(shownAvailable.length);
+  const availableText = (agy ? t.addons.availableAgy : t.addons.availableCodex)(shownAvailable.length);
   const noMatch = search && shownHub.length === 0 && shownAvailable.length === 0 && hub.length + available.length > 0;
   const row = (plugin: { id: string; version: string }, inHub: boolean) => <AddonRow key={plugin.id} kind="plugin" {...splitId(plugin.id)} detail={plugin.version}>
     {busy === plugin.id ? <Loader2 size={16} className="spin" aria-label={inHub ? t.addons.removing : t.addons.adding} />
@@ -203,7 +205,7 @@ export function CodexPlugins({ onOutput, matches = () => true, search = "" }: { 
           : <Button size="sm" variant="primary" disabled={Boolean(busy)} onClick={() => void apply([plugin.id], "add")}><Plus size={16} aria-hidden="true" />{t.addons.add}</Button>}
   </AddonRow>;
   return <section className={styles.addonInventory} aria-label={t.addons.link.codexTitle}>
-    {available.length > 0 && <div className={styles.addonInventoryBanner}><span>{t.addons.bannerCodex(available.length)}</span>
+    {available.length > 0 && <div className={styles.addonInventoryBanner}><span>{(agy ? t.addons.bannerAgy : t.addons.bannerCodex)(available.length)}</span>
       <Button size="sm" variant="primary" disabled={Boolean(busy)} onClick={() => void apply(available.map(plugin => plugin.id), "add")}><Plus size={16} aria-hidden="true" />{t.addons.addAll}</Button></div>}
     <div className={styles.addonInventoryGroup}>
       {noMatch ? <p className={styles.note}>{t.addons.noMatch(search)}</p> : <>

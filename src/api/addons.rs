@@ -99,7 +99,11 @@ async fn run_cli_full(
         cli_support::clean_claude_environment(&mut command);
     }
     if let Some(home) = codex_home {
-        command.env(if claude { "CLAUDE_CONFIG_DIR" } else { "CODEX_HOME" }, home);
+        if path.file_stem().is_some_and(|stem| stem.eq_ignore_ascii_case("agy")) {
+            command.env("USERPROFILE", home).env("HOME", home);
+        } else {
+            command.env(if claude { "CLAUDE_CONFIG_DIR" } else { "CODEX_HOME" }, home);
+        }
     }
     crate::core::process::configure_hidden(&mut command);
     command
@@ -157,8 +161,13 @@ pub(crate) async fn change(
                 crate::providers::codex::environment::set_mcp_enabled(&home, name, on).map_err(|error| bad(format!("{error:#}")))?;
                 return Ok(Json(json!({"ok": true, "output": ""})));
             }
+            ("antigravity", "plugin") => {
+                let (agy, home) = agy_cli(&state).await?;
+                let output = run_cli_in(&agy, &["plugin", if on { "enable" } else { "disable" }, name], false, Some(&home)).await?;
+                return Ok(Json(json!({"ok": true, "output": output})));
+            }
             ("claude", "plugin") => {}
-            _ => return Err(bad("Chỉ bật/tắt được plugin của Claude và MCP")),
+            _ => return Err(bad("Chỉ bật/tắt được plugin của Claude, Antigravity và MCP")),
         }
         let claude = executable(&state, "claude_cli", "claude").await?;
         let verb = if on { "enable" } else { "disable" };
@@ -262,9 +271,60 @@ pub(crate) async fn change(
                 run_cli_in(&codex, &["plugin", "remove", name], false, Some(&home)).await?
             }
         }
+        ("antigravity", "plugin") => {
+            let (agy, home) = agy_cli(&state).await?;
+            if add {
+                // Copy from the user's own Claude Code: agy imports a plugin folder with its skills and commands.
+                let (_, path, _) = claude_plugin_paths()
+                    .into_iter()
+                    .find(|(plugin, ..)| plugin == name)
+                    .ok_or_else(|| bad(format!("Claude Code của bạn không có plugin «{name}»")))?;
+                run_cli_in(&agy, &["plugin", "import", &path], false, Some(&home)).await?
+            } else {
+                run_cli_in(&agy, &["plugin", "uninstall", name], false, Some(&home)).await?
+            }
+        }
         _ => return Err(bad("Loại này chưa được hỗ trợ")),
     };
     Ok(Json(json!({"ok": true, "output": output})))
+}
+
+/// The Antigravity CLI and the clean home chats run with.
+async fn agy_cli(state: &AppState) -> ApiResult<(PathBuf, PathBuf)> {
+    let provider = state.config.read().await.providers.iter().find(|p| p.kind == "antigravity_cli").cloned()
+        .ok_or_else(|| bad("MutiS chưa có nguồn Antigravity"))?;
+    let agy = executable(state, "antigravity_cli", "agy").await?;
+    let home = crate::providers::antigravity_cli::clean_home(&provider.id).map_err(|error| bad(error.to_string()))?;
+    Ok((agy, home))
+}
+
+/// `(name, install folder, version)` of the plugins installed in the user's own Claude Code.
+fn claude_plugin_paths() -> Vec<(String, String, String)> {
+    let Some(file) = addons::personal_claude_dir().map(|dir| dir.join("plugins").join("installed_plugins.json")) else { return Vec::new() };
+    let Some(json) = std::fs::read_to_string(file).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()) else { return Vec::new() };
+    json["plugins"].as_object().into_iter().flatten().filter_map(|(id, entries)| {
+        let entry = entries.as_array()?.first()?;
+        Some((id.split('@').next()?.to_owned(), entry["installPath"].as_str()?.to_owned(), entry["version"].as_str().unwrap_or_default().to_owned()))
+    }).collect()
+}
+
+/// Plugins in AI Hub's Antigravity, and the Claude Code plugins that "Thêm" can import into it.
+pub(crate) async fn antigravity_plugins(State(state): State<AppState>) -> Json<Value> {
+    let Ok((agy, home)) = agy_cli(&state).await else { return Json(json!({"plugins": [], "available": []})) };
+    let installed: Vec<Value> = match run_cli_full(&agy, &["plugin", "list", "--json"], false, Some(&home)).await {
+        Ok(text) => text.find('[').and_then(|start| serde_json::from_str(&text[start..]).ok()).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    let names: Vec<&str> = installed.iter().filter_map(|plugin| plugin["name"].as_str()).collect();
+    let available: Vec<Value> = claude_plugin_paths().into_iter()
+        .filter(|(name, ..)| !names.contains(&name.as_str()))
+        .map(|(name, _, version)| json!({"id": name, "version": version, "enabled": true}))
+        .collect();
+    let plugins: Vec<Value> = installed.iter().filter_map(|plugin| Some(json!({
+        "id": plugin["name"].as_str()?, "version": plugin["version"].as_str().unwrap_or_default(),
+        "enabled": plugin["enabled"].as_bool().unwrap_or(true),
+    }))).collect();
+    Json(json!({"plugins": plugins, "available": available}))
 }
 
 async fn codex_provider(state: &AppState) -> ApiResult<crate::config::ProviderConfig> {

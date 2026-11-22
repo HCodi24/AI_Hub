@@ -134,6 +134,7 @@ pub(super) async fn test_provider_uncached(
         },
         "codex_cli" => super::codex::test_connection(&state, &id).await,
         "claude_cli" => super::claude::test_connection(&state, &id).await,
+        "antigravity_cli" => super::antigravity::test_connection(&provider).await,
         _ => connection(
             false,
             "error",

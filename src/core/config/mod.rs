@@ -149,6 +149,13 @@ impl Config {
                     models: vec!["opus".to_owned(), "sonnet".to_owned()],
                     ..Default::default()
                 },
+                ProviderConfig {
+                    id: "antigravity-cli".to_owned(),
+                    name: "Antigravity CLI".to_owned(),
+                    kind: "antigravity_cli".to_owned(),
+                    models: ["gemini-4-neon-high", "gemini-4-carbon-high", "gemini-4-argon-high", "gemini-4-hydrogen-high"].map(str::to_owned).into(),
+                    ..Default::default()
+                },
             ],
             default_folder: default_folder(),
             chat_idle_timeout_minutes: default_chat_idle_timeout_minutes(),

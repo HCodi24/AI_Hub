@@ -221,6 +221,8 @@ fn well_known_directories() -> Vec<PathBuf> {
         env::var_os("APPDATA").map(|path| PathBuf::from(path).join("npm")),
         env::var_os("LOCALAPPDATA").map(|path| PathBuf::from(path).join("Programs").join("nodejs")),
         env::var_os("USERPROFILE").map(|path| PathBuf::from(path).join(".local").join("bin")),
+        // Antigravity CLI's own installer drops `agy.exe` here and edits PATH only for new terminals.
+        env::var_os("LOCALAPPDATA").map(|path| PathBuf::from(path).join("agy").join("bin")),
     ]
     .into_iter()
     .flatten()

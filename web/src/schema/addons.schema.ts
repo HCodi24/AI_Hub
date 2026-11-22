@@ -14,6 +14,7 @@ export type AddonHome = z.infer<typeof HomeSchema>;
 export type AddonKind = "plugin" | "skill" | "mcp";
 export type AddonChange =
   | { target: "claude" | "codex"; kind: AddonKind; name: string; action: "add" | "remove" }
+  | { target: "antigravity"; kind: "plugin"; name: string; action: "add" | "remove" | "enable" | "disable" }
   | { target: "claude"; kind: "plugin"; name: string; action: "enable" | "disable" }
   | { target: "claude" | "codex"; kind: "mcp"; name: string; action: "enable" | "disable" }
   | { target: "mutis"; kind: "skill"; name: string; action: "remove" };

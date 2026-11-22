@@ -27,7 +27,7 @@ struct CliInfo {
 pub(crate) async fn discover_cli(
     Path(name): Path<String>,
 ) -> ApiResult<Json<Vec<discovery::CliCandidate>>> {
-    if !["codex", "claude"].contains(&name.as_str()) {
+    if !["codex", "claude", "agy"].contains(&name.as_str()) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             "CLI kh\u{00f4}ng h\u{1ee3}p l\u{1ec7}",

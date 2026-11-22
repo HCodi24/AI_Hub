@@ -20,7 +20,9 @@ const SUB_TABS = ["cli", "login", "api"] as const;
 type SubTab = (typeof SUB_TABS)[number];
 const CLI_KINDS = ["codex_cli", "claude_cli"] as const;
 const API_KINDS = ["openai_compat", "anthropic"] as const;
-const isCliKind = (kind: string) => kind === "codex_cli" || kind === "claude_cli";
+/** Antigravity (`agy`) signs in on its own CLI, so it is offered on the machine "CLI" tab only and has no account endpoint. */
+const MACHINE_KINDS = [...CLI_KINDS, "antigravity_cli"] as const;
+const isCliKind = (kind: string) => kind === "codex_cli" || kind === "claude_cli" || kind === "antigravity_cli";
 /** CLI tab: CLI sources using this machine's account; "Web": CLI sources signed in through the web. */
 const groupOf = (provider: Provider): SubTab => !isCliKind(provider.kind) ? "api" : provider.web_login ? "login" : "cli";
 /** Provider id per subtab; "" = new draft, null = nothing picked yet. */
@@ -103,7 +105,7 @@ export function ProvidersTab() {
   const providers = query.data?.providers || [];
   const statuses = useProviderConnections(providers);
   // Plan (Plus, Pro, Max…) of each CLI source's account; same cache keys as the connection panels below.
-  const cliSources = providers.filter(provider => isCliKind(provider.kind));
+  const cliSources = providers.filter(provider => isCliKind(provider.kind) && provider.kind !== "antigravity_cli");
   const accounts = useQueries({ queries: cliSources.map(provider => provider.kind === "codex_cli"
     // Polls while a browser sign-in started from a list row is waiting, so the row updates by itself.
     ? { queryKey: ["codex-connection", provider.id], queryFn: ({ signal }: { signal: AbortSignal }) => codexApi.status(provider.id, signal),
@@ -228,6 +230,12 @@ export function ProvidersTab() {
     setAdding(true);
     try {
       const id = providerId ?? await addAccount(kind, false);
+      if (kind === "antigravity_cli") {
+        // Nothing to copy: the CLI holds its own sign-in, so this only re-checks it (and saves the program path it found).
+        onTested(id, await settingsApi.testProvider(id));
+        await client.invalidateQueries({ queryKey: ["settings-config"] });
+        return;
+      }
       const codex = kind === "codex_cli";
       const key = [codex ? "codex-connection" : "claude-connection", id];
       await client.cancelQueries({ queryKey: key });
@@ -254,10 +262,11 @@ export function ProvidersTab() {
       title={t.providers.detailShort} onClick={() => select(id, provider.id)}><ChevronRight size={18} aria-hidden="true" /></Button>;
   const machineAction = (provider: Provider) => {
     const connected = rowStatuses[provider.id]?.ok;
+    const recheck = provider.kind === "antigravity_cli";
     return <>
-      <Button size="sm" disabled={adding} onClick={() => void machineRow(provider.kind, provider.id, connected ? "logout" : "cli")}>
-        {connected ? <LogOut size={16} aria-hidden="true" /> : <LogIn size={16} aria-hidden="true" />}
-        {connected ? t.providers.account.signOut : t.providers.account.signIn}</Button>
+      <Button size="sm" disabled={adding} onClick={() => void machineRow(provider.kind, provider.id, connected && !recheck ? "logout" : "cli")}>
+        {connected && !recheck ? <LogOut size={16} aria-hidden="true" /> : <LogIn size={16} aria-hidden="true" />}
+        {recheck ? t.providers.test : connected ? t.providers.account.signOut : t.providers.account.signIn}</Button>
       {detailButton("cli", provider)}</>;
   };
   const rowAction = (provider: Provider) => {
@@ -296,7 +305,7 @@ export function ProvidersTab() {
               : email ?? (rowStatuses[current.id]?.ok ? t.providers.account.signedIn : t.providers.account.notSignedIn)}</span></p>}
         </div>
       </header>
-      <section className={styles.detail}>{form(pageTab, pageTab === "api" ? API_KINDS : CLI_KINDS,
+      <section className={styles.detail}>{form(pageTab, pageTab === "api" ? API_KINDS : MACHINE_KINDS,
         pageTab === "api" ? "openai_compat" : "codex_cli", true)}</section>
     </div>;
   }
@@ -323,7 +332,7 @@ export function ProvidersTab() {
           <SourceCard items={lists.cli} selected={null} statuses={rowStatuses} pending={query.isPending}
             onSelect={id => select("cli", id)} tagOf={planTag} emailOf={emailOf} actionOf={machineAction}>
             {/* New machine: one click finds the installed CLI and signs in with its account. */}
-            {CLI_KINDS.filter(kind => !lists.cli.some(provider => provider.kind === kind)).map(kind =>
+            {MACHINE_KINDS.filter(kind => !lists.cli.some(provider => provider.kind === kind)).map(kind =>
               <PlaceholderRow key={kind} kind={kind} name={t.providers.account.cliName(kind)} disabled={adding}
                 onSignIn={() => void machineRow(kind, undefined, "cli")} onOpen={() => void openPlaceholder(kind, "cli")} />)}
           </SourceCard>

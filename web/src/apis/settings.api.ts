@@ -23,7 +23,7 @@ export const settingsApi = {
   async testProvider(provider: string) { return parseResponse(ConnectionTestSchema, await send(`/providers/${id(provider)}/test`, "POST")); },
   async models(provider: string) { return parseResponse(ModelsSchema, await http.get(`/providers/${id(provider)}/models`)); },
   async cliStatus(signal?: AbortSignal) { return parseResponse(CliStatusSchema, await http.get("/cli-status", signal)); },
-  async discoverCli(name: "codex" | "claude") { return parseResponse(CliCandidatesSchema, await http.get(`/cli-discover/${name}`)); },
+  async discoverCli(name: "codex" | "claude" | "agy") { return parseResponse(CliCandidatesSchema, await http.get(`/cli-discover/${name}`)); },
   async loginStart(provider: string) { return parseResponse(LoginStartSchema, await send(`/providers/${id(provider)}/login/start`, "POST")); },
   async loginCode(provider: string, session_id: string, code: string) {
     return parseResponse(LoginResultSchema, await send(`/providers/${id(provider)}/login/code`, "POST", { session_id, code }));

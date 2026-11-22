@@ -253,6 +253,11 @@ pub async fn run_jsonl(
             command.env("CLAUDE_CONFIG_DIR", dir);
         }
     }
+    if command_spec.executable_name.eq_ignore_ascii_case("agy") {
+        if let Some(dir) = &command_spec.config_dir {
+            command.env("USERPROFILE", dir).env("HOME", dir);
+        }
+    }
     command
         .current_dir(folder)
         .stdin(Stdio::piped())
@@ -460,6 +465,7 @@ fn ai_label(kind: &str) -> &'static str {
     match kind {
         "codex_cli" => "Codex",
         "claude_cli" | "anthropic" => "Claude",
+        "antigravity_cli" => "Antigravity",
         "deepseek" => "DeepSeek",
         _ => "AI",
     }
