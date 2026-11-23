@@ -47,13 +47,20 @@ if ($Action -ne 'build') {
     if ($sourceCommit -cnotmatch '^[0-9a-f]{40}$') {
       throw 'Hãy commit và push mã nguồn, sau đó build lại để ghi nhận commit của bộ cài.'
     }
+    $ghPath = (Get-Command gh.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+    if (-not $ghPath) {
+      $ghPath = Join-Path $env:ProgramFiles 'GitHub CLI\gh.exe'
+      if (-not (Test-Path -LiteralPath $ghPath -PathType Leaf)) {
+        throw 'Không tìm thấy GitHub CLI. Hãy cài GitHub CLI rồi thử đẩy lại.'
+      }
+    }
     Invoke-Step "Kiểm tra commit trên GitHub" $repo {
-      $remoteCommit = gh api "repos/$releaseRepo/commits/$sourceCommit" --jq '.sha'
+      $remoteCommit = & $ghPath api "repos/$releaseRepo/commits/$sourceCommit" --jq '.sha'
       if ($LASTEXITCODE -eq 0 -and $remoteCommit -cne $sourceCommit) { throw 'Không tìm thấy commit của bộ cài trên GitHub.' }
     }
     $assetPaths = $assets | ForEach-Object { Join-Path $dist $_ }
     Invoke-Step "Phát hành v$version lên GitHub" $repo {
-      gh release create "v$version" --repo $releaseRepo --target $sourceCommit --generate-notes @assetPaths
+      & $ghPath release create "v$version" --repo $releaseRepo --target $sourceCommit --generate-notes @assetPaths
     }
   }
   return
