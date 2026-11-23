@@ -13,6 +13,7 @@ import { ACTIVE_CHAT_KEY, useChatStore } from "./chat-store";
 import { useChat } from "./use-chat";
 import { useDashboardPreference } from "./use-dashboard-preference";
 import { useTaskBoardPreference } from "./use-task-board-preference";
+import { useChatPetSize } from "@/components/features/pets/use-chat-pet-size";
 import { chatText } from "@/text/chat";
 import styles from "./chat-screen.module.css";
 import { Toast, useToast } from "@/components/toast/toast";
@@ -40,6 +41,7 @@ export function ChatScreen() {
   // the current chat, while the dialog adds the totals, tables, notes and backend history.
   const [dashboardEnabled, setDashboardEnabled] = useDashboardPreference();
   const [taskBoardEnabled, setTaskBoardEnabled] = useTaskBoardPreference();
+  const petSize = useChatPetSize(state => state.size);
   const { config, chats, send, stop, load, remove } = useChat();
   useEffect(() => { void notifyIfUpdate(); }, []);
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
@@ -109,7 +111,7 @@ export function ChatScreen() {
         {queryError && <div role="alert" className={styles.error}>{queryError.message}
           <button onClick={() => { void config.refetch(); void chats.refetch(); }}>{chatText.retry}</button></div>}
         {state.error && <div role="alert" className={styles.error}>{state.error}</div>}
-        <div ref={frameRef} className={styles.chatFrame}>
+        <div ref={frameRef} className={styles.chatFrame} data-pet-size={petSize}>
           <div className={styles.workspace} data-dashboard={dashboardEnabled ? "on" : undefined}>
             {dashboardEnabled && <aside className={styles.dashboard} aria-label={chatText.dashboard.open} tabIndex={0} aria-haspopup="dialog" onClick={onDashboardClick} onKeyDown={onDashboardKeyDown}><TokenDashboard compact /></aside>}
             <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>

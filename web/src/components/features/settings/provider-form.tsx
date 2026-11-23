@@ -7,6 +7,7 @@ import { Dropdown } from "@/components/select/select";
 import { Switch } from "@/components/button/switch";
 import { isModelVisible, useModelVisibility } from "@/lib/model-visibility";
 import { antigravityModel } from "@/lib/antigravity-models";
+import { modelGroup } from "@/lib/model-group";
 import type { ConnectionTest, FullConfig, Provider, ProviderInput } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
 import { AntigravityConnection, AntigravityProjectOptions } from "./antigravity-connection";
@@ -19,18 +20,8 @@ const KINDS = ["codex_cli", "claude_cli", "antigravity_cli", "openai_compat", "a
 const isCli = (kind: string) => kind === "codex_cli" || kind === "claude_cli" || kind === "antigravity_cli";
 const blank = (kind: string): ProviderInput => ({ name: "", kind, base_url: "", api_key: "", executable: "", models: [], agent_capable: false });
 type Candidate = { path: string; version: string; source: string };
-/** Group of a model id. Claude ids name their family (claude-sonnet-5 → sonnet, claude-3-5-haiku → haiku, opus[1m] → opus); others use the suffix after the last "-" (gpt-6.2-sol → sol); "" means none. */
-function groupName(model: string, kind = ""): string {
-  const id = model.replace(/\[.*\]$/, "");
-  // Antigravity serves several vendors: group by vendor instead of family/suffix.
-  if (kind === "antigravity_cli") return /^gemini/i.test(id) ? "gemini" : /^claude/i.test(id) ? "claude" : /^(gpt|chatgpt|openai|o\d)/i.test(id) ? "chatgpt" : "";
-  if (/^claude-/i.test(id)) return id.split("-").slice(1).find(part => /^[a-z]+$/i.test(part)) ?? "";
-  if (/^[a-z]+$/i.test(id)) return id;
-  const cut = id.lastIndexOf("-");
-  return cut > 0 && cut < id.length - 1 ? id.slice(cut + 1) : "";
-}
 /** Groups model ids in order of first appearance; ids without a group go last. */
-function modelGroups(models: string[], nameOf = (model: string) => groupName(model)): { name: string; models: string[] }[] {
+function modelGroups(models: string[], nameOf = modelGroup): { name: string; models: string[] }[] {
   const groups = new Map<string, string[]>();
   for (const model of models) {
     const name = nameOf(model);
@@ -198,7 +189,7 @@ export function ProviderForm({ provider, onSaved, onDeleted, onTested,
     {listedModels ? <div className={styles.modelBlock}>
       <span>{t.providers.modelsListed}</span>
       <div id="provider-models">
-      {form.models.length ? modelGroups(form.models, model => groupName(model, form.kind)).map(group => {
+      {form.models.length ? modelGroups(form.models, model => modelGroup(model, form.kind)).map(group => {
         const listId = `provider-models-${group.name}`;
         const hasFamilies = form.kind === "antigravity_cli" && (group.name === "claude" || group.name === "gemini");
         const familyOf = group.name === "gemini"

@@ -1,5 +1,5 @@
 /* Sheet: 8 x 6 cells of 192 x 208 px (5 rows also works), shown at 36 x 39 px. Rows: 0 thinking (6 frames), 1 replying (6), 2 idle (6), 3 waiting (6), 4 failed (8), 5 running (8; task rows only: "coding"). In chat "working" uses the thinking row. */
-.pet { --w: 36px; --h: 39px; --row: 2; display: inline-block; flex-shrink: 0; width: var(--w); height: var(--h); margin: -8px 0;
+.pet { --w: var(--pet-width, 36px); --h: calc(var(--w) * 13 / 12); --row: 2; display: inline-block; flex-shrink: 0; width: var(--w); height: var(--h); margin: -8px 0;
   background-size: calc(var(--w) * 8) calc(var(--h) * var(--rows, 6)); background-repeat: no-repeat; image-rendering: pixelated;
   background-position: 0 calc(var(--h) * var(--row) * -1); animation: pet-idle 3.6s steps(6) infinite; }
 .pet[data-state=thinking], .pet[data-state=working] { --row: 0; animation: pet-think 1.8s steps(6) infinite; }

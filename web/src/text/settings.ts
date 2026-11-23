@@ -153,9 +153,11 @@ export const settingsText = {
   },
   pets: {
     use: "Pet cho từng nguồn AI",
-    familyTabsLabel: "Nhóm model pet", families: { codex: "Codex", claude: "Claude", deepseek: "DeepSeek" },
-    default: "Không dùng pet", kinds: { "codex-luna": "Codex · Luna", "codex-sol": "Codex · Sol", "codex-terra": "Codex · Terra", "claude-opus": "Claude · Opus", "claude-sonnet": "Claude · Sonnet", "claude-haiku": "Claude · Haiku", "claude-fable": "Claude · Fable", deepseek: "DeepSeek" } as Record<string, string>,
+    familyTabsLabel: "Nhóm model pet", families: { codex: "Codex", claude: "Claude", antigravity: "Antigravity", deepseek: "DeepSeek" },
+    default: "Không dùng pet", noModelGroups: "Nguồn này chưa có model trong Cài đặt › Nguồn AI.",
     enable: "Hiện pet cạnh câu trả lời", uploadFile: "Thêm pet",
+    size: "Kích thước pet trong chat", sizes: { small: "Nhỏ (28 px)", medium: "Vừa (36 px)", large: "Lớn (48 px)" },
+    sizeTicks: { small: "Small", medium: "Medium", large: "Large" },
     uploadSummary: "Ảnh Pet: WebP rộng 1536 px, tối đa 4 MB",
     uploadHint: "File WebP rộng 1536 px, tối đa 4 MB: 8 cột × 6 hàng (cao 1248 px), mỗi ô 192 × 208. Hàng theo thứ tự: suy nghĩ, trả lời, nghỉ, chờ, lỗi, chạy (đang xử lý, đang code). Sheet 5 hàng (cao 1040 px, không có hàng chạy) vẫn dùng được: lúc đó đang xử lý và đang code dùng hàng trả lời.",
     tabsLabel: "Các phần của Pet", tabs: { chat: "Pet chat", garden: "Vườn pet" }, gardenSoon: "Vườn pet sẽ có ở bản sau.",

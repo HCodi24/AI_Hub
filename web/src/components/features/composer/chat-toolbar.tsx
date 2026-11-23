@@ -8,6 +8,7 @@ import { SOURCE_LOGOS } from "@/constants/source-logos";
 import { antigravityModel, ANTIGRAVITY_EFFORTS } from "@/lib/antigravity-models";
 import { rolesFor } from "@/lib/mutis-level";
 import { isModelVisible, useModelVisibility } from "@/lib/model-visibility";
+import { modelDisplayLabel } from "@/lib/model-display-label";
 import type { Config } from "@/schema/config.schema";
 import styles from "./chat-toolbar.module.css";
 import { CliLimits } from "./cli-limits";
@@ -94,13 +95,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
   const mutisName = "MutiS";
   const name = isMutis ? mutisName : provider?.name || chatText.source;
   const modelLabel = isMutis ? "MutiS" : pickedModel || name;
-  const gemini = isAntigravity ? /^gemini-(\d+(?:\.\d+)*)-([a-z]+)$/i.exec(pickedModel) : null;
-  const summaryModelLabel = gemini
-    ? `${gemini[2][0].toUpperCase()}${gemini[2].slice(1)}-${gemini[1]}`
-    : provider?.kind === "codex_cli" && !isMutis
-      ? modelLabel.replace(/^gpt-(\d+(?:\.\d+)*)-([a-z]+)$/i, (_, version: string, family: string) => `${family[0].toUpperCase()}${family.slice(1)}-${version}`)
-      : modelLabel.replace(/^claude-([a-z]+)-(\d+(?:-\d{1,2})*)$/i, (_, family: string, version: string) =>
-        `${family[0].toUpperCase()}${family.slice(1)}-${version.replaceAll("-", ".")}`);
+  const summaryModelLabel = modelDisplayLabel(settings.model && !isMutis ? settings.model : modelLabel, settings.model && !isMutis ? provider?.kind : undefined);
   const catalogEffort = !isMutis && (provider?.kind === "codex_cli" || provider?.kind === "claude_cli")
     ? modelEffortOptions(provider.model_efforts?.[settings.model], settings.effort, provider.kind) : undefined;
   const efforts = isAntigravity

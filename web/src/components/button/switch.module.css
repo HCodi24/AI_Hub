@@ -1,3 +1,6 @@
+/* Keep wrapping labels accessible without making the entire row a pointer target. */
+label:has(.switch) { pointer-events: none; }
+
 /* Shared pill switch: 40x24 track, 18px white thumb inset 3px, blue when on.
  * Doubled class keeps the fixed size above generic `.form input` / `.card input` rules. */
 .switch.switch {
@@ -23,6 +26,7 @@
   background-position: 3px center;
   box-shadow: none;
   cursor: pointer;
+  pointer-events: auto;
   vertical-align: middle;
   transition: background-color var(--duration-fast) var(--ease-out), background-position var(--duration-fast) var(--ease-out);
 }

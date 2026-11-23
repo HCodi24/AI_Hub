@@ -96,17 +96,12 @@ pub(crate) async fn put_config(
     }
     if let Some(pets) = &input.pets {
         let valid_kind = |kind: &str| {
-            matches!(
-                kind,
-                "codex-luna"
-                    | "codex-sol"
-                    | "codex-terra"
-                    | "claude-opus"
-                    | "claude-sonnet"
-                    | "claude-haiku"
-                    | "claude-fable"
-                    | "deepseek"
-            )
+            matches!(kind, "antigravity" | "deepseek")
+                || (kind.len() <= 256
+                    && !kind.chars().any(char::is_control)
+                    && ["codex-", "claude-", "antigravity-"]
+                        .iter()
+                        .any(|prefix| kind.starts_with(*prefix)))
         };
         let valid_pet = |pet: &str| {
             (1..=48).contains(&pet.len())
@@ -114,10 +109,9 @@ pub(crate) async fn put_config(
                     .bytes()
                     .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
         };
-        if pets.len() > 8
-            || pets
-                .iter()
-                .any(|(kind, pet)| !valid_kind(kind) || !valid_pet(pet))
+        if pets.iter().any(|(kind, pet)| {
+            !valid_kind(kind) || !(valid_pet(pet) || (pet.is_empty() && kind.starts_with("antigravity-")))
+        })
         {
             return Err(ApiError::new(
                 StatusCode::BAD_REQUEST,

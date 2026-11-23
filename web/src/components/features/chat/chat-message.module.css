@@ -1,6 +1,6 @@
 .message { max-width: 860px; margin: 0 auto; padding: var(--space-6) var(--space-6) var(--space-8); min-width: 0; }
 .identity { display: flex; gap: var(--space-2); align-items: center; margin-bottom: var(--space-3); color: var(--muted); font-size: var(--font-small); }
-.identity { flex-wrap: wrap; }
+.identity { flex-wrap: wrap; --pet-width: var(--chat-pet-width, 36px); }
 .petStatus { font-size: var(--font-12); font-weight: 400; color: var(--muted); }
 .petStatus:empty { display: none; }
 .petStatus[data-state=failed] { color: var(--danger); }
