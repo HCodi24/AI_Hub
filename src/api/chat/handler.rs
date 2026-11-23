@@ -61,11 +61,11 @@ fn uses_codegraph(request: &ProviderRequest) -> bool {
 /// First user message of the conversation gets the fixed rules in front of it. Before that the app builds or syncs
 /// the project's CodeGraph index; problems go to the chat's activity log through `events`.
 async fn add_first_request_rules(request: &mut ProviderRequest, events: &mpsc::Sender<ProviderEvent>) {
-    add_first_request_rules_if(request, events, true).await;
+    add_first_request_rules_if(request, events, true, false).await;
 }
 
 /// `app_rules` off (MutiS lead switch): the first message is left as it is.
-async fn add_first_request_rules_if(request: &mut ProviderRequest, events: &mpsc::Sender<ProviderEvent>, app_rules: bool) {
+async fn add_first_request_rules_if(request: &mut ProviderRequest, events: &mpsc::Sender<ProviderEvent>, app_rules: bool, skip_guides: bool) {
     if !app_rules || !uses_codegraph(request) || request.messages.iter().filter(|m| m.role == "user").count() != 1 {
         return;
     }
@@ -74,8 +74,9 @@ async fn add_first_request_rules_if(request: &mut ProviderRequest, events: &mpsc
         let _ = providers::emit_text(events, "log", note).await;
     }
     if let Some(message) = request.messages.iter_mut().find(|m| m.role == "user") {
+        let guides = if skip_guides { format!("\n{}", crate::core::rule::project_guides::RULE) } else { String::new() };
         message.content = format!(
-            "{}\n\n{}",
+            "{}{guides}\n\n{}",
             crate::core::rule::first_request_rules(prepared.indexed, prepared.synced),
             message.content
         );
@@ -548,7 +549,16 @@ pub(crate) async fn chat_handler(
     }
     // Plan task workers cannot stop to ask the user, so they skip the first-request rules.
     if request.plan_id.is_none() && !plain_chat && state.config.read().await.codegraph_enabled {
-        add_first_request_rules_if(&mut provider_request, &provider_sender, mutis_level.is_none() || mutis_config.lead_app_rules).await;
+        let skip_guides = {
+            let config = state.config.read().await;
+            match provider_request.provider.kind.as_str() {
+                "codex_cli" => !config.codex.project_instructions,
+                "claude_cli" => !config.claude.project_instructions,
+                "antigravity_cli" => !config.antigravity.project_instructions,
+                _ => false,
+            }
+        };
+        add_first_request_rules_if(&mut provider_request, &provider_sender, mutis_level.is_none() || mutis_config.lead_app_rules, skip_guides).await;
         attach_codegraph(&mut provider_request);
     }
     // The user's own rules for the MutiS lead go in front of the first message, after the app's.
@@ -784,6 +794,10 @@ mod tests {
         first.provider.kind = "codex_cli".into();
         add_first_request_rules(&mut first, &events).await;
         assert!(first.messages[0].content.contains(".codegraph"));
+        let mut off = request(json!([{"role":"user","content":"làm đi"}]));
+        off.provider.kind = "codex_cli".into();
+        add_first_request_rules_if(&mut off, &events, true, true).await;
+        assert!(off.messages[0].content.contains("AGENTS.md") && !first.messages[0].content.contains("AGENTS.md"));
         // A folder that does not exist is skipped quietly: nothing is built and no failure is logged.
         assert!(log.try_recv().is_err());
         assert!(first.messages[0].content.ends_with("làm đi"));

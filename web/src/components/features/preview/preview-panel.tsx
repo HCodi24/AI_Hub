@@ -56,7 +56,7 @@ function ServerStatus({ address, folder, onUp }: { address: URL | null; folder: 
   const host = hostname === "localhost" ? "localhost" : hostname === "127.0.0.1" ? "ipv4" : hostname === "[::1]" ? "ipv6" : null;
   const port = Number(address?.port || (address?.protocol === "https:" ? 443 : 80));
   const own = !address || (port === 7880 && (host === "localhost" || host === "ipv4"));
-  const managed = dev.data?.dev === true && (own || (host !== null && folder !== ""));
+  const managed = own ? dev.data?.dev === true : host !== null && folder !== "";
   const server = useQuery({
     queryKey: own && managed ? ["preview-server"] : ["preview-server", host, port],
     enabled: managed || host !== null,

@@ -297,6 +297,15 @@ pub(crate) async fn read(provider: &ProviderConfig, ask_anthropic: bool) -> Limi
         }
         return cached;
     }
+    if provider.kind == "antigravity_cli" {
+        if cached.updated_at.is_some_and(|time| now().saturating_sub(time) < 60) {
+            return cached;
+        }
+        return match read_antigravity(provider).await {
+            Some(windows) => save(&provider.id, windows),
+            None => cached,
+        };
+    }
     if provider.kind != "codex_cli"
         || cached
             .updated_at
@@ -308,6 +317,34 @@ pub(crate) async fn read(provider: &ProviderConfig, ask_anthropic: bool) -> Limi
         Some(windows) => save(&provider.id, windows),
         None => cached,
     }
+}
+
+/// `agy /usage` prints one tab-separated line per window: `group`, `label`, `NN%` remaining, reset time (ISO, UTC).
+fn antigravity_windows(text: &str) -> Vec<LimitWindow> {
+    text.lines()
+        .filter_map(|line| {
+            let mut cells = line.split('\t').map(str::trim);
+            let (group, label, left, reset) = (cells.next()?, cells.next()?, cells.next()?, cells.next()?);
+            let left = left.strip_suffix('%')?.parse::<f64>().ok()?;
+            let group = group.split_whitespace().next().unwrap_or(group);
+            Some(LimitWindow {
+                label: format!("{group} · {}", label.trim_end_matches(" Limit Remaining")),
+                used_percent: Some((100.0 - left).clamp(0.0, 100.0)),
+                status: if left <= 0.0 { "rejected" } else { "allowed" }.to_owned(),
+                resets_at: iso_seconds(reset),
+            })
+        })
+        .collect()
+}
+
+async fn read_antigravity(provider: &ProviderConfig) -> Option<Vec<LimitWindow>> {
+    let home = super::antigravity_cli::clean_home(&provider.id).ok()?;
+    let path = cli_support::resolve_executable("agy", Some(&provider.executable))?;
+    let mut command = cli_support::command_for(&path, &["--print=/usage", "--output-format", "text"].map(Into::into));
+    cli_support::agy_environment(&mut command, &home);
+    command.stdin(std::process::Stdio::null()).kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(25), command.output()).await.ok()?.ok()?;
+    output.status.success().then(|| antigravity_windows(&String::from_utf8_lossy(&output.stdout)))
 }
 
 // This helper starts a separate, read-only App Server; it never creates a turn.
@@ -325,6 +362,19 @@ async fn read_codex(provider: &ProviderConfig) -> Option<Vec<LimitWindow>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn antigravity_usage_lines_become_windows() {
+        let windows = antigravity_windows("Gemini Models	Weekly Limit Remaining	86%	2026-11-28T08:49:28Z
+not a row
+Claude and GPT models	Five Hour Limit Remaining	0%	2026-11-23T11:49:58Z
+");
+        assert_eq!(windows.len(), 2);
+        assert_eq!(windows[0].label, "Gemini · Weekly");
+        assert_eq!(windows[0].used_percent, Some(14.0));
+        assert!(windows[0].resets_at.is_some());
+        assert_eq!(windows[1].status, "rejected");
+    }
 
     #[test]
     fn the_usage_endpoint_answer_becomes_windows() {

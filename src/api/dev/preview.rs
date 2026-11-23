@@ -190,10 +190,11 @@ async fn project_action(action: &str, port: u16, folder: Option<String>) -> ApiR
 }
 
 pub(crate) async fn dev_preview_action(State(state): State<AppState>, Json(input): Json<Action>) -> ApiResult<Json<Value>> {
-    let repo = dev_repo_path(&state)?;
+    // Another project's server is not tied to dev mode: whoever opened the preview may start or stop what it started.
     if let Some(port) = input.port.filter(|port| *port != PORT) {
         return project_action(&input.action, port, input.folder).await;
     }
+    let repo = dev_repo_path(&state)?;
     let mut guard = slot().lock().await;
     let held = owned(&mut guard).await;
     match input.action.as_str() {

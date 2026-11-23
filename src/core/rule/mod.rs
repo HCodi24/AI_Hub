@@ -9,6 +9,7 @@ pub mod keep_features;
 pub mod mutis_checker;
 pub mod mutis_high_delegation;
 pub mod preview;
+pub mod project_guides;
 pub mod report_unfinished;
 pub mod stay_in_folder;
 pub mod utf8;
