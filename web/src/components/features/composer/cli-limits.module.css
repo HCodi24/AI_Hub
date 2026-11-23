@@ -1,4 +1,4 @@
-.panel.panel { width: min(360px, calc(100vw - 48px)); padding: 14px 16px; border-color: color-mix(in srgb, var(--border) 40%, var(--surface)); border-radius: 14px; background: var(--surface); }
+.panel.panel { width: min(360px, calc(100vw - 48px)); width: min(360px, calc(100cqw - 32px)); padding: 14px 16px; border-color: color-mix(in srgb, var(--border) 40%, var(--surface)); border-radius: 14px; background: var(--surface); }
 .window + .window { margin-top: 14px; }
 .heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 5px; font-size: var(--font-13); line-height: 1.4; }
 .label { flex: 1; min-width: 0; overflow-wrap: anywhere; }

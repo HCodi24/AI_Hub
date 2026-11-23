@@ -9,6 +9,7 @@ import { Button } from "@/components/button/button";
 import { PillTabs } from "@/components/pill-tabs/pill-tabs";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { notify } from "@/components/toast/toast";
+import { ApiError } from "@/lib/http";
 import { useProviderConnectionQueries } from "@/lib/provider-connections";
 import type { ConnectionTest, FullConfig, Provider } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
@@ -21,8 +22,13 @@ const SUB_TABS = ["cli", "login", "api"] as const;
 type SubTab = (typeof SUB_TABS)[number];
 const CLI_KINDS = ["codex_cli", "claude_cli"] as const;
 const API_KINDS = ["openai_compat", "anthropic"] as const;
-/** Antigravity (`agy`) signs in on its own CLI, so it is offered on the machine "CLI" tab only and has no account endpoint. */
 const MACHINE_KINDS = [...CLI_KINDS, "antigravity_cli"] as const;
+type MachineKind = (typeof MACHINE_KINDS)[number];
+const CLI_INSTALL_GUIDES: Record<MachineKind, string> = {
+  codex_cli: "https://learn.chatgpt.com/docs/codex/cli",
+  claude_cli: "https://code.claude.com/docs/en/setup",
+  antigravity_cli: "https://antigravity.google/docs/cli-getting-started?hl=en",
+};
 const isCliKind = (kind: string) => kind === "codex_cli" || kind === "claude_cli" || kind === "antigravity_cli";
 /** CLI tab: CLI sources using this machine's account; "Web": CLI sources signed in through the web. */
 const groupOf = (provider: Provider): SubTab => !isCliKind(provider.kind) ? "api" : provider.web_login ? "login" : "cli";
@@ -103,6 +109,8 @@ export function ProvidersTab() {
   const [visited, setVisited] = useState<Record<SubTab, boolean>>({ cli: true, login: false, api: false });
   const [selection, setSelection] = useState<Selection>(NO_SELECTION);
   const [adding, setAdding] = useState(false);
+  const [signingIn, setSigningIn] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<{ tab: "cli" | "login"; kind: string; message: string; showInstall?: boolean } | null>(null);
   const providers = query.data?.providers || [];
   const tests = useProviderConnectionQueries(providers, provider => provider.kind === "antigravity_cli");
   const statuses: Record<string, ConnectionTest | undefined> = Object.fromEntries(
@@ -223,52 +231,82 @@ export function ProvidersTab() {
     const popup = window.open("about:blank", "_blank");
     if (popup) popup.opener = null;
     setAdding(true);
+    setSigningIn(kind);
+    setLoginError(null);
+    let id = providerId;
     try {
-      const id = providerId ?? await addAccount(kind);
-      let url: string | null | undefined;
+      id ??= await addAccount(kind);
+      let url: string | null;
       if (kind === "codex_cli") {
         const key = ["codex-connection", id];
         await client.cancelQueries({ queryKey: key });
         const result = await codexApi.action(id, "web");
         client.setQueryData(key, result);
         url = safeCodexLoginUrl(result.url);
+        if (!url) throw new Error(result.message || t.providers.loginInvalidUrl);
       } else {
         const result = await settingsApi.loginStart(id);
         url = safeClaudeLoginUrl(result.url);
-        if (!url) { await settingsApi.loginCancel(id); throw new Error("Link đăng nhập Claude không hợp lệ"); }
-        // Claude asks for a confirmation code: open the source page, whose form picks this session up.
+        if (!url) { await settingsApi.loginCancel(id); throw new Error(t.providers.loginInvalidUrl); }
+        // Claude and Antigravity show the confirmation code form on the source page.
         client.setQueryData(["claude-login-session", id], { session_id: result.session_id, url });
-        select("login", id);
       }
-      if (url && popup) popup.location.href = url; else popup?.close();
-    } catch (error) { popup?.close(); notify(errorText(error, t.error)); }
-    finally { setAdding(false); }
+      if (kind !== "codex_cli" || !popup || popup.closed) select("login", id);
+      if (popup && !popup.closed) popup.location.href = url;
+    } catch (error) {
+      popup?.close();
+      setLoginError({ tab: "login", kind, message: errorText(error, t.error),
+        showInstall: Boolean(id) && error instanceof ApiError && error.status === 404 });
+    } finally {
+      setSigningIn(null);
+      setAdding(false);
+    }
   }
   /** CLI tab row: "Đăng nhập" creates the source if needed, finds the CLI on this machine and copies its account
    *  (the server resolves the program itself); "Đăng xuất" only removes MutiS's copy, never the machine's sign-in. */
   async function machineRow(kind: string, providerId: string | undefined, action: "cli" | "logout") {
     if (adding) return;
     setAdding(true);
+    setLoginError(null);
+    let id = providerId;
     try {
-      const id = providerId ?? await addAccount(kind, false);
+      id ??= await addAccount(kind, false);
       if (kind === "antigravity_cli") {
         await client.cancelQueries({ queryKey: ["provider-test", id] });
         const result = await settingsApi.antigravityAction(id, action);
         if (result.ok || action === "logout") onTested(id, result);
-        else notify(result.detail ? `${result.message}. ${result.detail}` : result.message);
+        else setLoginError({ tab: "cli", kind, message: result.detail ? `${result.message}. ${result.detail}` : result.message });
         return;
       }
       const codex = kind === "codex_cli";
       const key = [codex ? "codex-connection" : "claude-connection", id];
       await client.cancelQueries({ queryKey: key });
       const result = codex ? await codexApi.action(id, action) : await claudeApi.action(id, action);
+      if (action === "cli" && !result.connected) {
+        setLoginError({ tab: "cli", kind, message: result.message || t.error });
+      }
       client.setQueryData(key, result);
       client.setQueryData(["provider-test", id], { ok: result.connected,
         status: result.connected ? "connected" : "not_configured", message: result.message, detail: "" });
       // The server may have saved the program it found; refresh the source list.
       await client.invalidateQueries({ queryKey: ["settings-config"] });
-    } catch (error) { notify(errorText(error, t.error)); }
+    } catch (error) {
+      const message = errorText(error, t.error);
+      if (action === "logout") notify(message);
+      else setLoginError({ tab: "cli", kind, message,
+        showInstall: Boolean(id) && error instanceof ApiError && error.status === 404 });
+    }
     finally { setAdding(false); }
+  }
+  function loginAlert(id: "cli" | "login") {
+    if (loginError?.tab !== id) return null;
+    const { kind, message, showInstall } = loginError;
+    return <div role="alert">
+      <p>{t.providers.loginFailed(t.providers.account.webName(kind), message)}</p>
+      {showInstall && isCliKind(kind) && <a href={CLI_INSTALL_GUIDES[kind]} target="_blank" rel="noreferrer">
+        {t.providers.loginInstall(t.providers.account.cliName(kind))}
+      </a>}
+    </div>;
   }
   /** Placeholder row clicked: create its source, then open its page. */
   async function openPlaceholder(kind: string, id: SubTab) {
@@ -358,6 +396,7 @@ export function ProvidersTab() {
               <PlaceholderRow key={kind} kind={kind} name={t.providers.account.cliName(kind)} disabled={adding}
                 onSignIn={() => void machineRow(kind, undefined, "cli")} onOpen={() => void openPlaceholder(kind, "cli")} />)}
           </SourceCard>
+          {loginAlert("cli")}
         </div>
       </div>}
       {visited.login && <div className={styles.subPanel} role="tabpanel" id="providers-panel-login"
@@ -370,6 +409,8 @@ export function ProvidersTab() {
             {MACHINE_KINDS.filter(kind => !lists.login.some(provider => provider.kind === kind)).map(kind =>
               <PlaceholderRow key={kind} kind={kind} name={t.providers.account.webName(kind)} disabled={adding} onSignIn={() => void signInRow(kind)} onOpen={() => void openPlaceholder(kind, "login")} />)}
           </SourceCard>
+          {signingIn && <p className={styles.note} role="status">{t.providers.loginStarting(t.providers.account.webName(signingIn))}</p>}
+          {loginAlert("login")}
         </div>
       </div>}
       {visited.api && <div className={styles.subPanel} role="tabpanel" id="providers-panel-api"

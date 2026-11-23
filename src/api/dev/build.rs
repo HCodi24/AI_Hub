@@ -92,44 +92,63 @@ fn bump_patch(text: &str, key: &str) -> Option<(String, String)> {
 /// True while the desktop build runs: the build edits Cargo.toml and web/out, which would make the dev watcher rebuild and restart the server mid-build.
 pub(super) static DESKTOP_BUILDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Local-only: bump the app version (root and desktop Cargo.toml, tauri.conf.json), then run `scripts/build-desktop.ps1`.
+struct DesktopBuildGuard;
+
+impl Drop for DesktopBuildGuard {
+    fn drop(&mut self) {
+        DESKTOP_BUILDING.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Dev-only desktop build, artifact checks and publishing.
 pub(crate) async fn dev_desktop_build(State(state): State<AppState>, body: Option<Json<Value>>) -> ApiResult<Response> {
     // The signing-key password lives only in this request and the child process environment.
-    let password = body.and_then(|Json(v)| v["password"].as_str().map(str::to_owned)).filter(|p| !p.is_empty());
+    let body = body.map(|Json(value)| value).unwrap_or_default();
+    let action = match body["action"].as_str().unwrap_or("build") {
+        action @ ("build" | "check" | "publish") => action.to_owned(),
+        _ => return Err(ApiError::new(StatusCode::BAD_REQUEST, "Thao tác không hợp lệ")),
+    };
+    let password = body["password"].as_str().filter(|p| !p.is_empty()).map(str::to_owned);
     let repo = dev_repo_path(&state)?;
     if DESKTOP_BUILDING.swap(true, Ordering::SeqCst) {
         return Err(ApiError::new(StatusCode::CONFLICT, "Đang build bản cài"));
     }
+    let guard = DesktopBuildGuard;
     let files = [("Cargo.toml", "
 version ="), ("desktop/Cargo.toml", "
 version ="), ("desktop/tauri.conf.json", "\"version\":")];
     let mut version = String::new();
-    for (file, key) in files {
-        let path = repo.join(file);
-        let bumped = std::fs::read_to_string(&path).map_err(|e| format!("Không đọc được {file}: {e}"))
-            .and_then(|text| bump_patch(&text, key).ok_or_else(|| format!("Không thấy số phiên bản trong {file}")))
-            .and_then(|(next, new_version)| std::fs::write(&path, next).map(|_| new_version).map_err(|e| format!("Không ghi được {file}: {e}")));
-        match bumped {
-            Ok(new_version) => version = new_version,
-            Err(message) => {
-                DESKTOP_BUILDING.store(false, Ordering::SeqCst);
-                return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, message));
+    if action == "build" {
+        for (file, key) in files {
+            let path = repo.join(file);
+            let bumped = std::fs::read_to_string(&path).map_err(|e| format!("Không đọc được {file}: {e}"))
+                .and_then(|text| bump_patch(&text, key).ok_or_else(|| format!("Không thấy số phiên bản trong {file}")))
+                .and_then(|(next, new_version)| std::fs::write(&path, next).map(|_| new_version).map_err(|e| format!("Không ghi được {file}: {e}")));
+            match bumped {
+                Ok(new_version) => version = new_version,
+                Err(message) => return Err(ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, message)),
             }
         }
+    } else {
+        let manifest = std::fs::read_to_string(repo.join("desktop/tauri.conf.json"))
+            .ok().and_then(|text| serde_json::from_str::<Value>(&text).ok());
+        version = manifest.as_ref().and_then(|value| value["version"].as_str())
+            .ok_or_else(|| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không đọc được phiên bản bộ cài"))?
+            .to_owned();
     }
     let (tx, rx) = mpsc::channel::<String>(64);
     tokio::spawn(async move {
-        let _ = tx.send(json!({"event":"log","data":{"text":format!("Phiên bản mới: {version}")}}).to_string()).await;
         let mut cmd = tokio::process::Command::new("powershell");
         cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/build-desktop.ps1"])
+            .args(["-Action", action.as_str()])
             .current_dir(&repo)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        if let Some(password) = password {
+        if let Some(password) = password.filter(|_| action == "build") {
             cmd.env("TAURI_SIGNING_PRIVATE_KEY_PASSWORD", password);
         }
         let ok = stream_process(cmd, tx.clone()).await;
-        DESKTOP_BUILDING.store(false, Ordering::SeqCst);
+        drop(guard);
         let _ = tx.send(json!({"event":"summary","data":{"ok":ok,"version":version,"dir":repo.join("dist").to_string_lossy()}}).to_string()).await;
     });
     Ok(sse_channel(rx))

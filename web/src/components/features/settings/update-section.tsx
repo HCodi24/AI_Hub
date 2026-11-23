@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { devApi } from "@/apis/dev.api";
 import { Button } from "@/components/button/button";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { useChatStore } from "@/components/features/chat/chat-store";
@@ -8,16 +10,20 @@ import { settingsText } from "@/text/settings";
 import styles from "./settings.module.css";
 
 const t = settingsText.update;
-/** Settings › Chung › Cập nhật ứng dụng: check for a newer version and install it (desktop app only). */
+/** Shows the running version and offers updates in the desktop app. */
 export function UpdateSection() {
+  const status = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
   const [state, setState] = useState<"idle" | "checking" | "installing">("idle");
   const [update, setUpdate] = useState<AppUpdate | null | undefined>(undefined);
   // Installing stops the server and the Codex / Claude processes under it, so never while something is running.
-  const running = useChatStore(s => s.streaming) || useCardStore(s => s.running !== null);
+  const streaming = useChatStore(s => s.streaming);
+  const cardRunning = useCardStore(s => s.running !== null);
+  const running = streaming || cardRunning;
   const fail = (error: unknown) => { setState("idle"); notify(`${t.error}: ${error instanceof Error ? error.message : String(error)}`); };
   const check = () => { setState("checking"); updateApi.check().then(found => { setUpdate(found); setState("idle"); }, fail); };
   const install = () => { setState("installing"); updateApi.install().catch(fail); };
   return <fieldset className={styles.group}><legend>{t.title}</legend>
+    {status.data?.version && <p>{t.currentVersion(status.data.version)}</p>}
     {!canUpdate() ? <p>{t.desktopOnly}</p> : <>
       {update === null && <p>{t.latest}</p>}
       {update && <p><strong>{t.available(update.version)}</strong>{update.notes && <><br />{t.notes}: {update.notes}</>}</p>}

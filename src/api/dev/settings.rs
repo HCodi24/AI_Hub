@@ -9,7 +9,10 @@ use axum::{extract::State, http::StatusCode, Json};
 use serde_json::{json, Value};
 
 pub(crate) async fn dev_status(State(state): State<AppState>) -> Json<Value> {
-    Json(json!({"dev":state.dev_repo.is_some()}))
+    Json(json!({
+        "dev": state.dev_repo.is_some(),
+        "version": env!("CARGO_PKG_VERSION"),
+    }))
 }
 
 pub(crate) async fn dev_settings(State(state): State<AppState>) -> Json<Value> {

@@ -54,6 +54,15 @@ pub fn resolve_executable(name: &str, explicit_path: Option<&str>) -> Option<Pat
                 return Some(path);
             }
         }
+        if let Some(local) = env::var_os("LOCALAPPDATA") {
+            let cmd = format!("{name}.cmd");
+            if let Some(path) = find_in_directories(&[cmd], package_npm_directories(Path::new(&local))) {
+                return Some(path);
+            }
+        }
+        if name.eq_ignore_ascii_case("codex") {
+            return registered_codex_cli();
+        }
     }
 
     None
@@ -135,9 +144,14 @@ fn find_in_directories(
 }
 
 fn safe_cli_executable(path: &Path) -> bool {
-    let lower = path.to_string_lossy().to_lowercase();
-    if lower.contains("\\program files\\windowsapps\\") {
-        return false;
+    let lower = path.to_string_lossy().replace('/', "\\").to_lowercase();
+    if let Some((_, relative)) = lower.split_once("\\program files\\windowsapps\\") {
+        let Some((package, executable)) = relative.split_once('\\') else {
+            return false;
+        };
+        return package.starts_with("openai.codex_")
+            && package.ends_with("__2p2nqsd0c76g0")
+            && executable == r"app\resources\codex.exe";
     }
     if path
         .file_name()
@@ -230,6 +244,16 @@ fn well_known_directories() -> Vec<PathBuf> {
 }
 
 #[cfg(windows)]
+fn package_npm_directories(local: &Path) -> impl Iterator<Item = PathBuf> {
+    std::fs::read_dir(local.join("Packages"))
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .take(200)
+        .map(|package| package.path().join("LocalCache/Roaming/npm"))
+}
+
+#[cfg(windows)]
 fn newest_codex_install() -> Option<PathBuf> {
     let root = PathBuf::from(env::var_os("LOCALAPPDATA")?)
         .join("OpenAI")
@@ -257,20 +281,25 @@ fn newest_codex_install() -> Option<PathBuf> {
     candidates.into_iter().next().map(|(_, path)| path)
 }
 
-fn unsafe_cli_path(path: &std::path::Path) -> bool {
-    let text = path.to_string_lossy().to_lowercase();
-    if text.contains("\\program files\\windowsapps\\") {
-        return true;
+#[cfg(windows)]
+fn registered_codex_cli() -> Option<PathBuf> {
+    use std::os::windows::process::CommandExt;
+
+    let output = StdCommand::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command",
+            "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-AppxPackage -Name OpenAI.Codex | Where-Object PackageFamilyName -eq 'OpenAI.Codex_2p2nqsd0c76g0' | Sort-Object Version -Descending | Select-Object -ExpandProperty InstallLocation"])
+        .creation_flags(0x08000000)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
     }
-    if path
-        .file_name()
-        .is_some_and(|f| f.to_string_lossy().eq_ignore_ascii_case("Claude.exe"))
-    {
-        return path
-            .parent()
-            .is_some_and(|p| p.join("resources").join("app.asar").exists());
-    }
-    false
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|location| !location.is_empty())
+        .map(|location| Path::new(location).join("app/resources/codex.exe"))
+        .find(|path| path.is_absolute() && path.is_file() && safe_cli_executable(path))
 }
 pub(crate) async fn run_cli_version(path: &std::path::Path, limit: Duration) -> Option<String> {
     let mut command = cli_support::command_for(path, &[OsString::from("--version")]);
@@ -333,7 +362,7 @@ pub(crate) async fn discover_candidates(name: &str) -> Vec<CliCandidate> {
         if Instant::now() >= deadline {
             break;
         }
-        if unsafe_cli_path(&path) {
+        if !safe_cli_executable(&path) {
             continue;
         }
         if let Some(version) = run_cli_version(
@@ -508,16 +537,8 @@ fn discovery_paths(name: &str) -> Vec<(PathBuf, String)> {
             }
         }
         if let Some(l) = local {
-            let root = l.join("Packages");
-            if let Ok(packages) = std::fs::read_dir(root) {
-                for package in packages.flatten().take(200) {
-                    add(
-                        package
-                            .path()
-                            .join(format!("LocalCache/Roaming/npm/{name}.cmd")),
-                        "package npm",
-                    );
-                }
+            for directory in package_npm_directories(&l) {
+                add(directory.join(format!("{name}.cmd")), "package npm");
             }
         }
     }
@@ -527,6 +548,39 @@ fn discovery_paths(name: &str) -> Vec<(PathBuf, String)> {
 #[cfg(test)]
 mod cli_discovery_tests {
     use super::{drop_bundled_cli_duplicates, CliCandidate};
+
+    #[test]
+    fn allows_only_the_codex_cli_in_windowsapps() {
+        use super::safe_cli_executable;
+        use std::path::Path;
+
+        assert!(safe_cli_executable(Path::new(
+            r"C:\Program Files\WindowsApps\OpenAI.Codex_26.1117.4957.0_x64__2p2nqsd0c76g0\app\resources\codex.exe",
+        )));
+        assert!(!safe_cli_executable(Path::new(
+            r"C:\Program Files\WindowsApps\OpenAI.Codex_26.1117.4957.0_x64__2p2nqsd0c76g0\app\Codex.exe",
+        )));
+        assert!(!safe_cli_executable(Path::new(
+            r"C:\Program Files\WindowsApps\OpenAI.Codex_26.1117.4957.0_x64__other\app\resources\codex.exe",
+        )));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn finds_npm_shim_in_windows_package_cache() {
+        use super::{find_in_directories, package_npm_directories};
+        use std::{env, fs};
+
+        let local = env::temp_dir().join(format!("mutis-cli-test-{}", uuid::Uuid::new_v4()));
+        let npm = local.join("Packages/Claude_test/LocalCache/Roaming/npm");
+        fs::create_dir_all(&npm).unwrap();
+        let shim = npm.join("codex.cmd");
+        fs::write(&shim, "").unwrap();
+
+        let found = find_in_directories(&["codex.cmd".into()], package_npm_directories(&local));
+        fs::remove_dir_all(local).unwrap();
+        assert_eq!(found, Some(shim));
+    }
 
     #[test]
     fn drops_same_version_binary_inside_cmd_node_modules() {
