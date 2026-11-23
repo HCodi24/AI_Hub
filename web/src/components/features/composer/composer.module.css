@@ -49,6 +49,10 @@
 .compactButton { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--font-13); border-color: transparent; background: transparent; }
 .debateButton[aria-pressed="true"] { color: var(--accent); background: var(--green-bg); }
 .debateButton:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@container chatframe (width <= 600px) {
+  .debateButton { justify-content: center; width: 44px; padding-inline: 0; }
+  .debateButton > span { display: none; }
+}
 .tray { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
 .tray > span { position: relative; }
 .tray img { width: 56px; height: 56px; object-fit: cover; border-radius: var(--radius-small); border: 1px solid var(--border); }

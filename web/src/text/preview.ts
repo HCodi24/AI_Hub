@@ -1,6 +1,9 @@
 export const previewText = {
   server: (port: number) => `localhost:${port}`,
+  serverChecking: "Đang kiểm tra", serverRunning: "Đang chạy", serverStopped: "Không chạy", serverUnknown: "Chưa xác định",
+  zoomIn: "Phóng to trang", zoomOut: "Thu nhỏ trang", zoomReset: "Về 100%",
   start: "Bật", stop: "Tắt", starting: "Đang bật…",
+  serverControlUnavailable: "MutiS chỉ theo dõi trạng thái của máy chủ này.",
   toggle: "Xem trước", resize: "Đổi độ rộng xem trước",close: "Đóng xem trước", reload: "Tải lại", url: "Địa chỉ trang cần xem",
   placeholder: "localhost:3000/dashboard hoặc localhost:7880/app/preview/?c=settings&tab=mutis",
   pick: "Bấm để chọn một phần tử, giữ và kéo để chọn cả vùng", picking: "Bấm vào phần tử hoặc giữ và kéo chọn vùng (Esc để thôi)", noPicker: "Trang này chưa nạp mutis-picker.js nên chưa chọn được phần tử",

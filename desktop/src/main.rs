@@ -137,12 +137,12 @@ fn serde_json_string(text: &str) -> String {
 
 /// Start the server, point the window at it, then keep it alive: if it exits while the app is open it is started
 /// again on the same port (at most 5 times per minute so a crash loop cannot spin forever).
-fn run_server(app: tauri::AppHandle, server: Arc<Server>) {
+fn run_server(app: tauri::AppHandle, server: Arc<Server>, port: Option<u16>) {
     let Some(path) = server_path() else {
         start_error(&app, "Không tìm thấy ai-hub.exe. Đặt nó cùng thư mục với ứng dụng hoặc đặt biến AI_HUB_SERVER.");
         return;
     };
-    let Some(port) = free_port() else {
+    let Some(port) = port else {
         start_error(&app, "Không tìm được cổng trống trên máy.");
         return;
     };
@@ -247,7 +247,15 @@ fn main() {
         .manage(server.clone())
         .invoke_handler(tauri::generate_handler![update_check, update_install])
         .setup(move |app| {
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            let port = free_port();
+            let mut window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()));
+            if let Some(port) = port {
+                let picker = include_str!("../../web/public/mutis-picker.js");
+                window = window.initialization_script_for_all_frames(format!(
+                    "(() => {{ const mutisPickerParentOrigin = 'http://127.0.0.1:{port}';\n{picker}\n}})();"
+                ));
+            }
+            window
                 .title("MutiS")
                 // Let the React UI receive HTML5 file drops on Windows.
                 .disable_drag_drop_handler()
@@ -281,7 +289,7 @@ fn main() {
             tray.build(app)?;
             let handle = app.handle().clone();
             let server = setup_server.clone();
-            std::thread::spawn(move || run_server(handle, server));
+            std::thread::spawn(move || run_server(handle, server, port));
             Ok(())
         })
         .build(tauri::generate_context!())

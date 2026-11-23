@@ -1,6 +1,6 @@
 [package]
 name = "ai-hub-desktop"
-version = "0.1.4"
+version = "0.1.6"
 edition = "2021"
 description = "AI Hub desktop window (Tauri): starts the ai-hub server in the background and shows its UI"
 

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
-import { MousePointerClick, PanelRight, Play, RotateCw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type FormEvent } from "react";
+import { Minus, MousePointerClick, PanelRight, Play, Plus, RotateCw } from "lucide-react";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { devApi } from "@/apis/dev.api";
@@ -14,6 +14,8 @@ const WIDTH_KEY = "ai-hub-preview-width";
 const MIN_WIDTH = 320;
 const DEFAULT_WIDTH = 560;
 const KEY_STEP = 24;
+const ZOOM_KEY = "ai-hub-preview-zoom";
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 const urlKey = (folder: string) => `ai-hub-preview-url:${folder}`;
 // The assistant ends a turn with a line `preview: <url>` to point the panel at the screen it just edited.
 const PREVIEW_LINE = /^preview:\s*(\S+)\s*$/im;
@@ -40,27 +42,50 @@ export function safePreviewUrl(value: string): string | null {
   } catch { return null; }
 }
 
-/** Dev mode only: whether the live preview server listens, with a button to start it or (if this app started it) stop it. */
-function ServerStatus({ onUp }: { onUp: () => void }) {
+/** The app runs on 127.0.0.1, so a `localhost` page in the frame would be cross-site and lose its login cookies: open it on the app's own host instead. */
+function frameUrl(safe: string): string {
+  const url = new URL(safe);
+  if (url.hostname === "localhost" && window.location.hostname === "127.0.0.1") url.hostname = "127.0.0.1";
+  return url.href;
+}
+
+function ServerStatus({ address, folder, onUp }: { address: URL | null; folder: string; onUp: () => void }) {
   const client = useQueryClient();
   const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
-  const server = useQuery({ queryKey: ["preview-server"], enabled: dev.data?.dev === true, queryFn: ({ signal }) => devApi.previewServer(signal), refetchInterval: 3000 });
+  const hostname = address?.hostname;
+  const host = hostname === "localhost" ? "localhost" : hostname === "127.0.0.1" ? "ipv4" : hostname === "[::1]" ? "ipv6" : null;
+  const port = Number(address?.port || (address?.protocol === "https:" ? 443 : 80));
+  const own = !address || (port === 7880 && (host === "localhost" || host === "ipv4"));
+  const managed = dev.data?.dev === true && (own || (host !== null && folder !== ""));
+  const server = useQuery({
+    queryKey: own && managed ? ["preview-server"] : ["preview-server", host, port],
+    enabled: managed || host !== null,
+    queryFn: ({ signal }) => own && managed ? devApi.previewServer(signal) : devApi.localPreviewStatus(port, host ?? "localhost", signal),
+    refetchInterval: 3000,
+  });
   const run = useMutation({
-    mutationFn: (action: "start" | "stop") => devApi.previewServerAction(action),
-    onSuccess: data => client.setQueryData(["preview-server"], data),
+    mutationFn: (action: "start" | "stop") => devApi.previewServerAction(action, own ? undefined : { port, folder }),
+    onSuccess: data => client.setQueryData(own ? ["preview-server"] : ["preview-server", host, port], data),
     onError: error => notify(error instanceof Error ? error.message : t.invalid),
   });
-  const running = server.data?.running === true;
-  const seen = useRef(false);
-  // The iframe was blank while the server was down: reload it the moment the server comes up.
-  useEffect(() => { if (running && seen.current) onUp(); seen.current = true; }, [running]); // eslint-disable-line react-hooks/exhaustive-deps -- onUp is a stable reload
-  if (!server.data) return null;
-  const { port, owned } = server.data;
-  const canStop = owned || running;
+  const running = server.isError ? undefined : server.data?.running;
+  const previous = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    if (running === true && previous.current === false) onUp();
+    previous.current = running;
+  }, [running, onUp]);
+  if (!managed && !host) return null;
+  const owned = server.data?.owned === true;
+  const canStop = owned || running === true;
+  const label = server.isError ? t.serverUnknown : running === undefined ? t.serverChecking
+    : managed && owned && !running ? t.starting : running ? t.serverRunning : t.serverStopped;
   return <div className={styles.server}>
     <span className={styles.dot} data-on={running || undefined} aria-hidden="true" />
-    <span>{owned && !running ? t.starting : t.server(port)}</span>
-    <IconButton size="sm" aria-label={canStop ? t.stop : t.start} disabled={run.isPending}
+    <span role="status">{address ? `${hostname}:${port}` : t.server(7880)}
+      {running ? <span className="sr-only"> · {label}</span> : ` · ${label}`}
+    </span>
+    <IconButton size="sm" aria-label={canStop ? t.stop : t.start} title={managed ? (canStop ? t.stop : t.start) : t.serverControlUnavailable}
+      disabled={!managed || !server.data || run.isPending}
       onClick={() => run.mutate(canStop ? "stop" : "start")}>
       {canStop ? <span className={styles.stopIcon} data-running={running || undefined} /> : <Play size={16} fill="currentColor" />}
     </IconButton>
@@ -83,7 +108,12 @@ export function PreviewPanel() {
   const panel = useRef<HTMLElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
+  const attachFrame = useCallback((element: HTMLIFrameElement | null) => {
+    frame.current = element;
+    setReady(false);
+  }, []);
   const [picking, setPicking] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const drag = useRef<{ x: number; width: number } | null>(null);
   // Same rule as the history sidebar, mirrored: at most two thirds of the window, never narrower than MIN_WIDTH.
   const maxWidth = Math.max(MIN_WIDTH, Math.floor(containerWidth * 2 / 3));
@@ -92,6 +122,8 @@ export function PreviewPanel() {
     setOpen(read(OPEN_KEY) === "1");
     const saved = Number(read(WIDTH_KEY));
     if (saved > 0) setWidth(saved);
+    const savedZoom = Number(read(ZOOM_KEY));
+    if (ZOOM_STEPS.includes(savedZoom)) setZoom(savedZoom);
   }, []);
   useEffect(() => {
     const container = panel.current?.parentElement;
@@ -133,11 +165,13 @@ export function PreviewPanel() {
   }, []);
   const pick = () => {
     const target = frame.current?.contentWindow;
-    const origin = safePreviewUrl(url) ? new URL(safePreviewUrl(url) as string).origin : "";
+    const origin = safePreviewUrl(url) ? new URL(frameUrl(safePreviewUrl(url) as string)).origin : "";
     if (!target || !origin) return;
     target.postMessage({ type: picking ? "mutis-pick-stop" : "mutis-pick-start" }, origin);
     setPicking(!picking);
   };
+  const zoomTo = (next: number) => { setZoom(next); write(ZOOM_KEY, String(next)); };
+  const zoomBy = (direction: 1 | -1) => zoomTo(ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, ZOOM_STEPS.indexOf(zoom) + direction))]);
   const toggle = (next: boolean) => {
     setOpen(next);
     if (!next) setPicking(false);
@@ -146,6 +180,8 @@ export function PreviewPanel() {
   const resize = (next: number) => { const value = Math.max(MIN_WIDTH, Math.min(maxWidth, next)); setWidth(value); write(WIDTH_KEY, String(value)); };
   const submit = (event: FormEvent) => { event.preventDefault(); setUrl(draft.trim()); write(urlKey(folder), draft.trim()); setVersion(v => v + 1); };
   const safe = safePreviewUrl(url);
+  const src = safe ? frameUrl(safe) : null;
+  const address = safe ? new URL(safe) : null;
   return <>
     <IconButton className={styles.toggle} aria-label={open ? t.close : t.toggle} aria-expanded={open} onClick={() => toggle(!open)}><PanelRight size={20} /></IconButton>
     {open && <aside ref={panel} className={styles.panel} aria-label={t.toggle} data-preview data-resizing={resizing || undefined}
@@ -167,12 +203,22 @@ export function PreviewPanel() {
           else if (event.key === "ArrowRight") { event.preventDefault(); resize(panelWidth - KEY_STEP); }
         }} />
       <form className={styles.bar} onSubmit={submit}>
-        <input aria-label={t.url} value={draft} placeholder={t.placeholder} onChange={event => setDraft(event.target.value)} spellCheck={false} />
+        <div className={styles.address}>
+          <input aria-label={t.url} value={draft} placeholder={t.placeholder} onChange={event => setDraft(event.target.value)} spellCheck={false} />
+          <IconButton type="submit" size="sm" className={styles.reload} aria-label={t.reload}><RotateCw size={18} /></IconButton>
+        </div>
+        <div className={styles.zoom}>
+          <IconButton type="button" size="sm" aria-label={t.zoomOut} title={t.zoomOut} disabled={zoom <= ZOOM_STEPS[0]} onClick={() => zoomBy(-1)}><Minus size={16} /></IconButton>
+          <button type="button" className={styles.zoomValue} aria-label={t.zoomReset} title={t.zoomReset} onClick={() => zoomTo(1)}>{Math.round(zoom * 100)}%</button>
+          <IconButton type="button" size="sm" aria-label={t.zoomIn} title={t.zoomIn} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]} onClick={() => zoomBy(1)}><Plus size={16} /></IconButton>
+        </div>
         <IconButton type="button" aria-label={t.pick} aria-pressed={picking} disabled={!ready} title={ready ? (picking ? t.picking : t.pick) : t.noPicker} onClick={pick}><MousePointerClick size={18} /></IconButton>
-        <IconButton type="submit" aria-label={t.reload}><RotateCw size={18} /></IconButton>
       </form>
-      <ServerStatus onUp={() => setVersion(v => v + 1)} />
-      {safe ? <iframe ref={frame} key={`${safe}|${version}`} onLoad={() => setPicking(false)} className={styles.frame} src={safe} title={t.toggle}
+      <ServerStatus key={address?.origin} address={address} folder={folder} onUp={() => setVersion(v => v + 1)} />
+      {safe && src ? <iframe ref={attachFrame} key={`${src}|${version}`} onLoad={() => {
+        setPicking(false);
+        frame.current?.contentWindow?.postMessage({ type: "mutis-picker-ping" }, new URL(src).origin);
+      }} className={styles.frame} style={{ "--preview-zoom": zoom } as CSSProperties} src={src} title={t.toggle}
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" />
         : <p className={styles.note}>{url ? t.invalid : t.empty}</p>}
     </aside>}

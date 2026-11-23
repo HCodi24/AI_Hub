@@ -379,7 +379,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
     </div>
     <div className={styles.toolbar}>
       <ChatToolbar config={config} />
-      <button className={styles.debateButton} type="button" aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" />{t.debate}</button>
+      <button className={styles.debateButton} type="button" aria-label={t.debate} title={t.debate} aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" /><span>{t.debate}</span></button>
     </div>
     {(uploading || dragging) && <p className={styles.fileHint} role="status">{uploading ? chatText.importingFiles : chatText.dropFiles}</p>}
   </form>{memory && <MemoryPanel folder={folder} close={() => setMemory(false)}

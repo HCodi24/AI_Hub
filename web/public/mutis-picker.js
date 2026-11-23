@@ -4,7 +4,11 @@
  * region. Esc or the panel button stops it. */
 (function () {
   if (window.parent === window || window.__mutisPicker) return;
+  var desktopOrigin = typeof mutisPickerParentOrigin === "string" ? mutisPickerParentOrigin : null;
+  if (desktopOrigin && (window.parent !== window.top || !/^https?:$/.test(location.protocol) ||
+      (location.ancestorOrigins && location.ancestorOrigins[0] !== desktopOrigin))) return;
   window.__mutisPicker = true;
+  var parentOrigin = desktopOrigin || (document.currentScript?.dataset.sameOriginOnly === "true" ? location.origin : "*");
   var CSS = ["color", "background-color", "font-family", "font-size", "font-weight", "display", "width", "height", "margin", "padding", "border", "border-radius"];
   var panel = null; // the parent window and its origin: the only place results go
   var box = null;
@@ -129,9 +133,11 @@
   }
   window.addEventListener("message", function (event) {
     if (event.source !== window.parent || !event.data) return;
+    if (parentOrigin !== "*" && event.origin !== parentOrigin) return;
     if (event.data.type === "mutis-pick-start") start(event.source, event.origin);
     else if (event.data.type === "mutis-pick-stop") stop();
+    else if (event.data.type === "mutis-picker-ping") event.source.postMessage({ type: "mutis-picker-ready" }, event.origin);
   });
   // Content-free hello so the panel knows the picker is installed; nothing else is sent unasked.
-  window.parent.postMessage({ type: "mutis-picker-ready" }, "*");
+  window.parent.postMessage({ type: "mutis-picker-ready" }, parentOrigin);
 })();

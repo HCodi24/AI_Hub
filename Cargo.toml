@@ -1,6 +1,6 @@
 [package]
 name = "ai-hub"
-version = "0.1.4"
+version = "0.1.6"
 edition = "2021"
 default-run = "ai-hub"
 
@@ -12,10 +12,11 @@ path = "src/main.rs"
 anyhow = "1"
 async-stream = "0.3"
 async-trait = "0.1"
-axum = { version = "0.8", features = ["json"] }
+axum = { version = "0.8", features = ["json", "ws"] }
 dirs = "6"
 futures-util = "0.3"
 open = "5"
+portable-pty = "0.9"
 ring = "0.17.14"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

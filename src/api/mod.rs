@@ -23,6 +23,7 @@ pub mod mutis;
 pub mod pets;
 pub mod providers;
 pub mod static_ui;
+pub mod terminal;
 pub mod verify;
 
 #[derive(Debug)]
@@ -80,6 +81,7 @@ pub fn router(state: AppState) -> Router {
             "/api/dev/preview-server",
             get(crate::api::dev::dev_preview_status).post(crate::api::dev::dev_preview_action),
         )
+        .route("/api/terminal", get(crate::api::terminal::terminal))
         // Plugin & Skill: add-ons loaded by Claude Code and Codex.
         .route(
             "/api/addons",

@@ -30,7 +30,8 @@ export function EmptyState() {
   // Chats arrive newest first, so recently used projects come first; the selected one is always listed.
   const projects = [...new Set([folder, ...(chats.data || []).map(chat => chat.folder), config.data?.default_folder || ""])]
     .filter(Boolean).slice(0, MAX_PROJECTS);
-  return <div className={styles.empty}><MessagesSquare size={36} aria-hidden="true" /><h1>{chatText.greeting}</h1><p>{chatText.intro}</p>
+  return <div className={styles.empty}>
+    <div className={styles.heading}><MessagesSquare size={36} aria-hidden="true" /><h1>{chatText.greeting}</h1></div>
     <div ref={root} className={styles.picker}>
       <button className={styles.trigger} aria-haspopup="listbox" aria-expanded={open} title={folder} onClick={() => setOpen(!open)}>
         {folder ? <Folder size={18} aria-hidden="true" /> : <MessagesSquare size={18} aria-hidden="true" />}<span>{folder ? folderName(folder) : chatText.noFolder}</span><ChevronDown size={16} aria-hidden="true" /></button>
@@ -44,5 +45,7 @@ export function EmptyState() {
           {openPicker => <button className={styles.openFolder} onClick={openPicker}><FolderOpen size={18} aria-hidden="true" /><span>{chatText.openFolder}</span></button>}
         </Picker>
       </div>}
-    </div></div>;
+    </div>
+    <p>{chatText.intro}</p>
+  </div>;
 }

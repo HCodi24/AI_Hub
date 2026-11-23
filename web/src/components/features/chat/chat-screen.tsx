@@ -19,6 +19,7 @@ import { Toast, useToast } from "@/components/toast/toast";
 import { SettingsDialog } from "@/components/features/settings/settings-dialog";
 import { DashboardDialog } from "./dashboard-dialog";
 import { PreviewPanel } from "@/components/features/preview/preview-panel";
+import { TerminalPanel } from "@/components/features/terminal/terminal-panel";
 import { DevBanner, RESUME_KEY } from "@/components/features/dev/dev-banner";
 import { openDevChat } from "@/components/features/dev/dev-chat";
 import { useQuery } from "@tanstack/react-query";
@@ -123,6 +124,7 @@ export function ChatScreen() {
           </div>
           <div className={styles.compactSlot}><CompactButton disabled={state.streaming} /></div>
         </div>
+        <TerminalPanel />
       </main>
       <PreviewPanel />
     </div>{settingsOpen && <SettingsDialog folder={state.folder} close={() => setSettingsOpen(false)}

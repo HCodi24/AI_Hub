@@ -14,3 +14,7 @@
 .panel > button:disabled { opacity: 1; cursor: default; }
 .picker > summary:focus-visible, .panel > button:focus-visible { outline: 2px solid var(--color-info); outline-offset: 2px; }
 @media (max-width: 767px) { .picker > summary { height: 44px; max-width: 180px; } }
+@container chatframe (width <= 600px) {
+  .picker > summary { justify-content: center; width: 44px; padding: 0; }
+  .picker > summary > span { display: none; }
+}
