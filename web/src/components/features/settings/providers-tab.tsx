@@ -225,10 +225,11 @@ export function ProvidersTab() {
   }
 
   /** Row "Đăng nhập": creates the web source if needed, then starts its browser sign-in.
-   *  The popup is opened right in the click so the browser allows it. */
+   *  In a regular browser, reserve the popup during the click. */
   async function signInRow(kind: string, providerId?: string) {
     if (adding) return;
-    const popup = window.open("about:blank", "_blank");
+    const desktopCodex = kind === "codex_cli" && "__TAURI__" in window;
+    const popup = desktopCodex ? null : window.open("about:blank", "_blank");
     if (popup) popup.opener = null;
     setAdding(true);
     setSigningIn(kind);
@@ -251,8 +252,13 @@ export function ProvidersTab() {
         // Claude and Antigravity show the confirmation code form on the source page.
         client.setQueryData(["claude-login-session", id], { session_id: result.session_id, url });
       }
-      if (kind !== "codex_cli" || !popup || popup.closed) select("login", id);
-      if (popup && !popup.closed) popup.location.href = url;
+      if (desktopCodex) {
+        // Tauri intercepts this navigation and opens it in the default browser.
+        window.location.assign(url);
+      } else {
+        if (kind !== "codex_cli" || !popup || popup.closed) select("login", id);
+        if (popup && !popup.closed) popup.location.href = url;
+      }
     } catch (error) {
       popup?.close();
       setLoginError({ tab: "login", kind, message: errorText(error, t.error),

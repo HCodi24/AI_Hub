@@ -27,7 +27,8 @@ export function CodexConnection({ providerId, mode }: { providerId: string; mode
 
   async function act(action: "cli" | "web" | "cancel" | "logout" | "sandbox") {
     if (locked.current) return;
-    const popup = action === "web" ? window.open("about:blank", "_blank") : null;
+    const desktop = "__TAURI__" in window;
+    const popup = action === "web" && !desktop ? window.open("about:blank", "_blank") : null;
     if (popup) popup.opener = null;
     locked.current = true; setBusy(true); setError("");
     try {
@@ -36,8 +37,9 @@ export function CodexConnection({ providerId, mode }: { providerId: string; mode
       client.setQueryData(key, result);
       const url = safeCodexLoginUrl(result.url);
       if (action === "web") {
-        if (url && popup) popup.location.href = url;
-        else if (popup) popup.close();
+        if (url && desktop) window.location.assign(url);
+        else if (url && popup && !popup.closed) popup.location.href = url;
+        else popup?.close();
       }
     } catch (error) {
       popup?.close();
@@ -79,7 +81,7 @@ export function CodexConnection({ providerId, mode }: { providerId: string; mode
     {state?.connected && state.sandbox !== "ready" && state.sandbox !== "unknown" && <p className={styles.note} role="alert">
       Codex riêng của MutiS chưa có sandbox Windows nên chưa ghi được file (chỉ đọc). Bấm «Thiết lập sandbox» rồi chọn Có ở hộp thoại quyền quản trị của Windows; việc này chỉ làm một lần.</p>}
     {(busy || !state?.connected) && <p className={styles.note} role="status">{busy ? "Đang xử lý…" : state?.message || (query.isPending ? "Đang kiểm tra Codex…" : "Chưa kiểm tra được Codex")}</p>}
-    {state?.pending && url && <a href={url} target="_blank" rel="noopener noreferrer">Mở trang đăng nhập</a>}
+    {state?.pending && url && <a href={url} target={typeof window !== "undefined" && "__TAURI__" in window ? "_self" : "_blank"} rel="noopener noreferrer">Mở trang đăng nhập</a>}
     <CliProjectOptions state={state} instructionsFile="AGENTS.md" disabled={busy || Boolean(state?.pending)}
       onChange={(key, checked) => void update(key, checked)} />
     <p className={styles.note}>Hai tùy chọn áp dụng cho các nguồn Codex trong MutiS. Thay đổi sẽ tạo ngữ cảnh Codex mới khi chat tiếp; lịch sử và memory của app được giữ.</p>
