@@ -15,6 +15,9 @@ use serde::Deserialize;
 use std::io::{Read, Write};
 use tokio::sync::mpsc;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Deserialize)]
 pub(crate) struct Params {
     folder: Option<String>,
@@ -48,7 +51,11 @@ fn shell() -> CommandBuilder {
 fn origin_allowed(headers: &HeaderMap, state: &AppState) -> bool {
     let origin = headers.get("origin").and_then(|v| v.to_str().ok()).and_then(|o| o.strip_prefix("http://"));
     let host = headers.get("host").and_then(|v| v.to_str().ok());
-    let dev_web = state.dev_repo.is_some() && origin.is_some_and(|o| o == "localhost:7880" || o == "127.0.0.1:7880");
+    origin_ok(origin, host, state.dev_repo.is_some())
+}
+
+fn origin_ok(origin: Option<&str>, host: Option<&str>, dev_web_allowed: bool) -> bool {
+    let dev_web = dev_web_allowed && matches!(origin, Some("localhost:7880" | "127.0.0.1:7880"));
     dev_web || (origin.is_some() && origin == host)
 }
 

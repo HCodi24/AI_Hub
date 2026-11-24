@@ -1,0 +1,239 @@
+use super::local_host::enforce_local_host;
+use super::memory;
+use crate::app::AppState;
+use axum::{
+    extract::DefaultBodyLimit,
+    middleware,
+    routing::{get, post, put},
+    Router,
+};
+
+pub fn router(state: AppState) -> Router {
+    let port = state.port;
+    Router::new()
+        // Static UI routes.
+        .route("/app", get(crate::api::static_ui::web_index))
+        .route("/app/", get(crate::api::static_ui::web_index))
+        .route("/app/{*path}", get(crate::api::static_ui::web_asset))
+        .route("/", get(crate::api::static_ui::index))
+        // Development routes.
+        .route("/api/dev/status", get(crate::api::dev::dev_status))
+        .route("/api/dev/repo", get(crate::api::dev::dev_repo_info))
+        .route("/api/dev/git/diff", get(crate::api::dev::dev_git_diff))
+        .route(
+            "/api/dev/git/checkpoint",
+            post(crate::api::dev::dev_git_checkpoint),
+        )
+        .route("/api/dev/git/reset", post(crate::api::dev::dev_git_reset))
+        .route("/api/dev/git/commit", post(crate::api::dev::dev_git_commit))
+        .route("/api/dev/test", post(crate::api::dev::dev_test))
+        .route("/api/dev/release", post(crate::api::dev::dev_release))
+        .route("/api/dev/desktop-build", post(crate::api::dev::dev_desktop_build))
+        .route(
+            "/api/dev/settings",
+            get(crate::api::dev::dev_settings).put(crate::api::dev::put_dev_settings),
+        )
+        .route("/api/dev/events", get(crate::api::dev::dev_events))
+        .route("/api/dev/rebuild", post(crate::api::dev::dev_rebuild))
+        .route("/api/dev/web-build", post(crate::api::dev::dev_web_build))
+        .route(
+            "/api/dev/preview-server",
+            get(crate::api::dev::dev_preview_status).post(crate::api::dev::dev_preview_action),
+        )
+        .route("/api/terminal", get(crate::api::terminal::terminal))
+        // Plugin & Skill: add-ons loaded by Claude Code and Codex.
+        .route(
+            "/api/addons",
+            get(crate::api::addons::overview).post(crate::api::addons::change),
+        )
+        .route("/api/addons/codex", get(crate::api::addons::codex_plugins))
+        .route("/api/addons/antigravity", get(crate::api::addons::antigravity_plugins))
+        .route(
+            "/api/addons/link/inspect",
+            post(crate::api::addons::inspect_link),
+        )
+        .route(
+            "/api/addons/link/install",
+            post(crate::api::addons::install_link),
+        )
+        .route(
+            "/api/addons/link/install-skill",
+            post(crate::api::addons::install_link_skill),
+        )
+        // Configuration routes.
+        .route(
+            "/api/config",
+            get(crate::api::config::get_config).put(crate::api::config::put_config),
+        )
+        .route("/api/memory", get(memory::list))
+        .route("/api/memory/projects", get(memory::projects))
+        .route("/api/memory/recall", get(memory::recall))
+        .route(
+            "/api/memory/{scope}",
+            get(memory::get).put(memory::put).delete(memory::delete),
+        )
+        .route("/api/memory/{scope}/archive", post(memory::archive))
+        .route("/api/memory/{scope}/restore", post(memory::restore))
+        // MutiS routes.
+        .route(
+            "/api/mutis",
+            get(crate::api::mutis::get_mutis).put(crate::api::mutis::put_mutis),
+        )
+        .route(
+            "/api/mutis/roles/resolve",
+            get(crate::api::mutis::resolve_mutis_roles),
+        )
+        .route("/api/mutis/stats", get(crate::api::mutis::mutis_stats))
+        .route(
+            "/api/mutis/diagnose",
+            post(crate::api::mutis::mutis_diagnose),
+        )
+        .route(
+            "/api/mutis/apply",
+            post(crate::api::mutis::mutis_setting_change),
+        )
+        .route(
+            "/api/mutis/setting-change",
+            post(crate::api::mutis::mutis_setting_change),
+        )
+        .route(
+            "/api/mutis/diagnoses",
+            get(crate::api::mutis::mutis_diagnoses),
+        )
+        .route(
+            "/api/mutis/events",
+            get(crate::api::mutis::mutis_events).post(crate::api::mutis::record_mutis_event),
+        )
+        // Provider management and discovery routes.
+        .route(
+            "/api/providers/{id}/limits",
+            get(crate::api::providers::provider_limits),
+        )
+        .route(
+            "/api/providers",
+            post(crate::api::providers::create_provider),
+        )
+        .route(
+            "/api/providers/{id}",
+            put(crate::api::providers::update_provider)
+                .delete(crate::api::providers::remove_provider),
+        )
+        .route(
+            "/api/providers/{id}/models",
+            get(crate::api::providers::provider_models),
+        )
+        .route(
+            "/api/providers/{id}/test",
+            post(crate::api::providers::test_provider),
+        )
+        .route(
+            "/api/providers/{id}/antigravity/action",
+            post(crate::api::providers::antigravity_action),
+        )
+        .route(
+            "/api/providers/{id}/login/start",
+            post(crate::api::providers::login_provider_start),
+        )
+        .route(
+            "/api/providers/{id}/login/code",
+            post(crate::api::providers::login_provider_code),
+        )
+        .route(
+            "/api/providers/{id}/login/cancel",
+            post(crate::api::providers::login_provider_cancel),
+        )
+        .route(
+            "/api/cli-discover/{name}",
+            get(crate::api::providers::discover_cli),
+        )
+        // Chat and saved conversation routes.
+        .route("/api/chat", post(crate::api::chat::chat_handler))
+        .route(
+            "/api/attachments",
+            post(crate::api::attachments::upload).layer(DefaultBodyLimit::max(14 * 1024 * 1024)),
+        )
+        .route(
+            "/api/attachments/{chat}/{file}",
+            get(crate::api::attachments::serve),
+        )
+        .route(
+            "/api/chat/{chat_id}/stop",
+            post(crate::api::chat::stop_chat),
+        )
+        .route("/api/approvals/{id}", post(crate::api::chat::answer_approval))
+        .route(
+            "/api/chats/{chat_id}/compact",
+            post(crate::api::chat::compact_chat),
+        )
+        .route("/api/folder-tree", get(crate::api::folder::list_dir))
+        .route("/api/pick-folder", post(crate::api::folder::pick_folder))
+        .route("/api/mcp/test", post(crate::api::mcp::test))
+        .route("/api/pets", get(crate::api::pets::list))
+        .route("/api/pets/import", post(crate::api::pets::import))
+        .route(
+            "/api/pets/upload",
+            post(crate::api::pets::upload).layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
+        .route(
+            "/api/pets/{name}",
+            get(crate::api::pets::sprite).delete(crate::api::pets::remove),
+        )
+        .route("/api/chats", get(crate::api::chat::list_chats))
+        .route(
+            "/api/chats/{chat_id}",
+            get(crate::api::chat::get_chat).delete(crate::api::chat::delete_chat),
+        )
+        .route(
+            "/api/chats/{chat_id}/token-history",
+            get(crate::api::chat::token_history),
+        )
+        // Codex vs Claude debate ("⚖ Tranh luận").
+        .route(
+            "/api/debates",
+            get(crate::api::debate::list_debates).post(crate::api::debate::start_debate),
+        )
+        .route("/api/debates/{id}", get(crate::api::debate::get_debate))
+        .route(
+            "/api/debates/{id}/chat",
+            post(crate::api::debate::attach_chat),
+        )
+        // Verification and plan diff routes.
+        .route("/api/verify", post(crate::api::verify::verify_handler))
+        .route(
+            "/api/verify/commands",
+            get(crate::api::verify::verify_commands_get)
+                .put(crate::api::verify::verify_commands_put),
+        )
+        .route(
+            "/api/plan-diff",
+            post(crate::api::verify::plan_diff_handler),
+        )
+        .route("/api/cli-status", get(crate::api::providers::cli_status))
+        .route(
+            "/api/providers/{id}/claude",
+            get(crate::api::providers::claude_status)
+                .post(crate::api::providers::claude_action)
+                .put(crate::api::providers::claude_settings),
+        )
+        .route(
+            "/api/providers/{id}/codex",
+            get(crate::api::providers::codex_status)
+                .post(crate::api::providers::codex_action)
+                .put(crate::api::providers::codex_settings),
+        )
+        // Extension catalog and actions.
+        .route(
+            "/api/extensions",
+            get(crate::api::extensions::extension_list),
+        )
+        .route(
+            "/api/extensions/{id}/actions/{action}",
+            post(crate::api::extensions::extension_action),
+        )
+        .route(
+            "/api/extensions/{id}/stop",
+            post(crate::api::extensions::extension_stop),
+        )
+        .layer(middleware::from_fn_with_state(port, enforce_local_host))
+        .with_state(state)
+}
