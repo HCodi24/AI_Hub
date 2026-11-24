@@ -81,7 +81,7 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
     try {
       const result = await addonsApi.installLink({ link: found.source, targets, plugins });
       report(result.output, result.ok ? t.addons.added(link.trim()) : result.output);
-      if (result.ok && !found.skills.length) clearResult();
+      if (result.ok && !found.skills.length && !found.mcp) clearResult();
     } catch (error) {
       report(errorText(error, t.error));
     } finally {
@@ -131,7 +131,10 @@ export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {
         </Button>
       </div>
     </form>
-    {found && !markets.length && !found.skills.length && <p className={styles.note} role="status">{labels.none}</p>}
+    {found && !markets.length && !found.skills.length && !found.mcp && <p className={styles.note} role="status">{labels.none}</p>}
+    {found?.mcp && <p className={styles.note} role="status">
+      {labels.mcpFound} <a href={found.source} target="_blank" rel="noreferrer">{labels.mcpDocs}</a>
+    </p>}
     {found && markets.length > 0 && <div className={styles.form}>
       <h4>{labels.pickPlugins}</h4>
       <div className={styles.actions} role="group" aria-label={labels.pickTarget}>

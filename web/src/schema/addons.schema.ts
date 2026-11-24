@@ -22,6 +22,7 @@ const LinkMarketSchema = z.object({ name: z.string(), plugins: z.array(z.object(
 const LinkSkillSchema = z.object({ id: z.string(), name: z.string(), path: z.string() });
 export const LinkFoundSchema = z.object({
   source: z.string(), claude: LinkMarketSchema, codex: LinkMarketSchema, skills: z.array(LinkSkillSchema).default([]),
+  mcp: z.boolean().default(false),
 });
 const LinkTargetSchema = z.enum(["claude", "codex"]);
 const LinkSkillConflictSchema = z.object({

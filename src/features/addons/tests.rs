@@ -55,6 +55,33 @@ fn checkout_shows_the_marketplaces_each_cli_can_install() {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+#[test]
+fn checkout_detects_mcp_from_readme_or_manifest() {
+    let dir = temp("link-mcp");
+    let source = "https://github.com/codegraph-ai/CodeGraph";
+    let readme = dir.join("README.md");
+    let tree = git_tree(&[("100644", "blob", "README.md")]);
+    std::fs::write(&readme, "Use an MCP server with this client.").unwrap();
+    assert!(!inspect_checkout(&dir, source, &tree).mcp);
+    std::fs::write(
+        &readme,
+        "### MCP Server\n{\"mcpServers\":{\"codegraph\":{\"command\":\"codegraph-server\"}}}",
+    )
+    .unwrap();
+    assert!(inspect_checkout(&dir, source, &tree).mcp);
+    let symlink = git_tree(&[("120000", "blob", "README.md")]);
+    assert!(!inspect_checkout(&dir, source, &symlink).mcp);
+
+    let tree = git_tree(&[("100644", "blob", ".mcp.json")]);
+    std::fs::write(
+        dir.join(".mcp.json"),
+        r#"{"mcpServers":{"example":{"url":"https://example.com/mcp"}}}"#,
+    )
+    .unwrap();
+    assert!(inspect_checkout(&dir, source, &tree).mcp);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 fn git_tree(entries: &[(&str, &str, &str)]) -> Vec<u8> {
     entries
         .iter()

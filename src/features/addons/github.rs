@@ -56,6 +56,49 @@ pub struct LinkFound {
     pub claude: Option<LinkMarketplace>,
     pub codex: Option<LinkMarketplace>,
     pub skills: Vec<LinkSkill>,
+    pub mcp: bool,
+}
+
+fn declares_mcp(dir: &Path, tree: &[u8]) -> bool {
+    tree_entries(tree).any(|(header, path)| {
+        if !regular_git_file(header) {
+            return false;
+        }
+        let name = match path {
+            b".mcp.json" => ".mcp.json",
+            b"README.md" => "README.md",
+            _ => return false,
+        };
+        let file = dir.join(name);
+        if !checked_metadata(&file).is_ok_and(|meta| {
+            meta.is_some_and(|meta| meta.is_file() && meta.len() <= 512 * 1024)
+        }) {
+            return false;
+        }
+        if name == ".mcp.json" {
+            let config = read_json(&file);
+            return config
+                .get("mcpServers")
+                .unwrap_or(&config)
+                .as_object()
+                .is_some_and(|servers| {
+                    servers.values().any(|server| {
+                        ["command", "url"].iter().any(|&key| {
+                            server[key]
+                                .as_str()
+                                .is_some_and(|value| !value.trim().is_empty())
+                        })
+                    })
+                });
+        }
+        // shortcut: README detection requires a server heading and a config example; add other signals as needed.
+        std::fs::read_to_string(&file).is_ok_and(|readme| {
+            readme.contains("\"mcpServers\"")
+                && readme.lines().any(|line| {
+                    line.starts_with('#') && line.to_ascii_lowercase().contains("mcp server")
+                })
+        })
+    })
 }
 
 fn marketplace_at(file: &Path) -> Option<LinkMarketplace> {
@@ -128,6 +171,7 @@ pub fn inspect_checkout(dir: &Path, source: &str, tree: &[u8]) -> LinkFound {
         claude: marketplace_at(&dir.join(".claude-plugin/marketplace.json")),
         codex: marketplace_at(&dir.join(".agents/plugins/marketplace.json")),
         skills,
+        mcp: declares_mcp(dir, tree),
     }
 }
 

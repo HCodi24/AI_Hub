@@ -85,6 +85,40 @@ pub struct ChatMessage {
     pub error: Option<String>,
 }
 
+impl ChatMessage {
+    pub fn assistant(provider: &str, model: String) -> Self {
+        Self {
+            role: "assistant".into(),
+            content: String::new(),
+            debate_id: None,
+            plan_id: None,
+            attachments: Vec::new(),
+            reasoning: String::new(),
+            logs: Vec::new(),
+            diff: String::new(),
+            files: Vec::new(),
+            tasks: None,
+            provider: provider.into(),
+            model,
+            error: None,
+        }
+    }
+
+    pub fn is_empty_placeholder(&self) -> bool {
+        self.role == "assistant"
+            && self.content.is_empty()
+            && self.debate_id.is_none()
+            && self.plan_id.is_none()
+            && self.attachments.is_empty()
+            && self.reasoning.is_empty()
+            && self.logs.is_empty()
+            && self.diff.is_empty()
+            && self.files.is_empty()
+            && self.tasks.is_none()
+            && self.error.is_none()
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ChatRecord {
     pub id: String,
@@ -606,6 +640,17 @@ mod message_model_tests {
         .unwrap();
         assert_eq!(record.messages[0].model, "");
         assert_eq!(record.messages[1].model, "");
+    }
+
+    #[test]
+    fn assistant_placeholder_requires_absent_tasks() {
+        let mut message = ChatMessage::assistant("codex_cli", "test-model".into());
+        assert_eq!(message.provider, "codex_cli");
+        assert_eq!(message.model, "test-model");
+        assert!(message.is_empty_placeholder());
+
+        message.tasks = Some(Vec::new());
+        assert!(!message.is_empty_placeholder());
     }
 
     #[test]

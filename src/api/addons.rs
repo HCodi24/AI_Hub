@@ -547,6 +547,7 @@ pub(crate) async fn inspect_link(Json(input): Json<LinkInspect>) -> ApiResult<Js
         "claude": found.claude,
         "codex": found.codex,
         "skills": found.skills,
+        "mcp": found.mcp,
     })))
 }
 
