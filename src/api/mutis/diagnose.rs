@@ -44,7 +44,7 @@ pub(crate) async fn mutis_diagnose(State(state): State<AppState>) -> ApiResult<R
         .event_log
         .recent(2000)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không đọc được nhật ký"))?;
-    let ts = mutis::now();
+    let ts = crate::core::time::now_secs();
     let insufficient = all_events.len() < 5;
     let config_snapshot = state.config.read().await.clone();
     let failures = failure_events(&all_events);

@@ -1,63 +1,7 @@
-use super::paths::{check_directories, checked_metadata, read_json, valid_name, valid_skill_name};
-use anyhow::{bail, Result};
+use super::super::paths::{check_directories, checked_metadata, read_json, valid_name, valid_skill_name};
+use super::{hex, regular_git_file, tree_entries, LinkFound, LinkMarketplace, LinkPlugin, LinkSkill};
 use ring::digest;
-use serde::Serialize;
 use std::path::Path;
-
-/// `owner/repo` or `https://github.com/owner/repo[.git]` -> `https://github.com/owner/repo`. Anything else is
-/// refused: the link reaches `git clone` and the plugin CLIs, so only plain GitHub repositories are accepted.
-pub fn github_source(link: &str) -> Result<String> {
-    let link = link.trim().trim_end_matches('/');
-    let path = link.strip_prefix("https://github.com/").unwrap_or(link);
-    let path = path.strip_suffix(".git").unwrap_or(path);
-    let parts: Vec<&str> = path.split('/').collect();
-    let part_ok = |part: &&str| {
-        !part.is_empty()
-            && part.len() <= 100
-            && !part.starts_with(['-', '.'])
-            && part
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
-    };
-    if parts.len() != 2 || !parts.iter().all(part_ok) {
-        bail!("Chỉ nhận link GitHub dạng owner/repo hoặc https://github.com/owner/repo");
-    }
-    Ok(format!("https://github.com/{path}"))
-}
-
-#[derive(Serialize, Default, Clone, Debug, PartialEq)]
-pub struct LinkPlugin {
-    pub name: String,
-    pub description: String,
-}
-
-/// A marketplace found in a downloaded repository, for one CLI.
-#[derive(Serialize, Default, Clone, Debug, PartialEq)]
-pub struct LinkMarketplace {
-    pub name: String,
-    pub plugins: Vec<LinkPlugin>,
-}
-
-#[derive(Serialize, Clone, Debug, PartialEq)]
-pub struct LinkSkill {
-    pub id: String,
-    pub name: String,
-    pub(super) path: String,
-}
-
-impl LinkSkill {
-    pub(super) fn directory(&self) -> &Path {
-        Path::new(&self.path).parent().expect("relative skill path")
-    }
-}
-
-#[derive(Serialize, Default, Clone, Debug, PartialEq)]
-pub struct LinkFound {
-    pub claude: Option<LinkMarketplace>,
-    pub codex: Option<LinkMarketplace>,
-    pub skills: Vec<LinkSkill>,
-    pub mcp: bool,
-}
 
 fn declares_mcp(dir: &Path, tree: &[u8]) -> bool {
     tree_entries(tree).any(|(header, path)| {
@@ -173,20 +117,4 @@ pub fn inspect_checkout(dir: &Path, source: &str, tree: &[u8]) -> LinkFound {
         skills,
         mcp: declares_mcp(dir, tree),
     }
-}
-
-pub(super) fn tree_entries(tree: &[u8]) -> impl Iterator<Item = (&[u8], &[u8])> {
-    tree.split(|&byte| byte == 0).filter_map(|entry| {
-        let tab = entry.iter().position(|&byte| byte == b'\t')?;
-        let (header, path) = entry.split_at(tab);
-        Some((header, &path[1..]))
-    })
-}
-
-pub(super) fn regular_git_file(header: &[u8]) -> bool {
-    header.starts_with(b"100644 ") || header.starts_with(b"100755 ")
-}
-
-pub(super) fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }

@@ -299,7 +299,11 @@ pub fn import_cli_auth(destination: &Path) -> Result<()> {
     let value: serde_json::Value =
         serde_json::from_slice(&raw).context("Đăng nhập CLI không hợp lệ")?;
     let auth = filtered_auth(&value)?;
-    write_private(&destination.join("auth.json"), &serde_json::to_vec(&auth)?)
+    crate::core::fs::write_atomic(
+        &destination.join("auth.json"),
+        &serde_json::to_vec(&auth)?,
+        true,
+    )
 }
 
 fn filtered_auth(value: &serde_json::Value) -> Result<serde_json::Value> {
@@ -320,30 +324,6 @@ fn filtered_auth(value: &serde_json::Value) -> Result<serde_json::Value> {
         }
     }
     Ok(auth.into())
-}
-
-fn write_private(path: &Path, data: &[u8]) -> Result<()> {
-    use std::io::Write;
-    let tmp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let result = (|| -> Result<()> {
-        let mut file = options.open(&tmp)?;
-        file.write_all(data)?;
-        file.sync_all()?;
-        drop(file);
-        std::fs::rename(&tmp, path)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    result
 }
 
 #[cfg(test)]

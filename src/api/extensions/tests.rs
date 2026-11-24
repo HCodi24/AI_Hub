@@ -16,6 +16,14 @@ fn backup_timestamp_has_required_shape() {
 }
 
 #[test]
+fn backup_timestamp_formats_fixed_utc_time() {
+    assert_eq!(
+        super::backup::format_backup_timestamp(951_793_445),
+        "20000229-030405"
+    );
+}
+
+#[test]
 fn maps_action_output_to_sse_events() {
     for (input, expected) in [
         (Ok("line".into()), vec![("log", r#""line""#)]),

@@ -20,7 +20,7 @@ pub(crate) async fn mutis_stats(
         .and_then(|x| x.parse::<u64>().ok())
         .unwrap_or(30)
         .clamp(1, 365);
-    let cutoff = mutis::now().saturating_sub(days.saturating_mul(86400));
+    let cutoff = crate::core::time::now_secs().saturating_sub(days.saturating_mul(86400));
     let events = state.event_log.recent(2000).map_err(|_| {
         ApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,

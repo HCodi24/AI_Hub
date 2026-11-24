@@ -1,4 +1,11 @@
+use super::parse::{last_report, parse_report};
+use super::store::{chat_totals, history_path};
 use super::*;
+use crate::features::chat::{ChatMessage, ChatRecord};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 fn temp_dir() -> PathBuf {
     let directory = std::env::temp_dir().join(format!("mutis-token-{}", uuid::Uuid::new_v4()));

@@ -238,7 +238,7 @@ pub async fn send_with_retry(
         let detail = format!("Thử lại lần {retry}/{max_retries} sau lỗi {reason}");
         emit_text(events, "log", detail.clone()).await?;
         emit_text(events, "retry", detail).await?;
-        let jitter = crate::mutis::now()
+        let jitter = crate::core::time::now_secs()
             .wrapping_mul(31)
             .wrapping_add(retry as u64 * 73)
             % 251;

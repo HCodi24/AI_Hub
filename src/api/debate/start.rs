@@ -93,7 +93,7 @@ pub(crate) async fn start_debate(
             .collect(),
         request,
         folder,
-        created_at: crate::mutis::now(),
+        created_at: crate::core::time::now_secs(),
         status: "running".into(),
         codex_provider: codex.provider.name.clone(),
         codex_model: codex.model.clone(),

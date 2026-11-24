@@ -1,10 +1,11 @@
 use super::{super::run::Run, record::avatar_source};
+use crate::core::time::now_ms;
 use crate::{
     app::{AppState, JobGuard},
     chat::{self, ChatRecord},
     config::MutisConfig,
     features::{changes::Snapshot, memory::MemoryConfig},
-    mutis::{self, Event},
+    mutis::Event,
     providers::{self, ProviderEvent, ProviderRequest},
 };
 use axum::response::{
@@ -106,10 +107,7 @@ pub(super) async fn start(
     let event_logging_enabled = mutis_config.effective(mutis_config.event_log);
     let log_enabled = event_logging_enabled && plan_id.is_some() && task_id.is_some();
     let started = Instant::now();
-    let started_at_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
+    let started_at_ms = now_ms();
     let _ = sse_sender
         .send(chat::sse_event(
             "status",
@@ -125,7 +123,7 @@ pub(super) async fn start(
         .await;
     if log_enabled {
         let _ = state.event_log.append(&Event {
-            ts: mutis::now(),
+            ts: crate::core::time::now_secs(),
             plan_id: plan_id.clone(),
             task_id: task_id.clone(),
             provider_id: event_provider_id.clone(),

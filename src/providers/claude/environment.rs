@@ -109,34 +109,11 @@ pub fn import_auth_file(source: &Path, destination: &Path) -> Result<()> {
     let filtered = filtered_auth(
         &serde_json::from_slice::<Value>(&bytes).context("Đăng nhập Claude không hợp lệ")?,
     )?;
-    write_private(
+    crate::core::fs::write_atomic(
         &destination.join(".credentials.json"),
         &serde_json::to_vec(&filtered)?,
+        true,
     )
-}
-
-fn write_private(path: &Path, data: &[u8]) -> Result<()> {
-    use std::io::Write;
-    let tmp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let result = (|| -> Result<()> {
-        let mut file = options.open(&tmp)?;
-        file.write_all(data)?;
-        file.sync_all()?;
-        drop(file);
-        std::fs::rename(&tmp, path)?;
-        Ok(())
-    })();
-    if result.is_err() {
-        let _ = std::fs::remove_file(tmp);
-    }
-    result
 }
 
 fn filtered_auth(value: &Value) -> Result<Value> {

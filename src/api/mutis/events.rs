@@ -1,7 +1,7 @@
 use crate::{
     api::{ApiError, ApiResult},
     app::AppState,
-    mutis::{self, Event},
+    mutis::Event,
 };
 use axum::{
     extract::{Query, State},
@@ -40,7 +40,7 @@ pub(crate) async fn record_mutis_event(
     state
         .event_log
         .append(&Event {
-            ts: mutis::now(),
+            ts: crate::core::time::now_secs(),
             plan_id: Some(input.plan_id),
             task_id: Some(input.task_id),
             provider_id: input.provider_id,

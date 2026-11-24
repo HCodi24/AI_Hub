@@ -1,6 +1,11 @@
 use super::*;
 use std::{fs, path::PathBuf};
 
+#[test]
+fn stamp_formats_fixed_utc_time() {
+    assert_eq!(format_stamp(951_793_445), "2000-02-29T03:04:05Z");
+}
+
 struct Fixture {
     root: PathBuf,
     config: PathBuf,

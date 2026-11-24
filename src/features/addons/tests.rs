@@ -8,6 +8,90 @@ use super::{
 use crate::config::ProviderConfig;
 use std::{ffi::OsStr, fs, path::PathBuf};
 
+fn skill_copy_fixture(label: &str) -> PathBuf {
+    let dir = temp(label);
+    for (home, content) in [("personal", "# New skill"), ("hub", "# Old skill")] {
+        let skill = dir.join(home).join("skills/example");
+        fs::create_dir_all(&skill).unwrap();
+        fs::write(skill.join("SKILL.md"), content).unwrap();
+    }
+    dir
+}
+
+#[test]
+fn copy_skill_replaces_an_existing_hub_copy() {
+    let dir = skill_copy_fixture("copy-skill");
+    let personal = dir.join("personal");
+    let hub = dir.join("hub");
+    let destination = hub.join("skills/example");
+    fs::write(destination.join("obsolete.txt"), "old asset").unwrap();
+    fs::write(personal.join("skills/example/asset.txt"), "new asset").unwrap();
+
+    super::copy_skill(&personal, &hub, "example").unwrap();
+
+    assert_eq!(
+        fs::read_to_string(destination.join("SKILL.md")).unwrap(),
+        "# New skill"
+    );
+    assert_eq!(
+        fs::read_to_string(destination.join("asset.txt")).unwrap(),
+        "new asset"
+    );
+    assert!(!destination.join("obsolete.txt").exists());
+    assert_eq!(fs::read_dir(hub.join("skills")).unwrap().count(), 1);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn copy_skill_rejects_unsafe_file_names_without_replacing_the_old_copy() {
+    let dir = skill_copy_fixture("copy-unsafe-skill");
+    let personal = dir.join("personal");
+    let hub = dir.join("hub");
+    fs::write(personal.join("skills/example/CON"), "unsafe asset").unwrap();
+
+    assert_failed_skill_copy_preserves_hub(&personal, &hub);
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn copy_skill_rejects_symlinks_without_replacing_the_old_copy() {
+    let dir = skill_copy_fixture("copy-linked-skill");
+    let personal = dir.join("personal");
+    let hub = dir.join("hub");
+    let skill = personal.join("skills/example");
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
+    #[cfg(windows)]
+    use std::os::windows::fs::symlink_file as symlink;
+    if symlink(skill.join("SKILL.md"), skill.join("link.md")).is_ok() {
+        assert_failed_skill_copy_preserves_hub(&personal, &hub);
+    }
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(any(unix, windows))]
+fn assert_failed_skill_copy_preserves_hub(personal: &std::path::Path, hub: &std::path::Path) {
+    assert!(super::copy_skill(personal, hub, "example").is_err());
+    assert_eq!(
+        fs::read_to_string(hub.join("skills/example/SKILL.md")).unwrap(),
+        "# Old skill"
+    );
+    assert_eq!(fs::read_dir(hub.join("skills")).unwrap().count(), 1);
+}
+
+#[test]
+fn copy_and_remove_skill_reject_uppercase_synced() {
+    let dir = temp("reserved-skill");
+    for error in [
+        super::copy_skill(&dir, &dir, "SYNCED").unwrap_err(),
+        super::remove_skill(&dir, "SYNCED").unwrap_err(),
+    ] {
+        assert_eq!(error.to_string(), "Tên skill không hợp lệ");
+    }
+    fs::remove_dir_all(dir).unwrap();
+}
 #[test]
 fn links_are_limited_to_plain_github_repositories() {
     for good in [

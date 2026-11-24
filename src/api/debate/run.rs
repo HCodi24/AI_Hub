@@ -163,7 +163,7 @@ pub(super) async fn run_debate(run: DebateRun) {
     }
     persist(&state, chat_id.as_deref(), &mut record, started).await;
     let _ = state.event_log.append(&Event {
-        ts: crate::mutis::now(),
+        ts: crate::core::time::now_secs(),
         plan_id: None,
         task_id: None,
         provider_id: "debate".into(),

@@ -1,4 +1,4 @@
-use crate::mutis::{self, Event};
+use crate::mutis::Event;
 
 pub(super) fn event_builder<'a>(
     plan_id: &'a Option<String>,
@@ -6,7 +6,7 @@ pub(super) fn event_builder<'a>(
     event_provider_id: &'a str,
 ) -> impl Fn(&str, Option<String>, bool, Option<u64>, Option<u64>, Option<String>) -> Event + 'a {
     move |kind: &str, task_kind, ok, duration_ms, tokens, detail| Event {
-        ts: mutis::now(),
+        ts: crate::core::time::now_secs(),
         plan_id: plan_id.clone(),
         task_id: task_id.clone(),
         provider_id: event_provider_id.to_owned(),

@@ -2,12 +2,13 @@ use super::cli_support;
 use crate::config::ProviderConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use crate::core::fs::write_atomic;
+use crate::core::time::now_secs;
 use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 pub(crate) fn invalidate(id: &str) {
@@ -65,29 +66,14 @@ fn persist_cache(entries: &HashMap<String, Limits>) {
     let Ok(contents) = serde_json::to_vec_pretty(entries) else {
         return;
     };
-    let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
-    if fs::write(&temporary, &contents).is_err() {
-        let _ = fs::remove_file(&temporary);
-        return;
-    }
-    if fs::rename(&temporary, &path).is_err() {
-        // Some platforms do not replace an existing destination during rename.
-        let _ = fs::write(&path, contents);
-        let _ = fs::remove_file(temporary);
-    }
-}
-
-fn now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    // Cache persistence is best-effort; a failed rename leaves the existing cache intact.
+    let _ = write_atomic(&path, &contents, false);
 }
 
 fn save(id: &str, windows: Vec<LimitWindow>) -> Limits {
     let limits = Limits {
         windows,
-        updated_at: Some(now()),
+        updated_at: Some(now_secs()),
     };
     cache()
         .lock()
@@ -108,7 +94,7 @@ pub(crate) fn record_claude(id: &str, line: &str) {
                 .unwrap_or_else(|e| e.into_inner())
                 .get(id)
                 .cloned();
-            retain_known_usage(&mut window, cached.as_ref(), now());
+            retain_known_usage(&mut window, cached.as_ref(), now_secs());
             save(id, vec![window]);
             let entries = cache().lock().unwrap_or_else(|e| e.into_inner());
             persist_cache(&entries);
@@ -208,7 +194,7 @@ fn claude_token(provider: &ProviderConfig) -> Option<String> {
     let home = super::claude::environment::home(&config, provider).ok()?;
     let value: Value = serde_json::from_slice(&fs::read(home.join(".credentials.json")).ok()?).ok()?;
     let oauth = &value["claudeAiOauth"];
-    if oauth["expiresAt"].as_u64().is_some_and(|ms| ms / 1000 <= now()) { return None; }
+    if oauth["expiresAt"].as_u64().is_some_and(|ms| ms / 1000 <= now_secs()) { return None; }
     oauth["accessToken"].as_str().filter(|token| !token.is_empty()).map(str::to_owned)
 }
 
@@ -284,8 +270,8 @@ pub(crate) async fn read(provider: &ProviderConfig, ask_anthropic: bool) -> Limi
         let due = {
             let mut attempts = usage_attempts().lock().unwrap_or_else(|e| e.into_inner());
             let last = attempts.get(&provider.id).copied().unwrap_or(0);
-            let due = now().saturating_sub(last) >= 60;
-            if due { attempts.insert(provider.id.clone(), now()); }
+            let due = now_secs().saturating_sub(last) >= 60;
+            if due { attempts.insert(provider.id.clone(), now_secs()); }
             due
         };
         if due {
@@ -298,7 +284,7 @@ pub(crate) async fn read(provider: &ProviderConfig, ask_anthropic: bool) -> Limi
         return cached;
     }
     if provider.kind == "antigravity_cli" {
-        if cached.updated_at.is_some_and(|time| now().saturating_sub(time) < 60) {
+        if cached.updated_at.is_some_and(|time| now_secs().saturating_sub(time) < 60) {
             return cached;
         }
         return match read_antigravity(provider).await {
@@ -309,7 +295,7 @@ pub(crate) async fn read(provider: &ProviderConfig, ask_anthropic: bool) -> Limi
     if provider.kind != "codex_cli"
         || cached
             .updated_at
-            .is_some_and(|time| now().saturating_sub(time) < 30)
+            .is_some_and(|time| now_secs().saturating_sub(time) < 30)
     {
         return cached;
     }
