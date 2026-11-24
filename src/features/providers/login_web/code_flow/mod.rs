@@ -10,32 +10,23 @@ pub(crate) use code::login_provider_code;
 pub(crate) use start::login_provider_start;
 
 use crate::{
-    api::{ApiError, ApiResult},
     app::AppState,
     config::ProviderConfig,
+    features::providers::error::{ProviderError, ProviderErrorKind, ProviderResult},
 };
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 #[derive(Serialize)]
 pub(crate) struct LoginStartResponse {
-    session_id: String,
+    pub(crate) session_id: String,
     url: String,
 }
-#[derive(Deserialize)]
-pub(crate) struct LoginCodeInput {
-    session_id: String,
-    code: String,
-}
-#[derive(Serialize)]
-pub(crate) struct LoginCodeResponse {
-    ok: bool,
-    logged_in: bool,
-    message: String,
-    output_tail: String,
+
+pub(crate) struct LoginCodeOutcome {
+    pub(crate) exited: bool,
+    pub(crate) message: String,
+    pub(crate) email: Option<String>,
+    pub(crate) output_tail: String,
 }
 
 fn cli_label(kind: &str) -> &'static str {
@@ -46,7 +37,7 @@ fn cli_label(kind: &str) -> &'static str {
     }
 }
 
-async fn login_provider_config(state: &AppState, id: &str) -> ApiResult<ProviderConfig> {
+pub(crate) async fn login_provider_config(state: &AppState, id: &str) -> ProviderResult<ProviderConfig> {
     let provider = state
         .config
         .read()
@@ -55,21 +46,18 @@ async fn login_provider_config(state: &AppState, id: &str) -> ApiResult<Provider
         .iter()
         .find(|p| p.id == id)
         .cloned()
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "Không tìm thấy nguồn AI"))?;
+        .ok_or_else(|| ProviderError::new(ProviderErrorKind::NotFound, "Không tìm thấy nguồn AI"))?;
     if provider.kind != "claude_cli" && !(provider.kind == "antigravity_cli" && provider.web_login) {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
+        return Err(ProviderError::new(
+            ProviderErrorKind::BadRequest,
             "Chỉ Claude Code CLI và tài khoản Web của Antigravity mới đăng nhập được",
         ));
     }
     Ok(provider)
 }
 
-pub(crate) async fn login_provider_cancel(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<StatusCode> {
-    login_provider_config(&state, &id).await?;
+pub(crate) async fn login_provider_cancel(state: &AppState, id: &str) -> ProviderResult<()> {
+    login_provider_config(state, id).await?;
     let mut active = state.claude_login.lock().await;
     if active
         .as_ref()
@@ -79,5 +67,5 @@ pub(crate) async fn login_provider_cancel(
             let _ = session.child.kill().await;
         }
     }
-    Ok(StatusCode::NO_CONTENT)
+    Ok(())
 }

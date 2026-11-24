@@ -1,21 +1,28 @@
 //! Web API for AI sources (providers): editing, model lists, connection tests, Claude sign-in and CLI discovery.
 mod antigravity;
 pub(crate) use antigravity::antigravity_action;
-mod cli;
+pub(crate) use antigravity::EMAIL_FILE;
 mod codex;
 mod claude;
 pub(crate) use claude::{claude_status, claude_action, claude_settings};
+pub(crate) use claude::error as claude_error;
+pub(crate) use claude::{ensure_idle as ensure_claude_idle, invalidate as invalidate_claude};
 mod connection;
 mod crud;
-mod login;
 mod models;
 mod shared;
+pub(crate) use shared::ensure_login_mode;
 
+mod cli;
 pub(crate) use cli::{cli_status, discover_cli};
 pub(crate) use codex::{codex_status, codex_action, codex_settings, CodexConnection};
 pub(crate) use codex::reap_connections as reap_codex_connections;
 pub(crate) use codex::sandbox_status as codex_sandbox_status;
-pub(crate) use connection::{cached_provider_test, test_provider, ConnectionTest};
+pub(crate) use connection::{
+    cached_provider_test, test_provider, test_provider_uncached,
+    ConnectionTest,
+};
 pub(crate) use crud::{create_provider, remove_provider, update_provider};
+mod login;
 pub(crate) use login::{login_provider_cancel, login_provider_code, login_provider_start};
 pub(crate) use models::{provider_limits, provider_models};

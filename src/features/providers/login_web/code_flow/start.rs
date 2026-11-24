@@ -1,20 +1,17 @@
 use super::{
-    cli_label, login_provider_config,
+    cli_label,
     parse::{allowed_login_url, extract_https_url, push_tail, CLAUDE_DOMAINS, GOOGLE_DOMAINS},
     LoginStartResponse,
 };
 use crate::{
-    api::{ApiError, ApiResult},
     app::AppState,
+    config::ProviderConfig,
+    features::providers::error::{ProviderError, ProviderErrorKind, ProviderResult},
     providers,
-};
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Json,
 };
 use std::{
     ffi::OsString,
+    path::Path,
     process::Stdio,
     time::{Duration, Instant},
 };
@@ -26,26 +23,17 @@ use tokio::{
 use uuid::Uuid;
 
 pub(crate) async fn login_provider_start(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> ApiResult<Json<LoginStartResponse>> {
-    let provider = login_provider_config(&state, &id).await?;
+    state: &AppState,
+    id: &str,
+    provider: &ProviderConfig,
+    dir: &Path,
+) -> ProviderResult<LoginStartResponse> {
     let label = cli_label(&provider.kind);
     let agy = provider.kind == "antigravity_cli";
     let (cli, domains) = if agy {
         ("agy", GOOGLE_DOMAINS)
     } else {
         ("claude", CLAUDE_DOMAINS)
-    };
-    let dir = if agy {
-        providers::antigravity_cli::clean_home(&provider.id).map_err(super::super::claude::error)?
-    } else {
-        super::super::claude::ensure_login_mode(&provider, true)?;
-        super::super::claude::ensure_idle(&state).await?;
-        let dir = providers::claude::environment::home(&state.config_path, &provider)
-            .map_err(super::super::claude::error)?;
-        super::super::claude::invalidate(&state).await?;
-        dir
     };
     let path = providers::cli_support::resolve_executable(cli, Some(&provider.executable))
         .ok_or_else(|| {
@@ -54,7 +42,7 @@ pub(crate) async fn login_provider_start(
             } else {
                 "Không tìm thấy Claude Code CLI"
             };
-            ApiError::new(StatusCode::NOT_FOUND, message)
+            ProviderError::new(ProviderErrorKind::NotFound, message)
         })?;
     if let Some(mut old) = state.claude_login.lock().await.take() {
         let _ = old.child.kill().await;
@@ -67,17 +55,13 @@ pub(crate) async fn login_provider_start(
     let mut command = providers::cli_support::command_for(&path, &args);
     if agy {
         // A web account keeps its sign-in in its own home, apart from the machine's (see `cli_support::agy_environment`).
-        providers::antigravity_cli::sync_login_mode(&provider);
+        providers::antigravity_cli::sync_login_mode(provider);
         let _ = std::fs::remove_file(dir.join(providers::antigravity_cli::SIGNED_OUT_FILE));
-        providers::cli_support::agy_environment(&mut command, &dir);
-        command.current_dir(&dir);
+        providers::cli_support::agy_environment(&mut command, dir);
+        command.current_dir(dir);
     } else {
         providers::cli_support::clean_claude_environment(&mut command);
-        command.env("CLAUDE_CONFIG_DIR", &dir).current_dir(&dir);
-        #[cfg(windows)]
-        command.env("BROWSER", "cmd /c rem");
-        #[cfg(not(windows))]
-        command.env("BROWSER", "true");
+        command.env("CLAUDE_CONFIG_DIR", dir).current_dir(dir);
     }
     command
         .stdin(Stdio::piped())
@@ -86,22 +70,22 @@ pub(crate) async fn login_provider_start(
         .kill_on_drop(true);
     let mut child = command
         .spawn()
-        .map_err(|e| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| ProviderError::new(ProviderErrorKind::Internal, e.to_string()))?;
     let stdin = child.stdin.take().ok_or_else(|| {
-        ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::new(
+            ProviderErrorKind::Internal,
             format!("Không mở được stdin {label}"),
         )
     })?;
     let stdout = child.stdout.take().ok_or_else(|| {
-        ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::new(
+            ProviderErrorKind::Internal,
             format!("Không mở được stdout {label}"),
         )
     })?;
     let stderr = child.stderr.take().ok_or_else(|| {
-        ApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
+        ProviderError::new(
+            ProviderErrorKind::Internal,
             format!("Không mở được stderr {label}"),
         )
     })?;
@@ -125,7 +109,7 @@ pub(crate) async fn login_provider_start(
     });
     let mut session = crate::app::ClaudeLoginSession {
         id: Uuid::new_v4().to_string(),
-        provider_id: id.clone(),
+        provider_id: id.to_owned(),
         child,
         stdin,
         stdout: rx,
@@ -147,15 +131,15 @@ pub(crate) async fn login_provider_start(
     .flatten()
     .ok_or_else(|| {
         let _ = session.child.start_kill();
-        ApiError::new(
-            StatusCode::GATEWAY_TIMEOUT,
+        ProviderError::new(
+            ProviderErrorKind::GatewayTimeout,
             format!("{label} không trả link đăng nhập trong 20 giây"),
         )
     })?;
     if !allowed_login_url(&url, domains) {
         let _ = session.child.start_kill();
-        return Err(ApiError::new(
-            StatusCode::BAD_GATEWAY,
+        return Err(ProviderError::new(
+            ProviderErrorKind::BadGateway,
             "CLI trả link đăng nhập không được phép",
         ));
     }
@@ -165,6 +149,5 @@ pub(crate) async fn login_provider_start(
         url,
     };
     *state.claude_login.lock().await = Some(session);
-    state.provider_status.lock().await.remove(&id);
-    Ok(Json(result))
+    Ok(result)
 }

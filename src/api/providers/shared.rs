@@ -21,20 +21,7 @@ pub(super) async fn find_provider(
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, not_found))
 }
 
-/// CLI sources sign in one way only: machine sources reuse the installed CLI's account, web sources use the web.
-pub(super) fn ensure_login_mode(provider: &ProviderConfig, web: bool) -> ApiResult<()> {
-    if provider.web_login == web {
-        return Ok(());
-    }
-    Err(ApiError::new(
-        StatusCode::BAD_REQUEST,
-        if provider.web_login {
-            "Nguồn này đăng nhập qua web, không dùng tài khoản CLI trên máy"
-        } else {
-            "Nguồn này dùng tài khoản CLI trên máy; muốn đăng nhập web hãy thêm ở tab Tài khoản web"
-        },
-    ))
-}
+pub(crate) use crate::features::providers::login_mode::ensure_login_mode;
 
 pub(super) fn ensure_idle(state: &AppState, message: &'static str) -> ApiResult<()> {
     if state.active_jobs.load(SeqCst) > 0 {

@@ -1,4 +1,5 @@
 //! Commands a source wants to run that the chat's permission would refuse: the run waits here for the user's answer.
+use crate::providers::ProviderEvent;
 use std::{collections::HashMap, sync::{Mutex, OnceLock}};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
@@ -18,10 +19,10 @@ pub fn wait_seconds(config_path: &std::path::Path) -> u64 {
 
 /// Puts `shown` to the user as a card and waits for the answer for as long as their setting says; no answer in time counts as "no".
 /// `None` = the run was stopped meanwhile.
-pub async fn confirm(events: &mpsc::Sender<super::ProviderEvent>, cancel: &CancellationToken, shown: String) -> Option<bool> {
+pub async fn confirm(events: &mpsc::Sender<ProviderEvent>, cancel: &CancellationToken, shown: String) -> Option<bool> {
     let wait = crate::config::config_file_path().map_or(120, |path| wait_seconds(&path));
     let (id, answer) = ask();
-    let _ = events.send(super::ProviderEvent { name: "permission_request", data: serde_json::json!({"id": id, "command": shown, "need": "write"}) }).await;
+    let _ = events.send(ProviderEvent { name: "permission_request", data: serde_json::json!({"id": id, "command": shown, "need": "write"}) }).await;
     let allowed = tokio::select! {
         _ = cancel.cancelled() => { forget(&id); return None; }
         result = tokio::time::timeout(std::time::Duration::from_secs(wait), answer) => matches!(result, Ok(Ok(true))),

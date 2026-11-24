@@ -1,5 +1,5 @@
-use super::parser::summarize_tool_use;
 use crate::chat::Permission;
+use crate::providers::claude_cli::summarize_tool_use;
 use crate::providers::cli_support;
 use serde_json::Value;
 use std::ffi::OsString;
@@ -17,7 +17,7 @@ fn permission_reply(request_id: &str, allow: bool, input: &Value) -> String {
 }
 
 /// Claude asks before each tool the permission mode does not cover (`--permission-prompt-tool stdio`): the user answers from the chat.
-pub(super) fn interaction(permission: Permission) -> cli_support::Interact {
+pub(crate) fn interaction(permission: Permission) -> cli_support::Interact {
     Box::new(move |line| {
         let value: Value = serde_json::from_str(line).ok()?;
         if value["type"] != "control_request" || value["request"]["subtype"] != "can_use_tool" {
@@ -42,7 +42,7 @@ pub(super) fn interaction(permission: Permission) -> cli_support::Interact {
     })
 }
 
-pub(super) fn permission_args(permission: Permission) -> Vec<OsString> {
+pub(crate) fn permission_args(permission: Permission) -> Vec<OsString> {
     let mode = match permission {
         Permission::Read => "manual",
         Permission::Write | Permission::Full => "acceptEdits",

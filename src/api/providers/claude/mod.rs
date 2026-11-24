@@ -1,13 +1,13 @@
-mod auth;
 #[cfg(test)]
 mod tests;
 
-use self::auth::{auth_status, import_cli_account};
+use crate::features::providers::cli::claude::{auth_status, provider_error};
 use super::shared::find_provider;
 use crate::{
     api::{ApiError, ApiResult},
     app::AppState,
     config::{ClaudeConfig, Config},
+    features::providers::{login_cli::claude::connect_machine_account, logout::claude::logout},
     providers::{claude::environment, cli_support},
 };
 use axum::{
@@ -30,17 +30,11 @@ pub(crate) struct Status {
     origin: Option<String>,
 }
 
-pub(super) fn error(error: anyhow::Error) -> ApiError {
-    eprintln!("Claude error: {error:#}");
-    ApiError::new(
-        StatusCode::BAD_GATEWAY,
-        "Không xử lý được cấu hình hoặc đăng nhập Claude; kiểm tra bản cài và thử đăng nhập qua web",
-    )
+pub(crate) fn error(error: anyhow::Error) -> ApiError {
+    provider_error(error).into()
 }
 
-pub(super) use super::shared::ensure_login_mode;
-
-pub(super) async fn ensure_idle(state: &AppState) -> ApiResult<()> {
+pub(crate) async fn ensure_idle(state: &AppState) -> ApiResult<()> {
     super::shared::ensure_idle(
         state,
         "Chờ AI hoàn tất trước khi đổi kết nối hoặc nguồn hướng dẫn Claude",
@@ -67,7 +61,7 @@ fn update_config(
     Ok(())
 }
 
-pub(super) async fn invalidate(state: &AppState) -> ApiResult<()> {
+pub(crate) async fn invalidate(state: &AppState) -> ApiResult<()> {
     let mut config = state.config.write().await;
     update_config(state, &mut config, |_| {})?;
     state.provider_status.lock().await.clear();
@@ -133,22 +127,8 @@ pub(crate) async fn claude_action(
     ensure_no_pending_login(&state, "Hủy hoặc hoàn tất đăng nhập Claude đang chờ trước").await?;
     let home = environment::home(&state.config_path, &p).map_err(error)?;
     match input.action.as_str() {
-        "cli" => {
-            ensure_login_mode(&p, false)?;
-            let executable = cli_support::resolve_executable("claude", Some(&p.executable))
-                .ok_or_else(|| {
-                    ApiError::new(StatusCode::NOT_FOUND, "Chưa tìm thấy Claude CLI trên máy")
-                })?;
-            import_cli_account(&executable, &home).await.map_err(error)?;
-        }
-        "logout" => {
-            // Local sign-out must not revoke tokens used by the user's original CLI.
-            let credentials = home.join(".credentials.json");
-            if credentials.exists() {
-                std::fs::remove_file(credentials).map_err(|e| error(e.into()))?;
-            }
-            cli_support::set_auth_origin(&home, None);
-        }
+        "cli" => connect_machine_account(&p, &home).await?,
+        "logout" => logout(&home)?,
         _ => {
             return Err(ApiError::new(
                 StatusCode::BAD_REQUEST,

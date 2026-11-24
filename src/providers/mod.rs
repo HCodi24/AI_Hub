@@ -1,6 +1,6 @@
 pub(crate) mod agent;
 pub mod anthropic;
-pub(crate) mod approvals;
+pub(crate) use crate::features::providers::permission::approvals;
 pub mod antigravity_cli;
 pub mod claude_cli;
 pub(crate) mod claude;
@@ -11,7 +11,7 @@ pub mod deepseek_agent;
 pub(crate) mod delegate;
 pub(crate) mod schedule;
 pub(crate) mod worker_session;
-pub(crate) mod discovery;
+pub(crate) use crate::features::providers::cli::discovery;
 pub(crate) mod limits;
 pub mod mcp;
 pub mod openai_compat;

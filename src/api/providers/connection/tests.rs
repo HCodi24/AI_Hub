@@ -1,4 +1,5 @@
-use super::{api_check::failed_status, connection};
+use super::connection;
+use crate::features::providers::login_key::api_check::failed_status;
 use reqwest::StatusCode;
 
 #[test]

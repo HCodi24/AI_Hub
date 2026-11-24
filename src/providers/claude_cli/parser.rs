@@ -235,7 +235,7 @@ fn skill_name(block: &Value) -> Option<&str> {
         .filter(|name| !name.is_empty())
 }
 
-pub(super) fn summarize_tool_use(block: &Value) -> String {
+pub(crate) fn summarize_tool_use(block: &Value) -> String {
     let name = block["name"].as_str().unwrap_or("tool");
     let input = &block["input"];
     match name {

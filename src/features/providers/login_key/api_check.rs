@@ -1,4 +1,4 @@
-use super::{connection, ConnectionTest};
+use crate::features::providers::connection::{connection, ConnectionTest};
 use crate::config::ProviderConfig;
 use reqwest::{RequestBuilder, Response, StatusCode};
 use serde_json::Value;
@@ -7,7 +7,7 @@ use tokio::time::timeout;
 
 const CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 
-pub(super) async fn openai(provider: &ProviderConfig) -> ConnectionTest {
+pub(crate) async fn openai(provider: &ProviderConfig) -> ConnectionTest {
     if provider.api_key.trim().is_empty() {
         return missing_key();
     }
@@ -33,7 +33,7 @@ pub(super) async fn openai(provider: &ProviderConfig) -> ConnectionTest {
     }
 }
 
-pub(super) async fn anthropic(provider: &ProviderConfig) -> ConnectionTest {
+pub(crate) async fn anthropic(provider: &ProviderConfig) -> ConnectionTest {
     if provider.api_key.trim().is_empty() {
         return missing_key();
     }
@@ -69,7 +69,7 @@ fn missing_key() -> ConnectionTest {
     connection(false, "not_configured", MESSAGE, MESSAGE)
 }
 
-pub(super) fn failed_status(status: StatusCode, openai: bool) -> ConnectionTest {
+pub(crate) fn failed_status(status: StatusCode, openai: bool) -> ConnectionTest {
     match status.as_u16() {
         401 | 403 => connection(false, "error", "Sai API key", &format!("HTTP {status}")),
         404 if openai => connection(false, "error", "Sai Base URL", "HTTP 404"),
@@ -77,6 +77,6 @@ pub(super) fn failed_status(status: StatusCode, openai: bool) -> ConnectionTest 
     }
 }
 
-pub(super) fn connection_error(detail: &str) -> ConnectionTest {
+pub(crate) fn connection_error(detail: &str) -> ConnectionTest {
     connection(false, "error", "Không kết nối được", detail)
 }

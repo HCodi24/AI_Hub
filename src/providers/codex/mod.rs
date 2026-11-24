@@ -1,7 +1,7 @@
 //! App-owned Codex connection, configuration and runtime.
 pub(crate) mod compact;
 pub(crate) mod environment;
-pub(crate) mod gate;
+pub(crate) use crate::features::providers::permission::codex_gate as gate;
 mod runtime;
 pub(crate) mod transport;
 

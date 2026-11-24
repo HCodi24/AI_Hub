@@ -1,13 +1,7 @@
-use crate::{app::AppState, providers::codex::transport::Client};
+use super::CodexConnection;
+use crate::app::AppState;
 use serde_json::json;
-use std::time::{Duration, Instant};
-
-pub(crate) struct CodexConnection {
-    pub(super) client: Client,
-    pub(super) login_id: Option<String>,
-    pub(super) url: Option<String>,
-    pub(super) started: Instant,
-}
+use std::time::Duration;
 
 pub(crate) async fn reap_connections(state: &AppState) {
     let mut sessions = state.codex_connections.lock().await;

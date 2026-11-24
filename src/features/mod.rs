@@ -6,5 +6,6 @@ pub(crate) mod dev;
 pub(crate) mod extensions;
 pub(crate) mod memory;
 pub(crate) mod mutis;
+pub(crate) mod providers;
 pub(crate) mod token_usage;
 pub(crate) mod verify;

@@ -13,7 +13,7 @@ pub struct AntigravityCliProvider;
 mod compact;
 mod home;
 mod parser;
-mod permission;
+use crate::features::providers::permission::antigravity as permission;
 #[cfg(test)]
 mod tests;
 

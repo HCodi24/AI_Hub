@@ -9,7 +9,8 @@ use tokio_util::sync::CancellationToken;
 
 mod compact;
 mod parser;
-mod permission;
+use crate::features::providers::permission::claude as permission;
+pub(crate) use parser::summarize_tool_use;
 
 pub(crate) use compact::compact_session;
 use parser::ClaudeParser;

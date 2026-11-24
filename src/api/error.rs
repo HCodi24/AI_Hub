@@ -1,3 +1,4 @@
+use crate::features::providers::error::{ProviderError, ProviderErrorKind};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -17,6 +18,19 @@ impl ApiError {
             status,
             message: message.into(),
         }
+    }
+}
+
+impl From<ProviderError> for ApiError {
+    fn from(error: ProviderError) -> Self {
+        let status = match error.kind {
+            ProviderErrorKind::BadRequest => StatusCode::BAD_REQUEST,
+            ProviderErrorKind::NotFound => StatusCode::NOT_FOUND,
+            ProviderErrorKind::BadGateway => StatusCode::BAD_GATEWAY,
+            ProviderErrorKind::GatewayTimeout => StatusCode::GATEWAY_TIMEOUT,
+            ProviderErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        Self::new(status, error.message)
     }
 }
 

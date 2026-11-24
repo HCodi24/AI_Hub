@@ -1,42 +1,34 @@
 use super::{
-    cli_label, login_provider_config,
+    cli_label,
     parse::{logged_in_email, push_tail, validate_login_code},
-    LoginCodeInput, LoginCodeResponse,
-};
-use super::super::{
-    antigravity::EMAIL_FILE,
-    connection::{connection, test_provider_uncached},
+    LoginCodeOutcome,
 };
 use crate::{
-    api::{ApiError, ApiResult},
     app::AppState,
-    providers,
-};
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    Json,
+    config::ProviderConfig,
+    features::providers::error::{ProviderError, ProviderErrorKind, ProviderResult},
 };
 use std::time::{Duration, Instant};
 use tokio::{io::AsyncWriteExt, time::timeout};
 
 pub(crate) async fn login_provider_code(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Json(input): Json<LoginCodeInput>,
-) -> ApiResult<Json<LoginCodeResponse>> {
-    let provider = login_provider_config(&state, &id).await?;
+    state: &AppState,
+    id: &str,
+    provider: &ProviderConfig,
+    session_id: &str,
+    code: &str,
+) -> ProviderResult<LoginCodeOutcome> {
     let label = cli_label(&provider.kind);
     let code =
-        validate_login_code(&input.code).map_err(|e| ApiError::new(StatusCode::BAD_REQUEST, e))?;
+        validate_login_code(code).map_err(|e| ProviderError::new(ProviderErrorKind::BadRequest, e))?;
     let mut session = {
         let mut sessions = state.claude_login.lock().await;
         let session = sessions
             .as_mut()
-            .filter(|s| s.id == input.session_id && s.provider_id == id)
+            .filter(|s| s.id == session_id && s.provider_id == id)
             .ok_or_else(|| {
-                ApiError::new(
-                    StatusCode::NOT_FOUND,
+                ProviderError::new(
+                    ProviderErrorKind::NotFound,
                     "Phiên đăng nhập đã hết hạn hoặc không tồn tại",
                 )
             })?;
@@ -46,8 +38,8 @@ pub(crate) async fn login_provider_code(
             .write_all(format!("{code}\n").as_bytes())
             .await
             .map_err(|e| {
-                ApiError::new(
-                    StatusCode::BAD_GATEWAY,
+                ProviderError::new(
+                    ProviderErrorKind::BadGateway,
                     format!("Không gửi được mã xác nhận: {e}"),
                 )
             })?;
@@ -92,38 +84,10 @@ pub(crate) async fn login_provider_code(
     } else {
         drop(session);
     }
-    let status = if exited {
-        state.provider_status.lock().await.remove(&id);
-        test_provider_uncached(State(state.clone()), Path(id))
-            .await?
-            .0
-    } else {
-        connection(false, "error", &message, "")
-    };
-    let logged_in = status.status == "connected";
-    if logged_in && provider.kind == "antigravity_cli" {
-        if let (Some(email), Ok(home)) =
-            (email, providers::antigravity_cli::clean_home(&provider.id))
-        {
-            let _ = std::fs::write(home.join(EMAIL_FILE), email);
-            // The status was read before the email was saved; drop it so the next read shows the account.
-            state.provider_status.lock().await.remove(&provider.id);
-        }
-    } else if logged_in {
-        if let Ok(home) = providers::claude::environment::home(&state.config_path, &provider) {
-            providers::cli_support::set_auth_origin(&home, Some("web"));
-        }
-    }
-    Ok(Json(LoginCodeResponse {
-        ok: exited && logged_in,
-        logged_in,
-        message: if logged_in && provider.kind == "antigravity_cli" {
-            "Đã đăng nhập Antigravity".into()
-        } else if logged_in {
-            "Đã đăng nhập Claude Code CLI".into()
-        } else {
-            message
-        },
+    Ok(LoginCodeOutcome {
+        exited,
+        message,
+        email,
         output_tail,
-    }))
+    })
 }

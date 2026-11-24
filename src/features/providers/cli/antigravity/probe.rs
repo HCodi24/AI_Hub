@@ -1,7 +1,7 @@
-use super::super::connection::{connection, ConnectionTest};
 use super::{models::parse_models, signed_out, EMAIL_FILE};
 use crate::{
     config::ProviderConfig,
+    features::providers::connection::{connection, ConnectionTest},
     providers::{
         antigravity_cli::{clean_home, SIGNED_OUT_FILE},
         cli_support,
@@ -62,7 +62,7 @@ async fn plan(path: &Path, home: &Path) -> Option<String> {
 
 // shortcut: Infer sign-in from `agy models` succeeding with a list.
 // agy has no whoami/status command to retrieve the email.
-pub(in crate::api::providers) async fn test_connection(provider: &ProviderConfig) -> ConnectionTest {
+pub(crate) async fn test_connection(provider: &ProviderConfig) -> ConnectionTest {
     let home = match clean_home(&provider.id) {
         Ok(home) => home,
         Err(err) => {
@@ -86,7 +86,7 @@ pub(in crate::api::providers) async fn test_connection(provider: &ProviderConfig
     }
 }
 
-pub(super) async fn probe(provider: &ProviderConfig, home: &Path) -> ConnectionTest {
+pub(crate) async fn probe(provider: &ProviderConfig, home: &Path) -> ConnectionTest {
     let Some(path) = cli_support::resolve_executable("agy", Some(&provider.executable)) else {
         return connection(
             false,

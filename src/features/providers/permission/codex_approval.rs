@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-pub(super) async fn permission_denied(events: &mpsc::Sender<ProviderEvent>) {
+pub(crate) async fn permission_denied(events: &mpsc::Sender<ProviderEvent>) {
     let _ = events
         .send(ProviderEvent {
             name: "permission_denied",
@@ -16,7 +16,7 @@ pub(super) async fn permission_denied(events: &mpsc::Sender<ProviderEvent>) {
         .await;
 }
 
-pub(super) async fn handle(
+pub(crate) async fn handle(
     client: &mut Client,
     gate: &Gate,
     permission: Permission,

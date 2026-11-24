@@ -1,5 +1,4 @@
 //! "Test connection" for every source kind, with a 60 second cache.
-mod api_check;
 mod cache;
 
 pub(crate) use self::cache::{cached_provider_test, test_provider};
@@ -7,28 +6,16 @@ pub(crate) use self::cache::{cached_provider_test, test_provider};
 use crate::{
     api::{ApiError, ApiResult},
     app::AppState,
+    features::providers::login_key::api_check,
 };
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     Json,
 };
-use serde::Serialize;
+pub(crate) use crate::features::providers::connection::{connection, ConnectionTest};
 
-#[derive(Clone, Serialize)]
-pub(crate) struct ConnectionTest {
-    ok: bool,
-    pub(crate) status: &'static str,
-    message: String,
-    detail: String,
-    /// The account's plan, for sources that report one (Antigravity).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) plan: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) email: Option<String>,
-}
-
-pub(super) async fn test_provider_uncached(
+pub(crate) async fn test_provider_uncached(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<ConnectionTest>> {
@@ -50,17 +37,6 @@ pub(super) async fn test_provider_uncached(
         _ => api_check::connection_error("Loại nhà cung cấp không được hỗ trợ"),
     };
     Ok(Json(result))
-}
-
-pub(super) fn connection(ok: bool, status: &'static str, message: &str, detail: &str) -> ConnectionTest {
-    ConnectionTest {
-        ok,
-        status,
-        message: message.into(),
-        detail: detail.into(),
-        plan: None,
-        email: None,
-    }
 }
 
 #[cfg(test)]

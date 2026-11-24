@@ -1,7 +1,7 @@
 use crate::providers::{claude::environment, cli_support};
 use std::{path::Path, process::Stdio, time::Duration};
 
-pub(super) async fn auth_status(
+pub(crate) async fn auth_status(
     executable: &Path,
     home: &Path,
 ) -> anyhow::Result<cli_support::AuthAccount> {
@@ -25,7 +25,7 @@ pub(super) async fn auth_status(
         .ok_or_else(|| anyhow::anyhow!("Claude auth status không trả JSON hợp lệ"))
 }
 
-pub(super) async fn import_cli_account(executable: &Path, home: &Path) -> anyhow::Result<()> {
+pub(crate) async fn import_cli_account(executable: &Path, home: &Path) -> anyhow::Result<()> {
     // Validate the allow-listed credentials in a temporary app-owned directory first.
     let stage = home.join(format!(".auth-check-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&stage)?;
@@ -44,4 +44,13 @@ pub(super) async fn import_cli_account(executable: &Path, home: &Path) -> anyhow
     let _ = std::fs::remove_file(stage.join(".claude.json"));
     let _ = std::fs::remove_dir(&stage);
     result
+}
+
+pub(crate) fn provider_error(error: anyhow::Error) -> crate::features::providers::error::ProviderError {
+    use crate::features::providers::error::{ProviderError, ProviderErrorKind};
+    eprintln!("Claude error: {error:#}");
+    ProviderError::new(
+        ProviderErrorKind::BadGateway,
+        "Không xử lý được cấu hình hoặc đăng nhập Claude; kiểm tra bản cài và thử đăng nhập qua web",
+    )
 }

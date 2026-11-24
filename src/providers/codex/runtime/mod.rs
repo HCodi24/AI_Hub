@@ -1,5 +1,8 @@
 use super::{environment, transport::Client};
-use crate::providers::{cli_support, Provider, ProviderEvent, ProviderRequest};
+use crate::{
+    features::providers::permission::codex_approval as approval,
+    providers::{cli_support, Provider, ProviderEvent, ProviderRequest},
+};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde_json::json;
@@ -7,7 +10,6 @@ use std::path::Path;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-mod approval;
 mod thread;
 mod turn;
 
