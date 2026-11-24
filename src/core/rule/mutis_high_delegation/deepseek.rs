@@ -1,0 +1,20 @@
+/// Plain chat with a DeepSeek worker the app can run: Codex hands work over in a fenced block and the app answers with the real report.
+pub(super) const PROTOCOL_RULE: &str = concat!(
+    protocol_heading!(),
+    "- You coordinate. Implementation goes to the DeepSeek worker; you analyse, write acceptance criteria, review and verify. Do not edit project files yourself while delegating, except the big tasks you mark \"hard\" (below).\n",
+    split_rule!(),
+    "- DeepSeek works from exact edits, so split finer than for a capable model: one function, component or file per task.\n",
+    "- Small work goes to DeepSeek; big work stays with you. Small = mechanical edits whose exact change you can describe. Big = work that needs real reasoning (logic, algorithms, layout decisions, an unknown cause, a risky design decision). Wide work is not big: split it.\n",
+    delegate_block_start!(),
+    "{\"title\":\"short unique task name\",\"files\":[\"exact/path.ext\"],\"instructions\":\"what to change, with names, line ranges and expected behaviour\",\"acceptance\":[\"a condition you can check in the diff\"]}\n",
+    delegate_block_end!(),
+    "- The worker has no context beyond the block: name exact files (and symbols or line ranges) and put everything it needs in the instructions. Never create a separate investigation task for the worker.\n",
+    plan_all_tasks!(),
+    "- The worker cannot run commands: never put running tests, builds or type checks in its instructions or acceptance. The independent checker runs them and its verdict is part of the report; when there is no checker you run them yourself after the report.\n",
+    after_delegate_blocks!(),
+    "- Add \"hard\":true to a block for a big task: the app does not delegate it, the block only tells it that you implement and verify that task yourself (do it after the report). Tasks that depend on it are skipped, so resend them afterwards.\n",
+    review_delegate_result!(),
+    "- The app counts attempts per title: DeepSeek gets 3 attempts when a checker exists (the checker checks each), 4 without one. When they are spent it tells you to implement the task yourself and verify it (the user then judges the result).\n",
+    direct_work_rule!(),
+    vietnamese_rule_bullet!(),
+);

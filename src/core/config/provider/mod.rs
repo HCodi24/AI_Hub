@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+mod secret;
+
+pub use secret::{is_masked_key, masked_key};
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct ProviderConfig {
@@ -58,56 +64,9 @@ impl ProviderConfig {
     /// Whether this source runs a DeepSeek model: an API source whose model, id or name says so (a CLI never counts).
     pub fn is_deepseek(&self, model: &str) -> bool {
         !self.kind.ends_with("_cli")
-            && [model, self.id.as_str(), self.name.as_str()].iter().any(|text| text.to_ascii_lowercase().contains("deepseek"))
+            && [model, self.id.as_str(), self.name.as_str()]
+                .iter()
+                .any(|text| text.to_ascii_lowercase().contains("deepseek"))
     }
 }
 
-pub fn masked_key(key: &str) -> String {
-    if key.is_empty() {
-        return String::new();
-    }
-    if key.chars().count() <= 4 {
-        return "••••".to_owned();
-    }
-    let suffix: String = key
-        .chars()
-        .rev()
-        .take(4)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    if key.starts_with("sk-") {
-        format!("sk-…{suffix}")
-    } else {
-        format!("…{suffix}")
-    }
-}
-
-#[allow(clippy::items_after_test_module)]
-pub fn is_masked_key(value: &str) -> bool {
-    value.contains('…') || value.contains("••") || value.starts_with("****")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::core::config::Config;
-
-    #[test]
-    fn masked_key_never_contains_raw_secret() {
-        let raw = "sk-live-secret-value";
-        let masked = masked_key(raw);
-        assert_ne!(masked, raw);
-        assert!(!masked.contains("secret-value"));
-        assert!(masked.ends_with("alue"));
-    }
-
-    #[test]
-    fn removed_agent_id_still_resolves_to_the_agent_capable_source() {
-        let config = Config::seeded();
-        let found = resolve_provider_id(&config.providers, LEGACY_AGENT_PROVIDER_ID).unwrap();
-        assert_eq!(found.id, "deploy-deepseek");
-        assert!(resolve_provider_id(&config.providers, "nope").is_none());
-    }
-}

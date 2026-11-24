@@ -1,7 +1,7 @@
 //! Fixed rules for AI providers. One file per rule; each exposes `RULE`.
-pub mod codegraph;
 pub mod bounded_checks;
 pub mod chat_questions;
+pub mod codegraph;
 pub mod deepseek;
 pub mod deepseek_flash;
 pub mod english_rules;
@@ -13,6 +13,9 @@ pub mod project_guides;
 pub mod report_unfinished;
 pub mod stay_in_folder;
 pub mod utf8;
+
+#[cfg(test)]
+mod tests;
 
 /// Default text of `mutis.worker_rules`: every rule above, one per line.
 pub fn worker_defaults() -> String {

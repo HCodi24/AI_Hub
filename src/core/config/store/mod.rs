@@ -1,9 +1,13 @@
 use super::{migrate, Config};
 use anyhow::{Context, Result};
 use std::{
-    fs,
+    fs::{self, OpenOptions},
+    io::Write,
     path::{Path, PathBuf},
 };
+
+#[cfg(test)]
+mod tests;
 
 pub fn config_file_path() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("AI_HUB_CONFIG_PATH") {
@@ -37,5 +41,18 @@ pub fn save(path: &Path, config: &Config) -> Result<()> {
     fs::create_dir_all(parent)
         .with_context(|| format!("Could not create config directory {}", parent.display()))?;
     let json = serde_json::to_string_pretty(config).context("Could not encode config")?;
-    fs::write(path, json).with_context(|| format!("Could not save config to {}", path.display()))
+    let temp_path = parent.join(format!(".config-{}.tmp", uuid::Uuid::new_v4()));
+    let save_context = || format!("Could not save config to {}", path.display());
+    let mut temp_file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+        .with_context(save_context)?;
+    let written = temp_file.write_all(json.as_bytes());
+    drop(temp_file);
+    let result = written.and_then(|()| fs::rename(&temp_path, path));
+    if result.is_err() {
+        let _ = fs::remove_file(&temp_path);
+    }
+    result.with_context(save_context)
 }

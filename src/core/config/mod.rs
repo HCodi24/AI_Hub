@@ -3,11 +3,8 @@ mod codex;
 mod claude;
 mod migrate;
 mod mutis;
-#[path = "mutiHigh/mod.rs"]
-mod muti_high;
-#[path = "mutiMax/mod.rs"]
-mod muti_max;
 mod provider;
+mod seed;
 mod store;
 
 pub use mcp::*;
@@ -69,18 +66,18 @@ pub struct Config {
     #[serde(default)]
     pub pets: std::collections::BTreeMap<String, String>,
     /// Master switch for the chat avatar pets.
-    #[serde(default = "pets_on")]
+    #[serde(default = "default_true")]
     pub pets_enabled: bool,
     /// Master switch for CodeGraph: before a chat's first message the app builds or syncs the index and hands the AI its context.
-    #[serde(default = "pets_on")]
+    #[serde(default = "default_true")]
     pub codegraph_enabled: bool,
     /// Claude's usage limits are also asked from Anthropic (`/api/oauth/usage`, with Claude Code's own login) so they show before the first
     /// chat; off = only the limit events the CLI prints during a run.
-    #[serde(default = "pets_on")]
+    #[serde(default = "default_true")]
     pub claude_usage_api: bool,
 }
 
-fn pets_on() -> bool {
+fn default_true() -> bool {
     true
 }
 
@@ -103,95 +100,5 @@ pub struct SelfDevConfig {
 }
 
 fn default_folder() -> String {
-    r"C:\TOOL".to_owned()
-}
-
-impl Config {
-    pub fn seeded() -> Self {
-        Self {
-            claude: ClaudeConfig::default(),
-            antigravity: AntigravityConfig::default(),
-            codex: CodexConfig::default(),
-            memory: Default::default(),
-            providers: vec![
-                ProviderConfig {
-                    id: "deploy-deepseek".to_owned(),
-                    name: "Deploy (DeepSeek)".to_owned(),
-                    kind: "openai_compat".to_owned(),
-                    base_url: "https://api.deploy.com/api/v1".to_owned(),
-                    api_key: String::new(),
-                    executable: String::new(),
-                    models: vec!["deepseek-ai/deepseek-v4.1-flash-1017".to_owned()],
-                    agent_capable: true,
-                    ..Default::default()
-                },
-                ProviderConfig {
-                    id: "openai".to_owned(),
-                    name: "OpenAI".to_owned(),
-                    kind: "openai_compat".to_owned(),
-                    base_url: "https://api.openai.com/v1".to_owned(),
-                    api_key: String::new(),
-                    executable: String::new(),
-                    models: vec!["gpt-5.1".to_owned()],
-                    ..Default::default()
-                },
-                ProviderConfig {
-                    id: "anthropic".to_owned(),
-                    name: "Anthropic".to_owned(),
-                    kind: "anthropic".to_owned(),
-                    base_url: "https://api.anthropic.com".to_owned(),
-                    api_key: String::new(),
-                    executable: String::new(),
-                    models: vec!["claude-opus-5-5".to_owned(), "claude-sonnet-5-5".to_owned()],
-                    ..Default::default()
-                },
-                ProviderConfig {
-                    id: "codex-cli".to_owned(),
-                    name: "Codex CLI".to_owned(),
-                    kind: "codex_cli".to_owned(),
-                    base_url: String::new(),
-                    api_key: String::new(),
-                    executable: String::new(),
-                    models: vec![
-                        "gpt-6-luna".to_owned(),
-                        "gpt-6.1-sol".to_owned(),
-                        "gpt-6.2-sol".to_owned(),
-                        "gpt-6.1-terra".to_owned(),
-                    ],
-                    ..Default::default()
-                },
-                ProviderConfig {
-                    id: "claude-cli".to_owned(),
-                    name: "Claude Code CLI".to_owned(),
-                    kind: "claude_cli".to_owned(),
-                    base_url: String::new(),
-                    api_key: String::new(),
-                    executable: String::new(),
-                    models: vec!["opus".to_owned(), "sonnet".to_owned()],
-                    ..Default::default()
-                },
-                ProviderConfig {
-                    id: "antigravity-cli".to_owned(),
-                    name: "Antigravity CLI".to_owned(),
-                    kind: "antigravity_cli".to_owned(),
-                    models: ["gemini-4-neon-high", "gemini-4-carbon-high", "gemini-4-argon-high", "gemini-4-hydrogen-high"].map(str::to_owned).into(),
-                    ..Default::default()
-                },
-            ],
-            default_folder: default_folder(),
-            chat_idle_timeout_minutes: default_chat_idle_timeout_minutes(),
-            thread_token_budget: default_thread_token_budget(),
-            approval_wait_seconds: default_approval_wait_seconds(),
-            planner_provider_id: String::new(),
-            planner_model: String::new(),
-            mutis: MutisConfig::default(),
-            self_dev: SelfDevConfig::default(),
-            theme: String::new(),
-            mcp_servers: Vec::new(),
-            pets: Default::default(),
-            pets_enabled: true,
-            codegraph_enabled: true,
-            claude_usage_api: true,
-        }
-    }
+    String::new()
 }
