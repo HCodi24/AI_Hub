@@ -9,11 +9,8 @@ use tokio_util::sync::CancellationToken;
 /// The old skill directory under the app-server's per-source CODEX_HOME, without creating it.
 pub(crate) fn legacy_skills_dir(config_path: &Path, provider_id: &str) -> Result<PathBuf> {
     ensure!(
-        provider_id.len() <= 80
-            && crate::features::addons::safe_component(provider_id.as_ref())
-            && provider_id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte)),
+        super::cli_support::valid_provider_id(provider_id)
+            && crate::features::addons::safe_component(provider_id.as_ref()),
         "Mã nguồn Codex không hợp lệ"
     );
     Ok(crate::core::paths::data_dir(config_path)?

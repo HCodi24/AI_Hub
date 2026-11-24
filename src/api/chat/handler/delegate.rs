@@ -9,8 +9,8 @@ use axum::http::StatusCode;
 
 pub(super) type DelegateRole = (ProviderConfig, String, chat::Effort);
 
-/// Kinds of source that can run delegated tasks: an API agent loop (OpenAI-compatible) or a CLI thread (Codex, Claude).
-const WORKER_KINDS: [&str; 3] = ["openai_compat", "codex_cli", "claude_cli"];
+/// Kinds of source that can run delegated tasks: an API agent loop (OpenAI-compatible) or a CLI (Codex, Claude, Antigravity).
+const WORKER_KINDS: [&str; 4] = ["openai_compat", "codex_cli", "claude_cli", "antigravity_cli"];
 
 /// Sources the delegated worker may be, best first: the role's own source, then the agent-capable API sources, then the Codex sources.
 /// The caller uses the first one that is active (connected).

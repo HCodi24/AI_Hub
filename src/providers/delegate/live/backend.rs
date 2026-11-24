@@ -1,0 +1,111 @@
+use super::Live;
+use crate::providers::{
+    delegate::{
+        check_files,
+        events::{check_id, checker_activity, turn},
+        Delegation, WorkerResult,
+    },
+    schedule::{check_text, Actor, Backend, CheckResult, Row},
+    ProviderEvent,
+};
+
+#[async_trait::async_trait]
+impl Backend for Live {
+    async fn work(&self, task: &Delegation, attempt: usize, feedback: Option<&str>, editor: Actor) -> WorkerResult {
+        if self.worker_is_cli() {
+            self.work_cli(task, attempt, feedback, editor).await
+        } else {
+            self.work_api(task, attempt, feedback, editor).await
+        }
+    }
+
+    fn has_checker(&self) -> bool {
+        self.checker.is_some()
+    }
+
+    async fn check(&self, task: &Delegation, attempt: usize, work: &WorkerResult) -> CheckResult {
+        self.run_check(task, attempt, work).await
+    }
+
+    async fn say(&self, line: String) {
+        let _ = self.events.send(ProviderEvent::text("log", line)).await;
+    }
+
+    async fn announce_check(&self, task: &Delegation, attempt: usize, check: &CheckResult) {
+        let model = self.checker.as_ref().map_or("", |(_, model, _)| model.as_str());
+        let who = Actor::Tester;
+        let kind = self.checker.as_ref().map_or("codex_cli", |(provider, _, _)| provider.kind.as_str());
+        let name = self.actor_name(who);
+        if self.events.send(turn(kind, model, &name)).await.is_err() {
+            self.cancel.cancel();
+            return;
+        }
+        // Tester's thread is kept in the chat record.
+        let session = self.checker_session.lock().unwrap().clone();
+        if let Some(id) = session {
+            let _ = self.events.send(ProviderEvent { name: "checker_session", data: serde_json::json!({ "session_id": id }) }).await;
+        }
+        let _ = self.events.send(ProviderEvent::text("delta", format!("**{} kiểm tra**\n\n{}\n", name, check_text(task, attempt, check)))).await;
+        let tokens = self.checker_tokens.lock().unwrap().take();
+        if let Some(line) = tokens {
+            let _ = self.events.send(ProviderEvent::text("log", line)).await;
+        }
+        // Only now, once the verdict turn, its session and its token line are out, the live card is removed:
+        // a finished check waiting for the scheduler keeps showing until the chat has the real verdict.
+        let _ = self.events.send(checker_activity(&check_id(task, attempt), "done", task, attempt, model, "")).await;
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel.is_cancelled()
+    }
+
+    fn limited(&self, actor: Actor) -> Option<String> {
+        super::quota::frozen(self.source_of(actor)?)
+    }
+
+    fn note_limit(&self, actor: Actor, why: &str) {
+        if let Some(source) = self.source_of(actor) {
+            super::quota::freeze(source, why);
+        }
+    }
+
+    fn can_edit(&self) -> bool {
+        self.can_edit
+    }
+
+    fn splits_big_small(&self) -> bool {
+        self.worker_is_deepseek()
+    }
+
+    fn has_second_worker(&self) -> bool {
+        true
+    }
+
+    fn actor_name(&self, actor: Actor) -> String {
+        match actor {
+            Actor::Worker => self.worker_label(),
+            // The checker may be any source: show its own name.
+            Actor::Tester => self.checker.as_ref().map_or_else(|| actor.name().to_owned(), |(provider, _, _)| provider.name.clone()),
+            _ => actor.name().to_owned(),
+        }
+    }
+
+    fn actor_model(&self, actor: Actor) -> Option<String> {
+        match actor {
+            Actor::Worker | Actor::Worker2 => Some(self.model.clone()),
+            Actor::Tester => self.checker.as_ref().map(|(_, model, _)| model.clone()),
+        }
+    }
+
+    async fn board(&self, rows: &[Row]) {
+        let tasks: Vec<_> = rows.iter().map(|row| serde_json::json!({
+            "title": row.title, "state": row.state, "attempt": row.attempt, "check": row.check,
+            "actor": row.actor, "model": row.model, "checker": row.checker, "checker_model": row.checker_model,
+        })).collect();
+        let _ = self.events.send(ProviderEvent { name: "tasks", data: serde_json::json!({ "tasks": tasks }) }).await;
+    }
+
+    fn path_problems(&self, task: &Delegation) -> Vec<String> {
+        check_files(&self.folder, &task.files)
+    }
+}

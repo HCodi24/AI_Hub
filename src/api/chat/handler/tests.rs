@@ -23,6 +23,7 @@ fn worker_candidates_start_with_the_role_source_whatever_its_kind() {
         source("claude", "claude_cli", false),
         source("api", "openai_compat", true),
         source("codex", "codex_cli", false),
+        source("gemini", "antigravity_cli", false),
         source("plain", "anthropic", false),
     ];
     let ids = |configured: &str| {
@@ -35,6 +36,7 @@ fn worker_candidates_start_with_the_role_source_whatever_its_kind() {
     assert_eq!(ids("codex"), ["codex", "api"]);
     assert_eq!(ids("claude"), ["claude", "api", "codex"]);
     assert_eq!(ids("api"), ["api", "codex"]);
+    assert_eq!(ids("gemini"), ["gemini", "api", "codex"]);
     // A kind that cannot run tasks, or an unknown id, is skipped; the others still apply.
     assert_eq!(ids("plain"), ["api", "codex"]);
     assert_eq!(ids("missing"), ["api", "codex"]);
