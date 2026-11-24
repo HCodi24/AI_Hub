@@ -26,7 +26,7 @@ pub(crate) fn dev_chat_preamble(repo: &str) -> String {
             "- Cuối cùng báo: đã sửa file nào, có cần Build & khởi động lại không.\n{}\n{}"
         ),
         crate::core::rule::english_rules::RULE,
-        crate::core::rule::mutis_high_delegation::VIETNAMESE_RULE,
+        crate::core::rule::mutis_delegation::VIETNAMESE_RULE,
         repo = repo
     )
 }
@@ -48,7 +48,7 @@ mod tests {
     #[test]
     fn dev_chat_preamble_requires_vietnamese_visible_prose() {
         let preamble = super::dev_chat_preamble("C:/repo");
-        assert!(preamble.contains(crate::core::rule::mutis_high_delegation::VIETNAMESE_RULE));
+        assert!(preamble.contains(crate::core::rule::mutis_delegation::VIETNAMESE_RULE));
         assert!(preamble.contains("user-facing word in Vietnamese"));
         // The existing Vietnamese dev instructions are still there.
         assert!(

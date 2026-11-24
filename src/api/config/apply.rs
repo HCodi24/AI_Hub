@@ -46,18 +46,12 @@ pub(super) fn apply(config: &mut Config, input: ConfigInput) {
     }
     if let Some(provider_id) = input.planner_provider_id {
         config.planner_provider_id = provider_id;
-        config.mutis.roles.lead.provider_id = config.planner_provider_id.clone();
-        if !config.mutis.high_roles.lead.provider_id.trim().is_empty() {
-            config.mutis.high_roles.lead.provider_id = config.planner_provider_id.clone();
-        }
+        config.mutis.lead.provider_id = config.planner_provider_id.clone();
         config.mutis.reviewer_provider_id = config.planner_provider_id.clone();
     }
     if let Some(model) = input.planner_model {
         config.planner_model = model;
-        config.mutis.roles.lead.model = config.planner_model.clone();
-        if !config.mutis.high_roles.lead.provider_id.trim().is_empty() {
-            config.mutis.high_roles.lead.model = config.planner_model.clone();
-        }
+        config.mutis.lead.model = config.planner_model.clone();
         config.mutis.reviewer_model = config.planner_model.clone();
     }
 }

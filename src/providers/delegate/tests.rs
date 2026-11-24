@@ -1,38 +1,25 @@
 use super::events::{check_id, checker_activity, checker_progress, input_tokens, is_token_line, worker_log};
 use super::live::cli_mcp;
-use super::parse::{is_ui_file, guard_ui};
 use super::report::{preload, worker_prompt, PRELOAD_MAX_LINES};
 use super::*;
 use crate::config::{McpServerConfig, MutisConfig};
 
 #[test]
 fn worker_token_lines_stay_unprefixed_so_the_token_table_counts_them() {
-    assert_eq!(worker_log("Token: vào 10 (cache 2), ra 3 (suy luận 0)", "DeepSeek"), "Token: vào 10 (cache 2), ra 3 (suy luận 0)");
-    assert_eq!(worker_log("Sửa a.rs", "DeepSeek"), "DeepSeek: Sửa a.rs");
+    assert_eq!(worker_log("Token: vào 10 (cache 2), ra 3 (suy luận 0)", "Worker"), "Token: vào 10 (cache 2), ra 3 (suy luận 0)");
+    assert_eq!(worker_log("Sửa a.rs", "Worker"), "Worker: Sửa a.rs");
     assert_eq!(worker_log("Sửa a.rs", "Tester"), "Tester: Sửa a.rs");
-    assert!(is_token_line("Token: vào 1, ra 2") && !is_token_line("DeepSeek: Token: vào 1, ra 2"));
+    assert!(is_token_line("Token: vào 1, ra 2") && !is_token_line("Worker: Token: vào 1, ra 2"));
     assert_eq!(input_tokens("Token: vào 147202 (cache 145408), ra 2478"), Some(147202));
     assert_eq!(input_tokens("Codex: Command: x"), None);
 }
 
 #[test]
-fn ui_tasks_never_go_to_deepseek_while_the_switch_is_off() {
-    let task = |title: &str, files: &[&str], deps: &[&str]| Delegation {
-        title: title.into(), files: files.iter().map(|f| f.to_string()).collect(), instructions: "i".into(), acceptance: vec![],
-        depends_on: deps.iter().map(|d| d.to_string()).collect(), hard: false, trivial: false,
-    };
-    assert!(is_ui_file("web/src/a.CSS") && is_ui_file("x.scss") && is_ui_file("page.html") && !is_ui_file("web/src/a.tsx") && !is_ui_file("web/src/a.ts") && !is_ui_file("src/a.rs") && !is_ui_file("Makefile"));
-    let tasks = || vec![task("logic", &["src/a.rs"], &[]), task("layout", &["web/a.css", "src/b.rs"], &[]), task("after", &["src/c.rs"], &["Layout"])];
-    // Switch on: untouched.
-    let (kept, notes) = guard_ui(tasks(), true);
-    assert_eq!((kept.len(), notes.len()), (3, 0));
-    // Off: the UI task and what depends on it go back to the coordinator.
-    let (kept, notes) = guard_ui(tasks(), false);
-    assert_eq!(kept.iter().map(|t| t.title.as_str()).collect::<Vec<_>>(), ["logic"]);
-    assert_eq!(notes.len(), 2);
-    // A task the coordinator already marked hard is left alone: it does it itself.
-    let hard = Delegation { hard: true, ..task("layout", &["a.css"], &[]) };
-    assert_eq!(guard_ui(vec![hard], false).0.len(), 1);
+fn extracts_blocks_with_the_legacy_hard_key() {
+    let (tasks, errors) = extract("```mutis-delegate\n{\"title\":\"A\",\"instructions\":\"do it\",\"hard\":true}\n```");
+    assert!(errors.is_empty());
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].title, "A");
 }
 
 #[test]
@@ -48,18 +35,18 @@ fn extracts_valid_blocks_and_reports_broken_ones() {
 
 #[test]
 fn report_flags_a_worker_that_changed_nothing() {
-    let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
+    let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], trivial: false };
     let idle = WorkerResult { summary: "I only read files".into(), diff: String::new(), error: None, refused: Vec::new() };
-    let text = report(&task, "DeepSeek", 2, 4, 1, &idle);
+    let text = report(&task, "Worker", 2, 4, 1, &idle);
     assert!(text.contains("lần 2/4") && text.contains("KHÔNG") && text.contains("còn 2 lần"));
     let edited = WorkerResult { summary: "done".into(), diff: "+ new line".into(), error: Some("boom".into()), refused: Vec::new() };
-    let text = report(&task, "DeepSeek", 4, 4, 0, &edited);
+    let text = report(&task, "Worker", 4, 4, 0, &edited);
     assert!(text.contains("LỖI: boom") && text.contains("+ new line") && text.contains("còn 0 lần"));
 }
 
 #[test]
 fn report_headings_are_vietnamese_and_keep_the_evidence() {
-    let task = Delegation { title: "Sửa đăng nhập".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
+    let task = Delegation { title: "Sửa đăng nhập".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], trivial: false };
     let edited = WorkerResult { summary: "đã sửa".into(), diff: "+ let a = 1;".into(), error: None, refused: Vec::new() };
     let text = report(&task, "Worker 2", 1, 3, 2, &edited);
     // App-generated headings are Vietnamese.
@@ -111,7 +98,7 @@ fn only_cli_roles_get_the_codegraph_tool_and_only_when_the_lead_has_it() {
 
 #[test]
 fn worker_prompt_carries_the_task_files_and_criteria() {
-    let task = Delegation { title: "T".into(), files: vec!["a.rs".into(), "b.rs".into()], instructions: "change x".into(), acceptance: vec!["builds".into()], depends_on: vec![], hard: false, trivial: false };
+    let task = Delegation { title: "T".into(), files: vec!["a.rs".into(), "b.rs".into()], instructions: "change x".into(), acceptance: vec!["builds".into()], depends_on: vec![], trivial: false };
     let prompt = worker_prompt(&MutisConfig::default(), &task, "FILE: a.rs\nfn a() {}\n```\n", None);
     assert!(prompt.contains("Task: T") && prompt.contains("Files: a.rs, b.rs") && prompt.contains("- builds"));
     assert!(prompt.contains("FILE: a.rs") && !worker_prompt(&MutisConfig::default(), &task, "", Some("it changed no file")).contains("already read"));
@@ -126,12 +113,11 @@ fn worker_prompt_requires_vietnamese_prose_even_with_english_instructions() {
         instructions: "change x".into(),
         acceptance: vec![],
         depends_on: vec![],
-        hard: false,
         trivial: false,
     };
     let prompt = worker_prompt(&MutisConfig::default(), &task, "", None);
     // Applied at runtime, so a saved configuration without the rule still receives it.
-    assert!(prompt.contains(crate::core::rule::mutis_high_delegation::VIETNAMESE_RULE));
+    assert!(prompt.contains(crate::core::rule::mutis_delegation::VIETNAMESE_RULE));
     assert!(prompt.contains("user-facing word in Vietnamese") && prompt.contains("even when the task instructions are in English"));
     // The English task text and the internal instructions are untouched.
     assert!(prompt.contains("Instructions:\nchange x") && prompt.contains("Make the edits yourself with the file tools"));
@@ -153,7 +139,7 @@ fn preload_keeps_small_plain_files_only() {
 
 #[test]
 fn a_check_keeps_one_identity_from_start_to_verdict() {
-    let task = Delegation { title: " Fix Login ".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
+    let task = Delegation { title: " Fix Login ".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], trivial: false };
     // The same check keeps its id in `check` and `announce_check`; a retry and another task never collide.
     assert_eq!(check_id(&task, 1), "fix login#1");
     assert_eq!(check_id(&task, 1), check_id(&task, 1));
@@ -164,7 +150,7 @@ fn a_check_keeps_one_identity_from_start_to_verdict() {
 
 #[test]
 fn checker_activity_carries_tester_identity_and_never_a_chat_turn() {
-    let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], hard: false, trivial: false };
+    let task = Delegation { title: "A".into(), files: vec![], instructions: "i".into(), acceptance: vec![], depends_on: vec![], trivial: false };
     let event = checker_activity("a#1", "start", &task, 1, "gpt-5-codex", "");
     assert_eq!(event.name, "checker_activity");
     assert!(event.data.get("id").is_none());

@@ -1,11 +1,10 @@
 use super::{Live, CLI_WORK_NOTE};
 use crate::{
-    chat::Permission,
     providers::{
         delegate::{
             events::{input_tokens, is_token_line, message, turn},
             report::{preload, worker_prompt, WorkerResult},
-            worker2_key, Delegation,
+            slot_key, Delegation,
         },
         for_kind,
         schedule::{limit, Actor, Backend},
@@ -16,35 +15,30 @@ use std::sync::Mutex;
 use tokio::sync::mpsc;
 
 impl Live {
-    /// The worker is a CLI source (for example Codex): it edits the project in its own thread, kept between messages. Worker 2 is the
-    /// same worker in a second thread; it runs beside the first, so it shows only its log lines (its text would mix into the first's turn).
-    pub(in crate::providers::delegate) async fn work_cli(&self, task: &Delegation, attempt: usize, feedback: Option<&str>, editor: Actor) -> WorkerResult {
-        let second = editor == Actor::Worker2;
-        let label = if second { Actor::Worker2.name().to_owned() } else { self.worker_label() };
+    /// Each CLI slot keeps its own thread between messages. Only the primary slot streams text to the chat.
+    pub(in crate::providers::delegate) async fn work_cli(&self, task: &Delegation, attempt: usize, feedback: Option<&str>, slot: u8) -> WorkerResult {
+        let quiet = slot != 0;
+        let label = self.actor_name(Actor::Worker(slot));
         let events = &self.events;
-        if self.cancel.is_cancelled() || (!second && events.send(turn(&self.worker.kind, &self.model, &label)).await.is_err()) {
+        if self.cancel.is_cancelled() || (!quiet && events.send(turn(&self.worker.kind, &self.model, &label)).await.is_err()) {
             self.cancel.cancel();
             return WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
         }
         let max = limit(self.can_escalate());
         let _ = events.send(ProviderEvent::text("log", format!("Giao {label}: {} (lần {attempt}/{max})", task.title.trim()))).await;
-        let (session, tokens, worker_id) = if second {
-            (&self.worker2_cli_session, &self.worker2_cli_tokens, worker2_key(&self.worker.id))
-        } else {
-            (&self.worker_cli_session, &self.worker_cli_tokens, self.worker.id.clone())
-        };
+        let session = &self.worker_cli_sessions[usize::from(slot)];
+        let tokens = &self.worker_cli_tokens[usize::from(slot)];
+        let worker_id = slot_key(&self.worker.id, slot);
         let mcp = self.mcp_for(&self.worker.kind);
-        // `agy` runs headless and auto-denies a command in Write mode (mv, rm), so it gets Full when the chat itself is Full.
-        let permission = if self.worker.kind == "antigravity_cli" && self.permission == Permission::Full { Permission::Full } else { Permission::Write };
         let request = ProviderRequest {
-            provider: self.worker.clone(), model: self.model.clone(), folder: self.folder.clone(), permission, effort: self.effort,
+            provider: self.worker.clone(), model: self.model.clone(), folder: self.folder.clone(), permission: self.worker_permission, effort: self.effort,
             messages: vec![message("user", self.with_codegraph_note(worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback) + CLI_WORK_NOTE, &mcp))],
             session_id: session.lock().unwrap().clone(), mutis: self.mutis.clone(), mcp,
             // shortcut: a CLI cannot be scoped to files; the checker judges the diff instead.
             write_scope: Vec::new(), checker_session_id: None,
         };
         let size = (self.worker.kind == "codex_cli").then_some(tokens);
-        let result = self.run_cli(&self.worker.kind, request, &label, session, size, second).await;
+        let result = self.run_cli(&self.worker.kind, request, &label, session, size, quiet).await;
         // Kept in the chat record, so the next message resumes this thread instead of re-reading the project.
         let id = session.lock().unwrap().clone();
         if let Some(id) = id {

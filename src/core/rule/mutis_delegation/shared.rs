@@ -1,6 +1,6 @@
 macro_rules! protocol_heading {
     () => {
-        "MutiS High delegation protocol (mandatory in this chat):\n"
+        "MutiS delegation protocol (mandatory in this chat):\n"
     };
 }
 
@@ -21,7 +21,7 @@ macro_rules! delegate_block_end {
 
 macro_rules! plan_all_tasks {
     () => {
-        "- Plan ALL tasks of the job in this one reply, one block each, in order. Add \"depends_on\":[\"title of another task\"] only when a task needs that task's result: independent tasks start at once (two at a time when they list different files), while earlier ones are still being checked, and you hear back once when all are done.\n"
+        "- Plan ALL tasks of the job in this one reply, one block each, in order. Add \"depends_on\":[\"title of another task\"] only when a task needs that task's result: independent tasks start together up to the configured worker count when they list different files, while earlier ones are still being checked, and you hear back once when all are done.\n"
     };
 }
 

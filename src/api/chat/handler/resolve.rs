@@ -37,22 +37,21 @@ pub(super) async fn resolve_request(
         ));
     }
     // A chat at the MutiS source runs on the lead role's source; only such a chat is a MutiS chat (delegation, rules, role label).
-    // `mutis_level` is the effort the user picked for MutiS (always High); `request.effort` becomes the lead's own.
+    // `mutis_level` marks a MutiS chat; `request.effort` becomes the lead's own.
     let mutis_level = if request.provider_id == MUTIS_SOURCE {
-        let level = request.effort.clone().unwrap_or_else(|| "high".into());
-        let lead = crate::api::mutis::resolve_lead(state, &level)
+        let lead = crate::mutis::resolve_lead(state)
             .await
             .ok_or_else(|| {
                 ApiError::new(
                     StatusCode::BAD_REQUEST,
-                    "MutiS chưa có nguồn lead nào đang kết nối",
+                    "MutiS chưa có Lead đang kết nối: vào Cài đặt › MutiS để chọn nguồn cho Lead",
                 )
             })?;
         request.file_tools = chat::file_tools_for(&lead.provider, request.permission);
         request.provider_id = lead.provider.id;
         request.model = lead.model;
         request.effort = Some(lead.effort);
-        Some(level)
+        Some("mutis".into())
     } else {
         None
     };

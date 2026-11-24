@@ -7,7 +7,7 @@ pub mod deepseek_flash;
 pub mod english_rules;
 pub mod keep_features;
 pub mod mutis_checker;
-pub mod mutis_high_delegation;
+pub mod mutis_delegation;
 pub mod preview;
 pub mod project_guides;
 pub mod report_unfinished;

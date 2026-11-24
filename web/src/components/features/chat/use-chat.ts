@@ -6,7 +6,6 @@ import { configApi } from "@/apis/config.api";
 import { useChatStore } from "./chat-store";
 import { chatText } from "@/text/chat";
 import { mutisApi } from "@/apis/mutis.api";
-import { rolesFor } from "@/lib/mutis-level";
 import { startDebate, cancelActiveCard } from "./card-actions";
 import { useCardStore } from "./card-store";
 import { memoryNotice } from "@/components/features/memory/memory-events";
@@ -35,7 +34,7 @@ export function useChat() {
     }
     // MutiS shows its lead first; a single model shows itself. The identity (and so the pet) is on screen at once,
     // before the server says anything; backend events may replace this prediction.
-    const lead = mutis ? rolesFor(mutis, settings.effort)?.lead || mutis.roles.lead : undefined;
+    const lead = mutis?.lead;
     const initialSource = config.data?.providers.find(item => item.id === (lead ? lead.provider_id : settings.provider_id));
     const initialModel = (lead ? lead.model || initialSource?.models[0] || "" : settings.model).trim();
     // The message goes on screen at once; everything that waits for the server happens after it, while "streaming" blocks other actions.
@@ -43,9 +42,9 @@ export function useChat() {
     const current = useChatStore.getState();
     const controller = new AbortController(); activeChatAbort = controller;
     try {
-      // At the MutiS source the server picks the lead (its model, effort and file tools) from `settings.effort`, the level the user chose.
+      // The server takes the MutiS effort from the configured lead.
       const source = config.data?.providers.find(item => item.id === settings.provider_id);
-      await chatApi.send({ ...settings, file_tools: mutis || !settings.folder.trim() ? "none" : fileToolsFor(source, settings.permission), folder: settings.folder.trim(), model: settings.model.trim(),
+      await chatApi.send({ ...settings, effort: mutis ? "default" : settings.effort, file_tools: mutis || !settings.folder.trim() ? "none" : fileToolsFor(source, settings.permission), folder: settings.folder.trim(), model: settings.model.trim(),
         chat_id: current.id, messages: current.messages.slice(0, -1) }, controller.signal, (event, data) => {
         current.event(event, data);
         if (event === "memory") useToast.getState().show(memoryNotice(data, settings.folder));

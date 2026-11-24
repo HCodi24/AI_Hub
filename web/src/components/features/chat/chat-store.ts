@@ -36,7 +36,7 @@ export type QueuedMessage = { text: string; attachments: { id: string; mime: str
 type ChatState = {
   id: string; messages: ChatMessage[]; settings: Settings; streaming: boolean; drawer: boolean;
   status: StreamData; error: string; initialized: boolean;
-  /** Live task board of the current MutiS High run. Archived snapshots live on assistant messages. */
+  /** Live task board of the current MutiS run. Archived snapshots live on assistant messages. */
   tasks: TaskRow[];
   /** Live Tester checks, keyed by the checker's own id and independent of messages, status and tasks. */
   checkers: LiveChecker[];
@@ -99,13 +99,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     rememberActiveChat(chat.id);
     set((state) => {
       const selected = readModelSelection(chat.id);
-      // A chat that ran at MutiS reopens at MutiS: the record only holds the lead MutiS resolved to, and `mutis_level` is what the user picked.
+      // The legacy MutiS marker still identifies saved chats whose provider is stored as the resolved lead.
       const mutis = !selected && chat.mutis_level ? { provider_id: "mutis", model: "" } : undefined;
       const settings = {
         provider_id: selected?.provider_id ?? mutis?.provider_id ?? (chat.provider_id || state.settings.provider_id),
         model: selected?.model ?? mutis?.model ?? (chat.provider_id ? chat.model : state.settings.model),
         folder: chat.folder, permission: selected?.permission ?? chat.permission,
-        effort: chat.mutis_level && (selected?.provider_id ?? "mutis") === "mutis" ? chat.mutis_level : chat.effort === "default" ? "medium" as const : chat.effort,
+        effort: chat.effort === "default" ? "medium" as const : chat.effort,
         file_tools: chat.file_tools, dev_chat: chat.dev_chat,
       };
       saveModelSelection(chat.id, settings);
@@ -139,7 +139,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const next = ChatMessageSchema.parse({ role: "assistant", content: "", provider, model: data.model || "" });
       return { messages: empty ? [...state.messages.slice(0, -1), next] : [...state.messages, next],
         status: { ...state.status, provider_kind: provider, provider_name: data.provider_name || (provider === "deepseek" ? "DeepSeek" : "Codex"),
-          model: data.model || "", idle_s: 0, last_activity: "" } };
+          model: data.model || "", role: data.role, idle_s: 0, last_activity: "" } };
     }
     if (event === "heartbeat") return { status: { ...state.status, ...data } };
     if (event === "permission_denied") return { denied: data.need ?? null, approval: null };

@@ -8,7 +8,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 fn task(title: &str, deps: &[&str]) -> Delegation {
-    Delegation { title: title.into(), files: vec!["a.rs".into()], instructions: "do it".into(), acceptance: vec![], depends_on: deps.iter().map(|d| d.to_string()).collect(), hard: false, trivial: false }
+    Delegation { title: title.into(), files: vec!["a.rs".into()], instructions: "do it".into(), acceptance: vec![], depends_on: deps.iter().map(|d| d.to_string()).collect(), trivial: false }
 }
 fn fail_high() -> CheckResult {
     CheckResult { verdict: Verdict::Fail, issues: vec![Issue { severity: "high".into(), file: "a.rs".into(), problem: "wrong".into(), fix: "right".into() }], notes: String::new(), error: None }
@@ -35,9 +35,8 @@ struct Fake {
     bad_paths: Vec<String>,
     /// Title and files of every worker run.
     works: Mutex<Vec<(String, Vec<String>)>>,
-    /// A second worker slot exists / the worker splits big and small tasks (DeepSeek).
-    second: bool,
-    splits: bool,
+    /// Configured slot count; zero in the default fixture uses one slot.
+    worker_slots: usize,
     /// Worker runs in progress now and the most there ever were, with the slot each title ran on.
     active: std::sync::atomic::AtomicUsize,
     peak: std::sync::atomic::AtomicUsize,
@@ -70,11 +69,14 @@ impl Backend for Fake {
     fn has_checker(&self) -> bool {
         self.checker
     }
-    fn splits_big_small(&self) -> bool {
-        self.splits
+    fn actor_name(&self, actor: Actor) -> String {
+        match actor {
+            Actor::Worker(slot) => format!("Worker {}", usize::from(slot) + 1),
+            Actor::Tester => "Tester".to_owned(),
+        }
     }
-    fn has_second_worker(&self) -> bool {
-        self.second
+    fn worker_slots(&self) -> usize {
+        self.worker_slots.max(1)
     }
     async fn check(&self, task: &Delegation, _attempt: usize, _work: &WorkerResult) -> CheckResult {
         if self.hold.as_ref().is_some_and(|(held, _)| *held == task.title) {
@@ -95,8 +97,7 @@ impl Backend for Fake {
     }
     fn actor_model(&self, actor: Actor) -> Option<String> {
         Some(match actor {
-            Actor::Worker => "worker-model",
-            Actor::Worker2 => "worker-model",
+            Actor::Worker(_) => "worker-model",
             Actor::Tester => "tester-model",
         }.into())
     }
@@ -166,17 +167,8 @@ async fn a_check_that_never_passes_stops_at_the_attempt_limit() {
     assert_eq!(fake.boards.lock().unwrap().last().unwrap()[0].state, "takeover");
 }
 
-#[tokio::test]
-async fn a_hard_task_is_left_to_the_coordinator_only_when_the_worker_splits_big_and_small() {
-    let hard = || Delegation { hard: true, ..task("A", &[]) };
-    let (fake, out, attempts) = run(Fake { splits: true, ..Default::default() }, vec![hard(), task("B", &["A"])]).await;
-    assert!(fake.lines().is_empty(), "a big task is never delegated and its dependent is skipped: {:?}", fake.lines());
-    assert!(attempts.is_empty());
-    assert!(out.reports.iter().any(|r| r.contains("marked hard") && r.contains("Implement it yourself")));
-    assert_eq!(fake.boards.lock().unwrap().last().unwrap()[0].state, "takeover");
-    // Any other worker: the flag means nothing and the worker runs the task.
-    let (fake, _, _) = run(Fake::default(), vec![hard()]).await;
-    assert_eq!(fake.lines(), ["work:A"]);
+#[test]
+fn attempt_limit_depends_on_escalation() {
     assert_eq!((limit(true), limit(false)), (3, MAX_ATTEMPTS));
 }
 
@@ -186,9 +178,9 @@ async fn two_independent_tasks_run_at_once_on_the_two_worker_slots() {
         Delegation { files: vec!["src/a.rs".into()], ..task("A", &[]) },
         Delegation { files: vec!["web/b.ts".into()], ..task("B", &[]) },
     ];
-    let (fake, _, _) = run(Fake { second: true, checker: true, ..Default::default() }, tasks()).await;
+    let (fake, _, _) = run(Fake { worker_slots: 2, checker: true, ..Default::default() }, tasks()).await;
     assert_eq!(fake.peak.load(std::sync::atomic::Ordering::SeqCst), 2);
-    assert_eq!(*fake.slots.lock().unwrap(), [("A".to_string(), Actor::Worker), ("B".to_string(), Actor::Worker2)]);
+    assert_eq!(*fake.slots.lock().unwrap(), [("A".to_string(), Actor::Worker(0)), ("B".to_string(), Actor::Worker(1))]);
     let boards = fake.boards.lock().unwrap();
     let coding = boards.iter().flat_map(|rows| rows.iter()).find(|row| row.title == "B" && row.state == "coding").unwrap();
     assert_eq!(coding.actor.as_deref(), Some("Worker 2"));
@@ -200,7 +192,7 @@ async fn two_independent_tasks_run_at_once_on_the_two_worker_slots() {
 
 #[tokio::test]
 async fn tasks_that_share_a_file_or_depend_on_each_other_never_run_at_once() {
-    let fake = || Fake { second: true, checker: true, ..Default::default() };
+    let fake = || Fake { worker_slots: 2, checker: true, ..Default::default() };
     let folder = Delegation { files: vec!["src".into()], ..task("A", &[]) };
     let inside = Delegation { files: vec!["src/a.rs".into()], ..task("B", &[]) };
     let (peak, _) = { let (f, o, _) = run(fake(), vec![folder, inside]).await; (f.peak.load(std::sync::atomic::Ordering::SeqCst), o) };
@@ -209,8 +201,53 @@ async fn tasks_that_share_a_file_or_depend_on_each_other_never_run_at_once() {
     let b = Delegation { files: vec!["y.rs".into()], ..task("B", &["A"]) };
     let (f, _, _) = run(fake(), vec![a, b]).await;
     assert_eq!(f.peak.load(std::sync::atomic::Ordering::SeqCst), 1);
-    let (f, _, _) = run(Fake { second: true, ..Default::default() }, vec![task("A", &[]), Delegation { files: vec![], ..task("B", &[]) }]).await;
+    let (f, _, _) = run(Fake { worker_slots: 2, ..Default::default() }, vec![task("A", &[]), Delegation { files: vec![], ..task("B", &[]) }]).await;
     assert_eq!(f.peak.load(std::sync::atomic::Ordering::SeqCst), 1, "a task without files cannot be proven independent");
+}
+
+#[tokio::test]
+async fn three_independent_tasks_use_the_configured_number_of_slots() {
+    for worker_slots in [1, 3] {
+        let tasks = ["A", "B", "C"]
+            .into_iter()
+            .map(|title| Delegation {
+                files: vec![format!("{title}.rs")],
+                ..task(title, &[])
+            })
+            .collect();
+        let (fake, _, _) = run(Fake { worker_slots, ..Default::default() }, tasks).await;
+        let expected: Vec<_> = ["A", "B", "C"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, title)| (title.to_owned(), Actor::Worker((index % worker_slots) as u8)))
+            .collect();
+        assert_eq!(*fake.slots.lock().unwrap(), expected);
+        assert_eq!(fake.peak.load(std::sync::atomic::Ordering::SeqCst), worker_slots);
+    }
+}
+
+#[tokio::test]
+async fn a_third_task_waits_when_it_overlaps_or_depends_on_the_second() {
+    for (file, dependencies) in [
+        ("src/b.rs", &[][..]),
+        ("web/c.ts", &["B"][..]),
+    ] {
+        let tasks = vec![
+            task("A", &[]),
+            Delegation { files: vec!["src".into()], ..task("B", &[]) },
+            Delegation { files: vec![file.into()], ..task("C", dependencies) },
+        ];
+        let (fake, _, _) = run(Fake { worker_slots: 3, ..Default::default() }, tasks).await;
+        assert_eq!(fake.peak.load(std::sync::atomic::Ordering::SeqCst), 2);
+        assert_eq!(
+            *fake.slots.lock().unwrap(),
+            [
+                ("A".to_owned(), Actor::Worker(0)),
+                ("B".to_owned(), Actor::Worker(1)),
+                ("C".to_owned(), Actor::Worker(0)),
+            ]
+        );
+    }
 }
 
 #[tokio::test]
@@ -303,4 +340,14 @@ fn the_checker_answer_is_parsed_and_unreadable_answers_are_unclear() {        le
     assert_eq!(parse_check("looks fine to me").verdict, Verdict::Unclear);
     assert_eq!(parse_check("{\"verdict\":\"maybe\"}").verdict, Verdict::Unclear);
     assert!(!Issue { severity: "low".into(), file: String::new(), problem: "x".into(), fix: String::new() }.is_severe());
+}
+#[test]
+fn worker_slots_keep_compatible_session_keys() {
+    use crate::providers::delegate::slot_key;
+
+    assert_eq!(slot_key("provider", 0), "provider");
+    assert_eq!(slot_key("provider", 1), "provider#2");
+    assert_eq!(slot_key("provider", 2), "provider#3");
+    assert_eq!(Fake::default().actor_name(Actor::Worker(1)), "Worker 2");
+    assert_eq!(Fake::default().actor_name(Actor::Worker(2)), "Worker 3");
 }

@@ -14,10 +14,10 @@ export async function openDevChat(providers: ProviderSummary[]) {
   const mutis = await mutisApi.get().catch(() => null);
   const codex = providers.find(provider => provider.kind === "codex_cli");
   store.reset();
-  // Same defaults as the legacy UI: MutiS when it is on, otherwise Codex CLI at high effort; edits allowed.
+  // MutiS uses its configured lead. Standalone Codex CLI keeps the development chat preset.
   store.configure({
     dev_chat: true, folder: path, permission: "write", file_tools: "none",
-    ...(mutis?.enabled ? { provider_id: "mutis", model: "" }
+    ...(mutis?.enabled ? { provider_id: "mutis", model: "", effort: "default" as const }
       : codex ? { provider_id: codex.id, model: codex.models[0] || "", effort: "high" as const } : {}),
   });
 }

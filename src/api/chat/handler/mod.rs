@@ -4,8 +4,6 @@ mod resolve;
 mod rules;
 mod stream;
 
-#[cfg(test)]
-use self::delegate::worker_candidates;
 use self::delegate::{build_provider, select_delegate};
 #[cfg(test)]
 use self::record::avatar_source;
@@ -61,15 +59,12 @@ pub(crate) async fn chat_handler(
         skills::expand_message(&state, user_content, &provider_config.kind).await?;
 
     let mutis_config = state.config.read().await.mutis.clone();
-    let role_effort_name = mutis_level.as_deref().unwrap_or("high");
     let (delegate_worker, delegate_checker, checker_note) = select_delegate(
         &state,
-        &provider_config.kind,
         mutis_level.is_some(),
         request.plan_id.is_some(),
         plain_chat,
         &mutis_config,
-        role_effort_name,
     )
     .await;
     // Codex compacts a thread past the budget by itself (providers/codex/compact.rs). Only a thread at twice the budget, where
@@ -96,7 +91,7 @@ pub(crate) async fn chat_handler(
         &request,
         existing,
         &provider_config,
-        mutis_level.as_deref(),
+        mutis_level.is_some(),
         &folder,
         plain_chat,
         dev_chat,
@@ -179,13 +174,6 @@ pub(crate) async fn chat_handler(
     }
     // Plan workers run unattended; interactive chat supports user decision cards on every turn.
     // The delegated worker decides which protocol Codex gets: exact edits for DeepSeek, goals and limits for any other model.
-    let worker_kind = delegate_worker.as_ref().map(|(worker, model, _)| {
-        if worker.is_deepseek(model) {
-            crate::core::rule::mutis_high_delegation::Worker::DeepSeek
-        } else {
-            crate::core::rule::mutis_high_delegation::Worker::Other
-        }
-    });
     apply_rules(
         &mut provider_request,
         &provider_sender,
@@ -194,8 +182,7 @@ pub(crate) async fn chat_handler(
         plain_chat,
         mutis_level.is_some(),
         &mutis_config,
-        role_effort_name,
-        worker_kind,
+        delegate_worker.is_some(),
         delegate_checker.is_some(),
     )
     .await;
@@ -216,8 +203,6 @@ pub(crate) async fn chat_handler(
         files_before,
         rotated,
         token_budget,
-        mutis_level,
-        request.effort,
         request.chat_id,
         request.plan_id,
         request.task_id,

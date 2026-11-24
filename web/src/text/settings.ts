@@ -1,3 +1,5 @@
+import { chatText } from "./chat";
+
 export const settingsText = {
   title: "Cài đặt", open: "Cài đặt",
   tabs: { providers: "Nguồn AI", general: "Chung", sound: "Âm thanh", mutis: "MutiS", addons: "Plugin & Skill", extensions: "Tiện ích", pets: "Pet", dev: "Phát triển", dashboard: "Dashboard" },
@@ -60,10 +62,11 @@ export const settingsText = {
   },
   mutis: {
     sharedSettings: "Cài đặt dùng chung",
-    taskBoard: "Hiện bảng tiến độ các task khi MutiS giao việc", enabled: "Bật MutiS", roles: "Vai trò", checkerRole: "Checker", role: { lead: "Lead", big: "Code lớn", small: "Worker" },
-    provider: "Nguồn", model: "Model", effort: "Reasoning effort", routing: "Định tuyến mặc định",
-    kinds: { small_edit: "Sửa nhỏ", docs: "Tài liệu", code: "Code", test: "Test", plan: "Lập kế hoạch", review: "Review" } as Record<string, string>,
-    switches: "Tự động hoá", auto_plan: "Tự động chia việc", plan_approval: "Duyệt kế hoạch trước khi chạy (tắt = tự chạy, hiện như chat thường)", delegate_checker: "Người kiểm tra độc lập cho kết quả của worker — chỉ ở mức High", deepseek_ui: "Cho DeepSeek làm bố cục và kiểu dáng (CSS, HTML; với TSX do Sol quyết định). Tắt: việc đó quay về Sol — chỉ ở mức High, khi worker là DeepSeek", verify_gate: "Cổng kiểm tra sau mỗi task", auto_review: "Review tự động",
+    taskBoard: "Hiện bảng tiến độ các task khi MutiS giao việc", enabled: "Bật MutiS", checkerRole: "Checker",
+    leadRole: "Lead", workerRole: "Worker", workerCount: "Số worker", permission: chatText.permission,
+    permissions: { read: chatText.read, write: chatText.write, full: chatText.full },
+    provider: "Nguồn", model: "Model", effort: "Reasoning effort",
+    switches: "Tự động hoá", auto_plan: "Tự động chia việc", plan_approval: "Duyệt kế hoạch trước khi chạy (tắt = tự chạy, hiện như chat thường)", delegate_checker: "Người kiểm tra độc lập cho kết quả của worker", verify_gate: "Cổng kiểm tra sau mỗi task", auto_review: "Review tự động",
     auto_fix: "Tạo task sửa khi review thất bại", fix_rounds_max: "Số vòng sửa tối đa", retry_api: "Thử lại khi API lỗi",
     retry_attempts: "Số lần thử lại", retry_base_ms: "Thời gian chờ cơ sở (ms)", codex_watchdog: "Codex watchdog",
     watchdog_minutes: "Watchdog (phút)", codex_auto_resume: "Tự tiếp tục Codex", resume_max: "Số lần tiếp tục tối đa",

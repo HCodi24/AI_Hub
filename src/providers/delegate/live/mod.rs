@@ -17,30 +17,28 @@ pub(super) struct Live {
     pub(super) worker: ProviderConfig,
     pub(super) model: String,
     pub(super) effort: Effort,
-    /// The worker's own CLI thread (only when the worker is a CLI source); kept for every task of this reply.
-    pub(super) worker_cli_session: Mutex<Option<String>>,
-    /// Input tokens of the worker thread's last model call (a Codex worker only): its current size, kept in the chat record.
-    pub(super) worker_cli_tokens: std::sync::atomic::AtomicU64,
-    /// Worker 2's own CLI thread and its size: the same worker, a second conversation that runs beside the first.
-    pub(super) worker2_cli_session: Mutex<Option<String>>,
-    pub(super) worker2_cli_tokens: std::sync::atomic::AtomicU64,
+    pub(super) worker_permission: Permission,
+    pub(super) worker_count: usize,
+    /// CLI thread per worker slot, kept for every task of this reply.
+    pub(super) worker_cli_sessions: [Mutex<Option<String>>; super::WORKER_SLOTS as usize],
+    /// Input tokens of each Codex worker thread's last model call, kept in the chat record.
+    pub(super) worker_cli_tokens: [std::sync::atomic::AtomicU64; super::WORKER_SLOTS as usize],
     pub(super) folder: String,
     pub(super) mutis: MutisConfig,
     pub(super) events: mpsc::Sender<ProviderEvent>,
     pub(super) cancel: CancellationToken,
     pub(super) checker: Option<(ProviderConfig, String, Effort)>,
+    pub(super) checker_permission: Permission,
     /// Key of the worker's conversation: one per chat, so every task and retry continues what the worker already read.
     pub(super) worker_session: String,
     /// The checker's own thread (sources that keep one): resumed for every check, kept in the chat record between messages.
     pub(super) checker_session: Mutex<Option<String>>,
-    /// A Codex thread runs one turn at a time: the checker checks one task after another.
+    /// The checker processes one task at a time.
     pub(super) tester_busy: tokio::sync::Mutex<()>,
     /// The checker's last "Token:" log line, held until `announce_check` shows it in the Tester turn.
     pub(super) checker_tokens: Mutex<Option<String>>,
     /// Whether the coordinator may edit files, i.e. can take a task over when the attempts run out.
     pub(super) can_edit: bool,
-    /// The chat's permission: the coordinator and the checker run with it.
-    pub(super) permission: Permission,
     /// CodeGraph's MCP server as the lead got it (indexed project, option on); None = no role gets it.
     pub(super) codegraph: Option<McpServerConfig>,
 }
@@ -84,15 +82,10 @@ impl Live {
         matches!(self.worker.kind.as_str(), "codex_cli" | "claude_cli" | "antigravity_cli")
     }
 
-    pub(super) fn worker_is_deepseek(&self) -> bool {
-        self.worker.is_deepseek(&self.model)
-    }
-
-    /// Name shown for the worker: DeepSeek for a DeepSeek model, otherwise its family ("Codex", "Claude") or the source's own name.
+    /// Name shown for the worker: the Codex or Claude CLI family, or the source's own name.
     /// The task board adds the exact model after it.
     pub(super) fn worker_label(&self) -> String {
         match self.worker.kind.as_str() {
-            _ if self.worker_is_deepseek() => Actor::Worker.name().to_owned(),
             "codex_cli" => "Codex".to_owned(),
             "claude_cli" => "Claude".to_owned(),
             _ => self.worker.name.clone(),

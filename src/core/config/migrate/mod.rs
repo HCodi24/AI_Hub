@@ -1,8 +1,6 @@
 //! One-way upgrades of config files written by older versions.
 use super::{seed::CODEX_CLI_MODELS, Config};
 
-mod roles;
-
 const LEGACY_WORKER_RULES: &str = concat!(
     "- Ghi mọi file bằng UTF-8 (không dùng PowerShell Set-Content/Out-File/>); ",
     "dùng công cụ sửa file hoặc [System.IO.File]::WriteAllText với UTF8.\n",
@@ -77,18 +75,6 @@ pub(super) fn merge_agent_providers(config: &mut Config) {
                 }
             }
         }
-        for role in [
-            &mut config.mutis.roles.lead,
-            &mut config.mutis.roles.big,
-            &mut config.mutis.roles.small,
-            &mut config.mutis.high_roles.lead,
-            &mut config.mutis.high_roles.big,
-            &mut config.mutis.high_roles.small,
-        ] {
-            if role.provider_id == agent_id {
-                role.provider_id = parent_id.clone();
-            }
-        }
         if config.planner_provider_id == agent_id {
             config.planner_provider_id = parent_id.clone();
         }
@@ -116,24 +102,7 @@ pub(super) fn migrate_mutis(config: &mut Config) {
     {
         config.mutis.worker_rules = crate::core::rule::worker_defaults();
     }
-    roles::migrate_high_roles(config);
-    roles::migrate_max_roles(config);
-    for rule in &mut config.mutis.routing {
-        if rule.role.is_empty() {
-            rule.role = match rule.assignee_kind.as_str() {
-                "deepseek_agent" => "small",
-                "codex_cli" => "big",
-                _ => "lead",
-            }
-            .into();
-        }
-    }
-    let high_lead = &config.mutis.high_roles.lead;
-    let lead = if high_lead.provider_id.trim().is_empty() {
-        &config.mutis.roles.lead
-    } else {
-        high_lead
-    };
+    let lead = &config.mutis.lead;
     config.planner_provider_id = lead.provider_id.clone();
     config.planner_model = lead.model.clone();
     config.mutis.reviewer_provider_id = lead.provider_id.clone();

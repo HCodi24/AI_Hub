@@ -1,6 +1,5 @@
-/// The same protocol for a worker that is not DeepSeek (for example another Codex model). It is a capable model, so a task needs the goal
-/// and its limits, not the exact edit DeepSeek's does.
-pub(super) const OTHER_PROTOCOL_RULE: &str = concat!(
+/// Goal-and-limits protocol for the MutiS lead and worker.
+pub(super) const RULE: &str = concat!(
     protocol_heading!(),
     "- You coordinate. Implementation goes to the worker, a capable coding model; you analyse, write acceptance criteria, review and verify. Do not edit project files yourself while delegating.\n",
     split_rule!(),

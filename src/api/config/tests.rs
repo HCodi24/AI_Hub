@@ -46,35 +46,28 @@ fn accepts_valid_partial_config_and_token_budget_boundaries() {
 
 #[test]
 fn applying_planner_provider_updates_lead_and_reviewer() {
-    for (high_provider, expected) in [(" ", " "), ("old-high", "new-provider")] {
-        let mut config = Config::seeded();
-        config.mutis.high_roles.lead.provider_id = high_provider.into();
-        let input = serde_json::from_str(r#"{"planner_provider_id":"new-provider"}"#).unwrap();
+    let mut config = Config::seeded();
+    config.mutis.lead.provider_id = "old-provider".into();
+    let input = serde_json::from_str(r#"{"planner_provider_id":"new-provider"}"#).unwrap();
 
-        apply(&mut config, input);
+    apply(&mut config, input);
 
-        assert_eq!(config.planner_provider_id, "new-provider");
-        assert_eq!(config.mutis.roles.lead.provider_id, "new-provider");
-        assert_eq!(config.mutis.reviewer_provider_id, "new-provider");
-        assert_eq!(config.mutis.high_roles.lead.provider_id, expected);
-    }
+    assert_eq!(config.planner_provider_id, "new-provider");
+    assert_eq!(config.mutis.lead.provider_id, "new-provider");
+    assert_eq!(config.mutis.reviewer_provider_id, "new-provider");
 }
 
 #[test]
 fn applying_planner_model_updates_lead_and_reviewer() {
-    for (high_provider, expected) in [(" ", "old-model"), ("high", "new-model")] {
-        let mut config = Config::seeded();
-        config.mutis.high_roles.lead.provider_id = high_provider.into();
-        config.mutis.high_roles.lead.model = "old-model".into();
-        let input = serde_json::from_str(r#"{"planner_model":"new-model"}"#).unwrap();
+    let mut config = Config::seeded();
+    config.mutis.lead.model = "old-model".into();
+    let input = serde_json::from_str(r#"{"planner_model":"new-model"}"#).unwrap();
 
-        apply(&mut config, input);
+    apply(&mut config, input);
 
-        assert_eq!(config.planner_model, "new-model");
-        assert_eq!(config.mutis.roles.lead.model, "new-model");
-        assert_eq!(config.mutis.reviewer_model, "new-model");
-        assert_eq!(config.mutis.high_roles.lead.model, expected);
-    }
+    assert_eq!(config.planner_model, "new-model");
+    assert_eq!(config.mutis.lead.model, "new-model");
+    assert_eq!(config.mutis.reviewer_model, "new-model");
 }
 
 #[test]

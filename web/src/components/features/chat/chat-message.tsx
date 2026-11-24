@@ -16,8 +16,13 @@ import { chatPetState } from "@/lib/chat-pet-state";
 import { parseChatQuestions } from "@/lib/chat-questions";
 import { modelDisplayLabel } from "@/lib/model-display-label";
 import styles from "./chat-message.module.css";
-/** MutiS High: the app reads Codex's `mutis-delegate` blocks itself and shows the worker's result, so the raw JSON stays hidden. */
+/** MutiS: the app reads Codex's `mutis-delegate` blocks itself and shows the worker's result, so the raw JSON stays hidden. */
 const hideDelegation = (text: string) => text.replace(/```mutis-delegate[\s\S]*?(?:```|$)/g, "").trim();
+const mutisRoleLabels = new Map([
+  ["lead", "Trưởng nhóm"],
+  ["worker", "Thực thi"],
+  ["checker", "Kiểm tra"],
+]);
 const PROVIDER_LABELS: Record<string, string> = { codex_cli: "Codex", claude_cli: "Claude", antigravity_cli: "Antigravity", anthropic: "Claude", deepseek: "DeepSeek" };
 export const ChatMessage = memo(function ChatMessage({ message, chatId, streaming = false, latest = false, status, replies, taskBoardEnabled = true }: { message: Message; chatId: string; streaming?: boolean; latest?: boolean; status?: StreamData; replies?: ReactNode; taskBoardEnabled?: boolean }) {
   const user = message.role === "user";
@@ -63,6 +68,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
     {!user && <ChatActivity logs={message.logs} provider={message.provider} />}
     {!user && streaming && <div className={styles.streamStatus} role="status" aria-live="polite" aria-atomic="true">
       {chatText.streaming} {status?.provider_name} {status?.model}
+      {status?.role && mutisRoleLabels.has(status.role) && ` · ${mutisRoleLabels.get(status.role)}`}
       {status?.elapsed_s !== undefined && ` · ${status.elapsed_s} ${chatText.seconds}`}
       {status?.idle_s !== undefined && ` · ${chatText.idle}: ${status.idle_s} ${chatText.seconds}`}
     </div>}

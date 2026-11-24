@@ -6,7 +6,6 @@ import { chatText } from "@/text/chat";
 import { modelEffortOptions, effortsFor, effortFor } from "@/constants/chat";
 import { SOURCE_LOGOS } from "@/constants/source-logos";
 import { antigravityModel, ANTIGRAVITY_EFFORTS } from "@/lib/antigravity-models";
-import { rolesFor } from "@/lib/mutis-level";
 import { isModelVisible, useModelVisibility } from "@/lib/model-visibility";
 import { modelDisplayLabel } from "@/lib/model-display-label";
 import type { Config } from "@/schema/config.schema";
@@ -62,8 +61,9 @@ export function ChatToolbar({ config }: { config?: Config }) {
     };
   }, []);
   const mutis = useQuery({ queryKey: ["mutis"], queryFn: () => mutisApi.get() });
-  const activeRoles = rolesFor(mutis.data, settings.effort);
-  const provider = config?.providers.find((entry) => entry.id === (settings.provider_id === "mutis" ? activeRoles?.lead.provider_id : settings.provider_id));
+  const lead = mutis.data?.lead;
+  const isMutis = settings.provider_id === "mutis";
+  const provider = config?.providers.find((entry) => entry.id === (isMutis ? lead?.provider_id : settings.provider_id));
   const models = provider ? [...new Set(provider.models)]
     .filter(model => model && isModelVisible(hiddenModels, provider.id, model)) : [];
   const cli = provider?.kind.endsWith("_cli");
@@ -79,13 +79,11 @@ export function ChatToolbar({ config }: { config?: Config }) {
     initialize(config.default_folder, first?.id || "", first?.models.find(model => isModelVisible(hiddenModels, first.id, model)) || "");
   }, [config, hiddenModels, initialize]);
   function changeProvider(id: string) {
-    const next = config?.providers.find((entry) => entry.id === (id === "mutis" ? activeRoles?.lead.provider_id : id));
+    const next = config?.providers.find((entry) => entry.id === (id === "mutis" ? lead?.provider_id : id));
     const supportsCommands = next?.kind.endsWith("_cli") || isAgentSource(next);
     configure({ provider_id: id, model: next?.models.find(model => isModelVisible(hiddenModels, next.id, model)) || "", file_tools: "none",
       ...(settings.permission === "full" && !supportsCommands ? { permission: "write" as const } : {}) });
   }
-  // MutiS has a single level (High); the models come from Settings.
-  const isMutis = settings.provider_id === "mutis";
   const sourceLogo = SOURCE_LOGOS[isMutis ? "mutis" : provider?.kind ?? ""];
   const isAntigravity = !isMutis && provider?.kind === "antigravity_cli";
   const variant = isAntigravity ? antigravityModel(settings.model) : undefined;
@@ -101,10 +99,10 @@ export function ChatToolbar({ config }: { config?: Config }) {
   const efforts = isAntigravity
     ? (["default", ...ANTIGRAVITY_EFFORTS] as const).filter(level => variantModels.some(entry => (entry.model.effort ?? "default") === level))
     : catalogEffort?.choices ?? effortsFor(settings.model, provider?.kind).filter(effort => effort !== "default");
-  const effort = isMutis ? "high" : isAntigravity ? "default" : catalogEffort?.selected ?? effortFor(settings.model, settings.effort, provider?.kind);
-  const displayedEffort = variant?.effort ?? effort;
+  const effort = isAntigravity ? "default" : catalogEffort?.selected ?? effortFor(settings.model, settings.effort, provider?.kind);
+  const displayedEffort = isMutis ? effortFor(lead?.model ?? "", lead?.effort ?? "default", provider?.kind) : variant?.effort ?? effort;
   const resetEffort = isAntigravity ? efforts.find(level => level === "default" || level === "medium") ?? efforts[0] ?? "default"
-    : isMutis ? "high" : catalogEffort?.reset ?? effortFor(settings.model, "medium", provider?.kind);
+    : catalogEffort?.reset ?? effortFor(settings.model, "medium", provider?.kind);
   const effortIndex = Math.max(0, efforts.findIndex(choice => choice === (!isAntigravity && !catalogEffort && effort === "default" ? "medium" : displayedEffort)));
   const effortLabel = (level: typeof displayedEffort) => level === "thinking" ? chatText.petStatus.thinking : chatText[level];
   function pickEffort(level: typeof displayedEffort) {
@@ -121,12 +119,12 @@ export function ChatToolbar({ config }: { config?: Config }) {
     } else configure({ model });
   }
   useEffect(() => {
-    if ((provider || isMutis) && !streaming && effort !== settings.effort) configure({ effort });
+    if (provider && !isMutis && !streaming && effort !== settings.effort) configure({ effort });
   }, [provider, isMutis, effort, settings.effort, streaming, configure]);
-  // Limits of every CLI source that takes part: the lead, and under MutiS also the workers (and the checker at High), e.g. Claude and Codex together.
+  const mutisProviders = [...new Set([lead, mutis.data?.worker, mutis.data?.delegate_checker ? mutis.data.checker : undefined].map(role => role?.provider_id))]
+    .flatMap(id => config?.providers.find(entry => entry.id === id) ?? []);
   const limitProviders = isMutis
-    ? [...new Set([activeRoles?.lead, activeRoles?.big, activeRoles?.small, ...(mutis.data?.delegate_checker ? [mutis.data.high_checker] : [])].map(role => role?.provider_id))]
-      .flatMap(id => config?.providers.find(entry => entry.id === id && entry.kind.endsWith("_cli")) ?? [])
+    ? mutisProviders.filter(entry => entry.kind.endsWith("_cli"))
     : provider && cli ? [provider] : [];
   return <><ChatPermission supportsCommands={!!cli || isAgentSource(provider)} limit={permissionLimit} menuRef={permissions} otherMenuRef={picker} />
   <details ref={picker} className={styles.picker} onToggle={(event) => {
@@ -140,8 +138,9 @@ export function ChatToolbar({ config }: { config?: Config }) {
         <SourceMenu providers={config?.providers || []} mutisEnabled={!!mutis.data?.enabled} mutisName={mutisName} value={settings.provider_id} title={name} disabled={streaming}
           open={sourceMenuOpen} setOpen={(open) => { setSourceMenuOpen(open); setModelMenuOpen(false); }} anchor={panel} onPick={changeProvider} />
         <strong>{isMutis ? mutisName : effortLabel(displayedEffort)}</strong>
-        <button type="button" className={styles.resetEffort} disabled={streaming || ((isAntigravity || !!catalogEffort) && !efforts.length)} aria-label={`${chatText.effort}: ${effortLabel(resetEffort)}`} title={`${chatText.effort}: ${effortLabel(resetEffort)}`} onClick={() => pickEffort(resetEffort)}><RotateCcw size={18} /></button>
+        {!isMutis && <button type="button" className={styles.resetEffort} disabled={streaming || ((isAntigravity || !!catalogEffort) && !efforts.length)} aria-label={`${chatText.effort}: ${effortLabel(resetEffort)}`} title={`${chatText.effort}: ${effortLabel(resetEffort)}`} onClick={() => pickEffort(resetEffort)}><RotateCcw size={18} /></button>}
       </div>
+      {isMutis && mutisProviders.length > 0 && <p>{mutisProviders.map(entry => entry.name).join(" · ")}</p>}
       {!isMutis && efforts.length > 1 && <div className={styles.effortSlider}>
         <input type="range" min={0} max={efforts.length - 1} step={1} value={effortIndex} disabled={streaming} aria-label={chatText.effort} aria-valuetext={effortLabel(displayedEffort)}
           style={{ background: `linear-gradient(to right, var(--effort-fill) ${effortIndex / (efforts.length - 1) * 100}%, var(--color-muted) 0%)` }}

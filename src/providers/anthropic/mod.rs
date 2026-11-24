@@ -101,7 +101,8 @@ impl Provider for AnthropicProvider {
                 request.mutis.deepseek_max_file_lines,
                 files,
                 mcp,
-            );
+            )
+            .with_scope(request.write_scope.clone());
             if !tools.anthropic_definitions().is_empty() {
                 return run_with_tools(
                     &request,

@@ -1,10 +1,9 @@
 use super::Live;
-use crate::chat::{Effort, Permission};
 use crate::providers::{
     delegate::{
         events::{message, turn, worker_log},
         report::{preload, worker_prompt},
-        worker2_key, Delegation, WorkerResult,
+        slot_key, Delegation, WorkerResult,
     },
     for_kind,
     schedule::{limit, Actor, Backend},
@@ -18,30 +17,32 @@ impl Live {
         task: &Delegation,
         attempt: usize,
         feedback: Option<&str>,
-        editor: Actor,
+        slot: u8,
     ) -> WorkerResult {
-        // Worker 2 is the same API worker in a second conversation, and shows only its log lines (see `work_cli`).
-        let quiet = editor == Actor::Worker2;
+        // Each API slot has its own conversation; only the primary slot streams text.
+        let quiet = slot != 0;
         let events = &self.events;
-        let label = if quiet { Actor::Worker2.name().to_owned() } else { self.worker_label() };
-        if self.cancel.is_cancelled() || (!quiet && events.send(turn(if self.worker_is_deepseek() { "deepseek" } else { &self.worker.kind }, &self.model, &label)).await.is_err()) {
+        let label = self.actor_name(Actor::Worker(slot));
+        if self.cancel.is_cancelled() || (!quiet && events.send(turn(&self.worker.kind, &self.model, &label)).await.is_err()) {
             self.cancel.cancel();
             return WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
         }
         let max = limit(self.can_escalate());
         let _ = events.send(ProviderEvent::text("log", format!("Giao {label}: {} (lần {attempt}/{max})", task.title.trim()))).await;
-        // The worker stays at Write whatever the chat permission is: it edits files but never runs commands (the checker runs the tests).
         let mut provider = self.worker.clone();
-        provider.kind = "deepseek_agent".into();
+        if provider.kind == "openai_compat" {
+            provider.kind = "deepseek_agent".into();
+        }
         provider.agent_capable = true;
+        let run = for_kind(&provider.kind);
         let worker_request = ProviderRequest {
-            provider, model: self.model.clone(), folder: self.folder.clone(), permission: Permission::Write, effort: Effort::Default,
-            messages: vec![message("user", worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback))], session_id: Some(if quiet { worker2_key(&self.worker_session) } else { self.worker_session.clone() }), mutis: self.mutis.clone(), mcp: Vec::new(),
+            provider, model: self.model.clone(), folder: self.folder.clone(), permission: self.worker_permission, effort: self.effort,
+            messages: vec![message("user", worker_prompt(&self.mutis, task, &preload(&self.folder, &task.files), feedback))], session_id: Some(slot_key(&self.worker_session, slot)), mutis: self.mutis.clone(), mcp: Vec::new(),
             write_scope: task.files.clone(),
             checker_session_id: None,
         };
         let (sender, mut receiver) = mpsc::channel(32);
-        let (inner_cancel, run) = (self.cancel.clone(), for_kind("deepseek_agent"));
+        let inner_cancel = self.cancel.clone();
         let handle = tokio::spawn(async move {
             match run {
                 Ok(provider) => provider.run(worker_request, sender, inner_cancel).await,

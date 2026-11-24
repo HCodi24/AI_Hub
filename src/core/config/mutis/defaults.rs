@@ -1,11 +1,4 @@
-use super::{MutisRole, RoutingRule};
-
-pub(super) fn default_high_checker() -> MutisRole {
-    MutisRole {
-        effort: "max".into(),
-        ..Default::default()
-    }
-}
+use super::MutisRole;
 
 pub(super) fn default_plan_approval() -> bool {
     false
@@ -60,25 +53,21 @@ pub(super) fn default_verify_ignore() -> Vec<String> {
     vec!["docs/**".into(), "**/*.md".into()]
 }
 
-pub(super) fn default_routing() -> Vec<RoutingRule> {
-    [
-        ("small_edit", "small"),
-        ("docs", "small"),
-        ("code", "big"),
-        ("test", "big"),
-        ("plan", "lead"),
-        ("review", "lead"),
-    ]
-    .into_iter()
-    .map(|(kind, role)| RoutingRule {
-        kind: kind.into(),
-        role: role.into(),
-        assignee_kind: String::new(),
-        note: String::new(),
-    })
-    .collect()
-}
-
 pub(super) fn default_effort() -> String {
     "default".into()
+}
+
+pub(super) fn default_lead() -> MutisRole {
+    MutisRole {
+        effort: default_effort(),
+        ..Default::default()
+    }
+}
+
+pub(super) fn default_permission() -> String {
+    "full".into()
+}
+
+pub(super) fn default_worker_count() -> u32 {
+    1
 }

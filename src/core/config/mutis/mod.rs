@@ -2,11 +2,9 @@ use serde::{Deserialize, Serialize};
 
 mod defaults;
 mod roles;
-mod routing;
 
 use defaults::*;
-pub use roles::{MutisRole, MutisRoles};
-pub use routing::RoutingRule;
+pub use roles::{MutisChecker, MutisRole, MutisWorker};
 
 #[cfg(test)]
 mod tests;
@@ -83,21 +81,15 @@ pub struct MutisConfig {
     pub lead_app_rules: bool,
     #[serde(default = "default_enabled")]
     pub checker_app_rules: bool,
-    /// MutiS High: an independent checker reviews each DeepSeek result before the coordinator judges it.
+    /// An independent checker reviews delegated work before the lead judges it.
     #[serde(default)]
     pub delegate_checker: bool,
-    /// MutiS High: whether DeepSeek may be given layout and styling work (.css/.html...). Off = such tasks go back to the coordinator.
+    #[serde(default = "default_lead")]
+    pub lead: MutisRole,
     #[serde(default)]
-    pub deepseek_ui: bool,
-    /// Who the checker is (a Codex source and model; effort defaults to max). Used only at the High level.
-    #[serde(default = "default_high_checker")]
-    pub high_checker: MutisRole,
-    #[serde(default = "default_routing")]
-    pub routing: Vec<RoutingRule>,
+    pub worker: MutisWorker,
     #[serde(default)]
-    pub roles: MutisRoles,
-    #[serde(default)]
-    pub high_roles: MutisRoles,
+    pub checker: MutisChecker,
 }
 
 impl Default for MutisConfig {
@@ -134,11 +126,9 @@ impl Default for MutisConfig {
             checker_rules: String::new(),
             lead_app_rules: default_enabled(),
             checker_app_rules: default_enabled(),
-            deepseek_ui: false,
-            high_checker: default_high_checker(),
-            routing: default_routing(),
-            roles: MutisRoles::default(),
-            high_roles: MutisRoles::default(),
+            lead: default_lead(),
+            worker: MutisWorker::default(),
+            checker: MutisChecker::default(),
         }
     }
 }
@@ -146,12 +136,5 @@ impl Default for MutisConfig {
 impl MutisConfig {
     pub fn effective(&self, flag: bool) -> bool {
         self.enabled && flag
-    }
-    /// MutiS has one level, High: every effort uses `high_roles` (the old Max `roles` stay in the file only as High's fallback).
-    pub fn roles_for(&self, _effort: &str) -> &MutisRoles {
-        &self.high_roles
-    }
-    pub fn level_for(_effort: &str) -> &'static str {
-        "high"
     }
 }

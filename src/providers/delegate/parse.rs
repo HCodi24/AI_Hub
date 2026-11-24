@@ -19,37 +19,7 @@ pub fn extract(text: &str) -> (Vec<Delegation>, Vec<String>) {
     (tasks, errors)
 }
 
-/// Style and markup files by extension. Component files (.tsx, .jsx, .vue, .svelte) are NOT listed: the same file holds layout
-/// changes and plain data wiring, so the coordinator judges those (see `NO_UI_NOTE`).
-pub(super) fn is_ui_file(path: &str) -> bool {
-    const UI: [&str; 5] = ["css", "scss", "sass", "less", "html"];
-    path.rsplit_once('.').is_some_and(|(_, ext)| UI.iter().any(|ui| ext.eq_ignore_ascii_case(ui)))
-}
-
-/// With the "DeepSeek may do UI" switch off, a task with UI files never runs on DeepSeek: it goes back to the coordinator.
-/// Returns the tasks to run and the notes for the coordinator.
-pub(super) fn guard_ui(tasks: Vec<Delegation>, ui_allowed: bool) -> (Vec<Delegation>, Vec<String>) {
-    if ui_allowed {
-        return (tasks, Vec::new());
-    }
-    let (mut kept, mut notes, mut dropped) = (Vec::new(), Vec::new(), Vec::<String>::new());
-    let key = |title: &str| title.trim().to_lowercase();
-    for task in tasks {
-        let blocked_by = task.depends_on.iter().find(|dep| dropped.contains(&key(dep))).cloned();
-        if let Some(dep) = blocked_by {
-            notes.push(format!("Task \"{}\" was not run: it depends on \"{dep}\", which you must implement yourself first (UI is off for DeepSeek). Resend it afterwards.", task.title.trim()));
-            dropped.push(key(&task.title));
-        } else if !task.hard && task.files.iter().any(|file| is_ui_file(file)) {
-            notes.push(format!("Task \"{}\" has UI files and DeepSeek may not do UI (setting). Implement it yourself.", task.title.trim()));
-            dropped.push(key(&task.title));
-        } else {
-            kept.push(task);
-        }
-    }
-    (kept, notes)
-}
-
-/// Paths Codex named must be real before a worker run is spent: an existing file, or a new file in an existing folder.
+/// Paths named by the lead must refer to an existing file or a new file in an existing folder.
 pub fn check_files(folder: &str, files: &[String]) -> Vec<String> {
     if files.is_empty() {
         return vec!["the files list is empty: name the exact files".into()];

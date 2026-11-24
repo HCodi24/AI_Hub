@@ -1,5 +1,5 @@
-//! One delegation round of MutiS High. The worker runs the tasks without pause; two independent tasks (no dependency, different files) run
-//! at once, the second on Worker 2. With an independent checker, every finished task is checked in parallel while the worker already
+//! One delegation round of MutiS. Independent tasks with disjoint files run together up to the configured worker slot count.
+//! With an independent checker, every finished task is checked in parallel while the worker already
 //! starts the next task that does not depend on it; severe findings come back as fix tasks at the end of the worker's queue.
 //!
 //! Only this loop writes to the chat (through `Backend::say`/`announce_check`) between worker runs, so the output of
@@ -14,24 +14,12 @@ mod round;
 pub use check::{check_text, parse_check, CheckResult};
 pub(super) use round::run_round;
 
-/// The roles of a delegated task besides the lead (the coordinator): `Worker` is the configured worker (any model), `Worker2` a
-/// second instance of it (same source, model and effort, its own thread) that only runs beside it, and `Tester` is the independent
-/// tester's Codex thread, which only checks.
+/// Worker slots use the same configured source, model and effort, with their own threads.
+/// The independent tester only checks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Actor {
-    Worker,
-    Worker2,
+    Worker(u8),
     Tester,
-}
-
-impl Actor {
-    pub(super) fn name(self) -> &'static str {
-        match self {
-            Actor::Worker => "DeepSeek",
-            Actor::Worker2 => "Worker 2",
-            Actor::Tester => "Codex",
-        }
-    }
 }
 
 /// Attempts a task may use before the coordinator takes it over: with a checker and a coordinator that can edit there is
@@ -68,13 +56,11 @@ fn takeover_text(can_edit: bool) -> &'static str {
 
 #[async_trait::async_trait]
 pub(super) trait Backend: Send + Sync + 'static {
-    /// `editor` is the worker slot that runs it: `Worker`, or `Worker2` when two tasks run at the same time.
+    /// `editor` is the worker slot running the task.
     async fn work(&self, task: &Delegation, attempt: usize, feedback: Option<&str>, editor: Actor) -> WorkerResult;
     fn has_checker(&self) -> bool;
-    /// A `hard` task exists only when the worker is DeepSeek: the coordinator does it itself and never delegates it.
-    fn splits_big_small(&self) -> bool { false }
-    /// Whether a second worker slot exists, so two independent tasks may run at once.
-    fn has_second_worker(&self) -> bool { false }
+    /// Maximum number of independent tasks that can run at once.
+    fn worker_slots(&self) -> usize { 1 }
     /// Runs in its own task, in parallel with the worker; must not write to the chat.
     async fn check(&self, task: &Delegation, attempt: usize, work: &WorkerResult) -> CheckResult;
     async fn say(&self, line: String);
@@ -86,8 +72,8 @@ pub(super) trait Backend: Send + Sync + 'static {
     fn note_limit(&self, _actor: Actor, _why: &str) {}
     /// False when the coordinator may not edit files, so it cannot take a task over.
     fn can_edit(&self) -> bool;
-    /// Name shown for an actor: the worker is DeepSeek for an API agent, or the source's own name for a CLI worker.
-    fn actor_name(&self, actor: Actor) -> String { actor.name().to_owned() }
+    /// Name shown for the worker slot or checker.
+    fn actor_name(&self, actor: Actor) -> String;
     /// Configured model for the actor selected by the same route used for execution.
     fn actor_model(&self, _actor: Actor) -> Option<String> { None }
     /// Shows the whole task board; called only from the round loop.

@@ -62,8 +62,8 @@ pub(crate) async fn start_debate(
     let folder = folder.to_string_lossy().into_owned();
     let cfg = state.config.read().await.clone();
     let memory = crate::features::memory::memory_context(&state.config_path, &folder, &cfg.memory);
-    let codex = pick_debater(&state, &cfg, "codex_cli", &cfg.mutis.roles.big).await;
-    let claude = pick_debater(&state, &cfg, "claude_cli", &cfg.mutis.roles.lead).await;
+    let codex = pick_debater(&state, &cfg, "codex_cli").await;
+    let claude = pick_debater(&state, &cfg, "claude_cli").await;
     let (Some(codex), Some(claude)) = (codex, claude) else {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,

@@ -1,13 +1,20 @@
 import { z } from "zod";
 import { ProviderSummarySchema } from "@/schema/config.schema";
-import { EffortSchema } from "@/schema/chat.schema";
+import { EffortSchema, PermissionSchema } from "@/schema/chat.schema";
 export const RoleSchema = z.object({
     provider_id: z.string().default(""),
     model: z.string().default(""),
     effort: EffortSchema.default("default")
 });
+const RolePermissionSchema = PermissionSchema.default("full");
 export const MutisSchema = z.object({
-    enabled: z.boolean(),
+    enabled: z.boolean().default(false),
+    lead: RoleSchema.default({}),
+    worker: RoleSchema.extend({
+        permission: RolePermissionSchema,
+        count: z.number().int().min(1).max(3).default(1)
+    }).default({}),
+    checker: RoleSchema.extend({ permission: RolePermissionSchema }).default({}),
     worker_rules: z.string().default(""),
     auto_plan: z.boolean().default(true),
     plan_approval: z.boolean().default(false),
@@ -16,7 +23,6 @@ export const MutisSchema = z.object({
     checker_rules: z.string().default(""),
     lead_app_rules: z.boolean().default(true),
     checker_app_rules: z.boolean().default(true),
-    deepseek_ui: z.boolean().default(false),
     verify_gate: z.boolean().default(false),
     auto_review: z.boolean().default(false),
     auto_fix: z.boolean().default(false),
@@ -38,29 +44,15 @@ export const MutisSchema = z.object({
     verify_ignore: z.array(z.string()).default([]),
     reviewer_provider_id: z.string().default(""),
     reviewer_model: z.string().default(""),
-    event_log: z.boolean().default(true),
-    roles: z.object({
-        lead: RoleSchema,
-        big: RoleSchema,
-        small: RoleSchema
-    }),
-    high_roles: z.object({ lead: RoleSchema, big: RoleSchema, small: RoleSchema }).default({ lead: { provider_id: "", model: "", effort: "default" }, big: { provider_id: "", model: "", effort: "default" }, small: { provider_id: "", model: "", effort: "default" } }),
-    /** Who the High-level independent checker is (a Codex source; max effort by default). */
-    high_checker: RoleSchema.default({ provider_id: "", model: "", effort: "max" }),
-    routing: z.array(z.object({
-        kind: z.string(),
-        role: z.string().default(""),
-        assignee_kind: z.string().default(""),
-        note: z.string().default("")
-    })).default([])
+    event_log: z.boolean().default(true)
 }).passthrough();
 const ResolvedRoleSchema = z.object({
     used_provider: ProviderSummarySchema.nullish()
 });
 export const ResolvedRolesSchema = z.object({
     lead: ResolvedRoleSchema,
-    big: ResolvedRoleSchema,
-    small: ResolvedRoleSchema
+    worker: ResolvedRoleSchema,
+    checker: ResolvedRoleSchema
 });
 export const DiagnosisSchema = z.object({
     ts: z.number().default(0), health: z.string().default(""), summary: z.string().default(""),

@@ -3,6 +3,7 @@ use super::queue::{key, next_ready, take_partner, Next};
 use super::{limit, limit_text, takeover_text, Actor, Backend, RoundOutcome, Row, State};
 use crate::core::text::truncate_chars;
 use crate::providers::delegate::{auto_retry_reason, report, Delegation, WorkerResult, MAX_AUTO_RETRIES};
+use futures_util::future::join_all;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -48,44 +49,29 @@ impl<B: Backend> Round<'_, B> {
         if self.backend.can_edit() { "takeover" } else { "failed" }
     }
 
-    /// A big task (`hard`) of a DeepSeek worker is never delegated: the coordinator does it itself.
-    fn is_big(&self, task: &Delegation) -> bool {
-        task.hard && self.backend.splits_big_small()
-    }
-
-    /// Runs one task, or two independent ones at the same time (the second on the second worker slot).
-    async fn run_group(&mut self, first: Delegation, second: Option<Delegation>) {
+    /// Runs the first attempt of each task on a distinct worker slot.
+    async fn run_group(&mut self, group: Vec<Delegation>) {
         let mut started = Vec::new();
-        for (task, editor) in std::iter::once(first).chain(second).zip([Actor::Worker, Actor::Worker2]) {
+        for (slot, task) in (0u8..).zip(group) {
+            let editor = Actor::Worker(slot);
             if let Some(attempt) = self.begin(&task, editor).await {
                 started.push((task, editor, attempt));
             }
         }
         // Only the first call of each task is concurrent; the app's retries and the checks stay in this loop's order.
         let backend = self.backend;
-        let works = match started.as_slice() {
-            [one] => vec![backend.work(&one.0, one.2, None, one.1).await],
-            [a, b] => {
-                let (x, y) = tokio::join!(backend.work(&a.0, a.2, None, a.1), backend.work(&b.0, b.2, None, b.1));
-                vec![x, y]
-            }
-            _ => return,
-        };
+        let works = join_all(started.iter().map(|(task, editor, attempt)| {
+            backend.work(task, *attempt, None, *editor)
+        })).await;
         for ((task, editor, attempt), work) in started.into_iter().zip(works) {
             self.settle(task, editor, attempt, work).await;
         }
     }
 
-    /// Leaves a big task to the coordinator, or checks the limit and the paths and counts the first attempt; None = nothing runs.
+    /// Checks the limit and paths before counting the first attempt; None = nothing runs.
     async fn begin(&mut self, task: &Delegation, editor: Actor) -> Option<usize> {
         let title = key(&task.title);
         let max = limit(self.backend.can_escalate());
-        if self.is_big(task) {
-            self.out.reports.push(format!("Task \"{}\" is marked hard, so it is not delegated to DeepSeek. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
-            self.state.insert(title, State::Failed);
-            self.mark(&task.title, self.spent_state(), 0, None, None, None, None, None).await;
-            return None;
-        }
         if self.attempts.get(&title).copied().unwrap_or(0) >= max {
             self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
             self.state.insert(title, State::Failed);
@@ -214,7 +200,7 @@ impl<B: Backend> Round<'_, B> {
                     self.backend.say(format!("Thêm file người kiểm tra nêu vào task sửa: {}", added.join(", "))).await;
                 }
                 self.queue.push_back(fix);
-                let next_editor = Actor::Worker;
+                let next_editor = Actor::Worker(0);
                 // The fix is queued, not started: it shows as waiting to be fixed until a worker takes it (then `work` marks it "fixing").
                 self.mark(&task.title, "fixwait", attempt, Some(shown), Some(next_editor), self.backend.actor_model(next_editor), Some(checker), checker_model).await;
             } else {
@@ -260,14 +246,14 @@ pub(in crate::providers) async fn run_round<B: Backend>(backend: &Arc<B>, tasks:
         }
         match next_ready(&mut round.queue, &round.state) {
             Next::Run(task) => {
-                // Two independent tasks at once: only for the worker's second slot, never for a big task, a task another needs, or the same files.
-                let splits = backend.splits_big_small();
-                let second = if backend.has_second_worker() && !(splits && task.hard) {
-                    take_partner(&mut round.queue, &round.state, &task, |other| splits && other.hard)
-                } else {
-                    None
-                };
-                round.run_group(task, second).await;
+                let mut group = vec![task];
+                for _ in 1..backend.worker_slots().clamp(1, 3) {
+                    let Some(partner) = take_partner(&mut round.queue, &round.state, &group) else {
+                        break;
+                    };
+                    group.push(partner);
+                }
+                round.run_group(group).await;
             }
             Next::Skip(task, why) => {
                 round.out.reports.push(format!("Task \"{}\" was skipped: {why}.", task.title.trim()));

@@ -23,7 +23,7 @@ pub(super) async fn save_and_register(
     request: &ChatRequest,
     existing: Option<ChatRecord>,
     provider_config: &ProviderConfig,
-    mutis_level: Option<&str>,
+    is_mutis: bool,
     folder: &str,
     plain_chat: bool,
     dev_chat: bool,
@@ -31,7 +31,7 @@ pub(super) async fn save_and_register(
     effort: chat::Effort,
 ) -> ApiResult<(ChatRecord, CancellationToken, Uuid)> {
     // The thread belongs to the source and to the mode (MutiS lead or a single model), so the same Codex in the two modes never shares one.
-    let thread = chat::thread_key(&request.provider_id, mutis_level.is_some());
+    let thread = chat::thread_key(&request.provider_id, is_mutis);
     let switched_source = existing.as_ref().is_some_and(|r| r.thread_key() != thread);
     let mut record = existing.unwrap_or_else(|| chat::new_record(request));
     if switched_source {
@@ -57,7 +57,7 @@ pub(super) async fn save_and_register(
         }
     }
     record.provider_id = request.provider_id.clone();
-    record.mutis_level = mutis_level.map(str::to_owned);
+    record.mutis_level = is_mutis.then(|| "mutis".to_owned());
     record.model = request.model.clone();
     record.folder = if plain_chat {
         String::new()

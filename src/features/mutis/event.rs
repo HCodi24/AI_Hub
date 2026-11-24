@@ -29,6 +29,43 @@ pub struct Event {
 pub struct EventLog {
     directory: PathBuf,
 }
+
+#[derive(Deserialize)]
+pub struct PlanEventInput {
+    plan_id: String,
+    task_id: String,
+    provider_id: String,
+    kind: String,
+    #[serde(default)]
+    task_kind: Option<String>,
+    ok: bool,
+    detail: Option<String>,
+}
+
+pub enum PlanEventError {
+    InvalidKind(&'static str),
+    AppendFailed,
+}
+
+pub fn record_plan_event(log: &EventLog, input: PlanEventInput) -> Result<(), PlanEventError> {
+    if !matches!(input.kind.as_str(), "review" | "fix_task" | "verify") {
+        return Err(PlanEventError::InvalidKind("Loại sự kiện không hợp lệ"));
+    }
+    log.append(&Event {
+        ts: crate::core::time::now_secs(),
+        plan_id: Some(input.plan_id),
+        task_id: Some(input.task_id),
+        provider_id: input.provider_id,
+        kind: input.kind,
+        task_kind: input.task_kind,
+        ok: input.ok,
+        duration_ms: None,
+        tokens: None,
+        detail: input.detail,
+    })
+    .map_err(|_| PlanEventError::AppendFailed)
+}
+
 impl EventLog {
     pub fn new(config_path: &std::path::Path) -> anyhow::Result<Self> {
         let directory = crate::core::paths::mutis_dir(config_path)?;

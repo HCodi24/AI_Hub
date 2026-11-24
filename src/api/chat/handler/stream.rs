@@ -29,6 +29,23 @@ impl Drop for CancelOnDrop {
     }
 }
 
+pub(super) fn status_role(
+    config: &MutisConfig,
+    provider_id: &str,
+    is_mutis_or_plan: bool,
+) -> Option<&'static str> {
+    if !is_mutis_or_plan || provider_id.is_empty() {
+        return None;
+    }
+    [
+        ("lead", config.lead.provider_id.as_str()),
+        ("worker", config.worker.provider_id.as_str()),
+        ("checker", config.checker.provider_id.as_str()),
+    ]
+    .into_iter()
+    .find_map(|(role, configured_id)| (configured_id == provider_id).then_some(role))
+}
+
 pub(super) async fn start(
     state: AppState,
     provider: Box<dyn providers::Provider>,
@@ -46,8 +63,6 @@ pub(super) async fn start(
     files_before: Snapshot,
     rotated: Vec<(String, u64)>,
     token_budget: u64,
-    mutis_level: Option<String>,
-    request_effort: Option<String>,
     chat_id: String,
     plan_id: Option<String>,
     task_id: Option<String>,
@@ -58,27 +73,11 @@ pub(super) async fn start(
     let provider_kind = avatar_source(&provider_request.provider, &provider_request.model);
     let status_model = provider_request.model.clone();
     let status_effort = format!("{:?}", provider_request.effort).to_lowercase();
-    // A plan task has no MutiS level of its own; it also runs the High roles.
-    let role_effort = mutis_level
-        .as_deref()
-        .or(request_effort.as_deref())
-        .unwrap_or("high");
-    let status_role = (mutis_level.is_some() || plan_id.is_some())
-        .then(|| {
-            ["lead", "big", "small"]
-                .into_iter()
-                .find(|role| match *role {
-                    "lead" => {
-                        mutis_config.roles_for(role_effort).lead.provider_id == event_provider_id
-                    }
-                    "big" => {
-                        mutis_config.roles_for(role_effort).big.provider_id == event_provider_id
-                    }
-                    _ => mutis_config.roles_for(role_effort).small.provider_id == event_provider_id,
-                })
-                .map(str::to_owned)
-        })
-        .flatten();
+    let status_role = status_role(
+        &mutis_config,
+        &event_provider_id,
+        record.mutis_level.is_some() || plan_id.is_some(),
+    );
     for (key, tokens) in rotated {
         let which = match key.strip_prefix("worker:") {
             Some(worker) => format!("worker {worker}"),

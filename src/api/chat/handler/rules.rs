@@ -1,7 +1,6 @@
 use crate::{
     app::AppState,
     config::MutisConfig,
-    core::rule::mutis_high_delegation::Worker,
     providers::{self, ProviderEvent, ProviderRequest},
 };
 use tokio::sync::mpsc;
@@ -69,39 +68,29 @@ pub(super) async fn apply_rules(
     plain_chat: bool,
     is_mutis: bool,
     mutis_config: &MutisConfig,
-    role_effort_name: &str,
-    worker_kind: Option<Worker>,
+    has_worker: bool,
     has_delegate_checker: bool,
 ) {
     if !is_plan_task {
         add_question_rules(provider_request);
-        if !plain_chat {
-            let rule = crate::core::rule::mutis_high_delegation::for_chat(
+        if is_mutis {
+            let rule = crate::core::rule::mutis_delegation::for_chat(
                 is_mutis,
-                crate::config::MutisConfig::level_for(role_effort_name),
-                &provider_request.provider.kind,
                 provider_request
                     .mcp
                     .iter()
-                    .any(|server| server.name.contains("deepseek")),
-                worker_kind,
+                    .any(|server| {
+                        !plain_chat
+                            && server.enabled
+                            && (server.name.contains("delegate") || server.name.contains("deepseek"))
+                    }),
+                has_worker,
             );
             if !rule.is_empty() {
                 let rule = if has_delegate_checker {
                     format!("{rule}\n{}", crate::core::rule::mutis_checker::NOTE)
                 } else {
                     rule.to_owned()
-                };
-                let rule = if worker_kind
-                    == Some(crate::core::rule::mutis_high_delegation::Worker::DeepSeek)
-                    && !mutis_config.deepseek_ui
-                {
-                    format!(
-                        "{rule}\n{}",
-                        crate::core::rule::mutis_high_delegation::NO_UI_NOTE
-                    )
-                } else {
-                    rule
                 };
                 if let Some(message) = provider_request
                     .messages

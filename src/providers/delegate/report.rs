@@ -19,7 +19,7 @@ pub(super) fn worker_prompt(mutis: &MutisConfig, task: &Delegation, preloaded: &
         parts.push(mutis.worker_rules.clone());
     }
     // Applied at runtime, so existing configurations and sessions get the language rule too.
-    parts.push(crate::core::rule::mutis_high_delegation::VIETNAMESE_RULE.to_owned());
+    parts.push(crate::core::rule::mutis_delegation::VIETNAMESE_RULE.to_owned());
     parts.push(format!("Task: {}", task.title.trim()));
     if !task.files.is_empty() {
         parts.push(format!("Files: {}", task.files.join(", ")));

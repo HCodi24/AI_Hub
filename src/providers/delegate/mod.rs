@@ -1,8 +1,7 @@
-//! MutiS High chat: Codex coordinates, the app runs the DeepSeek worker and hands the real report back to Codex.
+//! MutiS chat: the lead coordinates, and the app runs the worker and returns its report.
 //!
-//! Codex ends a turn with fenced `mutis-delegate` JSON blocks (see `core::rule::mutis_high_delegation`). The app runs
-//! each block on the worker, then resumes the same Codex thread with the worker's report. The app, not Codex, counts
-//! the attempts per task and tells Codex to take a task over once the limit is spent.
+//! The lead requests tasks with fenced `mutis-delegate` JSON blocks. The app runs each task on a worker,
+//! uses the checker when configured, counts attempts, and asks the lead to take over once the limit is spent.
 use super::schedule::run_round;
 use super::{for_kind, ProviderEvent, ProviderRequest};
 use crate::chat::{Effort, Permission};
@@ -22,14 +21,13 @@ mod report;
 use events::{message, turn};
 use live::Live;
 pub use parse::{check_files, extract};
-use parse::guard_ui;
 pub(super) use report::{auto_retry_reason, report, WorkerResult};
 use report::REVIEW_INSTRUCTION;
 
 pub const MAX_ATTEMPTS: usize = 4;
 /// Empty or failed worker runs the app repeats by itself (they still count as attempts) before the coordinator hears about them.
 pub(super) const MAX_AUTO_RETRIES: usize = 2;
-/// Guard against a Codex that keeps delegating: the number of Codex turns in one chat reply.
+/// Maximum number of lead turns in one chat reply.
 const MAX_ROUNDS: usize = 12;
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -43,44 +41,52 @@ pub struct Delegation {
     /// Titles of tasks whose result this one needs; it starts only after they passed their check. Independent tasks start at once.
     #[serde(default)]
     pub depends_on: Vec<String>,
-    /// Only with a DeepSeek worker: the coordinator marks a big task it will do itself, so the app does not delegate it.
-    #[serde(default)]
-    pub hard: bool,
     /// The coordinator marks a tiny low-risk change (a few lines of styling or text): Tester does not check it, the coordinator reads the diff.
     #[serde(default)]
     pub trivial: bool,
 }
 
 pub struct DelegateProvider {
-    /// The source that runs the tasks: an API agent (OpenAI-compatible) or a CLI (Codex, Claude), whichever is active.
+    /// The configured API agent or CLI that runs the tasks.
     pub worker: ProviderConfig,
     pub model: String,
-    /// Reasoning effort of the worker role; used when the worker is a CLI.
+    /// Reasoning effort of the worker role.
     pub effort: Effort,
+    pub worker_permission: Permission,
+    pub worker_count: usize,
     /// The independent checker (any source, its model and effort), when the option is on and configured.
     pub checker: Option<(ProviderConfig, String, Effort)>,
-    /// Shown once in the chat when the option is on but the checker cannot run (what to set in the High section).
+    pub checker_permission: Permission,
+    /// Shown once in the chat when the configured checker cannot run.
     pub checker_note: Option<String>,
     pub chat_id: String,
-    /// The lead (coordinator) source kind: `codex_cli` or `claude_cli`.
+    /// The effective source kind of the lead.
     pub lead_kind: String,
-    /// The CLI worker's thread kept in the chat record from an earlier message; None = start a new one.
-    pub worker_session: Option<String>,
-    /// The same for Worker 2, the second slot of the same worker.
-    pub worker2_session: Option<String>,
+    /// Saved CLI thread per worker slot; None starts a new thread.
+    pub worker_sessions: Vec<Option<String>>,
 }
 
-/// Key under which Worker 2's thread is kept in the chat record, next to the worker's own (`worker_id`).
-pub fn worker2_key(worker_id: &str) -> String {
-    format!("{worker_id}#2")
+pub(crate) const WORKER_SLOTS: u8 = 3;
+
+/// The first slot keeps the unsuffixed key used by existing chats.
+pub fn slot_key(worker_id: &str, slot: u8) -> String {
+    if slot == 0 {
+        worker_id.to_owned()
+    } else {
+        format!("{worker_id}#{}", slot + 1)
+    }
 }
 
 impl DelegateProvider {
-    /// One Codex turn: every event goes to the chat; returns the reply text and the native session id.
-    async fn codex_turn(&self, request: &ProviderRequest, events: &mpsc::Sender<ProviderEvent>, cancel: &CancellationToken) -> Result<(String, Option<String>)> {
+    /// One lead turn: every event goes to the chat; returns the reply text and the native session id.
+    async fn lead_turn(&self, request: &ProviderRequest, events: &mpsc::Sender<ProviderEvent>, cancel: &CancellationToken) -> Result<(String, Option<String>)> {
         // The coordinator gets its own turn before the call, so its text never mixes with a worker turn.
         if cancel.is_cancelled() { return Ok((String::new(), None)); }
-        let lead_name = if self.lead_kind == "claude_cli" { "Claude" } else { "Codex" };
+        let lead_name = match self.lead_kind.as_str() {
+            "codex_cli" => "Codex",
+            "claude_cli" => "Claude",
+            _ => &request.provider.name,
+        };
         if events.send(turn(&self.lead_kind, &request.model, lead_name)).await.is_err() {
             cancel.cancel();
             return Ok((String::new(), None));
@@ -128,8 +134,14 @@ impl DelegateProvider {
 impl super::Provider for DelegateProvider {
     async fn run(&self, mut request: ProviderRequest, events: mpsc::Sender<ProviderEvent>, cancel: CancellationToken) -> Result<()> {
         let live = Arc::new(Live {
-            worker: self.worker.clone(), model: self.model.clone(), effort: self.effort, worker_cli_session: Mutex::new(self.worker_session.clone()), worker_cli_tokens: Default::default(),
-            worker2_cli_session: Mutex::new(self.worker2_session.clone()), worker2_cli_tokens: Default::default(),
+            worker: self.worker.clone(), model: self.model.clone(), effort: self.effort,
+            worker_permission: self.worker_permission,
+            worker_count: self.worker_count,
+            checker_permission: self.checker_permission,
+            worker_cli_sessions: std::array::from_fn(|slot| {
+                Mutex::new(self.worker_sessions.get(slot).cloned().flatten())
+            }),
+            worker_cli_tokens: Default::default(),
             folder: request.folder.clone(), mutis: request.mutis.clone(),
             events: events.clone(), cancel: cancel.clone(), checker: self.checker.clone(),
             worker_session: format!("{}{}:{}:{}", super::worker_session::PREFIX, self.chat_id, self.worker.id, self.model),
@@ -138,13 +150,12 @@ impl super::Provider for DelegateProvider {
             tester_busy: Default::default(),
             checker_tokens: Mutex::new(None),
             can_edit: request.permission != Permission::Read,
-            permission: request.permission,
             codegraph: request.mcp.iter().find(|server| server.name == "codegraph").cloned(),
         });
         let mut attempts: HashMap<String, usize> = HashMap::new();
         let mut note = self.checker_note.clone();
         for _ in 0..MAX_ROUNDS {
-            let (text, session) = self.codex_turn(&request, &events, &cancel).await?;
+            let (text, session) = self.lead_turn(&request, &events, &cancel).await?;
             // The option is on but the checker cannot run: say so once, in the coordinator's activity, instead of silently skipping it.
             if let Some(note) = note.take() {
                 let _ = events.send(ProviderEvent::text("log", note)).await;
@@ -153,14 +164,10 @@ impl super::Provider for DelegateProvider {
                 request.session_id = session;
             }
             let (tasks, errors) = extract(&text);
-            let (tasks, ui_notes) = guard_ui(tasks, request.mutis.deepseek_ui || !live.worker_is_deepseek());
-            if cancel.is_cancelled() || (tasks.is_empty() && errors.is_empty() && ui_notes.is_empty()) {
+            if cancel.is_cancelled() || (tasks.is_empty() && errors.is_empty()) {
                 return Ok(());
             }
             let mut reply = errors.iter().map(|e| format!("Problem: {e}. Resend it as valid JSON.\n")).collect::<String>();
-            for note in &ui_notes {
-                reply.push_str(&format!("{note}\n\n"));
-            }
             let outcome = run_round(&live, tasks, &mut attempts).await;
             if cancel.is_cancelled() {
                 return Ok(());
@@ -181,7 +188,7 @@ impl super::Provider for DelegateProvider {
             request.messages.push(message("assistant", text));
             request.messages.push(message("user", reply));
         }
-        let _ = events.send(ProviderEvent::text("log", format!("Dừng giao việc: quá {MAX_ROUNDS} vòng Codex trong một lượt"))).await;
+        let _ = events.send(ProviderEvent::text("log", format!("Dừng giao việc: quá {MAX_ROUNDS} vòng của Lead trong một lượt"))).await;
         Ok(())
     }
 }

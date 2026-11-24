@@ -1,28 +1,16 @@
 use crate::{
     api::{ApiError, ApiResult},
     app::AppState,
-    mutis::Event,
+    mutis::{record_plan_event, Event, PlanEventError, PlanEventInput},
 };
 use axum::{
     extract::{Query, State},
     http::StatusCode,
     Json,
 };
-use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-#[derive(Deserialize)]
-pub(crate) struct PlanEventInput {
-    plan_id: String,
-    task_id: String,
-    provider_id: String,
-    kind: String,
-    #[serde(default)]
-    task_kind: Option<String>,
-    ok: bool,
-    detail: Option<String>,
-}
 pub(crate) async fn record_mutis_event(
     State(state): State<AppState>,
     Json(input): Json<PlanEventInput>,
@@ -31,32 +19,13 @@ pub(crate) async fn record_mutis_event(
     if !config.mutis.effective(config.mutis.event_log) {
         return Ok(Json(json!({"ok": true, "skipped": true})));
     }
-    if !matches!(input.kind.as_str(), "review" | "fix_task" | "verify") {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Loại sự kiện không hợp lệ",
-        ));
-    }
-    state
-        .event_log
-        .append(&Event {
-            ts: crate::core::time::now_secs(),
-            plan_id: Some(input.plan_id),
-            task_id: Some(input.task_id),
-            provider_id: input.provider_id,
-            kind: input.kind,
-            task_kind: input.task_kind,
-            ok: input.ok,
-            duration_ms: None,
-            tokens: None,
-            detail: input.detail,
-        })
-        .map_err(|_| {
-            ApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Không thể ghi nhật ký MutiS",
-            )
-        })?;
+    record_plan_event(&state.event_log, input).map_err(|error| match error {
+        PlanEventError::InvalidKind(message) => ApiError::new(StatusCode::BAD_REQUEST, message),
+        PlanEventError::AppendFailed => ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Không thể ghi nhật ký MutiS",
+        ),
+    })?;
     Ok(Json(json!({"ok": true})))
 }
 

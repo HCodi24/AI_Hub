@@ -7,8 +7,12 @@ import { effortFor, effortsFor } from "@/constants/chat";
 import { chatText } from "@/text/chat";
 import styles from "./chat-toolbar.module.css";
 
-type Role = Mutis["roles"]["lead"];
-const roleNames = ["lead", "small"] as const;
+type Role = Mutis["lead"];
+const roleNames = ["lead", "worker"] as const;
+
+function sameModel(left: Role, right: Role) {
+  return left.provider_id === right.provider_id && left.model === right.model;
+}
 
 function RoleSlider({ role, provider, disabled, save }: {
   role: Role; provider?: Config["providers"][number]; disabled: boolean;
@@ -39,13 +43,9 @@ function RoleSlider({ role, provider, disabled, save }: {
   </div>;
 }
 
-/** Persist model effort in the active MutiS profile, including shared lead/code roles. */
 export function MutisEfforts({ mutis, config, disabled }: { mutis: Mutis; config?: Config; disabled: boolean }) {
   const client = useQueryClient();
-  const profile = mutis.high_roles.lead.provider_id ? "high_roles" : "roles";
-  const roles = mutis[profile];
-  const activeRoleNames = roleNames;
-  const unique = activeRoleNames.filter((name, index) => activeRoleNames.findIndex(other => roles[other].provider_id === roles[name].provider_id && roles[other].model === roles[name].model) === index);
+  const unique = sameModel(mutis.lead, mutis.worker) ? roleNames.slice(0, 1) : roleNames;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const busy = useRef(false);
@@ -54,16 +54,16 @@ export function MutisEfforts({ mutis, config, disabled }: { mutis: Mutis; config
     busy.current = true; setSaving(true); setError("");
     try {
       const current = await mutisApi.get();
-      const next = { ...current[profile] };
+      const next = { ...current, lead: { ...current.lead }, worker: { ...current.worker } };
       let changed = false;
-      for (const name of activeRoleNames) {
-        if (next[name].provider_id === role.provider_id && next[name].model === role.model && next[name].effort !== effort) {
-          next[name] = { ...next[name], effort };
+      for (const name of roleNames) {
+        if (sameModel(current[name], role) && current[name].effort !== effort) {
+          next[name].effort = effort;
           changed = true;
         }
       }
       if (!changed) return true;
-      const result = await mutisApi.put({ ...current, [profile]: next });
+      const result = await mutisApi.put(next);
       client.setQueryData(["mutis"], result);
       return true;
     } catch {
@@ -73,9 +73,9 @@ export function MutisEfforts({ mutis, config, disabled }: { mutis: Mutis; config
     } finally { busy.current = false; setSaving(false); }
   }
   return <div className={styles.modelEfforts} aria-busy={saving}>
-    {unique.map(name => <RoleSlider key={`${profile}:${name}:${roles[name].provider_id}:${roles[name].model}`} role={roles[name]}
-      provider={config?.providers.find(provider => provider.id === roles[name].provider_id)} disabled={disabled || saving}
-      save={effort => save(roles[name], effort)} />)}
+    {unique.map(name => <RoleSlider key={`${name}:${mutis[name].provider_id}:${mutis[name].model}`} role={mutis[name]}
+      provider={config?.providers.find(provider => provider.id === mutis[name].provider_id)} disabled={disabled || saving}
+      save={effort => save(mutis[name], effort)} />)}
     {error && <p role="alert">{error}</p>}
   </div>;
 }

@@ -19,14 +19,14 @@ pub struct ChatRecord {
     pub messages: Vec<ChatMessage>,
     #[serde(default)]
     pub session_id: Option<String>,
-    /// MutiS High: the independent checker (Codex) keeps its own thread, resumed for every check instead of started anew.
+    /// The independent MutiS checker keeps its own thread, resumed for each check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checker_session_id: Option<String>,
     /// MutiS delegation: the CLI worker's own thread per worker source id, so the next message resumes what it just did.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub worker_sessions: std::collections::BTreeMap<String, String>,
-    /// The effort the user picked at the MutiS source (max/xhigh = three AIs, else High). None = a single model, not MutiS.
-    /// `provider_id` above is the lead MutiS resolved to, so this is what tells the two modes apart when the chat is reopened.
+    /// MutiS chat marker. New runs write "mutis"; any saved string marks a MutiS chat.
+    /// `provider_id` stores the resolved lead, so reopening uses this marker to distinguish the two modes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mutis_level: Option<String>,
     /// Input tokens of the last turn of each CLI thread of this chat (`main`, `worker:<source id>`), to rotate a thread that grew too big.

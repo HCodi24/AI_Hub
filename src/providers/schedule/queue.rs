@@ -42,18 +42,29 @@ pub(super) fn next_ready(queue: &mut VecDeque<Delegation>, state: &HashMap<Strin
     Next::Wait
 }
 
-/// A queued task that may run beside `first`: its dependencies are settled (`first` itself is not), it is not a big task, and it
-/// shares no file with `first`. Taken out of the queue.
-pub(super) fn take_partner(queue: &mut VecDeque<Delegation>, state: &HashMap<String, State>, first: &Delegation, skip: impl Fn(&Delegation) -> bool) -> Option<Delegation> {
+/// Removes the first ready task independent of every task already in the group.
+pub(super) fn take_partner(queue: &mut VecDeque<Delegation>, state: &HashMap<String, State>, group: &[Delegation]) -> Option<Delegation> {
+    if group.iter().any(|task| task.files.is_empty()) {
+        return None;
+    }
+    let grouped: Vec<_> = group.iter().map(|task| key(&task.title)).collect();
     let queued: Vec<String> = queue.iter().map(|t| key(&t.title)).collect();
     let index = queue.iter().position(|task| {
         let own = key(&task.title);
-        let settled = task.depends_on.iter().map(|d| key(d)).filter(|d| *d != own).all(|dep| match state.get(&dep) {
-            Some(State::Clean) => true,
-            None => dep != key(&first.title) && !queued.contains(&dep),
-            _ => false,
+        if grouped.contains(&own) || task.files.is_empty() {
+            return false;
+        }
+        let settled = task.depends_on.iter().map(|d| key(d)).filter(|d| *d != own).all(|dep| {
+            !grouped.contains(&dep) && match state.get(&dep) {
+                Some(State::Clean) => true,
+                None => !queued.contains(&dep),
+                _ => false,
+            }
         });
-        settled && !skip(task) && !task.files.is_empty() && !first.files.is_empty() && !overlap(&task.files, &first.files)
+        settled && group.iter().all(|other| {
+            !other.depends_on.iter().any(|dep| key(dep) == own)
+                && !overlap(&task.files, &other.files)
+        })
     })?;
     queue.remove(index)
 }

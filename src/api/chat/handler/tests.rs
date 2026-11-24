@@ -1,6 +1,48 @@
 use super::*;
 
 #[test]
+fn status_roles_use_the_configured_muti_s_sources() {
+    let mut config = crate::config::MutisConfig::default();
+    config.lead.provider_id = "lead-source".into();
+    config.worker.provider_id = "worker-source".into();
+    config.checker.provider_id = "checker-source".into();
+
+    for (id, role) in [
+        ("lead-source", "lead"),
+        ("worker-source", "worker"),
+        ("checker-source", "checker"),
+    ] {
+        assert_eq!(stream::status_role(&config, id, true), Some(role));
+        assert_eq!(stream::status_role(&config, id, false), None);
+    }
+    assert_eq!(stream::status_role(&config, "unknown", true), None);
+    config.checker.provider_id = config.lead.provider_id.clone();
+    assert_eq!(
+        stream::status_role(&config, "lead-source", true),
+        Some("lead")
+    );
+}
+
+#[test]
+fn saved_mutis_markers_round_trip() {
+    for marker in ["high", "mutis"] {
+        let saved = json!({
+            "id": "chat",
+            "title": "chat",
+            "provider_id": "lead-source",
+            "model": "model",
+            "folder": "",
+            "messages": [],
+            "updated_at": 0,
+            "mutis_level": marker
+        });
+        let record: crate::chat::ChatRecord = serde_json::from_value(saved).unwrap();
+        assert_eq!(record.mutis_level.as_deref(), Some(marker));
+        assert_eq!(serde_json::to_value(record).unwrap()["mutis_level"], json!(marker));
+    }
+}
+
+#[test]
 fn remembers_only_a_different_folder_for_non_plain_non_dev_chats() {
     assert!(should_remember_folder("old", "new", false, false));
     assert!(!should_remember_folder("same", "same", false, false));
@@ -8,39 +50,6 @@ fn remembers_only_a_different_folder_for_non_plain_non_dev_chats() {
     assert!(!should_remember_folder("old", "new", false, true));
 }
 
-fn source(id: &str, kind: &str, agent_capable: bool) -> crate::config::ProviderConfig {
-    crate::config::ProviderConfig {
-        id: id.into(),
-        kind: kind.into(),
-        agent_capable,
-        ..Default::default()
-    }
-}
-
-#[test]
-fn worker_candidates_start_with_the_role_source_whatever_its_kind() {
-    let providers = [
-        source("claude", "claude_cli", false),
-        source("api", "openai_compat", true),
-        source("codex", "codex_cli", false),
-        source("gemini", "antigravity_cli", false),
-        source("plain", "anthropic", false),
-    ];
-    let ids = |configured: &str| {
-        worker_candidates(&providers, configured)
-            .into_iter()
-            .map(|p| p.id)
-            .collect::<Vec<_>>()
-    };
-    // A CLI role source is used as it is (no API key needed), then the agent API source and the Codex source follow.
-    assert_eq!(ids("codex"), ["codex", "api"]);
-    assert_eq!(ids("claude"), ["claude", "api", "codex"]);
-    assert_eq!(ids("api"), ["api", "codex"]);
-    assert_eq!(ids("gemini"), ["gemini", "api", "codex"]);
-    // A kind that cannot run tasks, or an unknown id, is skipped; the others still apply.
-    assert_eq!(ids("plain"), ["api", "codex"]);
-    assert_eq!(ids("missing"), ["api", "codex"]);
-}
 
 fn request(messages: serde_json::Value) -> ProviderRequest {
     ProviderRequest {

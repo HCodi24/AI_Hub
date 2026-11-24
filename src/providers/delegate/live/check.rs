@@ -33,8 +33,8 @@ impl Live {
         let kind = provider.kind.clone();
         let mcp = self.mcp_for(&kind);
         let request = ProviderRequest {
-            // The checker has the permission the user chose for the chat (Full lets it run the tests); the prompt forbids editing.
-            provider, model: model.clone(), folder: self.folder.clone(), permission: self.permission, effort,
+            // The checker uses its configured permission; the prompt forbids editing.
+            provider, model: model.clone(), folder: self.folder.clone(), permission: self.checker_permission, effort,
             messages: vec![message("user", self.with_codegraph_note(mutis_checker::prompt(&task.title, &task.files, &task.acceptance, &work.summary, &work.diff, &commands, self.mutis.checker_app_rules, &self.mutis.checker_rules), &mcp))],
             session_id: session, mutis: self.mutis.clone(), mcp, write_scope: Vec::new(), checker_session_id: None,
         };

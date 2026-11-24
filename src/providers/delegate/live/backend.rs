@@ -12,10 +12,11 @@ use crate::providers::{
 #[async_trait::async_trait]
 impl Backend for Live {
     async fn work(&self, task: &Delegation, attempt: usize, feedback: Option<&str>, editor: Actor) -> WorkerResult {
+        let Actor::Worker(slot) = editor else { unreachable!("Only workers edit delegated tasks") };
         if self.worker_is_cli() {
-            self.work_cli(task, attempt, feedback, editor).await
+            self.work_cli(task, attempt, feedback, slot).await
         } else {
-            self.work_api(task, attempt, feedback, editor).await
+            self.work_api(task, attempt, feedback, slot).await
         }
     }
 
@@ -32,11 +33,9 @@ impl Backend for Live {
     }
 
     async fn announce_check(&self, task: &Delegation, attempt: usize, check: &CheckResult) {
-        let model = self.checker.as_ref().map_or("", |(_, model, _)| model.as_str());
-        let who = Actor::Tester;
-        let kind = self.checker.as_ref().map_or("codex_cli", |(provider, _, _)| provider.kind.as_str());
-        let name = self.actor_name(who);
-        if self.events.send(turn(kind, model, &name)).await.is_err() {
+        let Some((provider, model, _)) = &self.checker else { return };
+        let name = &provider.name;
+        if self.events.send(turn(&provider.kind, model, name)).await.is_err() {
             self.cancel.cancel();
             return;
         }
@@ -73,26 +72,25 @@ impl Backend for Live {
         self.can_edit
     }
 
-    fn splits_big_small(&self) -> bool {
-        self.worker_is_deepseek()
-    }
-
-    fn has_second_worker(&self) -> bool {
-        true
+    fn worker_slots(&self) -> usize {
+        self.worker_count.clamp(1, 3)
     }
 
     fn actor_name(&self, actor: Actor) -> String {
         match actor {
-            Actor::Worker => self.worker_label(),
+            Actor::Worker(0) => self.worker_label(),
             // The checker may be any source: show its own name.
-            Actor::Tester => self.checker.as_ref().map_or_else(|| actor.name().to_owned(), |(provider, _, _)| provider.name.clone()),
-            _ => actor.name().to_owned(),
+            Actor::Tester => self.checker.as_ref().map_or_else(
+                || "Người kiểm tra".to_owned(),
+                |(provider, _, _)| provider.name.clone(),
+            ),
+            Actor::Worker(slot) => format!("Worker {}", usize::from(slot) + 1),
         }
     }
 
     fn actor_model(&self, actor: Actor) -> Option<String> {
         match actor {
-            Actor::Worker | Actor::Worker2 => Some(self.model.clone()),
+            Actor::Worker(_) => Some(self.model.clone()),
             Actor::Tester => self.checker.as_ref().map(|(_, model, _)| model.clone()),
         }
     }
