@@ -9,6 +9,7 @@ mod connection;
 mod crud;
 mod login;
 mod models;
+mod shared;
 
 pub(crate) use cli::{cli_status, discover_cli};
 pub(crate) use codex::{codex_status, codex_action, codex_settings, CodexConnection};

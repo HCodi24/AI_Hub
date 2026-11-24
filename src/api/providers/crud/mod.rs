@@ -1,4 +1,7 @@
 //! Add, edit and remove AI sources, plus the validation and persistence they share.
+mod validate;
+
+use self::validate::{clean_models, validate_provider};
 use crate::{
     api::{ApiError, ApiResult},
     app::AppState,
@@ -34,16 +37,25 @@ pub(crate) struct ProviderInput {
     web_login: Option<bool>,
 }
 
+fn normalize_input(mut input: ProviderInput) -> ProviderInput {
+    input.name = input.name.trim().to_owned();
+    input.base_url = input.base_url.trim().trim_end_matches('/').to_owned();
+    input.executable = input.executable.trim().to_owned();
+    input.models = clean_models(input.models);
+    input
+}
+
 pub(crate) async fn create_provider(
     State(state): State<AppState>,
     Json(input): Json<ProviderInput>,
 ) -> ApiResult<Json<Config>> {
-    let mut config = state.config.write().await;
     let id = input
         .id
         .clone()
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     validate_provider(&id, &input)?;
+    let input = normalize_input(input);
+    let mut config = state.config.write().await;
     if config.providers.iter().any(|provider| provider.id == id) {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
@@ -54,19 +66,22 @@ pub(crate) async fn create_provider(
     let kind_is_cli = input.kind.ends_with("_cli");
     let provider = ProviderConfig {
         id,
-        name: input.name.trim().to_owned(),
-        base_url: input.base_url.trim().trim_end_matches('/').to_owned(),
+        name: input.name,
+        base_url: input.base_url,
         api_key: input.api_key.unwrap_or_default(),
-        executable: input.executable.trim().to_owned(),
-        models: clean_models(input.models),
+        executable: input.executable,
+        models: input.models,
         agent_capable: kind_is_openai && input.agent_capable.unwrap_or(false),
         web_login: kind_is_cli && input.web_login.unwrap_or(false),
         kind: input.kind,
         ..Default::default()
     };
-    crate::providers::antigravity_cli::sync_login_mode(&provider);
-    config.providers.push(provider);
-    persist_config(&state, &config)?;
+    let mut next = config.clone();
+    let index = next.providers.len();
+    next.providers.push(provider);
+    persist_config(&state, &next)?;
+    crate::providers::antigravity_cli::sync_login_mode(&next.providers[index]);
+    *config = next;
     Ok(Json(masked_config(&config)))
 }
 
@@ -76,6 +91,7 @@ pub(crate) async fn update_provider(
     Json(input): Json<ProviderInput>,
 ) -> ApiResult<Json<Config>> {
     validate_provider(&id, &input)?;
+    let input = normalize_input(input);
     let mut config = state.config.write().await;
     let Some(index) = config
         .providers
@@ -98,8 +114,8 @@ pub(crate) async fn update_provider(
     let old_web_login = config.providers[index].web_login;
     let kind_is_openai = input.kind == "openai_compat";
     let kind_is_cli = input.kind.ends_with("_cli");
-    let executable = input.executable.trim().to_owned();
-    let models = clean_models(input.models);
+    let executable = input.executable;
+    let models = input.models;
     let web_login = kind_is_cli && input.web_login.unwrap_or(old_web_login);
     let old = &config.providers[index];
     let model_efforts = if old.kind == input.kind && old.executable == executable && old.web_login == web_login {
@@ -108,10 +124,11 @@ pub(crate) async fn update_provider(
     } else {
         Default::default()
     };
-    config.providers[index] = ProviderConfig {
+    let mut next = config.clone();
+    next.providers[index] = ProviderConfig {
         id,
-        name: input.name.trim().to_owned(),
-        base_url: input.base_url.trim().trim_end_matches('/').to_owned(),
+        name: input.name,
+        base_url: input.base_url,
         api_key,
         executable,
         models,
@@ -120,8 +137,9 @@ pub(crate) async fn update_provider(
         web_login,
         kind: input.kind,
     };
-    crate::providers::antigravity_cli::sync_login_mode(&config.providers[index]);
-    persist_config(&state, &config)?;
+    persist_config(&state, &next)?;
+    crate::providers::antigravity_cli::sync_login_mode(&next.providers[index]);
+    *config = next;
     Ok(Json(masked_config(&config)))
 }
 
@@ -136,63 +154,30 @@ pub(crate) async fn remove_provider(
         ));
     }
     let mut config = state.config.write().await;
-    let previous_len = config.providers.len();
-    config.providers.retain(|provider| provider.id != id);
-    if config.providers.len() == previous_len {
+    let mut next = config.clone();
+    next.providers.retain(|provider| provider.id != id);
+    if next.providers.len() == config.providers.len() {
         return Err(ApiError::new(
             StatusCode::NOT_FOUND,
             "Không tìm thấy nhà cung cấp",
         ));
     }
-    persist_config(&state, &config)?;
-    Ok(Json(masked_config(&config)))
-}
+    persist_config(&state, &next)?;
+    *config = next;
+    let response = masked_config(&config);
+    drop(config);
 
-fn validate_provider(id: &str, input: &ProviderInput) -> ApiResult<()> {
-    if !valid_provider_id(id) {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Mã nhà cung cấp không hợp lệ",
-        ));
+    {
+        let mut active = state.claude_login.lock().await;
+        if active.as_ref().is_some_and(|session| session.provider_id == id) {
+            if let Some(mut session) = active.take() {
+                let _ = session.child.kill().await;
+            }
+        }
     }
-    if input.name.trim().is_empty() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Tên nhà cung cấp không được để trống",
-        ));
-    }
-    if !matches!(
-        input.kind.as_str(),
-        "openai_compat" | "anthropic" | "codex_cli" | "claude_cli" | "antigravity_cli"
-    ) {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "Loại nhà cung cấp không hợp lệ",
-        ));
-    }
-    if input.kind == "openai_compat" && input.base_url.trim().is_empty() {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "OpenAI-compatible cần URL cơ sở",
-        ));
-    }
-    Ok(())
-}
-
-fn valid_provider_id(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= 80
-        && id.chars().all(|character| {
-            character.is_ascii_alphanumeric() || character == '-' || character == '_'
-        })
-}
-
-fn clean_models(models: Vec<String>) -> Vec<String> {
-    models
-        .into_iter()
-        .map(|model| model.trim().to_owned())
-        .filter(|model| !model.is_empty())
-        .collect()
+    super::codex::close_connection(&state, &id).await;
+    state.provider_status.lock().await.remove(&id);
+    Ok(Json(response))
 }
 
 fn masked_config(config: &Config) -> Config {
@@ -207,3 +192,6 @@ pub(super) fn persist_config(state: &AppState, config: &Config) -> ApiResult<()>
     config::save(&state.config_path, config)
         .map_err(|_| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "Không thể lưu cấu hình"))
 }
+
+#[cfg(test)]
+mod tests;

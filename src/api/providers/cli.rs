@@ -2,6 +2,7 @@
 use crate::{
     api::{ApiError, ApiResult},
     app::AppState,
+    config::Config,
     providers::discovery,
 };
 use axum::{
@@ -30,7 +31,7 @@ pub(crate) async fn discover_cli(
     if !["codex", "claude", "agy"].contains(&name.as_str()) {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
-            "CLI kh\u{00f4}ng h\u{1ee3}p l\u{1ec7}",
+            "CLI không hợp lệ",
         ));
     }
     Ok(Json(discovery::discover_candidates(&name).await))
@@ -38,18 +39,8 @@ pub(crate) async fn discover_cli(
 
 pub(crate) async fn cli_status(State(state): State<AppState>) -> Json<CliStatus> {
     let config = state.config.read().await;
-    let codex_executable = config
-        .providers
-        .iter()
-        .find(|provider| provider.kind == "codex_cli")
-        .map(|provider| provider.executable.clone())
-        .unwrap_or_default();
-    let claude_executable = config
-        .providers
-        .iter()
-        .find(|provider| provider.kind == "claude_cli")
-        .map(|provider| provider.executable.clone())
-        .unwrap_or_default();
+    let codex_executable = executable_of(&config, "codex_cli");
+    let claude_executable = executable_of(&config, "claude_cli");
     drop(config);
     let (codex_cli, claude_cli) = tokio::join!(
         cli_info("codex", codex_executable),
@@ -59,6 +50,15 @@ pub(crate) async fn cli_status(State(state): State<AppState>) -> Json<CliStatus>
         codex_cli,
         claude_cli,
     })
+}
+
+fn executable_of(config: &Config, kind: &str) -> String {
+    config
+        .providers
+        .iter()
+        .find(|provider| provider.kind == kind)
+        .map(|provider| provider.executable.clone())
+        .unwrap_or_default()
 }
 
 async fn cli_info(name: &str, explicit_path: String) -> CliInfo {
