@@ -1,6 +1,12 @@
 .card { margin-top: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-4); background: var(--bg); min-width: 0; box-shadow: var(--shadow-edge); }
 .header { display: grid; gap: var(--space-1); margin-bottom: var(--space-4); }
 .header > span, .description, .footer > span { color: var(--muted); font-size: var(--font-small); line-height: 1.5; }
+.progress { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--font-small); }
+.dot { display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.dot::before { content: ""; box-sizing: border-box; width: 8px; height: 8px; border: 1px solid var(--border); border-radius: 50%; }
+.dot[data-answered]::before { border-color: var(--accent); background: var(--accent); }
+.dot[aria-current="step"]::before { outline: 1px solid var(--accent); outline-offset: 2px; }
+.dot:focus-visible { outline: 2px solid var(--focus); border-radius: var(--radius-small); }
 .question { border: 0; padding: 0; margin: 0 0 var(--space-4); min-width: 0; }
 .question legend { font-weight: 600; margin-bottom: var(--space-2); overflow-wrap: anywhere; }
 .option { display: flex; align-items: flex-start; gap: var(--space-3); min-height: 44px; padding: var(--space-3); margin-bottom: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-small); cursor: pointer; overflow-wrap: anywhere; }
@@ -16,4 +22,6 @@
 .custom textarea { width: 100%; box-sizing: border-box; min-height: 88px; resize: vertical; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--bg); color: var(--text); padding: var(--space-3); font: inherit; }
 .custom textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .footer { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.navigation { display: flex; gap: var(--space-2); margin-inline-end: auto; }
+.navigation ~ button[type="submit"] { margin-inline-start: auto; }
 @media (max-width: 480px) { .card { padding: var(--space-3); } .footer button { width: 100%; } }

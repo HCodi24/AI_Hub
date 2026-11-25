@@ -4,7 +4,10 @@
 //!
 //! Plugin and MCP changes go through the CLIs. Skill folders are copied directly.
 
-use super::{paths::read_json, skills::shared_skill_names};
+use super::{
+    paths::read_json,
+    skills::{builtin_skill_names, shared_skill_names},
+};
 use anyhow::{bail, Context, Result};
 use serde::Serialize;
 use serde_json::Value;
@@ -47,6 +50,7 @@ pub struct Overview {
     pub personal: Home,
     pub hub: Home,
     pub shared_skills: Vec<String>,
+    pub builtin_skills: Vec<String>,
 }
 
 pub fn personal_claude_dir() -> Option<PathBuf> {
@@ -63,6 +67,7 @@ pub fn overview(hub_dir: &Path, skills_dir: &Path) -> Overview {
         personal: personal_claude_home(),
         hub: claude_home(hub_dir, &hub_dir.join(".claude.json")),
         shared_skills: shared_skill_names(skills_dir),
+        builtin_skills: builtin_skill_names(),
     }
 }
 

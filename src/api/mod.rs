@@ -3,6 +3,7 @@ pub mod attachments;
 pub mod chat;
 pub mod config;
 pub mod debate;
+mod demo;
 pub mod dev;
 pub mod extensions;
 pub mod folder;

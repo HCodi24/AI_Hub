@@ -2,10 +2,10 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/button/button";
 import { notify } from "@/components/toast/toast";
 import { chatText } from "@/text/chat";
-import { useChatStore } from "./chat-store";
-import { useCardStore } from "./card-store";
+import { useChatStore } from "../chat-store";
+import { useCardStore } from "../card-store";
 import type { SendReply } from "./quick-replies";
-import styles from "./chat-message.module.css";
+import styles from "../chat-message.module.css";
 
 /** The run was blocked by the chat's permission: offer the same message again one level up (the user's click is the approval). */
 export function PermissionRetry({ need, text, send }: { need: "write" | "full"; text: string; send: SendReply }) {

@@ -3,6 +3,8 @@ import { Minus, MousePointerClick, PanelRight, Play, Plus, RotateCw } from "luci
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { devApi } from "@/apis/dev.api";
+import { demoApi } from "@/apis/demo.api";
+import { Button } from "@/components/button/button";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { notify } from "@/components/toast/toast";
 import { useChatStore } from "@/components/features/chat/chat-store";
@@ -44,14 +46,20 @@ export function safePreviewUrl(value: string): string | null {
   } catch { return null; }
 }
 
-function ServerStatus({ address, folder, onUp }: { address: URL | null; folder: string; onUp: () => void }) {
+function demoSize(bytes: number) {
+  const kb = bytes / 1024;
+  if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`;
+  if (kb >= 1) return `${kb.toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+function ServerStatus({ address, folder, dev, onUp }: { address: URL | null; folder: string; dev: boolean; onUp: () => void }) {
   const client = useQueryClient();
-  const dev = useQuery({ queryKey: ["dev-status"], queryFn: ({ signal }) => devApi.status(signal) });
   const hostname = address?.hostname;
   const host = hostname === "localhost" ? "localhost" : hostname === "127.0.0.1" ? "ipv4" : hostname === "[::1]" ? "ipv6" : null;
   const port = Number(address?.port || (address?.protocol === "https:" ? 443 : 80));
   const own = !address || (port === 7880 && (host === "localhost" || host === "ipv4"));
-  const managed = own ? dev.data?.dev === true : host !== null && folder !== "";
+  const managed = own ? dev : host !== null && folder !== "";
   const server = useQuery({
     queryKey: own && managed ? ["preview-server"] : ["preview-server", host, port],
     enabled: managed || host !== null,
@@ -89,9 +97,46 @@ function ServerStatus({ address, folder, onUp }: { address: URL | null; folder: 
 
 /** Preview of the page being edited. */
 export function PreviewPanel() {
+  const { data: devStatus } = useQuery({
+    queryKey: ["dev-status"],
+    queryFn: ({ signal }) => devApi.status(signal),
+  });
+  const dev = devStatus?.dev === true;
   const folder = useChatStore(s => s.settings.folder);
   const reply = useChatStore(s => [...s.messages].reverse().find(m => m.role === "assistant")?.content ?? "");
   const streaming = useChatStore(s => s.streaming);
+  const client = useQueryClient();
+  const { data: demoFiles } = useQuery({
+    queryKey: ["demo-files", folder],
+    queryFn: ({ signal }) => demoApi.list(folder, signal),
+    enabled: Boolean(folder),
+    refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (!folder) return;
+    const refreshDemoFiles = () => {
+      void client.invalidateQueries({ queryKey: ["demo-files", folder], exact: true });
+    };
+    window.addEventListener("focus", refreshDemoFiles);
+    return () => window.removeEventListener("focus", refreshDemoFiles);
+  }, [client, folder]);
+  useEffect(() => useChatStore.subscribe((state, previous) => {
+    const finishedFolder = previous.settings.folder;
+    if (previous.streaming && !state.streaming && finishedFolder) {
+      void client.invalidateQueries({ queryKey: ["demo-files", finishedFolder], exact: true });
+    }
+  }), [client]);
+  const removeDemo = useMutation({
+    mutationFn: ({ folder }: { folder: string; files: number }) => demoApi.remove(folder),
+    onSuccess: async ({ skipped, ...remaining }, { folder, files }) => {
+      const queryKey = ["demo-files", folder];
+      await client.cancelQueries({ queryKey, exact: true });
+      client.setQueryData(queryKey, remaining);
+      const removed = t.demoRemoved(Math.max(0, files - remaining.files));
+      notify(skipped.length ? `${removed}. ${t.demoSkipped(skipped)}` : removed);
+    },
+    onError: error => notify(error instanceof Error ? error.message : t.demoRemoveError),
+  });
   const ran = useRef(false);
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
@@ -222,7 +267,14 @@ export function PreviewPanel() {
         </div>
         <IconButton type="button" aria-label={t.pick} aria-pressed={picking} disabled={!pickerReady} title={pickerReady ? (picking ? t.picking : t.pick) : t.noPicker} onClick={pick}><MousePointerClick size={18} /></IconButton>
       </form>
-      <ServerStatus key={address?.origin} address={address} folder={folder} onUp={() => setVersion(v => v + 1)} />
+      <ServerStatus key={address?.origin} address={address} folder={folder} dev={dev} onUp={() => setVersion(v => v + 1)} />
+      {folder && demoFiles && demoFiles.files > 0 && <div className={styles.server}>
+        <span title={demoFiles.dirs.map(dir => dir.path).join("\n")}>
+          {t.demoFiles(demoFiles.files, demoSize(demoFiles.bytes))}
+        </span>
+        <Button size="sm" disabled={removeDemo.isPending}
+          onClick={() => removeDemo.mutate({ folder, files: demoFiles.files })}>{t.removeDemo}</Button>
+      </div>}
       {safe && src ? <div className={styles.frameViewport}>
         <iframe ref={attachFrame} key={`${src}|${version}`} onLoad={() => {
           setPicking(false);

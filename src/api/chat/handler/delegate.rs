@@ -28,10 +28,12 @@ pub(super) async fn select_delegate(
     let Some(worker) = delegate_worker else {
         return (None, None, None);
     };
-    let connected = crate::api::providers::cached_provider_test(state, &worker.0.id)
+    // Only a signed-out worker is dropped: a test that merely failed (network timeout) must not silently turn delegation
+    // off for this turn; a worker that is really broken reports its own error in the round.
+    let signed_out = crate::api::providers::cached_provider_test(state, &worker.0.id)
         .await
-        .is_ok_and(|test| test.status == "connected");
-    if !connected {
+        .is_ok_and(|test| test.status == "not_configured");
+    if signed_out {
         return (None, None, None);
     }
 

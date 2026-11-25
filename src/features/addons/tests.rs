@@ -392,6 +392,7 @@ fn shared_skill_wins_and_legacy_lookup_only_reads_configured_homes() {
     assert_eq!(skill.content, "# Bản cũ của Codex");
     assert!(skill
         .directory
+        .unwrap()
         .ends_with("codex/second-codex/skills/review"));
     assert!(shared_skill_catalogue(&config).is_empty());
 
@@ -434,6 +435,53 @@ fn skill_lookup_rejects_invalid_names_non_files_and_oversized_markdown() {
         panic!("expected size limit");
     };
     assert!(error.to_string().contains("64 KiB"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn loads_embedded_demo_without_a_resource_directory() {
+    let dir = temp("builtin-demo");
+    let config = dir.join("config.json");
+    let skill = load_skill(&config, &[], "demo").unwrap().unwrap();
+    assert_eq!(skill.content, include_str!("skills/builtin/demo/SKILL.md"));
+    assert!(skill.directory.is_none());
+    assert!(shared_skill_catalogue(&config).is_empty());
+    assert!(remove_shared_skill(&config, "demo").is_err());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn shared_demo_overrides_the_embedded_skill() {
+    let dir = temp("shared-demo");
+    let config = dir.join("config.json");
+    let shared = shared_skills_dir(&config).unwrap().join("demo");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(shared.join("SKILL.md"), "# Demo riêng").unwrap();
+
+    let skill = load_skill(&config, &[], "demo").unwrap().unwrap();
+    assert_eq!(skill.content, "# Demo riêng");
+    assert_eq!(
+        skill.directory,
+        Some(crate::core::text::strip_verbatim(shared.canonicalize().unwrap()))
+    );
+
+    remove_shared_skill(&config, "demo").unwrap();
+    let skill = load_skill(&config, &[], "demo").unwrap().unwrap();
+    assert_eq!(skill.content, include_str!("skills/builtin/demo/SKILL.md"));
+    assert!(skill.directory.is_none());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn overview_lists_builtin_skills_separately() {
+    let dir = temp("builtin-overview");
+    let shared = shared_skills_dir(&dir.join("config.json")).unwrap();
+    let overview = overview(&dir.join("claude-config"), &shared);
+    assert_eq!(overview.builtin_skills, ["demo"]);
+    assert!(overview.shared_skills.is_empty());
+    let json = serde_json::to_value(&overview).unwrap();
+    assert_eq!(json["builtin_skills"], serde_json::json!(["demo"]));
+    assert_eq!(json["shared_skills"], serde_json::json!([]));
     fs::remove_dir_all(dir).unwrap();
 }
 

@@ -8,7 +8,7 @@ import { Sidebar } from "@/components/sidebar/sidebar";
 import { Spinner } from "@/components/spinner/spinner";
 import { CompactButton } from "@/components/features/composer/compact-button";
 import { Composer } from "@/components/features/composer/composer";
-import { ChatHeader } from "@/components/features/composer/chat-toolbar";
+import { ChatHeader } from "@/components/features/composer/toolbar/chat-toolbar";
 import { ACTIVE_CHAT_KEY, useChatStore } from "./chat-store";
 import { useChat } from "./use-chat";
 import { useDashboardPreference } from "./use-dashboard-preference";

@@ -7,7 +7,12 @@ const HomeSchema = z.object({
   path: z.string().default(""), plugins: z.array(PluginSchema).default([]), skills: z.array(z.string()).default([]),
   mcp: z.array(McpServerSchema).default([]),
 });
-export const AddonsSchema = z.object({ personal: HomeSchema, hub: HomeSchema, shared_skills: z.array(z.string()).default([]) });
+export const AddonsSchema = z.object({
+  personal: HomeSchema,
+  hub: HomeSchema,
+  shared_skills: z.array(z.string()).default([]),
+  builtin_skills: z.array(z.string()).default([]),
+});
 export const AddonChangeResultSchema = z.object({ ok: z.boolean(), output: z.string().default("") });
 export type Addons = z.infer<typeof AddonsSchema>;
 export type AddonHome = z.infer<typeof HomeSchema>;

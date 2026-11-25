@@ -1,5 +1,5 @@
-use super::{shared::skill_file, shared_skills_dir, skill_install_lock};
 use super::super::paths::{check_directories, valid_skill_name};
+use super::{builtin::builtin_skill, shared::skill_file, shared_skills_dir, skill_install_lock};
 use anyhow::{bail, Context, Result};
 use std::{
     fs,
@@ -26,7 +26,7 @@ pub(super) fn find_skill(skills_dir: &Path, name: &str) -> Result<Option<(PathBu
 }
 
 pub(crate) struct LoadedSkill {
-    pub directory: PathBuf,
+    pub directory: Option<PathBuf>,
     pub content: String,
 }
 
@@ -41,6 +41,12 @@ pub(crate) fn load_skill(
     let _guard = skill_install_lock()?;
     if let Some((file, directory)) = find_skill(&shared_skills_dir(config_path)?, name)? {
         return read_skill(file, directory).map(Some);
+    }
+    if let Some(content) = builtin_skill(name) {
+        return Ok(Some(LoadedSkill {
+            directory: None,
+            content: content.to_owned(),
+        }));
     }
 
     let claude = crate::providers::cli_support::claude_config_dir(config_path)?.join("skills");
@@ -76,7 +82,7 @@ fn read_skill(file: PathBuf, directory: PathBuf) -> Result<LoadedSkill> {
     let content = String::from_utf8(bytes)
         .with_context(|| format!("Tệp «{}» phải dùng UTF-8", file.display()))?;
     Ok(LoadedSkill {
-        directory: crate::core::text::strip_verbatim(directory),
+        directory: Some(crate::core::text::strip_verbatim(directory)),
         content,
     })
 }

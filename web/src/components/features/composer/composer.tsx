@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
-import { ArrowUp, Square, Scale, ImagePlus, Plus, X, FileEdit, FileUp, MousePointerClick } from "lucide-react";
+import { Scale, X, FileEdit, MousePointerClick } from "lucide-react";
 import { addonsApi } from "@/apis/addons.api";
 import { droppedFiles, fileReadError, importDirectory, importTextFile, importedFileText, type DroppedFile, type ImportedFile } from "@/lib/import-file";
-import { Button } from "@/components/button/button";
 import { http } from "@/lib/http";
 import { chatText } from "@/text/chat";
 import { previewText } from "@/text/preview";
@@ -12,7 +11,9 @@ import { cardText as t } from "@/text/cards";
 import { notify } from "@/components/toast/toast";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { useChatStore } from "@/components/features/chat/chat-store";
-import { ChatToolbar } from "./chat-toolbar";
+import { ChatToolbar } from "./toolbar/chat-toolbar";
+import { AttachmentMenu } from "./box/attachment-menu";
+import { SendButton } from "./box/send-button";
 import { SkillSuggestions } from "./skill-suggestions";
 import { AttachmentCard } from "@/components/features/chat/attachment-card";
 import { previewSelectionText } from "@/lib/preview-selection";
@@ -36,8 +37,7 @@ function suggestionTokenAt(value: string, caret: number): SuggestionToken | null
   if (token.includes("/") || token.includes("\\")) return null;
   return { start, end, prefix: value.slice(start + 1, caret).toLowerCase() };
 }
-function skillHighlightParts(value: string, skills: readonly string[] | undefined): HighlightPart[] {
-  const knownSkills = new Set(skills ?? []);
+function skillHighlightParts(value: string, knownSkills: ReadonlySet<string>): HighlightPart[] {
   const parts: HighlightPart[] = [];
   const tokenPattern = /\/([^\p{White_Space}]*)/gu;
   let cursor = 0;
@@ -99,17 +99,22 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const [activeSkill, setActiveSkill] = useState<string | null>(null);
   const skillListId = useId();
   const addons = useQuery({ queryKey: ["addons"], queryFn: ({ signal }) => addonsApi.overview(signal) });
-  const sharedSkills = addons.isSuccess ? addons.data.shared_skills : undefined;
-  const highlightParts = useMemo(() => skillHighlightParts(value, sharedSkills), [value, sharedSkills]);
+  const { shared_skills: sharedSkills, builtin_skills: builtinSkills } =
+    (addons.isSuccess ? addons.data : undefined) ?? {};
+  const knownSkills = useMemo(
+    () => new Set<string>([...(sharedSkills ?? []), ...(builtinSkills ?? [])]),
+    [sharedSkills, builtinSkills],
+  );
+  const highlightParts = useMemo(() => skillHighlightParts(value, knownSkills), [value, knownSkills]);
   const firstSlashToken = FIRST_SLASH_TOKEN.exec(value);
   const suggestionToken = selection.start === selection.end ? suggestionTokenAt(value, selection.start) : null;
   const prefix = focused && !streaming && !composing && !suggestionsDismissed && suggestionToken
     ? suggestionToken.prefix
     : null;
   const suggestions = useMemo(() => {
-    if (prefix === null || !sharedSkills) return [];
-    return sharedSkills.filter(name => name.toLowerCase().startsWith(prefix));
-  }, [prefix, sharedSkills]);
+    if (prefix === null) return [];
+    return [...knownSkills].filter(name => name.toLowerCase().startsWith(prefix));
+  }, [prefix, knownSkills]);
   const menuOpen = suggestions.length > 0;
   const activeIndex = Math.max(0, suggestions.indexOf(activeSkill ?? ""));
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -122,16 +127,6 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const input = useRef<HTMLTextAreaElement>(null);
   const highlight = useRef<HTMLDivElement>(null);
   const nextCaret = useRef<number | null>(null);
-  const picker = useRef<HTMLInputElement>(null);
-  const filePicker = useRef<HTMLInputElement>(null);
-  const attachmentMenu = useRef<HTMLDetailsElement>(null);
-  useEffect(() => {
-    function closeOutside(event: PointerEvent) {
-      if (attachmentMenu.current?.open && !attachmentMenu.current.contains(event.target as Node)) attachmentMenu.current.open = false;
-    }
-    document.addEventListener("pointerdown", closeOutside, true);
-    return () => document.removeEventListener("pointerdown", closeOutside, true);
-  }, []);
   const pending = useRef(false);
   // Uploads are stored per chat id, so images picked for another chat no longer apply.
   const owner = useRef(chatId);
@@ -239,8 +234,6 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
       }
     } finally {
       importing.current = false; setUploading(false);
-      if (picker.current) picker.current.value = "";
-      if (filePicker.current) filePicker.current.value = "";
     }
   }, [updateAttachments]);
   useEffect(() => {
@@ -313,30 +306,12 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         <button type="button" disabled={uploading} aria-label={`${chatText.removeFile}: ${file.name}`} onClick={() => updateAttachments(attached.current.filter(item => item.id !== file.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
     {menuOpen && <SkillSuggestions id={skillListId} names={suggestions} activeIndex={activeIndex} onSelect={selectSkill} />}
     <div className={styles.box}>
-      <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden onChange={(event) => void addFiles([...(event.target.files ?? [])])} />
-      <input ref={filePicker} type="file" multiple hidden onChange={(event) => void addFiles([...(event.target.files ?? [])])} />
-      <details ref={attachmentMenu} className={styles.attachments} onKeyDown={(event) => {
-        if (event.key === "Escape") { event.preventDefault(); event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); }
-      }}>
-        <summary aria-label={chatText.composerActions} title={chatText.composerActions}><Plus size={22} aria-hidden="true" /></summary>
-        <div className={styles.attachmentMenu}>
-          <Button variant="ghost" type="button" disabled={streaming || uploading || Boolean(running)} onClick={() => {
-            if (attachmentMenu.current) attachmentMenu.current.open = false;
-            picker.current?.click();
-          }}><ImagePlus size={18} aria-hidden="true" />{chatText.attachImage}</Button>
-          <Button variant="ghost" type="button" disabled={streaming || uploading || Boolean(running)} onClick={() => {
-            if (attachmentMenu.current) attachmentMenu.current.open = false;
-            filePicker.current?.click();
-          }}><FileUp size={18} aria-hidden="true" />{chatText.importFile}</Button>
-          <Button variant="ghost" type="button" disabled={!folder} onClick={() => {
-            if (attachmentMenu.current) {
-              attachmentMenu.current.open = false;
-              attachmentMenu.current.querySelector("summary")?.focus();
-            }
-            setMemory(true);
-          }}><FileEdit size={18} aria-hidden="true" />{chatText.memory}</Button>
-        </div>
-      </details>
+      <AttachmentMenu
+        disabled={streaming || uploading || Boolean(running)}
+        memoryDisabled={!folder}
+        onFiles={(files) => void addFiles(files)}
+        onMemory={() => setMemory(true)}
+      />
       <div className={styles.inputWrap}>
       <div ref={highlight} className={styles.inputHighlight} aria-hidden="true">
         {highlightParts.map((part, index) => part.highlighted
@@ -374,8 +349,11 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         syncHighlight(event.currentTarget, highlight.current);
       }} />
       </div>
-      {streaming ? <Button className={styles.sendButton} variant="danger" onClick={() => void stop()} aria-label={chatText.stop} title={chatText.stop}><Square size={18} aria-hidden="true" /></Button> :
-        <Button className={styles.sendButton} variant="primary" type="submit" disabled={uploading || !canSend || Boolean(running)} aria-label={chatText.send} title={chatText.send}><ArrowUp size={20} aria-hidden="true" /></Button>}
+      <SendButton
+        streaming={streaming}
+        disabled={uploading || !canSend || Boolean(running)}
+        onStop={() => void stop()}
+      />
     </div>
     <div className={styles.toolbar}>
       <ChatToolbar config={config} />

@@ -13,11 +13,12 @@ fn slash_command(content: &str) -> Option<&str> {
         .next()
 }
 
-fn skill_context(name: &str, directory: &std::path::Path, content: &str) -> String {
+fn skill_context(name: &str, directory: Option<&std::path::Path>, content: &str) -> String {
+    let resources = directory
+        .map(|directory| format!(" Tài nguyên đi kèm nằm trong «{}».", directory.display()))
+        .unwrap_or_default();
     format!(
-        "Skill MutiS «/{name}» được chọn cho yêu cầu này. Tài nguyên đi kèm nằm trong «{}». Hãy dùng công cụ và quyền hiện có của phiên chat.\n\n<mutis-skill>\n{}\n</mutis-skill>",
-        directory.display(),
-        content
+        "Skill MutiS «/{name}» được chọn cho yêu cầu này.{resources} Hãy dùng công cụ và quyền hiện có của phiên chat.\n\n<mutis-skill>\n{content}\n</mutis-skill>"
     )
 }
 
@@ -50,7 +51,7 @@ pub(super) async fn expand_message(
         let Some(skill) = addons::load_skill(&config_path, &providers, &name)? else {
             return Ok(String::new());
         };
-        Ok(skill_context(&name, &skill.directory, &skill.content))
+        Ok(skill_context(&name, skill.directory.as_deref(), &skill.content))
     })
     .await
     .map_err(|error| {

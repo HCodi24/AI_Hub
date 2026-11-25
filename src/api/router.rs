@@ -170,6 +170,10 @@ pub fn router(state: AppState) -> Router {
             post(crate::api::chat::compact_chat),
         )
         .route("/api/folder-tree", get(crate::api::folder::list_dir))
+        .route(
+            "/api/demo",
+            get(crate::api::demo::list).delete(crate::api::demo::delete),
+        )
         .route("/api/pick-folder", post(crate::api::folder::pick_folder))
         .route("/api/mcp/test", post(crate::api::mcp::test))
         .route("/api/pets", get(crate::api::pets::list))

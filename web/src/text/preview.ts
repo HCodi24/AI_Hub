@@ -1,4 +1,9 @@
 export const previewText = {
+  demoFiles: (files: number, size: string) => `Demo: ${files} file · ${size}`,
+  removeDemo: "Xoá demo",
+  demoRemoved: (files: number) => `Đã xoá ${files} file demo`,
+  demoSkipped: (paths: string[]) => `Bỏ qua ${paths.join(", ")} vì có file Git đang theo dõi`,
+  demoRemoveError: "Không thể xoá file demo.",
   server: (port: number) => `localhost:${port}`,
   serverChecking: "Đang kiểm tra", serverRunning: "Đang chạy", serverStopped: "Không chạy", serverUnknown: "Chưa xác định",
   zoomIn: "Phóng to trang", zoomOut: "Thu nhỏ trang", zoomReset: "Về 100%",

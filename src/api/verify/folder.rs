@@ -2,7 +2,7 @@ use crate::api::{ApiError, ApiResult};
 use axum::http::StatusCode;
 use std::path::PathBuf;
 
-pub(super) fn project_folder(raw: &str) -> ApiResult<PathBuf> {
+pub(crate) fn project_folder(raw: &str) -> ApiResult<PathBuf> {
     let folder = PathBuf::from(raw)
         .canonicalize()
         .map(crate::core::text::strip_verbatim)

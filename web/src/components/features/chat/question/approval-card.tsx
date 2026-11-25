@@ -3,8 +3,8 @@ import { chatApi } from "@/apis/chat.api";
 import { Button } from "@/components/button/button";
 import { notify } from "@/components/toast/toast";
 import { chatText } from "@/text/chat";
-import { useChatStore } from "./chat-store";
-import styles from "./chat-message.module.css";
+import { useChatStore } from "../chat-store";
+import styles from "../chat-message.module.css";
 
 /** The run is paused on a command the chat's permission would refuse: the user decides, once, for this command only. */
 export function ApprovalCard({ id, command }: { id: string; command: string }) {

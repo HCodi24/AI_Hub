@@ -2,12 +2,14 @@ use anyhow::{Context, Result};
 use ring::hmac;
 use std::sync::{LazyLock, Mutex};
 
+mod builtin;
 mod copy;
 mod install;
 mod load;
 mod shared;
 mod swap;
 
+pub(super) use builtin::builtin_skill_names;
 pub(super) use copy::copy_checkout_dir;
 pub use install::install_checkout_skill;
 pub(crate) use load::load_skill;

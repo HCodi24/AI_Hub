@@ -1,5 +1,5 @@
 mod commands;
-mod folder;
+pub(crate) mod folder;
 mod plan_diff;
 mod run;
 #[cfg(test)]

@@ -3,9 +3,9 @@ import { Button } from "@/components/button/button";
 import { notify } from "@/components/toast/toast";
 import { chatText } from "@/text/chat";
 import { chatChoices } from "@/lib/chat-choices";
-import { useChatStore } from "./chat-store";
-import { useCardStore } from "./card-store";
-import styles from "./chat-message.module.css";
+import { useChatStore } from "../chat-store";
+import { useCardStore } from "../card-store";
+import styles from "../chat-message.module.css";
 
 export type SendReply = (text: string, direct?: boolean) => Promise<boolean>;
 export function QuickReplies({ content, send }: { content: string; send: SendReply }) {

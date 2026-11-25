@@ -2,14 +2,14 @@ import { forwardRef, memo, useMemo, type HTMLAttributes, type Ref } from "react"
 import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/empty-state/empty-state";
 import { ScrollArea } from "@/components/scroll-area";
+import { parseChatQuestions } from "@/lib/chat-questions";
 import { ChatMessage } from "./chat-message";
 import { useChatStore } from "./chat-store";
 import { TesterActivity } from "./tester-activity";
-import { QuickReplies, type SendReply } from "./quick-replies";
-import { parseChatQuestions } from "@/lib/chat-questions";
-import { ChatQuestions } from "./chat-questions";
-import { PermissionRetry } from "./permission-retry";
-import { ApprovalCard } from "./approval-card";
+import { ApprovalCard } from "./question/approval-card";
+import { ChatQuestions } from "./question/chat-questions";
+import { PermissionRetry } from "./question/permission-retry";
+import { QuickReplies, type SendReply } from "./question/quick-replies";
 import { useChatScrollFollow } from "./use-chat-scroll-follow";
 import styles from "./chat-screen.module.css";
 

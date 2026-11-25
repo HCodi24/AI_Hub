@@ -135,7 +135,8 @@ impl<B: Backend> Round<'_, B> {
         }
         if auto_retry_reason(&work).is_some() {
             self.state.insert(title, State::Failed);
-            self.mark(&task.title, self.spent_state(), attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
+            // No worker on the row: a takeover is the coordinator's now (the worker's pet would say otherwise).
+            self.mark(&task.title, self.spent_state(), attempt, None, None, None, None, None).await;
             return;
         }
         self.out.changed = true;
