@@ -10,10 +10,12 @@ use axum::{
     http::{header, uri::Authority, HeaderMap, HeaderValue, Method, StatusCode},
     response::{IntoResponse, Response},
 };
+use futures_util::StreamExt;
 use reqwest::{Client, Url};
 use std::{error::Error, io, sync::LazyLock, time::Duration};
 
 const PICKER_PATH: &str = "/__mutis/picker.js";
+const MAX_REQUEST_BODY: usize = 32 * 1024 * 1024;
 
 static CLIENT: LazyLock<reqwest::Result<Client>> = LazyLock::new(|| {
     Client::builder()
@@ -32,41 +34,69 @@ async fn picker() -> Response {
 }
 
 async fn forward(State(port): State<u16>, request: Request) -> Response {
-    if request.method() != Method::GET {
-        return (StatusCode::METHOD_NOT_ALLOWED, [(header::ALLOW, "GET")]).into_response();
-    }
-    let path_and_query = request
-        .uri()
+    let (parts, body) = request.into_parts();
+    let path_and_query = parts
+        .uri
         .path_and_query()
         .map_or("/", |value| value.as_str());
-    let proxy_host = request
-        .headers()
+    let proxy_host = parts
+        .headers
         .get(header::HOST)
         .and_then(|value| value.to_str().ok())
         .filter(|host| !host.contains('@'))
         .and_then(|host| host.parse::<Authority>().ok());
 
     let Ok(client) = &*CLIENT else {
-        return bad_gateway();
+        return bad_gateway(&parts.method);
     };
-    let mut headers = request.headers().clone();
+    let mut headers = parts.headers;
     strip_hop_headers(&mut headers);
     headers.remove(header::HOST);
     headers.remove(header::CONTENT_LENGTH);
     headers.insert(header::ACCEPT_ENCODING, HeaderValue::from_static("identity"));
+    for name in [header::ORIGIN, header::REFERER] {
+        let is_origin = name == header::ORIGIN;
+        if let Some(value) = headers
+            .remove(&name)
+            .and_then(|value| rewrite_source_header(value, is_origin, proxy_host.as_ref(), port))
+        {
+            headers.insert(name, value);
+        }
+    }
+
+    let mut stream = body.into_data_stream();
+    let mut body = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let Ok(chunk) = chunk else {
+            return StatusCode::BAD_REQUEST.into_response();
+        };
+        if chunk.len() > MAX_REQUEST_BODY - body.len() {
+            return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let body = axum::body::Bytes::from(body);
 
     let send = |host| {
-        client
-            .get(format!("http://{host}:{port}{path_and_query}"))
-            .headers(headers.clone())
-            .send()
+        let request = client
+            .request(
+                parts.method.clone(),
+                format!("http://{host}:{port}{path_and_query}"),
+            )
+            .headers(headers.clone());
+        let request = if body.is_empty() {
+            request
+        } else {
+            request.body(body.clone())
+        };
+        request.send()
     };
     let upstream = match send("127.0.0.1").await {
         Err(error) if connection_refused(&error) => send("[::1]").await,
         response => response,
     };
     let Ok(upstream) = upstream else {
-        return bad_gateway();
+        return bad_gateway(&parts.method);
     };
 
     let status = upstream.status();
@@ -84,7 +114,9 @@ async fn forward(State(port): State<u16>, request: Request) -> Response {
         }
     }
 
-    let body = if status != StatusCode::NOT_MODIFIED
+    let body = if parts.method == Method::HEAD {
+        Body::empty()
+    } else if status != StatusCode::NOT_MODIFIED
         && status != StatusCode::NO_CONTENT
         && status != StatusCode::RESET_CONTENT
         && headers
@@ -98,7 +130,7 @@ async fn forward(State(port): State<u16>, request: Request) -> Response {
             })
     {
         let Ok(bytes) = upstream.bytes().await else {
-            return bad_gateway();
+            return bad_gateway(&parts.method);
         };
         headers.remove(header::CONTENT_LENGTH);
         headers.remove(header::ETAG);
@@ -110,6 +142,39 @@ async fn forward(State(port): State<u16>, request: Request) -> Response {
     *response.status_mut() = status;
     *response.headers_mut() = headers;
     response
+}
+
+fn rewrite_source_header(
+    value: HeaderValue,
+    is_origin: bool,
+    proxy_host: Option<&Authority>,
+    port: u16,
+) -> Option<HeaderValue> {
+    let source = value.to_str().ok()?;
+    if is_origin && source == "null" {
+        return Some(value);
+    }
+    let (scheme, rest) = source.split_once("://")?;
+    if !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https"))
+        || source
+            .bytes()
+            .any(|byte| byte.is_ascii_whitespace() || byte == b'\\')
+    {
+        return None;
+    }
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, suffix) = rest.split_at(end);
+    if authority.contains('@') || (is_origin && !suffix.is_empty()) {
+        return None;
+    }
+    let _: Authority = authority.parse().ok()?;
+    let url = Url::parse(source).ok()?;
+    let proxy = proxy_host.and_then(|host| Url::parse(&format!("{scheme}://{host}")).ok());
+    if proxy.is_some_and(|proxy| proxy.origin() == url.origin()) {
+        HeaderValue::from_str(&format!("http://127.0.0.1:{port}{suffix}")).ok()
+    } else {
+        Some(value)
+    }
 }
 
 fn invalid_port() -> ApiError {
@@ -127,8 +192,12 @@ fn validate_port(value: &str) -> ApiResult<u16> {
         .ok_or_else(invalid_port)
 }
 
-fn bad_gateway() -> Response {
-    (StatusCode::BAD_GATEWAY, "Không thể kết nối máy chủ xem trước").into_response()
+fn bad_gateway(method: &Method) -> Response {
+    if *method == Method::HEAD {
+        StatusCode::BAD_GATEWAY.into_response()
+    } else {
+        (StatusCode::BAD_GATEWAY, "Không thể kết nối máy chủ xem trước").into_response()
+    }
 }
 
 fn connection_refused(error: &reqwest::Error) -> bool {

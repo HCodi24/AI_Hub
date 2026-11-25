@@ -41,6 +41,43 @@ fn accepts_only_nonzero_decimal_ports() {
 }
 
 #[test]
+fn rewrites_proxy_origin_and_referer_and_preserves_other_hosts() {
+    let host: Authority = "LOCALHOST:49152".parse().unwrap();
+    for (source, is_origin, expected) in [
+        ("http://localhost:49152", true, "http://127.0.0.1:5173"),
+        (
+            "https://localhost:49152/a%2Fb?q=1",
+            false,
+            "http://127.0.0.1:5173/a%2Fb?q=1",
+        ),
+        ("http://localhost:49153", true, "http://localhost:49153"),
+        ("https://example.test/a", false, "https://example.test/a"),
+        ("null", true, "null"),
+    ] {
+        assert_eq!(
+            rewrite_source_header(HeaderValue::from_static(source), is_origin, Some(&host), 5173),
+            Some(HeaderValue::from_static(expected))
+        );
+    }
+}
+
+#[test]
+fn drops_invalid_origin_and_referer() {
+    for (source, is_origin) in [
+        ("http://localhost:49152/path", true),
+        ("http://user@localhost:49152", true),
+        ("/relative", false),
+        ("http://", false),
+        ("http://local host/a", false),
+    ] {
+        assert!(
+            rewrite_source_header(HeaderValue::from_static(source), is_origin, None, 5173)
+                .is_none()
+        );
+    }
+}
+
+#[test]
 fn rewrites_only_absolute_same_port_loopback_redirects() {
     let host: Authority = "127.0.0.1:49152".parse().unwrap();
     for location in [
