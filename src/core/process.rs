@@ -9,6 +9,58 @@ pub fn configure_hidden(command: &mut Command) {
     }
 }
 
+#[cfg(windows)]
+pub fn tie_to_app(child: &tokio::process::Child) {
+    use std::{mem::size_of, ptr::null, sync::OnceLock};
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, HANDLE},
+        System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        },
+    };
+
+    static JOB: OnceLock<Option<usize>> = OnceLock::new();
+    let Some(process) = child.raw_handle() else {
+        return;
+    };
+    let job = JOB.get_or_init(|| {
+        // SAFETY: Các con trỏ null yêu cầu job vô danh với handle không kế thừa.
+        let job = unsafe { CreateJobObjectW(null(), null()) };
+        if job.is_null() {
+            return None;
+        }
+
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: Handle còn mở và bộ đệm có đúng kiểu và kích thước Win32 yêu cầu.
+        let configured = unsafe {
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        if configured == 0 {
+            // SAFETY: Handle vừa tạo thuộc quyền sở hữu của ứng dụng.
+            unsafe { CloseHandle(job) };
+            return None;
+        }
+
+        // Giữ handle suốt vòng đời ứng dụng để Windows dừng cây tiến trình con khi ứng dụng thoát.
+        Some(job as usize)
+    });
+    if let Some(job) = *job {
+        // SAFETY: Job giữ handle suốt vòng đời ứng dụng và Child vẫn sở hữu handle tiến trình.
+        unsafe { AssignProcessToJobObject(job as HANDLE, process) };
+    }
+}
+
+#[cfg(not(windows))]
+pub fn tie_to_app(_child: &tokio::process::Child) {}
+
 pub async fn run_with_timeout(
     command: &mut Command,
     duration: Duration,

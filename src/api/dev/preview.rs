@@ -1,6 +1,7 @@
 //! The live preview server: the Next.js dev server of `web/` (port 7880). The preview panel starts and stops it, so no
 //! forgotten copy keeps the port. Only a server this module started is ever stopped; a foreign process on the port is
 //! reported, never killed.
+//! Máy chủ xem trước được gắn với vòng đời của ứng dụng.
 use super::dev_repo_path;
 use crate::{
     api::{ApiError, ApiResult},
@@ -173,6 +174,7 @@ async fn project_action(action: &str, port: u16, folder: Option<String>) -> ApiR
                 .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true);
             crate::core::process::configure_hidden(&mut command);
             let child = command.spawn().map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Không bật được máy chủ xem trước: {error}")))?;
+            crate::core::process::tie_to_app(&child);
             map.insert(port, child);
             Ok(state(true, false))
         }
@@ -216,6 +218,7 @@ pub(crate) async fn dev_preview_action(State(state): State<AppState>, Json(input
                 .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true);
             crate::core::process::configure_hidden(&mut command);
             let child = command.spawn().map_err(|error| ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Không bật được máy chủ xem trước: {error}")))?;
+            crate::core::process::tie_to_app(&child);
             *guard = Some(child);
             Ok(Json(status(true).await))
         }
