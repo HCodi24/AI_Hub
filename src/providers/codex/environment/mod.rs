@@ -21,10 +21,10 @@ pub fn home(config: &Path, provider: &ProviderConfig) -> Result<PathBuf> {
     if !crate::providers::cli_support::valid_provider_id(&provider.id) {
         bail!("Mã nguồn Codex không hợp lệ");
     }
-    let path = crate::core::paths::data_dir(config)?
-        .join("codex")
-        .join(&provider.id);
+    let codex_root = crate::core::paths::data_dir(config)?.join("codex");
+    let path = codex_root.join(&provider.id);
     std::fs::create_dir_all(&path)?;
+    crate::features::providers::sandbox::codex::share_sandbox_state(&codex_root, &path);
     Ok(path)
 }
 
