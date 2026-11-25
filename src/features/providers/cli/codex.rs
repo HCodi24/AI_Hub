@@ -37,7 +37,7 @@ pub(crate) async fn new_client(state: &AppState, provider: &ProviderConfig) -> P
             ProviderError::new(ProviderErrorKind::NotFound, "Chưa tìm thấy Codex CLI trên máy")
         })?;
     let dir = home(&state.config_path, provider).map_err(provider_error)?;
-    Client::start(&executable, &dir, &dir).await.map_err(provider_error)
+    Client::start_without_plugins(&executable, &dir, &dir).await.map_err(provider_error)
 }
 
 pub(crate) async fn update_config(

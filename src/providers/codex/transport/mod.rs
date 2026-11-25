@@ -30,9 +30,19 @@ fn note(log: &Path, text: &str) {
 
 impl Client {
     pub async fn start(executable: &Path, home: &Path, folder: &Path) -> Result<Self> {
+        Self::start_with(executable, home, folder, super::environment::has_plugins(home)).await
+    }
+
+    /// For short status/limit/model reads: with plugins on, every app-server start re-syncs git marketplaces
+    /// (`git ls-remote` + `git clone`, which flash console windows on Windows) and is killed before it records the sync.
+    pub async fn start_without_plugins(executable: &Path, home: &Path, folder: &Path) -> Result<Self> {
+        Self::start_with(executable, home, folder, false).await
+    }
+
+    async fn start_with(executable: &Path, home: &Path, folder: &Path, plugins: bool) -> Result<Self> {
         let profile = home.join("profile");
         std::fs::create_dir_all(&profile)?;
-        let args = super::environment::launch_args(folder, super::environment::has_plugins(home));
+        let args = super::environment::launch_args(folder, plugins);
         let mut command = super::super::cli_support::command_for(executable, &args);
         configure_environment(&mut command, home, &profile);
         command

@@ -59,7 +59,7 @@ pub(super) async fn read_codex(provider: &ProviderConfig) -> Option<Vec<LimitWin
     let home = crate::providers::codex::home(&config, provider).ok()?;
     if !home.join("auth.json").is_file() { return Some(Vec::new()); }
     let path = cli_support::resolve_executable("codex", Some(&provider.executable))?;
-    let mut client = crate::providers::codex::transport::Client::start(&path, &home, &home).await.ok()?;
+    let mut client = crate::providers::codex::transport::Client::start_without_plugins(&path, &home, &home).await.ok()?;
     let result = client.call("account/rateLimits/read",json!({})).await.ok();
     client.close().await;
     result.map(|result| codex_windows(&result))
