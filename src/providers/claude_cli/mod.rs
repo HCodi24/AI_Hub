@@ -184,7 +184,7 @@ async fn run_turn(
         events.clone(),
         cancel.clone(),
         |line| {
-            super::limits::record_claude(&request.provider.id, line);
+            crate::features::providers::limits::record_claude(&request.provider.id, line);
             let mut parsed = parser
                 .lock()
                 .expect("Claude parser mutex poisoned")

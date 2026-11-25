@@ -29,6 +29,27 @@ pub(crate) fn record_claude(id: &str, line: &str) {
     }
 }
 
+pub(crate) fn claude_limit_warning(info: &Value) -> Option<String> {
+    let status = info["status"].as_str().unwrap_or("unknown");
+    let reset = info
+        .get("resetsAt")
+        .filter(|value| !value.is_null())
+        .or_else(|| info.get("resets_at").filter(|value| !value.is_null()));
+    if matches!(status.to_ascii_lowercase().as_str(), "allowed" | "ok") && reset.is_none() {
+        return None;
+    }
+    Some(match reset {
+        Some(time) => {
+            let time = time
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| time.to_string());
+            format!("Claude đang gần/chạm giới hạn lượt dùng — reset lúc {time}")
+        }
+        None => "Claude đang gần/chạm giới hạn lượt dùng".to_owned(),
+    })
+}
+
 pub(super) fn retain_known_usage(window: &mut LimitWindow, cached: Option<&Limits>, now: u64) {
     if window.used_percent.is_some() {
         return;

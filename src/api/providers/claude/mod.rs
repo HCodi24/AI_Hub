@@ -137,7 +137,7 @@ pub(crate) async fn claude_action(
         }
     }
     invalidate(&state).await?;
-    crate::providers::limits::invalidate(&id);
+    crate::features::providers::limits::invalidate(&id);
     claude_status(State(state), Path(id)).await
 }
 

@@ -159,24 +159,9 @@ impl ClaudeParser {
                 }
             }
             "rate_limit_event" => {
-                let info = &value["rate_limit_info"];
-                let status = info["status"].as_str().unwrap_or("unknown");
-                let reset = info
-                    .get("resetsAt")
-                    .filter(|value| !value.is_null())
-                    .or_else(|| info.get("resets_at").filter(|value| !value.is_null()));
-                if !matches!(status.to_ascii_lowercase().as_str(), "allowed" | "ok")
-                    || reset.is_some()
+                if let Some(detail) =
+                    crate::features::providers::limits::claude_limit_warning(&value["rate_limit_info"])
                 {
-                    let detail = reset
-                        .map(|time| {
-                            let time = time
-                                .as_str()
-                                .map(str::to_owned)
-                                .unwrap_or_else(|| time.to_string());
-                            format!("Claude đang gần/chạm giới hạn lượt dùng — reset lúc {time}")
-                        })
-                        .unwrap_or_else(|| "Claude đang gần/chạm giới hạn lượt dùng".to_owned());
                     events.push(ProviderEvent::text("log", detail));
                 }
             }

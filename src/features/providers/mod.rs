@@ -1,6 +1,7 @@
 pub(crate) mod cli;
 pub(crate) mod connection;
 pub(crate) mod error;
+pub(crate) mod limits;
 pub(crate) mod login_cli;
 pub(crate) mod login_web;
 pub(crate) mod login_key;

@@ -68,7 +68,7 @@ pub(crate) async fn codex_action(
     }
     drop(connections);
     state.provider_status.lock().await.remove(&id);
-    crate::providers::limits::invalidate(&id);
+    crate::features::providers::limits::invalidate(&id);
     codex_status(State(state), Path(id)).await
 }
 pub(crate) async fn codex_settings(

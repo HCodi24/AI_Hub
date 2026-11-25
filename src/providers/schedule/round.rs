@@ -2,6 +2,7 @@ use super::check::{check_text, fix_task, issue_files, same_path, CheckResult, Is
 use super::queue::{key, next_ready, take_partner, Next};
 use super::{limit, limit_text, takeover_text, Actor, Backend, RoundOutcome, Row, State};
 use crate::core::text::truncate_chars;
+use crate::features::providers::limits::quota;
 use crate::providers::delegate::{auto_retry_reason, report, Delegation, WorkerResult, MAX_AUTO_RETRIES};
 use futures_util::future::join_all;
 use std::collections::{HashMap, VecDeque};
@@ -114,7 +115,7 @@ impl<B: Backend> Round<'_, B> {
                 return;
             }
             match auto_retry_reason(&work) {
-                Some(why) if auto < MAX_AUTO_RETRIES && attempt < max && !work.error.as_deref().is_some_and(crate::providers::quota::is_limit) => {
+                Some(why) if auto < MAX_AUTO_RETRIES && attempt < max && !work.error.as_deref().is_some_and(quota::is_limit) => {
                     auto += 1;
                     self.backend.say(format!("Tự giao lại {} ({auto}/{MAX_AUTO_RETRIES}): {}", self.backend.actor_name(editor), truncate_chars(&why, 160))).await;
                     attempt = self.next_attempt(&task, editor, auto).await;
@@ -125,7 +126,7 @@ impl<B: Backend> Round<'_, B> {
         }
         let checker = Actor::Tester;
         self.out.reports.push(report(&task, &self.backend.actor_name(editor), attempt, max, auto, &work));
-        if let Some(why) = work.error.as_deref().filter(|e| auto_retry_reason(&work).is_some() && crate::providers::quota::is_limit(e)) {
+        if let Some(why) = work.error.as_deref().filter(|e| auto_retry_reason(&work).is_some() && quota::is_limit(e)) {
             self.backend.note_limit(editor, why);
             self.out.reports.push(limit_text(&task.title, &self.backend.actor_name(editor), why));
             self.state.insert(title, State::Failed);
@@ -164,7 +165,7 @@ impl<B: Backend> Round<'_, B> {
 
     async fn handle_check(&mut self, (task, attempt, check): Finished) {
         self.pending -= 1;
-        if let Some(why) = check.error.as_deref().filter(|e| crate::providers::quota::is_limit(e)) {
+        if let Some(why) = check.error.as_deref().filter(|e| quota::is_limit(e)) {
             self.backend.note_limit(Actor::Tester, why);
         }
         self.backend.announce_check(&task, attempt, &check).await;

@@ -1,7 +1,8 @@
 use crate::{
     chat::{Effort, Permission},
     config::{McpServerConfig, MutisConfig, ProviderConfig},
-    providers::{quota, schedule::Actor, ProviderEvent},
+    features::providers::limits::quota,
+    providers::{schedule::Actor, ProviderEvent},
 };
 use std::sync::Mutex;
 use tokio::sync::mpsc;

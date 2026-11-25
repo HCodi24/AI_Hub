@@ -6,6 +6,7 @@ mod antigravity;
 mod cache;
 mod claude;
 mod codex;
+pub mod quota;
 #[cfg(test)]
 mod tests;
 
@@ -13,7 +14,7 @@ use antigravity::read_antigravity;
 use cache::{cache, persist_cache, save};
 use claude::{read_claude_usage, usage_attempts};
 use codex::read_codex;
-pub(crate) use claude::record_claude;
+pub(crate) use claude::{claude_limit_warning, record_claude};
 
 pub(crate) fn invalidate(id: &str) {
     let mut entries = cache().lock().unwrap_or_else(|e| e.into_inner());

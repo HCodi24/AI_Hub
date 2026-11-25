@@ -12,10 +12,8 @@ pub(crate) mod delegate;
 pub(crate) mod schedule;
 pub(crate) mod worker_session;
 pub(crate) use crate::features::providers::cli::discovery;
-pub(crate) mod limits;
 pub mod mcp;
 pub mod openai_compat;
-pub mod quota;
 
 mod errors;
 mod images;
