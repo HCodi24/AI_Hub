@@ -10,6 +10,10 @@
 .panel strong { display: block; font-size: var(--font-13); font-weight: 500; }
 .panel small { display: block; margin-top: 2px; color: var(--muted); font-size: var(--font-12); line-height: 1.35; }
 .panel > button:hover { background: var(--color-muted); }
+.picker > summary[data-permission="write"],
+.panel > button[data-permission="write"][aria-pressed="true"] :is(strong, small, svg) {
+  color: color-mix(in srgb, var(--color-success) 65%, var(--text));
+}
 .picker [data-full="true"], .panel [data-full="true"] small { color: var(--color-warning); }
 .panel > button:disabled { opacity: 1; cursor: default; }
 .picker > summary:focus-visible, .panel > button:focus-visible { outline: 2px solid var(--color-info); outline-offset: 2px; }

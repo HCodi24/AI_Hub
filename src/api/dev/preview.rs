@@ -17,6 +17,7 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    path::{Path, PathBuf},
     process::Stdio,
     sync::OnceLock,
     time::Duration,
@@ -42,6 +43,70 @@ fn has_dev_script(package_json: &str) -> bool {
     serde_json::from_str::<Value>(package_json)
         .ok()
         .is_some_and(|json| json.pointer("/scripts/dev").is_some_and(Value::is_string))
+}
+
+async fn dev_dir(root: &Path) -> ApiResult<PathBuf> {
+    if !tokio::fs::metadata(root).await.is_ok_and(|metadata| metadata.is_dir()) {
+        return Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "Thư mục dự án không tồn tại",
+        ));
+    }
+
+    let manifest = tokio::fs::read_to_string(root.join("package.json")).await.unwrap_or_default();
+    if has_dev_script(&manifest) {
+        return Ok(root.to_path_buf());
+    }
+
+    let mut matches = Vec::new();
+    if let Ok(mut children) = tokio::fs::read_dir(root).await {
+        while let Ok(Some(child)) = children.next_entry().await {
+            let name = child.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with('.') || matches!(name.as_ref(), "node_modules" | "target" | "dist" | "build" | "out") {
+                continue;
+            }
+            let path = child.path();
+            let Ok(metadata) = tokio::fs::symlink_metadata(&path).await else {
+                continue;
+            };
+            if !metadata.file_type().is_dir() {
+                continue;
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+
+                const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+                if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                    continue;
+                }
+            }
+            let manifest = tokio::fs::read_to_string(path.join("package.json")).await.unwrap_or_default();
+            if has_dev_script(&manifest) {
+                matches.push((name.into_owned(), path));
+            }
+        }
+    }
+
+    match matches.len() {
+        0 => Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            "Thư mục dự án không có script dev trong package.json (đã tìm cả thư mục con cấp 1)",
+        )),
+        1 => Ok(matches.remove(0).1),
+        _ => {
+            let mut names: Vec<_> = matches.into_iter().map(|(name, _)| name).collect();
+            names.sort_unstable();
+            Err(ApiError::new(
+                StatusCode::CONFLICT,
+                format!(
+                    "Có nhiều thư mục con có script dev: {}; hãy mở chat trong đúng thư mục",
+                    names.join(", ")
+                ),
+            ))
+        }
+    }
 }
 
 /// Arguments after `npm`: the project's own `dev` script with the port appended (Next and Vite both read `--port`;
@@ -164,11 +229,8 @@ async fn project_action(action: &str, port: u16, folder: Option<String>) -> ApiR
             if listening_on(&addresses).await {
                 return Err(ApiError::new(StatusCode::CONFLICT, format!("Cổng {port} đang có tiến trình khác chạy; hãy tắt nó trước")));
             }
-            let dir = std::path::PathBuf::from(folder.unwrap_or_default());
-            let manifest = tokio::fs::read_to_string(dir.join("package.json")).await.unwrap_or_default();
-            if !dir.is_dir() || !has_dev_script(&manifest) {
-                return Err(ApiError::new(StatusCode::NOT_FOUND, "Thư mục dự án không có script dev trong package.json"));
-            }
+            let root = PathBuf::from(folder.unwrap_or_default());
+            let dir = dev_dir(&root).await?;
             let mut command = tokio::process::Command::new(if cfg!(windows) { "npm.cmd" } else { "npm" });
             command.args(dev_args(port)).env("PORT", port.to_string()).current_dir(&dir)
                 .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).kill_on_drop(true);
@@ -243,6 +305,69 @@ pub(crate) async fn dev_preview_action(State(state): State<AppState>, Json(input
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct TempProject(PathBuf);
+
+    impl TempProject {
+        fn new() -> Self {
+            let root = std::env::temp_dir().join(format!("preview-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir(&root).unwrap();
+            Self(root)
+        }
+
+        fn add_dev_script(&self, relative: &str) -> PathBuf {
+            let dir = self.0.join(relative);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("package.json"), r#"{"scripts":{"dev":"next dev"}}"#).unwrap();
+            dir
+        }
+    }
+
+    impl Drop for TempProject {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[tokio::test]
+    async fn dev_dir_prefers_root() {
+        let project = TempProject::new();
+        project.add_dev_script("");
+        project.add_dev_script("web");
+        assert_eq!(dev_dir(&project.0).await.unwrap(), project.0);
+    }
+
+    #[tokio::test]
+    async fn dev_dir_finds_single_child() {
+        let project = TempProject::new();
+        let web = project.add_dev_script("web");
+        assert_eq!(dev_dir(&project.0).await.unwrap(), web);
+    }
+
+    #[tokio::test]
+    async fn dev_dir_rejects_multiple_children() {
+        let project = TempProject::new();
+        project.add_dev_script("web");
+        project.add_dev_script("app");
+        let error = dev_dir(&project.0).await.unwrap_err();
+        assert_eq!(error.status, StatusCode::CONFLICT);
+        assert_eq!(
+            error.message,
+            "Có nhiều thư mục con có script dev: app, web; hãy mở chat trong đúng thư mục"
+        );
+    }
+
+    #[tokio::test]
+    async fn dev_dir_ignores_node_modules() {
+        let project = TempProject::new();
+        project.add_dev_script("node_modules");
+        let error = dev_dir(&project.0).await.unwrap_err();
+        assert_eq!(error.status, StatusCode::NOT_FOUND);
+        assert_eq!(
+            error.message,
+            "Thư mục dự án không có script dev trong package.json (đã tìm cả thư mục con cấp 1)"
+        );
+    }
 
     #[test]
     fn dev_script_is_required_and_must_be_a_string() {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { http, parseResponse } from "@/lib/http";
@@ -13,6 +13,7 @@ const LimitsSchema = z.object({
 export function CliLimits({ providerId, name, kind }: { providerId: string; name: string; kind: string }) {
   const popup = useRef<HTMLDetailsElement>(null);
   const tooltip = useRef<HTMLSpanElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const query = useQuery({
     queryKey: ["cli-limits", providerId],
     queryFn: async ({ signal }) => parseResponse(LimitsSchema, await http.get(`/providers/${encodeURIComponent(providerId)}/limits`, signal)),
@@ -36,37 +37,67 @@ export function CliLimits({ providerId, name, kind }: { providerId: string; name
       document.removeEventListener("keydown", close);
     };
   }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const anchor = popup.current;
-    const box = tooltip.current;
-    if (!anchor || !box) return;
+    const summary = anchor?.querySelector("summary");
+    const boxes = [tooltip.current, panel.current].filter((box): box is HTMLElement => box != null);
+    if (!anchor || !summary || !boxes.length) return;
 
     let frame: number | undefined;
-    let offset = 0;
+    const offsets = new Map<HTMLElement, number>();
     const updatePosition = () => {
-      frame = undefined;
-      const width = box.getBoundingClientRect().width;
-      if (!width) return;
-
       const viewport = window.visualViewport;
-      const left = viewport?.offsetLeft ?? 0;
-      const right = Math.min(left + (viewport?.width ?? window.innerWidth), document.documentElement.clientWidth);
-      const preferredLeft = anchor.getBoundingClientRect().right - width;
-      const fittedLeft = Math.max(left, Math.min(preferredLeft, right - width));
-      const nextOffset = fittedLeft - preferredLeft;
-      if (nextOffset !== offset) {
-        box.style.setProperty("--tooltip-offset-x", `${nextOffset}px`);
-        offset = nextOffset;
+      let left = viewport?.offsetLeft ?? 0;
+      let right = Math.min(left + (viewport?.width ?? window.innerWidth), document.documentElement.clientWidth);
+      // The chat column clips its content, so a popup must stay inside it instead of sliding under the sidebar.
+      const column = anchor.closest("main")?.getBoundingClientRect();
+      if (column) { left = Math.max(left, column.left + 8); right = Math.min(right, column.right - 8); }
+      const availableWidth = `${Math.max(0, right - left)}px`;
+      if (anchor.style.getPropertyValue("--popup-max-width") !== availableWidth) {
+        anchor.style.setProperty("--popup-max-width", availableWidth);
+      }
+      const anchorRight = anchor.getBoundingClientRect().right;
+      let visible = false;
+      for (const box of boxes) {
+        const width = box === panel.current && !anchor.open ? 0 : box.getBoundingClientRect().width;
+        if (!width) {
+          delete box.dataset.positioned;
+          continue;
+        }
+        visible = true;
+        const preferredLeft = anchorRight - width;
+        const fittedLeft = Math.max(left, Math.min(preferredLeft, right - width));
+        const nextOffset = fittedLeft - preferredLeft;
+        if (nextOffset !== (offsets.get(box) ?? 0)) {
+          box.style.setProperty("--popup-right", `${-nextOffset}px`);
+          offsets.set(box, nextOffset);
+        }
+        if (!box.dataset.positioned) box.dataset.positioned = "true";
       }
       // Wrapping can move the anchor without changing the size of either element.
-      frame = requestAnimationFrame(updatePosition);
+      if (visible && frame === undefined) {
+        frame = requestAnimationFrame(() => {
+          frame = undefined;
+          updatePosition();
+        });
+      }
     };
 
-    const observer = new ResizeObserver(() => {
-      if (frame === undefined) updatePosition();
-    });
-    observer.observe(box);
+    const toggleFromSummary = (event: MouseEvent) => {
+      if (event.defaultPrevented) return;
+      event.preventDefault();
+      // Native toggle events can be coalesced when the summary is activated rapidly.
+      anchor.open = !anchor.open;
+      updatePosition();
+    };
+
+    const observer = new ResizeObserver(updatePosition);
+    boxes.forEach(box => observer.observe(box));
+    summary.addEventListener("click", toggleFromSummary);
+    anchor.addEventListener("toggle", updatePosition);
     return () => {
+      summary.removeEventListener("click", toggleFromSummary);
+      anchor.removeEventListener("toggle", updatePosition);
       observer.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
@@ -103,7 +134,7 @@ export function CliLimits({ providerId, name, kind }: { providerId: string; name
         <span>{statusLabel}</span>
       </span>
     </summary>
-    <div className={limitStyles.panel} role="region" aria-label={`${t.limits} · ${name}`}>
+    <div ref={panel} className={limitStyles.panel} role="region" aria-label={`${t.limits} · ${name}`}>
       <p className={limitStyles.title}>{name}</p>
       {query.isPending && <p className={limitStyles.note}>{t.loading}</p>}
       {query.isError && <p className={limitStyles.note}>{t.limitError}</p>}

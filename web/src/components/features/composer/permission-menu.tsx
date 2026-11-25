@@ -18,7 +18,7 @@ export function PermissionMenu({ value, disabled, cli, menuRef, onOpen, onPick, 
   return <details ref={menuRef} className={styles.picker} onToggle={event => {
     if (event.target === event.currentTarget && event.currentTarget.open) onOpen();
   }}>
-    <summary aria-label={chatText.permission} title={limit?.note ?? chatText.permission} data-full={value === "full"}>
+    <summary aria-label={chatText.permission} title={limit?.note ?? chatText.permission} data-full={value === "full"} data-permission={limit ? undefined : value}>
       <Icon size={16} aria-hidden="true" /><span>{limit?.chatOnly ? chatText.chatOnly : chatText[value]}</span>
     </summary>
     <div className={styles.panel} role="group" aria-label={chatText.permission}>
@@ -26,6 +26,7 @@ export function PermissionMenu({ value, disabled, cli, menuRef, onOpen, onPick, 
       {PERMISSIONS.map(permission => {
         const OptionIcon = ICONS[permission];
         return <button key={permission} type="button" aria-pressed={value === permission} data-full={permission === "full"}
+          data-permission={permission}
           disabled={disabled || Boolean(limit?.chatOnly) || (permission === "full" && !cli)} onClick={() => {
             onPick(permission);
             if (menuRef.current) { menuRef.current.open = false; menuRef.current.querySelector("summary")?.focus(); }
