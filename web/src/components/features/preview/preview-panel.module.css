@@ -39,5 +39,15 @@ button.toggle[aria-expanded="true"] line { transform: translateX(-6px); }
 .dot[data-on] { background: #22c55e; }
 .zoom { display: flex; align-items: center; gap: var(--space-1); }
 .zoomValue { min-width: 3.2em; background: none; border: 0; font: inherit; font-size: .85rem; cursor: pointer; color: inherit; }
-.frame { zoom: var(--preview-zoom, 1); flex: 1; min-height: 0; width: 100%; border: 0; background: #fff; }
+.frameViewport { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.frame {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: calc(100% / var(--preview-zoom, 1));
+  height: calc(100% / var(--preview-zoom, 1));
+  transform: scale(var(--preview-zoom, 1));
+  transform-origin: 0 0;
+  border: 0;
+  background: #fff;
+}
 .note { padding: var(--space-4); color: var(--muted, inherit); }

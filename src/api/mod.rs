@@ -17,6 +17,7 @@ pub mod verify;
 
 mod error;
 mod local_host;
+mod preview_proxy;
 mod router;
 
 pub(crate) use error::{ApiError, ApiResult};

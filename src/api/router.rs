@@ -17,6 +17,10 @@ pub fn router(state: AppState) -> Router {
         .route("/app/{*path}", get(crate::api::static_ui::web_asset))
         .route("/", get(crate::api::static_ui::index))
         // Development routes.
+        .route(
+            "/api/preview-proxy/open/{port}",
+            get(crate::api::preview_proxy::open),
+        )
         .route("/api/dev/status", get(crate::api::dev::dev_status))
         .route("/api/dev/repo", get(crate::api::dev::dev_repo_info))
         .route("/api/dev/git/diff", get(crate::api::dev::dev_git_diff))

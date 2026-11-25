@@ -12,6 +12,7 @@
   var CSS = ["color", "background-color", "font-family", "font-size", "font-weight", "display", "width", "height", "margin", "padding", "border", "border-radius"];
   var panel = null; // the parent window and its origin: the only place results go
   var box = null;
+  var hovered = null, hoverFrame = null;
 
   function selector(el) {
     var parts = [];
@@ -46,9 +47,47 @@
   }
   function frame(rect, dashed) {
     var host = boxHost || document.documentElement, o = origin(host);
+    var left = rect.left - o.left, top = rect.top - o.top;
     if (box.parentNode !== host) host.appendChild(box);
-    box.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;border:2px " + (dashed ? "dashed" : "solid") +
-      " #3b82f6;background:rgba(59,130,246,.15);left:" + (rect.left - o.left) + "px;top:" + (rect.top - o.top) + "px;width:" + rect.width + "px;height:" + rect.height + "px";
+    box.style.cssText = "position:fixed;pointer-events:none;box-sizing:border-box;margin:0;padding:0;z-index:2147483647;border:2px " + (dashed ? "dashed" : "solid") +
+      " #3b82f6;background:rgba(59,130,246,.15);left:" + left + "px;top:" + top + "px;width:" + rect.width + "px;height:" + rect.height + "px";
+    var actual = box.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      var sx = actual.width / rect.width, sy = actual.height / rect.height;
+      if (Number.isFinite(sx) && sx >= 0.1 && sx <= 10 &&
+          Number.isFinite(sy) && sy >= 0.1 && sy <= 10 &&
+          (Math.abs(sx - 1) > 0.005 || Math.abs(sy - 1) > 0.005)) {
+        left /= sx;
+        top /= sy;
+        box.style.left = left + "px";
+        box.style.top = top + "px";
+        box.style.width = (rect.width / sx) + "px";
+        box.style.height = (rect.height / sy) + "px";
+        actual = box.getBoundingClientRect();
+      }
+    }
+    if (actual.left !== rect.left) box.style.left = (left + (rect.left - actual.left)) + "px";
+    if (actual.top !== rect.top) box.style.top = (top + (rect.top - actual.top)) + "px";
+  }
+  function stopHover() {
+    if (hoverFrame !== null) cancelAnimationFrame(hoverFrame);
+    hoverFrame = null;
+    hovered = null;
+  }
+  function syncHover() {
+    if (!hovered.isConnected) {
+      stopHover();
+      box.remove();
+      return;
+    }
+    boxHost = hostFor(hovered);
+    frame(hovered.getBoundingClientRect(), false);
+    hoverFrame = requestAnimationFrame(syncHover);
+  }
+  function leave(event) {
+    if (event.relatedTarget || dragging || !hovered) return;
+    stopHover();
+    box.remove();
   }
   function dragRect(event) {
     var left = Math.min(down.x, event.clientX), top = Math.min(down.y, event.clientY);
@@ -90,9 +129,19 @@
   function move(event) {
     if (!box) return;
     if (down && !dragging && Math.hypot(event.clientX - down.x, event.clientY - down.y) >= 5) dragging = true;
-    if (dragging) return frame(dragRect(event), true);
-    var el = event.target;
-    if (el instanceof Element) { boxHost = hostFor(el); frame(el.getBoundingClientRect(), false); }
+    if (dragging) {
+      stopHover();
+      return frame(dragRect(event), true);
+    }
+    var el = event.target instanceof Element ? event.target : null;
+    if (el === hovered) return;
+    stopHover();
+    if (el) {
+      hovered = el;
+      syncHover();
+    } else {
+      box.remove();
+    }
   }
   function press(event) {
     if (event.button !== 0) return;
@@ -117,13 +166,16 @@
     box = document.createElement("div");
     document.documentElement.appendChild(box);
     document.addEventListener("mousemove", move, true);
+    document.addEventListener("mouseout", leave, true);
     document.addEventListener("mousedown", press, true);
     document.addEventListener("mouseup", release, true);
     document.addEventListener("keydown", key, true);
     document.documentElement.style.cursor = "crosshair";
   }
   function stop() {
+    stopHover();
     document.removeEventListener("mousemove", move, true);
+    document.removeEventListener("mouseout", leave, true);
     document.removeEventListener("mousedown", press, true);
     document.removeEventListener("mouseup", release, true);
     document.removeEventListener("keydown", key, true);

@@ -6,6 +6,7 @@ import { devApi } from "@/apis/dev.api";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { notify } from "@/components/toast/toast";
 import { useChatStore } from "@/components/features/chat/chat-store";
+import { http, parseResponse } from "@/lib/http";
 import { previewText as t } from "@/text/preview";
 import styles from "./preview-panel.module.css";
 
@@ -21,6 +22,7 @@ const urlKey = (folder: string) => `ai-hub-preview-url:${folder}`;
 const PREVIEW_LINE = /^preview:\s*(\S+)\s*$/im;
 
 const PickedSchema = z.object({ url: z.string(), selector: z.string(), text: z.string(), css: z.record(z.string(), z.string()), html: z.string() });
+const PreviewProxySchema = z.object({ port: z.number().int().min(1).max(65535) });
 const RegionSchema = z.object({
   kind: z.literal("region"), url: z.string(), width: z.number(), height: z.number(), total: z.number(),
   items: z.array(z.object({
@@ -40,13 +42,6 @@ export function safePreviewUrl(value: string): string | null {
     const url = new URL(/^[\w.-]+:\d+/.test(text) ? `http://${text}` : text, window.location.origin);
     return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
   } catch { return null; }
-}
-
-/** The app runs on 127.0.0.1, so a `localhost` page in the frame would be cross-site and lose its login cookies: open it on the app's own host instead. */
-function frameUrl(safe: string): string {
-  const url = new URL(safe);
-  if (url.hostname === "localhost" && window.location.hostname === "127.0.0.1") url.hostname = "127.0.0.1";
-  return url.href;
 }
 
 function ServerStatus({ address, folder, onUp }: { address: URL | null; folder: string; onUp: () => void }) {
@@ -92,7 +87,7 @@ function ServerStatus({ address, folder, onUp }: { address: URL | null; folder: 
   </div>;
 }
 
-/** Live view of the page being edited: the dev server's own hot reload updates the iframe as the code changes. */
+/** Preview of the page being edited. */
 export function PreviewPanel() {
   const folder = useChatStore(s => s.settings.folder);
   const reply = useChatStore(s => [...s.messages].reverse().find(m => m.role === "assistant")?.content ?? "");
@@ -145,10 +140,27 @@ export function PreviewPanel() {
     setUrl(target); setDraft(target); setOpen(true); write(urlKey(folder), target); write(OPEN_KEY, "1");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only the end of a run may move the panel
   }, [streaming]);
-  // The page in the frame reports back by postMessage; only that frame's window is believed.
+  const safe = safePreviewUrl(url);
+  const address = safe ? new URL(safe) : null;
+  const targetPort = address && ["localhost", "127.0.0.1", "[::1]"].includes(address.hostname)
+    ? address.port || (address.protocol === "https:" ? "443" : "80")
+    : null;
+  const proxy = useQuery({
+    queryKey: ["preview-proxy", address?.origin],
+    enabled: open && targetPort !== null,
+    retry: false,
+    queryFn: async ({ signal }) => parseResponse(PreviewProxySchema, await http.get(`/preview-proxy/open/${targetPort}`, signal)),
+  });
+  const proxyPort = targetPort !== null && proxy.isSuccess ? proxy.data.port : null;
+  const src = proxyPort !== null && address
+    ? `${window.location.protocol}//${window.location.hostname}:${proxyPort}${address.pathname}${address.search}${address.hash}`
+    : safe;
+  const pickerOrigin = proxyPort !== null && src ? new URL(src).origin : null;
+  const pickerReady = ready && pickerOrigin !== null;
+  // Picker messages come from the proxied preview frame.
   useEffect(() => {
     const listen = (event: MessageEvent) => {
-      if (event.source !== frame.current?.contentWindow || !event.data) return;
+      if (event.source !== frame.current?.contentWindow || event.origin !== pickerOrigin || !event.data) return;
       if (event.data.type === "mutis-picker-ready") setReady(true);
       else if (event.data.type === "mutis-pick-end") setPicking(false);
       else if (event.data.type === "mutis-picked") {
@@ -162,12 +174,11 @@ export function PreviewPanel() {
     };
     window.addEventListener("message", listen);
     return () => window.removeEventListener("message", listen);
-  }, []);
+  }, [pickerOrigin]);
   const pick = () => {
     const target = frame.current?.contentWindow;
-    const origin = safePreviewUrl(url) ? new URL(frameUrl(safePreviewUrl(url) as string)).origin : "";
-    if (!target || !origin) return;
-    target.postMessage({ type: picking ? "mutis-pick-stop" : "mutis-pick-start" }, origin);
+    if (!target || !pickerOrigin) return;
+    target.postMessage({ type: picking ? "mutis-pick-stop" : "mutis-pick-start" }, pickerOrigin);
     setPicking(!picking);
   };
   const zoomTo = (next: number) => { setZoom(next); write(ZOOM_KEY, String(next)); };
@@ -179,9 +190,6 @@ export function PreviewPanel() {
   };
   const resize = (next: number) => { const value = Math.max(MIN_WIDTH, Math.min(maxWidth, next)); setWidth(value); write(WIDTH_KEY, String(value)); };
   const submit = (event: FormEvent) => { event.preventDefault(); setUrl(draft.trim()); write(urlKey(folder), draft.trim()); setVersion(v => v + 1); };
-  const safe = safePreviewUrl(url);
-  const src = safe ? frameUrl(safe) : null;
-  const address = safe ? new URL(safe) : null;
   return <>
     <IconButton className={styles.toggle} aria-label={open ? t.close : t.toggle} aria-expanded={open} onClick={() => toggle(!open)}><PanelRight size={20} /></IconButton>
     {open && <aside ref={panel} className={styles.panel} aria-label={t.toggle} data-preview data-resizing={resizing || undefined}
@@ -212,14 +220,16 @@ export function PreviewPanel() {
           <button type="button" className={styles.zoomValue} aria-label={t.zoomReset} title={t.zoomReset} onClick={() => zoomTo(1)}>{Math.round(zoom * 100)}%</button>
           <IconButton type="button" size="sm" aria-label={t.zoomIn} title={t.zoomIn} disabled={zoom >= ZOOM_STEPS[ZOOM_STEPS.length - 1]} onClick={() => zoomBy(1)}><Plus size={16} /></IconButton>
         </div>
-        <IconButton type="button" aria-label={t.pick} aria-pressed={picking} disabled={!ready} title={ready ? (picking ? t.picking : t.pick) : t.noPicker} onClick={pick}><MousePointerClick size={18} /></IconButton>
+        <IconButton type="button" aria-label={t.pick} aria-pressed={picking} disabled={!pickerReady} title={pickerReady ? (picking ? t.picking : t.pick) : t.noPicker} onClick={pick}><MousePointerClick size={18} /></IconButton>
       </form>
       <ServerStatus key={address?.origin} address={address} folder={folder} onUp={() => setVersion(v => v + 1)} />
-      {safe && src ? <iframe ref={attachFrame} key={`${src}|${version}`} onLoad={() => {
-        setPicking(false);
-        frame.current?.contentWindow?.postMessage({ type: "mutis-picker-ping" }, new URL(src).origin);
-      }} className={styles.frame} style={{ "--preview-zoom": zoom } as CSSProperties} src={src} title={t.toggle}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" />
+      {safe && src ? <div className={styles.frameViewport}>
+        <iframe ref={attachFrame} key={`${src}|${version}`} onLoad={() => {
+          setPicking(false);
+          if (pickerOrigin) frame.current?.contentWindow?.postMessage({ type: "mutis-picker-ping" }, pickerOrigin);
+        }} className={styles.frame} style={{ "--preview-zoom": zoom } as CSSProperties} src={src} title={t.toggle}
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" />
+      </div>
         : <p className={styles.note}>{url ? t.invalid : t.empty}</p>}
     </aside>}
   </>;
