@@ -22,7 +22,7 @@ pub(crate) fn record_claude(id: &str, line: &str) {
                 .get(id)
                 .cloned();
             retain_known_usage(&mut window, cached.as_ref(), now_secs());
-            save(id, vec![window]);
+            save(id, merge_window(cached.as_ref(), window));
             let entries = cache().lock().unwrap_or_else(|e| e.into_inner());
             persist_cache(&entries);
         }
@@ -63,6 +63,23 @@ pub(super) fn retain_known_usage(window: &mut LimitWindow, cached: Option<&Limit
             })
         })
         .and_then(|previous| previous.used_percent);
+}
+
+pub(super) fn merge_window(cached: Option<&Limits>, window: LimitWindow) -> Vec<LimitWindow> {
+    merge_windows(cached, vec![window])
+}
+
+pub(super) fn merge_windows(
+    cached: Option<&Limits>,
+    incoming: Vec<LimitWindow>,
+) -> Vec<LimitWindow> {
+    let mut windows = cached.map(|limits| limits.windows.clone()).unwrap_or_default();
+    for window in incoming {
+        windows.retain(|previous| previous.label != window.label);
+        windows.push(window);
+    }
+    windows.sort_by(|a, b| a.label.cmp(&b.label));
+    windows
 }
 
 pub(super) fn claude_window(info: &Value) -> Option<LimitWindow> {

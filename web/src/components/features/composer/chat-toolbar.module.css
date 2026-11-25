@@ -1,24 +1,11 @@
 .header { display: none; align-items: center; background: var(--bg); flex-shrink: 0; color: var(--muted); z-index: var(--z-toolbar); }
 .picker { position: relative; margin-left: auto; }
-.picker > summary, .limits > summary { height: 36px; }
+.picker > summary { height: 36px; }
 .picker > summary { display: flex; align-items: center; gap: var(--space-1); cursor: pointer; list-style: none; padding: var(--space-1) var(--space-2); border-radius: var(--radius-small); font-size: var(--font-13); white-space: nowrap; max-width: 220px; }
 .picker > summary::-webkit-details-marker { display: none; }
 .picker > summary > span:first-of-type { overflow: hidden; text-overflow: ellipsis; }
 .sourceLogo { flex: none; object-fit: contain; }
 .effort { color: var(--muted); }
-.limits { position: relative; }
-.limits > summary { display: grid; place-items: center; width: 36px; min-height: 36px; padding: 4px; list-style: none; border-radius: 50%; }
-.limits > summary::-webkit-details-marker { display: none; }
-.limits > summary:focus-visible { outline: none; background: var(--color-muted); }
-.limitRing { display: block; fill: none; stroke-width: 3; color: #60a5fa; }
-.limitRing[data-stale="true"] { opacity: .7; }
-.limitTrack { stroke: var(--color-muted); }
-.limitProgress { stroke: currentColor; transform: rotate(-90deg); transform-origin: center; }
-.limitRing[data-state="unused"] .limitTrack { stroke: var(--color-success); }
-.limitRing[data-state="warning"] { color: var(--color-warning); }
-.limitRing[data-state="limit"] { color: var(--danger); }
-.limitRing[data-state="unknown"] { color: var(--muted); }
-.limitRing text { fill: currentColor; stroke: none; font-size: 12px; font-weight: 600; }
 .panel { position: absolute; right: 0; bottom: calc(100% + var(--space-2)); width: min(560px, 90vw); max-height: 60dvh; overflow: auto; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--color-surface-raised); box-shadow: var(--shadow-2); z-index: var(--z-toolbar); }
 .effortPanel { --effort-fill: #4f83ef; width: min(280px, 90vw); padding: 16px; border-radius: 20px; border-color: color-mix(in srgb, var(--border) 35%, var(--surface)); background: var(--surface); }
 .effortHeading { display: grid; grid-template-columns: 32px minmax(0, 1fr) 32px; align-items: center; color: var(--muted); }
@@ -35,8 +22,7 @@
 .effortTicks > span[data-filled="true"] { background: #ffffff80; }
 .effortTicks > span[data-selected="true"] { visibility: hidden; }
 @media (max-width: 767px) {
-  .picker > summary, .limits > summary { height: 44px; }
-  .limits > summary { width: 44px; min-height: 44px; }
+  .picker > summary { height: 44px; }
   .header { display: flex; padding: var(--space-2) var(--space-3); }
 }
 .mutisRoles { margin: 0; padding: var(--space-2) var(--space-3); color: var(--muted); font-size: var(--font-14); text-align: center; overflow-wrap: anywhere; }

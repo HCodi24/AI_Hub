@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { http, parseResponse } from "@/lib/http";
 import { chatText as t } from "@/text/chat";
-import styles from "./chat-toolbar.module.css";
 import limitStyles from "./cli-limits.module.css";
 
 const LimitsSchema = z.object({
@@ -11,8 +10,9 @@ const LimitsSchema = z.object({
   windows: z.array(z.object({ label: z.string(), used_percent: z.number().min(0).max(100).nullable(), status: z.string(), resets_at: z.number().nullable() })),
 });
 
-export function CliLimits({ providerId, name }: { providerId: string; name: string }) {
+export function CliLimits({ providerId, name, kind }: { providerId: string; name: string; kind: string }) {
   const popup = useRef<HTMLDetailsElement>(null);
+  const tooltip = useRef<HTMLSpanElement>(null);
   const query = useQuery({
     queryKey: ["cli-limits", providerId],
     queryFn: async ({ signal }) => parseResponse(LimitsSchema, await http.get(`/providers/${encodeURIComponent(providerId)}/limits`, signal)),
@@ -36,29 +36,75 @@ export function CliLimits({ providerId, name }: { providerId: string; name: stri
       document.removeEventListener("keydown", close);
     };
   }, []);
+  useEffect(() => {
+    const anchor = popup.current;
+    const box = tooltip.current;
+    if (!anchor || !box) return;
+
+    let frame: number | undefined;
+    let offset = 0;
+    const updatePosition = () => {
+      frame = undefined;
+      const width = box.getBoundingClientRect().width;
+      if (!width) return;
+
+      const viewport = window.visualViewport;
+      const left = viewport?.offsetLeft ?? 0;
+      const right = Math.min(left + (viewport?.width ?? window.innerWidth), document.documentElement.clientWidth);
+      const preferredLeft = anchor.getBoundingClientRect().right - width;
+      const fittedLeft = Math.max(left, Math.min(preferredLeft, right - width));
+      const nextOffset = fittedLeft - preferredLeft;
+      if (nextOffset !== offset) {
+        box.style.setProperty("--tooltip-offset-x", `${nextOffset}px`);
+        offset = nextOffset;
+      }
+      // Wrapping can move the anchor without changing the size of either element.
+      frame = requestAnimationFrame(updatePosition);
+    };
+
+    const observer = new ResizeObserver(() => {
+      if (frame === undefined) updatePosition();
+    });
+    observer.observe(box);
+    return () => {
+      observer.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+  }, []);
   const now = Date.now() / 1000;
   const fresh = !query.isError && query.data?.updated_at != null && now - query.data.updated_at < 900;
   const stale = query.data != null && (query.data.updated_at == null || now - query.data.updated_at >= 900);
-  const windows = query.data?.windows || [];
+  const windows = (query.data?.windows ?? []).filter(
+    ({ label, used_percent }) => !(label === "extra_usage" && Math.round(used_percent ?? 0) < 1),
+  );
   const current = windows.filter(w => w.resets_at == null || w.resets_at > now);
   const percent = current.reduce<number | null>((max, w) => w.used_percent == null ? max : Math.max(max ?? 0, w.used_percent), null);
   const rejected = current.some(w => w.status === "rejected");
   const warning = percent == null ? current.some(w => w.status === "allowed_warning") : percent >= 70;
   const state = rejected || (percent != null && percent >= 90) ? "limit"
     : warning ? "warning" : percent === 0 ? "unused" : percent != null ? "normal" : "unknown";
-  const label = rejected ? t.limitReached : percent != null ? t.limitUsed(Math.round(percent)) : warning ? t.limitWarning : t.limitUnknown;
+  const statusLabel = rejected ? t.limitReached : percent != null ? t.limitUsed(Math.round(percent)) : warning ? t.limitWarning : t.limitUnknown;
+  const providerName = kind === "codex_cli" ? "Codex"
+    : kind === "claude_cli" ? "Claude"
+    : kind === "antigravity_cli" ? "Antigravity" : name;
+  const limitTitle = `Hạn mức ${providerName}`;
+  const summaryLabel = `${limitTitle}: ${statusLabel}`;
   const updatedTime = query.data?.updated_at == null ? null : new Date(query.data.updated_at * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-  return <details ref={popup} className={styles.limits}>
-    <summary aria-label={`${t.limits}: ${label}`} title={`${t.limits}: ${label}`}>
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" className={styles.limitRing} data-state={state} data-stale={stale ? "true" : undefined}>
-        <circle cx="12" cy="12" r="9" className={styles.limitTrack} />
-        {(percent != null || rejected) && <circle cx="12" cy="12" r="9" pathLength="100" strokeDasharray={`${rejected ? 100 : percent} 100`} className={styles.limitProgress} />}
+  return <details ref={popup} className={limitStyles.limits}>
+    <summary aria-label={summaryLabel}>
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" className={limitStyles.limitRing} data-state={state} data-stale={stale ? "true" : undefined}>
+        <circle cx="12" cy="12" r="9" className={limitStyles.limitTrack} />
+        {(percent != null || rejected) && <circle cx="12" cy="12" r="9" pathLength="100" strokeDasharray={`${rejected ? 100 : percent} 100`} className={limitStyles.limitProgress} />}
         {state === "unknown" && <text x="12" y="16" textAnchor="middle">?</text>}
         {warning && percent == null && !rejected && <text x="12" y="16" textAnchor="middle">!</text>}
       </svg>
+      <span ref={tooltip} className={limitStyles.tooltip} aria-hidden="true">
+        <span className={limitStyles.tooltipTitle}>{limitTitle}</span>
+        <span>{statusLabel}</span>
+      </span>
     </summary>
-    <div className={`${styles.panel} ${limitStyles.panel}`} role="region" aria-label={`${t.limits} · ${name}`}>
-      <p className={limitStyles.note}><strong>{name}</strong></p>
+    <div className={limitStyles.panel} role="region" aria-label={`${t.limits} · ${name}`}>
+      <p className={limitStyles.title}>{name}</p>
       {query.isPending && <p className={limitStyles.note}>{t.loading}</p>}
       {query.isError && <p className={limitStyles.note}>{t.limitError}</p>}
       {windows.map((window, index) => <div key={`${window.label}-${index}`} className={limitStyles.window}>

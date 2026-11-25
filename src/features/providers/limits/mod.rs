@@ -12,7 +12,7 @@ mod tests;
 
 use antigravity::read_antigravity;
 use cache::{cache, persist_cache, save};
-use claude::{read_claude_usage, usage_attempts};
+use claude::{merge_windows, read_claude_usage, usage_attempts};
 use codex::read_codex;
 pub(crate) use claude::{claude_limit_warning, record_claude};
 
@@ -36,6 +36,21 @@ pub(crate) struct LimitWindow {
     resets_at: Option<u64>,
 }
 
+fn with_claude_defaults(mut limits: Limits) -> Limits {
+    for label in ["five_hour", "seven_day"] {
+        if !limits.windows.iter().any(|window| window.label == label) {
+            limits.windows.push(LimitWindow {
+                label: label.to_owned(),
+                used_percent: None,
+                status: "allowed".to_owned(),
+                resets_at: None,
+            });
+        }
+    }
+    limits.windows.sort_by(|a, b| a.label.cmp(&b.label));
+    limits
+}
+
 pub(crate) async fn read(provider: &ProviderConfig, ask_anthropic: bool) -> Limits {
     let cached = cache()
         .lock()
@@ -43,23 +58,42 @@ pub(crate) async fn read(provider: &ProviderConfig, ask_anthropic: bool) -> Limi
         .get(&provider.id)
         .cloned()
         .unwrap_or_default();
-    if provider.kind == "claude_cli" && ask_anthropic {
-        // At most once a minute per source, whether or not the last try worked.
-        let due = {
+    if provider.kind == "claude_cli" {
+        const POLL_INTERVAL_SECS: u64 = 60;
+        const FAILURE_BACKOFF_SECS: u64 = 300;
+        let due = ask_anthropic && {
             let mut attempts = usage_attempts().lock().unwrap_or_else(|e| e.into_inner());
+            let now = now_secs();
             let last = attempts.get(&provider.id).copied().unwrap_or(0);
-            let due = now_secs().saturating_sub(last) >= 60;
-            if due { attempts.insert(provider.id.clone(), now_secs()); }
+            let due = now.saturating_sub(last) >= POLL_INTERVAL_SECS;
+            if due {
+                attempts.insert(provider.id.clone(), now);
+            }
             due
         };
         if due {
             if let Some(windows) = read_claude_usage(provider).await {
+                let windows = merge_windows(
+                    cache()
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .get(&provider.id),
+                    windows,
+                );
                 let limits = save(&provider.id, windows);
                 persist_cache(&cache().lock().unwrap_or_else(|e| e.into_inner()));
-                return limits;
+                return with_claude_defaults(limits);
             }
+            // Shift the last attempt so the normal interval expires after the failure backoff.
+            usage_attempts()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(
+                    provider.id.clone(),
+                    now_secs().saturating_add(FAILURE_BACKOFF_SECS - POLL_INTERVAL_SECS),
+                );
         }
-        return cached;
+        return with_claude_defaults(cached);
     }
     if provider.kind == "antigravity_cli" {
         if cached.updated_at.is_some_and(|time| now_secs().saturating_sub(time) < 60) {

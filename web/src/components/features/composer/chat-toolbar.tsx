@@ -10,7 +10,7 @@ import { isModelVisible, useModelVisibility } from "@/lib/model-visibility";
 import { modelDisplayLabel } from "@/lib/model-display-label";
 import type { Config } from "@/schema/config.schema";
 import styles from "./chat-toolbar.module.css";
-import { CliLimits } from "./cli-limits";
+import { CliLimits } from "@/components/limits/cli-limits";
 import { useQuery } from "@tanstack/react-query";
 import { SourceMenu } from "./source-menu";
 import { ModelMenu } from "./model-menu";
@@ -154,5 +154,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
           onPick={pickModel} />}
     </div>
   </details>
-  {limitProviders.map(entry => <CliLimits key={entry.id} providerId={entry.id} name={entry.name} />)}</>;
+  {limitProviders.map(({ id, name, kind }) => (
+    <CliLimits key={id} providerId={id} name={name} kind={kind} />
+  ))}</>;
 }

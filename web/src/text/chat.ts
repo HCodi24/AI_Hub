@@ -25,6 +25,7 @@ export const chatText = {
     "codex · 5h": "5h",
     "codex · 7d": "Weekly",
     five_hour: "5h",
+    extra_usage: "Extra usage",
     seven_day: "Weekly",
   },
   permissionHeading: "AI được phép thực hiện những thao tác nào?",

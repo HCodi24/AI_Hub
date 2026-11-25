@@ -1,7 +1,9 @@
 use super::antigravity::antigravity_windows;
-use super::claude::{claude_window, iso_seconds, retain_known_usage, usage_windows};
+use super::claude::{
+    claude_window, iso_seconds, merge_window, merge_windows, retain_known_usage, usage_windows,
+};
 use super::codex::codex_windows;
-use super::{LimitWindow, Limits};
+use super::{with_claude_defaults, LimitWindow, Limits};
 use serde_json::json;
 
 #[test]
@@ -79,6 +81,91 @@ fn claude_keeps_known_usage_until_the_matching_window_resets() {
     .unwrap();
     retain_known_usage(&mut expired, Some(&cached), 200);
     assert_eq!(expired.used_percent, None);
+}
+
+#[test]
+fn claude_merges_a_rate_limit_event_and_keeps_other_windows_even_after_reset() {
+    let window = |label: &str, used_percent, resets_at| LimitWindow {
+        label: label.to_owned(),
+        used_percent: Some(used_percent),
+        status: "allowed".to_owned(),
+        resets_at: Some(resets_at),
+    };
+    let cached = Limits {
+        windows: vec![
+            window("five_hour", 20.0, 200),
+            window("seven_day", 40.0, 500),
+            window("expired", 10.0, 50),
+        ],
+        updated_at: Some(90),
+    };
+
+    let windows = merge_window(Some(&cached), window("five_hour", 30.0, 250));
+    let usage: Vec<_> = windows
+        .iter()
+        .map(|entry| (entry.label.as_str(), entry.used_percent, entry.resets_at))
+        .collect();
+    assert_eq!(
+        usage,
+        [
+            ("expired", Some(10.0), Some(50)),
+            ("five_hour", Some(30.0), Some(250)),
+            ("seven_day", Some(40.0), Some(500)),
+        ]
+    );
+}
+
+#[test]
+fn claude_merges_partial_oauth_usage_with_cached_windows() {
+    let cached = Limits {
+        windows: usage_windows(&json!({
+            "five_hour": {"utilization": 20.0},
+            "seven_day": {"utilization": 40.0}
+        })),
+        updated_at: Some(90),
+    };
+    let incoming = usage_windows(&json!({"five_hour": {"utilization": 30.0}}));
+
+    let windows = merge_windows(Some(&cached), incoming);
+    let usage: Vec<_> = windows
+        .iter()
+        .map(|entry| (entry.label.as_str(), entry.used_percent))
+        .collect();
+    assert_eq!(usage, [("five_hour", Some(30.0)), ("seven_day", Some(40.0))]);
+}
+
+#[test]
+fn claude_adds_placeholders_only_for_missing_default_windows() {
+    let empty = with_claude_defaults(Limits::default());
+    let labels: Vec<_> = empty
+        .windows
+        .iter()
+        .map(|window| window.label.as_str())
+        .collect();
+    assert_eq!(labels, ["five_hour", "seven_day"]);
+    for window in &empty.windows {
+        assert_eq!(window.used_percent, None);
+        assert_eq!(window.status, "allowed");
+        assert_eq!(window.resets_at, None);
+    }
+
+    let limits = with_claude_defaults(Limits {
+        windows: vec![LimitWindow {
+            label: "five_hour".to_owned(),
+            used_percent: Some(82.0),
+            status: "allowed_warning".to_owned(),
+            resets_at: Some(200),
+        }],
+        updated_at: Some(100),
+    });
+    assert_eq!(limits.updated_at, Some(100));
+    assert_eq!(limits.windows.len(), 2);
+    assert_eq!(limits.windows[0].label, "five_hour");
+    assert_eq!(limits.windows[0].used_percent, Some(82.0));
+    assert_eq!(limits.windows[0].status, "allowed_warning");
+    assert_eq!(limits.windows[0].resets_at, Some(200));
+    assert_eq!(limits.windows[1].label, "seven_day");
+    assert_eq!(limits.windows[1].used_percent, None);
 }
 
 #[test]
