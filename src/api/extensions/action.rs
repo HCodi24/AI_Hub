@@ -68,13 +68,7 @@ pub(crate) async fn extension_action(
     let (tx, rx) = mpsc::channel::<Result<String, String>>(64);
     let state2 = state.clone();
     let id2 = id.clone();
-    let exe = crate::extensions::resolve(action.command).or_else(|| {
-        if action.command == "npm" {
-            crate::extensions::resolve("npm.cmd")
-        } else {
-            None
-        }
-    });
+    let exe = crate::providers::cli_support::resolve_executable(action.command, None);
     let args = action
         .args
         .iter()

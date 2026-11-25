@@ -30,8 +30,11 @@ pub(super) async fn run_action(
         command,
     } = action;
     backup_file(tx, backup.as_deref(), configured_backups).await?;
-    let path =
-        exe.ok_or_else(|| format!("Không tìm thấy executable: {}", command))?;
+    let path = exe.ok_or_else(|| match command {
+        "npm" => "Chưa có Node.js/npm trên máy. Cài Node.js LTS tại https://nodejs.org rồi bấm Cài đặt lại."
+            .to_owned(),
+        _ => format!("Không tìm thấy executable: {command}"),
+    })?;
     let _ = tx
         .send(Ok(format!(
             "{} {} | có thể sửa: {}",

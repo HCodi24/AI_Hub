@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 #[derive(Clone, Copy)]
 pub struct Action {
     pub id: &'static str,
@@ -97,38 +95,4 @@ pub fn action(id: &str, action_id: &str) -> Option<(&'static Definition, &'stati
             .iter()
             .find(|action| action.id == action_id)?,
     ))
-}
-
-pub fn resolve(name: &str) -> Option<PathBuf> {
-    let names = if cfg!(windows) {
-        vec![
-            format!("{name}.exe"),
-            format!("{name}.cmd"),
-            name.to_owned(),
-        ]
-    } else {
-        vec![name.to_owned()]
-    };
-    let mut directories =
-        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect::<Vec<_>>();
-    #[cfg(windows)]
-    {
-        for key in ["APPDATA", "USERPROFILE", "LOCALAPPDATA"] {
-            if let Some(path) = std::env::var_os(key).map(PathBuf::from) {
-                directories.push(match key {
-                    "APPDATA" => path.join("npm"),
-                    "USERPROFILE" => path.join(".codegraph").join("bin"),
-                    _ => path.join("codegraph").join("bin"),
-                });
-            }
-        }
-    }
-    names
-        .iter()
-        .flat_map(|name| {
-            directories
-                .iter()
-                .map(move |directory| directory.join(name))
-        })
-        .find(|path| path.is_file())
 }
