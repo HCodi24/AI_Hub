@@ -8,6 +8,7 @@ import { SOURCE_LOGOS } from "@/constants/source-logos";
 import { antigravityModel, ANTIGRAVITY_EFFORTS } from "@/lib/antigravity-models";
 import { isModelVisible, useModelVisibility } from "@/lib/model-visibility";
 import { modelDisplayLabel } from "@/lib/model-display-label";
+import { usePopupFit } from "@/lib/use-popup-fit";
 import type { Config } from "@/schema/config.schema";
 import styles from "./chat-toolbar.module.css";
 import { CliLimits } from "@/components/limits/cli-limits";
@@ -38,6 +39,8 @@ export function ChatToolbar({ config }: { config?: Config }) {
   const picker = useRef<HTMLDetailsElement>(null);
   const permissions = useRef<HTMLDetailsElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  // Keep the panel mounted so the hook can observe it while the picker is closed.
+  usePopupFit(picker, panel);
   useEffect(() => {
     function closeOutside(event: PointerEvent) {
       if (picker.current?.open && !picker.current.contains(event.target as Node)) {

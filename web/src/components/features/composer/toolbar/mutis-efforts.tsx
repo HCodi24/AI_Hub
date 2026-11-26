@@ -4,6 +4,7 @@ import type { Config } from "@/schema/config.schema";
 import type { Mutis } from "@/schema/mutis.schema";
 import { mutisApi } from "@/apis/mutis.api";
 import { effortFor, effortsFor } from "@/constants/chat";
+import { modelDisplayLabel } from "@/lib/model-display-label";
 import { chatText } from "@/text/chat";
 import styles from "./chat-toolbar.module.css";
 
@@ -23,12 +24,16 @@ function RoleSlider({ role, provider, disabled, save }: {
   const [draft, setDraft] = useState(selected);
   useEffect(() => setDraft(selected), [selected]);
   const index = Math.max(0, choices.indexOf(draft));
-  const label = role.model || provider?.name || chatText.source;
+  const label = role.model ? modelDisplayLabel(role.model, provider?.kind) : provider?.name || chatText.source;
+  const providerName = provider?.name;
+  const title = providerName && role.model && providerName !== role.model
+    ? `${providerName} · ${role.model}`
+    : providerName || role.model || undefined;
   async function commit(value: string) {
     if (!await save(choices[Number(value)])) setDraft(selected);
   }
   return <div className={styles.modelEffort}>
-    <div className={styles.modelEffortHeading}><span title={provider?.name}>{label}</span><strong>{chatText[draft]}</strong></div>
+    <div className={styles.modelEffortHeading}><span title={title}>{label}</span><strong>{chatText[draft]}</strong></div>
     <div className={styles.effortSlider}>
       <input type="range" min={0} max={choices.length - 1} step={1} value={index} disabled={disabled || !provider}
         aria-label={`${label}: ${chatText.effort}`} aria-valuetext={chatText[draft]}

@@ -11,7 +11,7 @@ type Props = {
 
 export function SendButton({ streaming, disabled, onStop }: Props) {
   return streaming ? (
-    <Button className={styles.sendButton} variant="danger" onClick={onStop} aria-label={chatText.stop} title={chatText.stop}>
+    <Button className={styles.sendButton} variant="primary" onClick={onStop} aria-label={chatText.stop} title={chatText.stop}>
       <Square size={18} aria-hidden="true" />
     </Button>
   ) : (

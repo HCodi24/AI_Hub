@@ -15,6 +15,7 @@ import styles from "./preview-panel.module.css";
 const OPEN_KEY = "ai-hub-preview-open";
 const WIDTH_KEY = "ai-hub-preview-width";
 const MIN_WIDTH = 320;
+const CHAT_MIN_WIDTH = 360;
 const DEFAULT_WIDTH = 560;
 const KEY_STEP = 24;
 const ZOOM_KEY = "ai-hub-preview-zoom";
@@ -143,7 +144,7 @@ export function PreviewPanel() {
   const [draft, setDraft] = useState("");
   const [version, setVersion] = useState(0);
   const [width, setWidth] = useState(DEFAULT_WIDTH);
-  const [containerWidth, setContainerWidth] = useState(1200);
+  const [availableWidth, setAvailableWidth] = useState(DEFAULT_WIDTH + CHAT_MIN_WIDTH);
   const [resizing, setResizing] = useState(false);
   const panel = useRef<HTMLElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
@@ -155,8 +156,8 @@ export function PreviewPanel() {
   const [picking, setPicking] = useState(false);
   const [zoom, setZoom] = useState(1);
   const drag = useRef<{ x: number; width: number } | null>(null);
-  // Same rule as the history sidebar, mirrored: at most two thirds of the window, never narrower than MIN_WIDTH.
-  const maxWidth = Math.max(MIN_WIDTH, Math.floor(containerWidth * 2 / 3));
+  // Let the preview grow until the chat reaches its minimum width, while preserving the preview minimum.
+  const maxWidth = Math.max(MIN_WIDTH, availableWidth - CHAT_MIN_WIDTH);
   const panelWidth = Math.max(MIN_WIDTH, Math.min(width, maxWidth));
   useEffect(() => {
     setOpen(read(OPEN_KEY) === "1");
@@ -166,11 +167,17 @@ export function PreviewPanel() {
     if (ZOOM_STEPS.includes(savedZoom)) setZoom(savedZoom);
   }, []);
   useEffect(() => {
-    const container = panel.current?.parentElement;
-    if (!open || !container) return;
-    const observer = new ResizeObserver(() => setContainerWidth(container.clientWidth));
+    const aside = panel.current;
+    const container = aside?.parentElement;
+    if (!open || !aside || !container) return;
+    const main = container.querySelector<HTMLElement>("#chat-main") ?? container.querySelector<HTMLElement>(":scope > main");
+    if (!main) return;
+    const measure = () => setAvailableWidth(main.offsetWidth + aside.offsetWidth);
+    const observer = new ResizeObserver(measure);
     observer.observe(container);
-    setContainerWidth(container.clientWidth);
+    observer.observe(main);
+    observer.observe(aside);
+    measure();
     return () => observer.disconnect();
   }, [open]);
   useEffect(() => { const saved = read(urlKey(folder)); setUrl(saved); setDraft(saved); }, [folder]);

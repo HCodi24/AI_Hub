@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, KeyRound, LogIn, LogOut, Plus, Terminal } from "lucide-react";
+import { ChevronRight, KeyRound, Plus, Terminal } from "lucide-react";
 import { claudeApi, safeClaudeLoginUrl } from "@/apis/claude.api";
 import { codexApi, safeCodexLoginUrl } from "@/apis/codex.api";
 import { settingsApi } from "@/apis/settings.api";
@@ -14,6 +14,7 @@ import { useProviderConnectionQueries } from "@/lib/provider-connections";
 import type { ConnectionTest, FullConfig, Provider } from "@/schema/settings.schema";
 import { settingsText as t } from "@/text/settings";
 import { planLabel } from "./account-parts";
+import { LoginOutButton } from "./login_out";
 import { ProviderForm } from "./provider-form";
 import { errorText, useSettingsConfig } from "./use-settings";
 import styles from "./settings.module.css";
@@ -95,7 +96,7 @@ function PlaceholderRow({ kind, name, disabled, onSignIn, onOpen }: {
       </span>
     </button>
     <span className={styles.addonControls}>
-      <Button size="sm" disabled={disabled} onClick={onSignIn}><LogIn size={16} aria-hidden="true" />{t.providers.account.signIn}</Button>
+      <LoginOutButton connected={false} checking={false} disabled={disabled} onClick={onSignIn} />
       <Button size="sm" variant="ghost" className={styles.iconButton} disabled={disabled} aria-label={t.providers.detail(name)}
         title={t.providers.detailShort} onClick={onOpen}><ChevronRight size={18} aria-hidden="true" /></Button>
     </span>
@@ -268,9 +269,8 @@ export function ProvidersTab() {
       setAdding(false);
     }
   }
-  /** CLI tab row: "Đăng nhập" creates the source if needed, finds the CLI on this machine and copies its account
-   *  (the server resolves the program itself); "Đăng xuất" only removes MutiS's copy, never the machine's sign-in. */
-  async function machineRow(kind: string, providerId: string | undefined, action: "cli" | "logout") {
+  /** CLI sign-in imports the account from this machine. Sign-out on either tab removes only MutiS's copy. */
+  async function accountRow(kind: string, providerId: string | undefined, action: "cli" | "logout", tab: "cli" | "login" = "cli") {
     if (adding) return;
     setAdding(true);
     setLoginError(null);
@@ -286,7 +286,10 @@ export function ProvidersTab() {
       }
       const codex = kind === "codex_cli";
       const key = [codex ? "codex-connection" : "claude-connection", id];
-      await client.cancelQueries({ queryKey: key });
+      await Promise.all([
+        client.cancelQueries({ queryKey: key }),
+        tab === "login" ? client.cancelQueries({ queryKey: ["provider-test", id] }) : undefined,
+      ]);
       const result = codex ? await codexApi.action(id, action) : await claudeApi.action(id, action);
       if (action === "cli" && !result.connected) {
         setLoginError({ tab: "cli", kind, message: result.message || t.error });
@@ -330,17 +333,18 @@ export function ProvidersTab() {
     const connected = rowStatuses[provider.id]?.ok;
     const checking = !connected && antigravityChecks.get(provider.id)?.isFetching;
     return <>
-      <Button size="sm" disabled={adding || checking} onClick={() => void machineRow(provider.kind, provider.id, connected ? "logout" : "cli")}>
-        {connected ? <LogOut size={16} aria-hidden="true" /> : <LogIn size={16} aria-hidden="true" />}
-        {checking ? t.providers.testing : connected ? t.providers.account.signOut : t.providers.account.signIn}</Button>
+      <LoginOutButton connected={Boolean(connected)} checking={Boolean(checking)} disabled={Boolean(adding || checking)}
+        onClick={() => void accountRow(provider.kind, provider.id, connected ? "logout" : "cli")} />
       {detailButton("cli", provider)}</>;
   };
   const rowAction = (provider: Provider) => {
-    const connected = rowStatuses[provider.id]?.ok;
-    // Switching a signed-in account goes through the source page, which asks before replacing it.
+    const connected = Boolean(rowStatuses[provider.id]?.ok);
     return <>
-      <Button size="sm" disabled={adding} onClick={() => connected ? select("login", provider.id) : void signInRow(provider.kind, provider.id)}>
-        <LogIn size={16} aria-hidden="true" />{connected ? t.providers.account.switchAccount : t.providers.account.signIn}</Button>
+      <LoginOutButton connected={connected} checking={false} disabled={adding}
+        onClick={() => {
+          if (connected) void accountRow(provider.kind, provider.id, "logout", "login");
+          else void signInRow(provider.kind, provider.id);
+        }} />
       {detailButton("login", provider)}</>;
   };
 
@@ -400,7 +404,7 @@ export function ProvidersTab() {
             {/* New machine: one click finds the installed CLI and signs in with its account. */}
             {MACHINE_KINDS.filter(kind => !lists.cli.some(provider => provider.kind === kind)).map(kind =>
               <PlaceholderRow key={kind} kind={kind} name={t.providers.account.cliName(kind)} disabled={adding}
-                onSignIn={() => void machineRow(kind, undefined, "cli")} onOpen={() => void openPlaceholder(kind, "cli")} />)}
+                onSignIn={() => void accountRow(kind, undefined, "cli")} onOpen={() => void openPlaceholder(kind, "cli")} />)}
           </SourceCard>
           {loginAlert("cli")}
         </div>

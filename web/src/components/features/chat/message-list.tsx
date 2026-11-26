@@ -1,4 +1,4 @@
-import { forwardRef, memo, useMemo, type HTMLAttributes, type Ref } from "react";
+import { forwardRef, memo, useCallback, useMemo, useState, type HTMLAttributes, type Ref } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/empty-state/empty-state";
 import { ScrollArea } from "@/components/scroll-area";
@@ -10,6 +10,7 @@ import { ApprovalCard } from "./question/approval-card";
 import { ChatQuestions } from "./question/chat-questions";
 import { PermissionRetry } from "./question/permission-retry";
 import { QuickReplies, type SendReply } from "./question/quick-replies";
+import { TurnNavigator } from "./turn-navigator";
 import { useChatScrollFollow } from "./use-chat-scroll-follow";
 import styles from "./chat-screen.module.css";
 
@@ -48,10 +49,26 @@ const MessageRow = memo(function MessageRow({ index, send, taskBoardEnabled }: {
 export const MessageList = memo(function MessageList({ send, taskBoardEnabled }: { send: SendReply; taskBoardEnabled: boolean }) {
   const count = useChatStore(s => s.messages.length);
   const id = useChatStore(s => s.id);
-  const { virtuosoRef, scrollerRef } = useChatScrollFollow(id, count);
+  const [visible, setVisible] = useState({ id, index: count - 1 });
+  if (visible.id !== id) setVisible({ id, index: count - 1 });
+  const activeIndex = visible.id === id ? visible.index : count - 1;
+  const { virtuosoRef, scrollerRef, pauseFollow } = useChatScrollFollow(id, count);
+  const selectTurn = useCallback((index: number) => {
+    const virtuoso = virtuosoRef.current;
+    if (!virtuoso) return;
+    pauseFollow();
+    virtuoso.scrollToIndex({ index, align: "start", behavior: "smooth" });
+  }, [pauseFollow, virtuosoRef]);
   // Keep Virtuoso's size-change auto-follow disabled so reader intent controls every follow action.
-  return count ? <Virtuoso key={id} ref={virtuosoRef} scrollerRef={scrollerRef} className={styles.scroller}
-    totalCount={count} followOutput={false} initialTopMostItemIndex={{ index: count - 1, align: "end" }}
-    components={SCROLL_COMPONENTS}
-    itemContent={index => <MessageRow index={index} send={send} taskBoardEnabled={taskBoardEnabled} />} /> : <EmptyState />;
+  return count ? <>
+    <Virtuoso key={id} ref={virtuosoRef} scrollerRef={scrollerRef} className={styles.scroller}
+      totalCount={count} followOutput={false} initialTopMostItemIndex={{ index: count - 1, align: "end" }}
+      components={SCROLL_COMPONENTS}
+      rangeChanged={({ startIndex, endIndex }) => {
+        const index = endIndex === count - 1 ? count - 1 : startIndex;
+        setVisible(previous => previous.id !== id || previous.index === index ? previous : { id, index });
+      }}
+      itemContent={index => <MessageRow index={index} send={send} taskBoardEnabled={taskBoardEnabled} />} />
+    <TurnNavigator key={id} activeIndex={activeIndex} onSelect={selectTurn} />
+  </> : <EmptyState />;
 });

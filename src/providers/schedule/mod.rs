@@ -69,7 +69,7 @@ pub(super) trait Backend: Send + Sync + 'static {
     async fn announce_check(&self, task: &Delegation, attempt: usize, check: &CheckResult);
     fn cancelled(&self) -> bool;
     /// Why the source behind this actor cannot be called now (its usage limit is spent), if so.
-    fn limited(&self, _actor: Actor) -> Option<String> { None }
+    async fn limited(&self, _actor: Actor) -> Option<String> { None }
     /// The actor's source just answered with a usage-limit error: stop calling it for a while.
     fn note_limit(&self, _actor: Actor, _why: &str) {}
     /// False when the coordinator may not edit files, so it cannot take a task over.

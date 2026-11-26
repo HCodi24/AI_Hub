@@ -103,7 +103,7 @@ impl<B: Backend> Round<'_, B> {
             self.mark_reason(&task.title, self.spent_state(), max, None, None, None, None, None, Some(format!("hết lượt thử ({max}/{max})"))).await;
             return None;
         }
-        if let Some(why) = self.backend.limited(editor) {
+        if let Some(why) = self.backend.limited(editor).await {
             self.out.reports.push(limit_text(&task.title, &self.backend.actor_name(editor), &why));
             self.state.insert(title, State::Failed);
             let reason = format!("hết hạn mức: {}", board_detail(&why));

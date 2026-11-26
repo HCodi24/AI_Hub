@@ -28,6 +28,18 @@ export function useChatScrollFollow(chatId: string, totalCount: number) {
     }
   }, [chatId, totalCount]);
 
+  const cancelFrame = useCallback(() => {
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+  }, []);
+
+  const pauseFollow = useCallback(() => {
+    followingRef.current = false;
+    cancelFrame();
+  }, [cancelFrame]);
+
   const setScroller = useCallback((element: HTMLElement | null | Window) => {
     cleanupRef.current?.();
     cleanupRef.current = null;
@@ -41,13 +53,6 @@ export function useChatScrollFollow(chatId: string, totalCount: number) {
     let touchStartY: number | null = null;
     let resizeObserver: ResizeObserver | undefined;
     let mutationObserver: MutationObserver | undefined;
-
-    const cancelFrame = () => {
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
-    };
 
     const scheduleFollow = () => {
       if (!followingRef.current || activeChatIdRef.current !== mountedChatId || frameRef.current !== null) return;
@@ -206,7 +211,7 @@ export function useChatScrollFollow(chatId: string, totalCount: number) {
       cancelFrame();
       if (scheduleFollowRef.current === scheduleFollow) scheduleFollowRef.current = null;
     };
-  }, [chatId]);
+  }, [cancelFrame, chatId]);
 
-  return { virtuosoRef, scrollerRef: setScroller };
+  return { virtuosoRef, scrollerRef: setScroller, pauseFollow };
 }

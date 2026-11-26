@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { http, parseResponse } from "@/lib/http";
+import { usePopupFit } from "@/lib/use-popup-fit";
 import { chatText as t } from "@/text/chat";
 import limitStyles from "./cli-limits.module.css";
 
@@ -37,72 +38,7 @@ export function CliLimits({ providerId, name, kind }: { providerId: string; name
       document.removeEventListener("keydown", close);
     };
   }, []);
-  useLayoutEffect(() => {
-    const anchor = popup.current;
-    const summary = anchor?.querySelector("summary");
-    const box = panel.current;
-    if (!anchor || !summary || !box) return;
-
-    let frame: number | undefined;
-    let offset = 0;
-    const updatePosition = () => {
-      const viewport = window.visualViewport;
-      let left = viewport?.offsetLeft ?? 0;
-      let right = Math.min(left + (viewport?.width ?? window.innerWidth), document.documentElement.clientWidth);
-      // The chat column clips its content, so a popup must stay inside it instead of sliding under the sidebar.
-      const column = anchor.closest("main")?.getBoundingClientRect();
-      if (column) { left = Math.max(left, column.left + 8); right = Math.min(right, column.right - 8); }
-      const availableWidth = `${Math.max(0, right - left)}px`;
-      if (anchor.style.getPropertyValue("--popup-max-width") !== availableWidth) {
-        anchor.style.setProperty("--popup-max-width", availableWidth);
-      }
-      const width = anchor.open ? box.getBoundingClientRect().width : 0;
-      if (!width) {
-        delete box.dataset.positioned;
-        if (frame !== undefined) {
-          cancelAnimationFrame(frame);
-          frame = undefined;
-        }
-        return;
-      }
-      const anchorRight = anchor.getBoundingClientRect().right;
-      const preferredLeft = anchorRight - width;
-      const fittedLeft = Math.max(left, Math.min(preferredLeft, right - width));
-      const nextOffset = fittedLeft - preferredLeft;
-      if (nextOffset !== offset) {
-        box.style.setProperty("--popup-right", `${-nextOffset}px`);
-        offset = nextOffset;
-      }
-      if (!box.dataset.positioned) box.dataset.positioned = "true";
-      // Wrapping can move the anchor without changing the size of either element.
-      if (frame === undefined) {
-        frame = requestAnimationFrame(() => {
-          frame = undefined;
-          updatePosition();
-        });
-      }
-    };
-
-    const toggleFromSummary = (event: MouseEvent) => {
-      if (event.defaultPrevented) return;
-      event.preventDefault();
-      // Native toggle events can be coalesced when the summary is activated rapidly.
-      anchor.open = !anchor.open;
-      setOpen(anchor.open);
-      updatePosition();
-    };
-
-    const observer = new ResizeObserver(updatePosition);
-    observer.observe(box);
-    summary.addEventListener("click", toggleFromSummary);
-    anchor.addEventListener("toggle", updatePosition);
-    return () => {
-      summary.removeEventListener("click", toggleFromSummary);
-      anchor.removeEventListener("toggle", updatePosition);
-      observer.disconnect();
-      if (frame !== undefined) cancelAnimationFrame(frame);
-    };
-  }, []);
+  usePopupFit(popup, panel, setOpen);
   const now = Date.now() / 1000;
   const fresh = !query.isError && query.data?.updated_at != null && now - query.data.updated_at < 900;
   const stale = query.data != null && (query.data.updated_at == null || now - query.data.updated_at >= 900);

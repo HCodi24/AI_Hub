@@ -185,3 +185,13 @@ fn codex_uses_all_buckets_without_duplicate_fallback() {
         Some(0.0)
     );
 }
+
+#[test]
+fn only_known_windows_with_room_thaw_a_frozen_source() {
+    let window = |used: Option<f64>, status: &str| super::LimitWindow { label: "five_hour".into(), used_percent: used, status: status.into(), resets_at: None };
+    assert!(super::has_room(&[window(Some(3.0), "allowed")]), "a reset window has room");
+    assert!(!super::has_room(&[window(Some(100.0), "allowed")]));
+    assert!(!super::has_room(&[window(Some(10.0), "rejected")]));
+    assert!(!super::has_room(&[window(None, "allowed")]), "placeholder windows prove nothing");
+    assert!(!super::has_room(&[]));
+}

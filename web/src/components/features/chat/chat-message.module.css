@@ -9,7 +9,7 @@
 .message details { margin-top: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small); padding: var(--space-3); }
 .message summary { cursor: pointer; color: var(--muted); }
 .message .activity { border: 0; padding: 0; }
-.message .activitySummary { display: flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; min-height: 36px; list-style: none; border-radius: 6px; }
+.message .activitySummary { display: flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; min-height: 36px; list-style: none; border-radius: 6px; white-space: nowrap; }
 .message .activity:not([open]) { margin-top: var(--space-2); }
 .activity:not([open]) > .activitySummary { font-size: var(--font-12); }
 .activity:not([open]) > .activitySummary:hover { color: var(--text); }

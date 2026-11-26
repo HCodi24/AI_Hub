@@ -51,6 +51,24 @@ fn with_claude_defaults(mut limits: Limits) -> Limits {
     limits
 }
 
+/// Why a source stays frozen. A frozen source whose fresh limits show room again (its window reset early, or the
+/// error was a short rate limit) is thawed at once instead of waiting out the fixed freeze.
+pub(crate) async fn frozen_now(provider: &ProviderConfig) -> Option<String> {
+    let why = quota::frozen(&provider.id)?;
+    let fresh = read(provider, true).await;
+    if has_room(&fresh.windows) {
+        quota::thaw(&provider.id);
+        return None;
+    }
+    Some(why)
+}
+
+/// Known windows, none spent. No windows (an API source, or a read that failed) proves nothing.
+fn has_room(windows: &[LimitWindow]) -> bool {
+    windows.iter().any(|w| w.used_percent.is_some())
+        && windows.iter().all(|w| w.status != "rejected" && w.used_percent.map_or(true, |used| used < 100.0))
+}
+
 pub(crate) async fn read(provider: &ProviderConfig, ask_anthropic: bool) -> Limits {
     let cached = cache()
         .lock()

@@ -58,8 +58,12 @@ impl Backend for Live {
         self.cancel.is_cancelled()
     }
 
-    fn limited(&self, actor: Actor) -> Option<String> {
-        super::quota::frozen(self.source_of(actor)?)
+    async fn limited(&self, actor: Actor) -> Option<String> {
+        let provider = match actor {
+            Actor::Tester => &self.checker.as_ref()?.0,
+            _ => &self.worker,
+        };
+        crate::features::providers::limits::frozen_now(provider).await
     }
 
     fn note_limit(&self, actor: Actor, why: &str) {

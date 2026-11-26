@@ -20,6 +20,10 @@ pub fn freeze(source: &str, why: &str) {
     frozen_map().lock().unwrap_or_else(|e| e.into_inner()).insert(source.to_owned(), (Instant::now() + FREEZE, why.to_owned()));
 }
 
+pub fn thaw(source: &str) {
+    frozen_map().lock().unwrap_or_else(|e| e.into_inner()).remove(source);
+}
+
 /// The error the source gave, while it is still frozen.
 pub fn frozen(source: &str) -> Option<String> {
     let mut map = frozen_map().lock().unwrap_or_else(|e| e.into_inner());

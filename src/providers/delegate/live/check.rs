@@ -19,7 +19,7 @@ impl Live {
         work: &WorkerResult,
     ) -> CheckResult {
         let Some((provider, model, effort)) = self.checker.clone() else { return CheckResult::unclear("no checker is configured") };
-        if let Some(why) = super::quota::frozen(&provider.id) {
+        if let Some(why) = crate::features::providers::limits::frozen_now(&provider).await {
             return CheckResult::unclear(&format!("the checker's usage limit is spent, so no check ran: {why}"));
         }
         let id = check_id(task, attempt);
