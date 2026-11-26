@@ -144,7 +144,7 @@ export function TooltipLayer() {
   }, []);
 
   return (
-    <div ref={tooltipRef} popover="manual" aria-hidden="true" className={styles.tooltip}>
+    <div ref={tooltipRef} data-glass="tooltip" popover="manual" aria-hidden="true" className={styles.tooltip}>
       <span ref={headingRef} className={styles.title} hidden />
       <span ref={textRef} />
     </div>

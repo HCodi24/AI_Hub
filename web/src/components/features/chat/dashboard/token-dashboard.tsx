@@ -27,12 +27,12 @@ function CumulativeChart({ series }: { series: ReturnType<typeof chatTokenSeries
   const ranked = series.series.map(entry => ({ entry, last: entry.points.at(-1), ...appearance(entry.model, series.models) }))
     .sort((a, b) => (b.last?.total ?? 0) - (a.last?.total ?? 0));
   return <>
-    <svg className={styles.chart} viewBox="0 0 360 215" role="img" aria-label={t.cumulativeTitle}>
+    <svg data-glass="dash-chart" className={styles.chart} viewBox="0 0 360 215" role="img" aria-label={t.cumulativeTitle}>
       <title>{t.cumulativeTitle}</title>
       <desc>{t.cumulativeDesc}</desc>
       <text x="0" y="10" className={styles.axisTitle}>{t.cumulativeAxis}</text>
       {[0, 1, 2, 3].map(i => <g key={i}>
-        <path d={`M42 ${y(max * i / 3)}H342`} stroke={i ? "#e2e8f0" : "#94a3b8"} />
+        <path data-glass="dash-grid" d={`M42 ${y(max * i / 3)}H342`} stroke={i ? "#e2e8f0" : "#94a3b8"} />
         <text x="36" y={y(max * i / 3) + 4} textAnchor="end">{formatCompact(max * i / 3)}</text>
       </g>)}
       <text x="42" y="192">{formatTokens(0)}</text>
@@ -42,7 +42,7 @@ function CumulativeChart({ series }: { series: ReturnType<typeof chatTokenSeries
         const d = entry.points.map((point, i) => i ? `H${x(point.step)}V${y(point.total)}` : `M${x(point.step)} ${y(point.total)}`).join(" ");
         return <g key={`series:${entry.model}`}>
           <path d={d} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-          {last && <circle cx={x(last.step)} cy={y(last.total)} r="4.5" fill={color} stroke="#fff" strokeWidth="2">
+          {last && <circle data-glass="dash-dot" cx={x(last.step)} cy={y(last.total)} r="4.5" fill={color} stroke="#fff" strokeWidth="2">
             <title>{`${modelName(entry.model)} — ${t.modelRow(modelName(entry.model), formatTokens(last.input), formatTokens(last.output))}; ${t.cumulativeAxis}: ${formatTokens(last.total)}`}</title>
           </circle>}
         </g>;
@@ -51,7 +51,7 @@ function CumulativeChart({ series }: { series: ReturnType<typeof chatTokenSeries
     <ul className={styles.legend}>{ranked.map(({ entry, color, last }) => <li key={`legend:${entry.model}`}>
       <i className={styles.swatch} style={{ background: color }} />
       <span className={styles.legendName} title={modelName(entry.model)}>{modelName(entry.model)}</span>
-      <span className={styles.legendValue}>{formatCompact(last?.total ?? 0)}</span>
+      <span data-glass="dash-value" className={styles.legendValue}>{formatCompact(last?.total ?? 0)}</span>
     </li>)}</ul>
   </>;
 }
@@ -84,7 +84,7 @@ function ServerHistory({ samples, note }: { samples: TokenSample[]; note: string
   return <details className={styles.details}>
     <summary>{t.serverDetails}</summary>
     {samples.length > 0 && <>
-      <svg className={styles.chart} viewBox="0 0 355 225" role="img" aria-label={t.timeline}>
+      <svg data-glass="dash-chart" className={styles.chart} viewBox="0 0 355 225" role="img" aria-label={t.timeline}>
         <title>{t.timeline}</title><desc>{t.recording}</desc>
         <path d="M55 35V170H335" fill="none" stroke="currentColor" />
         <text x="5" y="18">{t.tokenAxis}</text>
@@ -131,15 +131,15 @@ type Replies = ReturnType<typeof chatTokenReplies>;
 const pct = (part: number, whole: number) => whole > 0 ? Math.round(part / whole * 100) : 0;
 
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return <div className={styles.tile}><small>{label}</small><b>{value}</b>{hint && <span>{hint}</span>}</div>;
+  return <div data-glass="dash-tile" className={styles.tile}><small>{label}</small><b>{value}</b>{hint && <span>{hint}</span>}</div>;
 }
 
 /** Per-model ranking bars with compact numbers and share of the total. */
 function ModelBars({ usage, order }: { usage: Usage; order: string[] }) {
   return <ul className={styles.rank}>{usage.models.map(row => <li key={`rank:${row.model}`}>
     <span className={styles.legendName} title={modelName(row.model)}>{modelName(row.model)}</span>
-    <span className={styles.track}><i style={{ width: `${pct(row.total, usage.total)}%`, background: appearance(row.model, order).color }} /></span>
-    <span className={styles.legendValue}>{formatCompact(row.total)} · {pct(row.total, usage.total)}%</span>
+    <span data-glass="dash-track" className={styles.track}><i style={{ width: `${pct(row.total, usage.total)}%`, background: appearance(row.model, order).color }} /></span>
+    <span data-glass="dash-value" className={styles.legendValue}>{formatCompact(row.total)} · {pct(row.total, usage.total)}%</span>
   </li>)}</ul>;
 }
 
@@ -149,10 +149,10 @@ function ReplyBars({ replies }: { replies: Replies }) {
   const max = Math.max(1, ...replies.map(r => r.total));
   const slot = 280 / Math.max(1, replies.length), w = Math.min(24, slot * 0.7);
   const y = (v: number) => 170 - v / max * 135;
-  return <svg className={styles.chart} viewBox="0 0 355 205" role="img" aria-label={t.perReplyTitle}>
+  return <svg data-glass="dash-chart" className={styles.chart} viewBox="0 0 355 205" role="img" aria-label={t.perReplyTitle}>
     <title>{t.perReplyTitle}</title>
     {[0, 1, 2, 3].map(i => <g key={i}>
-      <path d={`M55 ${y(max * i / 3)}H335`} stroke="#e1e0d9" />
+      <path data-glass="dash-grid" d={`M55 ${y(max * i / 3)}H335`} stroke="#e1e0d9" />
       <text x="50" y={y(max * i / 3) + 4} textAnchor="end">{formatCompact(max * i / 3)}</text>
     </g>)}
     {replies.map((r, i) => {
@@ -179,7 +179,7 @@ function RepliesView({ usage, replies, order }: { usage: Usage; replies: Replies
     <h3 className={styles.modelsTitle}>{t.byModel}</h3>
     <ModelBars usage={usage} order={order} />
     <h3 className={styles.modelsTitle}>{t.perReplyTitle}</h3>
-    <ul className={styles.legendRow}>
+    <ul data-glass="dash-legend-row" className={styles.legendRow}>
       <li><i style={{ background: IN_COLOR }} />{t.input}</li><li><i style={{ background: OUT_COLOR }} />{t.output}</li>
     </ul>
     <ReplyBars replies={replies} />
@@ -227,8 +227,8 @@ function OverviewView({ usage, series, replies }: { usage: Usage; series: Return
     <h3 className={styles.modelsTitle}>{t.topReplies}</h3>
     <ul className={styles.rank}>{top.map(r => <li key={r.step}>
       <span className={styles.legendName}>{t.replyN(r.step)}</span>
-      <span className={styles.track}><i style={{ width: `${pct(r.total, topMax)}%`, background: IN_COLOR }} /></span>
-      <span className={styles.legendValue}>{formatCompact(r.total)}</span>
+      <span data-glass="dash-track" className={styles.track}><i style={{ width: `${pct(r.total, topMax)}%`, background: IN_COLOR }} /></span>
+      <span data-glass="dash-value" className={styles.legendValue}>{formatCompact(r.total)}</span>
     </li>)}</ul>
   </>;
 }
@@ -244,7 +244,7 @@ export function TokenDashboardView({ messages, samples = [], status = "ready", c
   const t = chatText.tokenDashboard;
   // Compact frame: only the short heading plus the cumulative chart and its legend. Totals, the exact
   // table, the backend history and the explanatory notes live in the large Dashboard dialog.
-  if (compact) return <section className={`${styles.dashboard} ${styles.compact}`} aria-label={t.title}>
+  if (compact) return <section data-glass="token-dashboard" className={`${styles.dashboard} ${styles.compact}`} aria-label={t.title}>
     <h2 className={styles.title}>{t.title}</h2>
     {usage.reports === 0
       ? <p className={styles.empty}>{t.empty}</p>
@@ -256,7 +256,7 @@ export function TokenDashboardView({ messages, samples = [], status = "ready", c
     : status === "loading" ? t.waiting
       : status === "error" ? t.historyError
         : usage.reports > 0 ? t.historyUnavailable : t.historyEmpty;
-  return <section className={styles.dashboard} aria-label={t.title}>
+  return <section data-glass="token-dashboard" className={styles.dashboard} aria-label={t.title}>
     <h2 className={styles.title}>{t.title}</h2>
     {usage.reports === 0 && <p className={styles.empty}>{t.empty}</p>}
     {usage.reports > 0 && <>

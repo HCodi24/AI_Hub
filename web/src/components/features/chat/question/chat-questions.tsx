@@ -46,7 +46,7 @@ export function ChatQuestions({ questions, send, active, chatId }: {
     finally { pending.current = false; setSending(false); }
   }
 
-  return <form className={styles.card} onSubmit={event => {
+  return <form data-glass="card" className={styles.card} onSubmit={event => {
     if (step < lastStep) {
       event.preventDefault();
       setStep(step + 1);

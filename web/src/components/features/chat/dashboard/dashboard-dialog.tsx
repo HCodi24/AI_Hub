@@ -11,6 +11,6 @@ import styles from "./dashboard-dialog.module.css";
  */
 export function DashboardDialog({ close }: { close: () => void }) {
   return <Dialog title={chatText.dashboard.title} close={close} wide iconClose className={styles.dashboardDialog}>
-    <div className={styles.body}><TokenDashboard /></div>
+    <div data-glass="dashboard-body" className={styles.body}><TokenDashboard /></div>
   </Dialog>;
 }

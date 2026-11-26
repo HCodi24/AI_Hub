@@ -18,7 +18,7 @@ export function SkillSuggestions({ id, names, activeIndex, onSelect }: SkillSugg
 
   if (names.length === 0) return null;
 
-  return <div className={styles.skillMenu}>
+  return <div data-glass="skill-menu" className={styles.skillMenu}>
     <ul id={id} className={styles.skillSuggestions} role="listbox" aria-label={chatText.skillSuggestions}>
       {names.map((name, index) => {
         const optionId = `${id}-${index}`;

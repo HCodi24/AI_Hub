@@ -1,0 +1,128 @@
+/* Viên kính Liquid Glass kiểu WWDC25 / iPadOS 26 cho cụm nút thu nhỏ / phóng to / đóng cửa sổ. */
+[data-style="glass"] [data-glass="window-controls"] {
+  top: 7px;
+  right: 12px;
+  height: 26px;
+  padding: 0 7px;
+  gap: 7px;
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  background: var(--glass-control-material);
+  box-shadow:
+    inset 1px 1px 0 0 var(--glass-rim-hi),
+    inset -1px -1px 0 0 var(--glass-rim-lo),
+    0 1px 3px rgba(0, 0, 0, 0.16),
+    0 8px 20px -8px var(--glass-drop);
+  -webkit-backdrop-filter: var(--glass-dock-blur);
+  backdrop-filter: var(--glass-dock-blur);
+  transition:
+    transform 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+[data-style="glass"] [data-glass="window-controls"]:hover {
+  transform: scale(1.04);
+  background: var(--glass-hover-material);
+  box-shadow:
+    inset 1px 1px 0 0 var(--glass-rim-hi),
+    inset -1px -1px 0 0 var(--glass-rim-lo),
+    0 2px 6px rgba(0, 0, 0, 0.18),
+    0 10px 24px -8px var(--glass-drop);
+}
+
+[data-style="glass"] [data-glass="window-controls"] button {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 50%;
+  transition:
+    transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+[data-style="glass"] [data-glass="window-controls"] button svg {
+  width: 8.5px;
+  height: 8.5px;
+  opacity: 0;
+  transform: scale(0.72);
+  transition:
+    opacity 140ms var(--ease-out),
+    transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+[data-style="glass"] [data-glass="window-controls"]:hover button svg,
+[data-style="glass"] [data-glass="window-controls"] button:focus-visible svg {
+  opacity: 1;
+  transform: scale(1);
+}
+
+[data-style="glass"] [data-glass="window-controls"] button[data-action="min"] {
+  background: #f9c52b;
+  color: rgba(102, 60, 0, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    inset 0 -1px 1px rgba(130, 82, 0, 0.22),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+[data-style="glass"] [data-glass="window-controls"] button[data-action="min"]:hover:enabled {
+  background: #ffd13b;
+  transform: scale(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 10px 1px rgba(249, 197, 43, 0.55);
+}
+
+[data-style="glass"] [data-glass="window-controls"] button[data-action="max"] {
+  background: #34c759;
+  color: rgba(10, 68, 22, 0.84);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    inset 0 -1px 1px rgba(0, 80, 22, 0.24),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+[data-style="glass"] [data-glass="window-controls"] button[data-action="max"]:hover:enabled {
+  background: #3cd462;
+  transform: scale(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 10px 1px rgba(52, 199, 89, 0.55);
+}
+
+[data-style="glass"] [data-glass="window-controls"] button[data-action="close"] {
+  background: #ef3b2d;
+  color: rgba(88, 10, 6, 0.84);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 1px rgba(120, 12, 8, 0.26),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+[data-style="glass"] [data-glass="window-controls"] button[data-action="close"]:hover:enabled {
+  background: #ff4b3e;
+  transform: scale(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.44),
+    0 0 10px 1px rgba(239, 59, 45, 0.55);
+}
+
+[data-style="glass"] [data-glass="window-controls"] button:active:enabled {
+  opacity: 1;
+  transform: scale(0.92);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-style="glass"] [data-glass="window-controls"],
+  [data-style="glass"] [data-glass="window-controls"] button,
+  [data-style="glass"] [data-glass="window-controls"] button svg {
+    transition: none;
+  }
+
+  [data-style="glass"] [data-glass="window-controls"]:hover,
+  [data-style="glass"] [data-glass="window-controls"] button:hover:enabled,
+  [data-style="glass"] [data-glass="window-controls"] button:active:enabled {
+    transform: none;
+  }
+}

@@ -1,0 +1,67 @@
+[data-style="glass"] [data-glass="sidebar"] {
+  --sidebar-rail: transparent;
+  --sidebar-panel: transparent;
+
+  gap: var(--space-1);
+  margin: 0 var(--space-1) var(--space-1) var(--space-1);
+  padding-top: var(--titlebar-height);
+  height: calc(100% - var(--space-1));
+}
+
+[data-style="glass"] [data-glass="rail"],
+[data-style="glass"] [data-glass="sidebar-content"] {
+  border: 1px solid var(--glass-border);
+  border-radius: 28px;
+  background: var(--glass-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+[data-style="glass"] [data-glass="rail"] {
+  position: relative;
+  padding-top: 12px;
+}
+
+[data-style="glass"] [data-glass="sidebar-content"] {
+  margin-top: 0;
+  width: calc(var(--sidebar-width, 320px) - 64px - var(--space-1));
+}
+
+[data-style="glass"] [data-glass="sidebar"]::after {
+  display: none;
+}
+
+/* Nền kính nhẹ cho thanh File / Edit / View để luôn đọc rõ trên mọi hình nền. */
+[data-style="glass"] [data-glass="menu-labels"] {
+  top: 7px;
+  left: 76px;
+  height: 26px;
+  padding: 0 12px;
+  gap: 18px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--glass-titlebar-scrim);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  -webkit-backdrop-filter: var(--glass-dock-blur);
+  backdrop-filter: var(--glass-dock-blur);
+  color: var(--text);
+}
+
+/* Giữ menu tùy chọn ở trên thẻ nội dung khi mở. */
+[data-style="glass"] [data-glass="rail"]:has([data-glass="preferences"][open]),
+[data-style="glass"] [data-glass="sidebar"]:has([data-glass="preferences"][open]) {
+  z-index: var(--z-toolbar);
+}
+
+[data-style="glass"] [data-glass="preferences-panel"] {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-overlay-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-overlay-blur);
+  backdrop-filter: var(--glass-overlay-blur);
+}
+
+[data-style="glass"] [data-glass="sidebar-resize"] {
+  right: 0;
+}

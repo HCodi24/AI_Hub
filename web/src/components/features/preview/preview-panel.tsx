@@ -243,8 +243,8 @@ export function PreviewPanel() {
   const resize = (next: number) => { const value = Math.max(MIN_WIDTH, Math.min(maxWidth, next)); setWidth(value); write(WIDTH_KEY, String(value)); };
   const submit = (event: FormEvent) => { event.preventDefault(); setUrl(draft.trim()); write(urlKey(folder), draft.trim()); setVersion(v => v + 1); };
   return <>
-    <IconButton className={styles.toggle} aria-label={open ? t.close : t.toggle} aria-expanded={open} onClick={() => toggle(!open)}><PanelRight size={20} /></IconButton>
-    {open && <aside ref={panel} className={styles.panel} aria-label={t.toggle} data-preview data-resizing={resizing || undefined}
+    <IconButton data-glass="preview-toggle" className={styles.toggle} aria-label={open ? t.close : t.toggle} aria-expanded={open} onClick={() => toggle(!open)}><PanelRight size={20} /></IconButton>
+    {open && <aside ref={panel} data-glass="preview-panel" className={styles.panel} aria-label={t.toggle} data-preview data-resizing={resizing || undefined}
       style={{ "--preview-width": `${panelWidth}px` } as CSSProperties}>
       <div className={styles.handle} role="separator" aria-orientation="vertical" aria-label={t.resize}
         aria-valuemin={MIN_WIDTH} aria-valuemax={maxWidth} aria-valuenow={panelWidth} tabIndex={0}

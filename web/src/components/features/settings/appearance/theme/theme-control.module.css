@@ -1,36 +1,3 @@
 .control { display: flex; padding: var(--space-1); gap: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-small); }
 .control button { flex: 1; padding: var(--space-1); border: 0; background: transparent; color: var(--muted); font-size: var(--font-12); white-space: nowrap; }
 .control button[aria-pressed=true] { background: var(--color-muted); color: var(--text); }
-
-:global([data-style="glass"]) .control {
-  border: 1px solid transparent;
-  border-radius: 9999px;
-  background: var(--glass-material);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
-}
-
-:global([data-style="glass"]) .control button {
-  border-radius: 9999px;
-  transition:
-    scale .45s cubic-bezier(0.34, 1.56, 0.64, 1),
-    background .2s;
-}
-
-:global([data-style="glass"]) .control button[aria-pressed=true] {
-  background: var(--glass-highlight);
-  box-shadow: var(--glass-shadow);
-}
-
-:global([data-style="glass"]) .control button:active {
-  scale: 1.04 0.96;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  :global([data-style="glass"]) .control button {
-    transition: none;
-  }
-
-  :global([data-style="glass"]) .control button:active {
-    scale: none;
-  }
-}

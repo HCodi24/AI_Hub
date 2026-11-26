@@ -20,7 +20,7 @@ export function CompactButton({ disabled }: { disabled?: boolean }) {
     } catch (error) { notify(t.failed(error instanceof Error ? error.message : String(error))); }
     finally { setBusy(false); }
   }
-  return <button className={styles.compactButton} type="button" title={t.title} disabled={disabled || busy || !hasMessages} onClick={() => void run()}>
+  return <button data-glass="compact-button" className={styles.compactButton} type="button" title={t.title} disabled={disabled || busy || !hasMessages} onClick={() => void run()}>
     {busy ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <Shrink size={16} aria-hidden="true" />}{busy ? t.busy : t.label}
   </button>;
 }

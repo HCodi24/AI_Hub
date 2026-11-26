@@ -37,7 +37,7 @@ export function SettingsDialog({ initialTab = "providers", folder, close, dashbo
   const [tab, setTab] = useState<TabId>(initialTab);
   return <Dialog title={t.title} close={close} wide className={styles.settingsDialog} iconClose>
     <div className={styles.layout}>
-    <ScrollArea as="nav" className={styles.tabs} aria-label={t.title}>
+    <ScrollArea as="nav" data-glass="settings-tabs" className={styles.tabs} aria-label={t.title}>
       {TABS.map(({ id, icon: Icon }) => <button key={id} id={`settings-tab-${id}`} aria-current={tab === id ? "page" : undefined}
         aria-controls="settings-panel" onClick={() => setTab(id)}><Icon size={20} aria-hidden="true" />{t.tabs[id]}</button>)}
     </ScrollArea>

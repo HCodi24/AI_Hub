@@ -49,7 +49,7 @@ export function StyleControl() {
     apply(value);
     configApi.saveStyle(value).then(() => client.invalidateQueries({ queryKey: ["config"] })).catch(() => undefined);
   }
-  return <div className={styles.control} role="group" aria-label={t.style}>
+  return <div data-glass="theme-control" className={styles.control} role="group" aria-label={t.style}>
     {STYLE_OPTIONS.map(([value, Icon, label]) =>
       <button key={value} type="button" title={label} aria-pressed={style === value} aria-label={label} onClick={() => change(value)}>
         <Icon size={16} aria-hidden="true" /><span>{label}</span>

@@ -1,0 +1,51 @@
+[data-style="glass"] [data-glass="shell"] {
+  padding: 0;
+  background: transparent;
+}
+
+[data-style="glass"] [data-glass="main"] {
+  margin: var(--workspace-top, var(--titlebar-height)) var(--space-1) var(--space-1) 0;
+  height: calc(100% - var(--workspace-top, var(--titlebar-height)) - var(--space-1));
+  border: 1px solid var(--glass-border);
+  border-radius: 28px;
+  background: var(--glass-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+[data-style="glass"] [data-glass="shell"]:has(> [data-preview]) [data-glass="main"] {
+  border-radius: 28px;
+}
+
+[data-style="glass"] [data-glass="dock"]::before {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Nút nổi góc trên/phải bên trong thẻ chat (Terminal, Nén ngữ cảnh). */
+[data-style="glass"] button[data-glass="terminal-toggle"],
+[data-style="glass"] button[data-glass="compact-button"] {
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  background: var(--glass-control-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-dock-blur);
+  backdrop-filter: var(--glass-dock-blur);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+[data-style="glass"] button[data-glass="terminal-toggle"]:hover:enabled,
+[data-style="glass"] button[data-glass="compact-button"]:hover:enabled {
+  background: var(--glass-hover-material);
+}
+
+[data-style="glass"] button[data-glass="terminal-toggle"][aria-expanded="true"] {
+  color: var(--accent);
+  background:
+    linear-gradient(color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--accent) 18%, transparent)) padding-box,
+    var(--glass-control-material);
+}

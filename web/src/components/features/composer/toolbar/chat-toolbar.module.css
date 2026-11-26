@@ -1,5 +1,6 @@
 .header { display: none; align-items: center; background: var(--bg); flex-shrink: 0; color: var(--muted); z-index: var(--z-toolbar); }
 .picker { position: relative; margin-left: auto; }
+.modelGroup { display: contents; }
 .picker > summary { height: 36px; }
 .picker > summary { display: flex; align-items: center; gap: var(--space-1); cursor: pointer; list-style: none; padding: var(--space-1) var(--space-2); border-radius: var(--radius-small); font-size: var(--font-13); white-space: nowrap; max-width: 220px; }
 .picker > summary::-webkit-details-marker { display: none; }

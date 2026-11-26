@@ -25,9 +25,13 @@ function TerminalView({ folder }: { folder: string }) {
     const element = host.current;
     if (!element) return;
     const css = getComputedStyle(document.documentElement);
+    const rawBg = css.getPropertyValue("--bg").trim();
+    const bg = !rawBg || rawBg === "transparent"
+      ? (css.getPropertyValue("--glass-terminal-bg").trim() || "#141822")
+      : rawBg;
     const term = new Terminal({
       cursorBlink: true, fontSize: 13, fontFamily: '"JetBrains Mono Variable", ui-monospace, monospace',
-      theme: { background: css.getPropertyValue("--bg").trim() || "#1a1a1a", foreground: css.getPropertyValue("--text").trim() || "#e5e5e5" },
+      theme: { background: bg, foreground: css.getPropertyValue("--text").trim() || "#e5e5e5" },
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -64,8 +68,8 @@ export function TerminalPanel() {
     return () => window.removeEventListener("keydown", listen);
   }, [open]);
   return <>
-    <IconButton className={styles.toggle} aria-label={open ? t.close : t.toggle} aria-expanded={open} onClick={() => toggle(!open)}><TerminalIcon size={20} /></IconButton>
-    {open && <section className={styles.panel} data-big={big || undefined} aria-label={t.title}>
+    <IconButton data-glass="terminal-toggle" className={styles.toggle} aria-label={open ? t.close : t.toggle} aria-expanded={open} onClick={() => toggle(!open)}><TerminalIcon size={20} /></IconButton>
+    {open && <section data-glass="terminal-panel" className={styles.panel} data-big={big || undefined} aria-label={t.title}>
       <header className={styles.bar}>
         <span className={styles.title}>{t.title}</span>
         <IconButton size="sm" aria-label={t.restart} onClick={() => setSession(s => s + 1)}><Plus size={18} /></IconButton>

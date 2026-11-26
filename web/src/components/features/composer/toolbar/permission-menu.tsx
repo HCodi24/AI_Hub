@@ -15,13 +15,13 @@ type Props = {
 
 export function PermissionMenu({ value, disabled, cli, menuRef, onOpen, onPick, limit }: Props) {
   const Icon = limit && !limit.chatOnly ? AlertTriangle : ICONS[value];
-  return <details ref={menuRef} className={styles.picker} onToggle={event => {
+  return <details ref={menuRef} data-glass="permission-picker" className={styles.picker} onToggle={event => {
     if (event.target === event.currentTarget && event.currentTarget.open) onOpen();
   }}>
     <summary aria-label={chatText.permission} title={limit?.note ?? chatText.permission} data-full={value === "full"} data-permission={limit ? undefined : value}>
       <Icon size={16} aria-hidden="true" /><span>{limit?.chatOnly ? chatText.chatOnly : chatText[value]}</span>
     </summary>
-    <div className={styles.panel} role="group" aria-label={chatText.permission}>
+    <div data-glass="overlay" className={styles.panel} role="group" aria-label={chatText.permission}>
       <p>{limit?.note ?? chatText.permissionHeading}</p>
       {PERMISSIONS.map(permission => {
         const OptionIcon = ICONS[permission];

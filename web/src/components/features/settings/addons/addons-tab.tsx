@@ -51,7 +51,7 @@ function AddMenu({ onPick }: { onPick: (source: Source) => void }) {
     <Button size="sm" variant="primary" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       {t.addons.head.add}<ChevronDown size={16} aria-hidden="true" />
     </Button>
-    {open && <div role="menu" aria-label={t.addons.head.menu} className={styles.addMenuList} onKeyDown={onMenuKey}>
+    {open && <div role="menu" data-glass="overlay" aria-label={t.addons.head.menu} className={styles.addMenuList} onKeyDown={onMenuKey}>
       {SOURCES.map(id => <button key={id} type="button" role="menuitem" tabIndex={-1} onClick={() => { setOpen(false); onPick(id); }}>{t.addons.head.items[id]}</button>)}
     </div>}
   </div>;

@@ -44,7 +44,7 @@ export function AttachmentMenu({ disabled, memoryDisabled, onFiles, onMemory }: 
       }
     }}>
       <summary aria-label={chatText.composerActions} title={chatText.composerActions}><Plus size={22} aria-hidden="true" /></summary>
-      <div className={styles.attachmentMenu}>
+      <div data-glass="overlay" className={styles.attachmentMenu}>
         <Button variant="ghost" type="button" disabled={disabled} onClick={() => {
           if (attachmentMenu.current) attachmentMenu.current.open = false;
           picker.current?.click();

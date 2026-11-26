@@ -102,9 +102,9 @@ export function ChatScreen() {
   };
   return <><Head><title>{chatText.brand}</title><meta name="viewport" content="width=device-width, initial-scale=1" /></Head>
     <a className={styles.skip} href="#chat-main">{chatText.skip}</a>
-    <div className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} remove={remove} openSettings={() => setSettingsOpen(true)}
+    <div data-glass="shell" className={styles.shell}><Sidebar chats={chats.data || []} loading={chats.isPending} load={load} remove={remove} openSettings={() => setSettingsOpen(true)}
       openDevChat={dev.data?.dev ? () => void openDevChat(config.data?.providers || []) : undefined} />
-      <main ref={dropTarget} id="chat-main" className={styles.main}>
+      <main ref={dropTarget} id="chat-main" data-glass="main" className={styles.main}>
         <DevBanner />
         <ChatHeader />
         {config.isPending && <Spinner />}
@@ -113,12 +113,12 @@ export function ChatScreen() {
         {state.error && <div role="alert" className={styles.error}>{state.error}</div>}
         <div ref={frameRef} className={styles.chatFrame} data-pet-size={petSize}>
           <div className={styles.workspace} data-dashboard={dashboardEnabled ? "on" : undefined}>
-            {dashboardEnabled && <aside className={styles.dashboard} aria-label={chatText.dashboard.open} tabIndex={0} aria-haspopup="dialog" onClick={onDashboardClick} onKeyDown={onDashboardKeyDown}><TokenDashboard compact /></aside>}
+            {dashboardEnabled && <aside data-glass="dashboard" className={styles.dashboard} aria-label={chatText.dashboard.open} tabIndex={0} aria-haspopup="dialog" onClick={onDashboardClick} onKeyDown={onDashboardKeyDown}><TokenDashboard compact /></aside>}
             <section className={styles.messages} aria-label={chatText.history} aria-busy={state.streaming}>
               <MessageList send={send} taskBoardEnabled={taskBoardEnabled} />
             </section>
           </div>
-          <div ref={dockRef} className={styles.dock}>
+          <div ref={dockRef} data-glass="dock" className={styles.dock}>
             <div className={styles.dockBoard}><TaskBoard enabled={taskBoardEnabled} /></div>
             <div ref={composerSlotRef} className={styles.dockComposer}>
               <Composer dropTarget={dropTarget} config={config.data} streaming={state.streaming} send={send} stop={stop} />

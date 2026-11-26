@@ -170,7 +170,7 @@ export function DiffPanel({ files, diff, sections, onClose, returnFocus }: {
 
   return createPortal(<div className={styles.layer}>
       <div className={styles.backdrop} aria-hidden="true" onClick={onClose} />
-      <div ref={panelRef} className={styles.panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+      <div ref={panelRef} data-glass="diff-panel" className={styles.panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <header className={styles.header}>
           <h2 id={titleId}>{chatText.changesTitle}</h2>
           <button type="button" className={styles.close} aria-label={chatText.closeChanges} onClick={onClose}><X size={18} aria-hidden="true" /></button>

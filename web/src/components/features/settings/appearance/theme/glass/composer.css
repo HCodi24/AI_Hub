@@ -1,0 +1,102 @@
+[data-style="glass"] [data-glass="composer-box"] {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-control-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-dock-blur);
+  backdrop-filter: var(--glass-dock-blur);
+}
+
+[data-style="glass"] [data-glass="skill-menu"] {
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  background: var(--glass-overlay-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-overlay-blur);
+  backdrop-filter: var(--glass-overlay-blur);
+}
+
+[data-style="glass"] [data-glass="composer"][data-dragging] [data-glass="composer-box"] {
+  border-color: var(--accent);
+}
+
+[data-style="glass"] [data-glass="toolbar"] [data-glass="debate-button"] {
+  height: 42px;
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  background: var(--glass-control-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-dock-blur);
+  backdrop-filter: var(--glass-dock-blur);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+[data-style="glass"] [data-glass="toolbar"] [data-glass="debate-button"]:hover:enabled {
+  background: var(--glass-hover-material);
+}
+
+[data-style="glass"] [data-glass="toolbar"] [data-glass="debate-button"][aria-pressed="true"] {
+  color: var(--accent);
+  background:
+    linear-gradient(color-mix(in srgb, var(--accent) 18%, transparent), color-mix(in srgb, var(--accent) 18%, transparent)) padding-box,
+    var(--glass-control-material);
+}
+
+[data-style="glass"] [data-glass="toolbar"] [data-glass="debate-button"][aria-pressed="true"]:hover:enabled {
+  background:
+    linear-gradient(color-mix(in srgb, var(--accent) 24%, transparent), color-mix(in srgb, var(--accent) 24%, transparent)) padding-box,
+    var(--glass-hover-material);
+}
+
+[data-style="glass"] [data-glass="model-group"] {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding: 2px 4px;
+  position: relative;
+  z-index: var(--z-toolbar);
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  background: var(--glass-control-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-dock-blur);
+  backdrop-filter: var(--glass-dock-blur);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+[data-style="glass"] [data-glass="model-group"]:hover {
+  background: var(--glass-hover-material);
+}
+
+[data-style="glass"] [data-glass="model-group"] > [data-glass="model-picker"] {
+  margin-left: 0;
+}
+
+[data-style="glass"] [data-glass="model-picker"] > summary {
+  border-radius: 9999px;
+}
+
+[data-style="glass"] [data-glass="permission-picker"] > summary {
+  height: 42px;
+  padding: 4px 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 9999px;
+  background: var(--glass-control-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-dock-blur);
+  backdrop-filter: var(--glass-dock-blur);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+[data-style="glass"] [data-glass="permission-picker"] > summary:hover {
+  background: var(--glass-hover-material);
+}
+
+@container chatframe (width <= 600px) {
+  [data-style="glass"] [data-glass="toolbar"] [data-glass="debate-button"],
+  [data-style="glass"] [data-glass="permission-picker"] > summary {
+    width: 42px;
+    height: 42px;
+    padding: 0;
+  }
+}

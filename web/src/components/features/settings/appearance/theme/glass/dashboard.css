@@ -1,0 +1,91 @@
+/* Đồng bộ thẻ Dashboard ở lề trái và hộp thoại Dashboard lớn theo chất liệu kính. */
+[data-style="glass"] aside[data-glass="dashboard"] {
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  background: var(--glass-control-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-dock-blur);
+  backdrop-filter: var(--glass-dock-blur);
+  color: var(--text);
+}
+
+[data-style="glass"] dialog[data-glass="dialog"]:has([data-glass="dashboard-body"]) {
+  background: var(--glass-overlay-material);
+  color: var(--text);
+}
+
+[data-style="glass"] dialog[data-glass="dialog"]:has([data-glass="dashboard-body"]) > header {
+  background: transparent;
+  color: var(--text);
+}
+
+[data-style="glass"] dialog[data-glass="dialog"]:has([data-glass="dashboard-body"]) > header button {
+  color: var(--muted);
+}
+
+[data-style="glass"] dialog[data-glass="dialog"]:has([data-glass="dashboard-body"]) > header button:hover {
+  background: var(--color-muted);
+  color: var(--text);
+}
+
+[data-style="glass"] [data-glass="dashboard-body"] {
+  background: transparent;
+  color: var(--text);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] {
+  color: var(--text);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] p {
+  color: var(--muted);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [data-glass="dash-value"] {
+  color: var(--text);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [data-glass="dash-legend-row"] {
+  color: var(--muted);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] :is(th, td) {
+  border-color: var(--border);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [role="group"] {
+  border-color: var(--border);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [role="group"] button {
+  color: var(--muted);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [role="group"] button[aria-pressed="true"] {
+  background: var(--color-muted);
+  color: var(--text);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [data-glass="dash-tile"] {
+  background: var(--color-muted);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [data-glass="dash-tile"] :is(small, span) {
+  color: var(--muted);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [data-glass="dash-track"] {
+  background: var(--color-muted);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] svg[data-glass="dash-chart"] text {
+  fill: var(--muted);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [data-glass="dash-grid"] {
+  stroke: var(--border);
+}
+
+[data-style="glass"] section[data-glass="token-dashboard"] [data-glass="dash-dot"] {
+  stroke: var(--color-surface-raised);
+}

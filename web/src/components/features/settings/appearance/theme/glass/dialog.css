@@ -1,0 +1,17 @@
+/* Dùng dialog[data-glass="dialog"] (0,2,1) để giữ bo góc 20px trên cả Settings/Dashboard dialog (0,2,0). */
+[data-style="glass"] dialog[data-glass="dialog"] {
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  background: var(--glass-overlay-material);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-overlay-blur);
+  backdrop-filter: var(--glass-overlay-blur);
+}
+
+[data-style="glass"] [data-glass="settings-tabs"] {
+  background: color-mix(in srgb, var(--color-card) 45%, transparent);
+}
+
+[data-style="glass"] dialog[data-glass="dialog"] input[type="search"] {
+  background: var(--color-card);
+}

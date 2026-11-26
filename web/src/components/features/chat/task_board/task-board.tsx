@@ -78,7 +78,7 @@ export function TaskBoardView({ tasks }: { tasks: TaskRow[] }) {
   if (!tasks.length) return null;
   const t = chatText.taskBoard;
   const Chevron = collapsed ? ChevronDown : ChevronUp;
-  return <section className={styles.board} aria-label={t.title} aria-live="polite">
+  return <section data-glass="overlay" className={styles.board} aria-label={t.title} aria-live="polite">
     <button type="button" className={styles.toggle} aria-expanded={!collapsed} title={collapsed ? t.expand : t.collapse} onClick={() => setCollapsed(!collapsed)}>
       <strong className={styles.title}>{t.title}</strong>
       {collapsed && <small>{t.progress(tasks.filter(task => task.state === "done").length, tasks.length)}</small>}

@@ -8,7 +8,7 @@ export function notify(text: string) { useToast.getState().show({ text }); }
 export function Toast() {
   const { notice } = useToast();
   if (!notice) return null;
-  return <aside className={styles.toast} role="status"><span>{notice.text}</span>
+  return <aside data-glass="overlay" className={styles.toast} role="status"><span>{notice.text}</span>
     {notice.action && <button onClick={() => { void notice.action?.().catch(e => notify(String(e))); }}>{t.undo}</button>}
     <button aria-label={t.close} onClick={() => useToast.setState({ notice: null })}><X size={16} aria-hidden="true" /></button></aside>;
 }

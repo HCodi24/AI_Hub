@@ -27,7 +27,7 @@ export function SourceMenu({ providers, mutisEnabled, mutisName, value, title, d
       aria-haspopup="listbox" aria-expanded={open} onClick={toggle}>
       <img src="/app/brand/mutis-logo.svg" width={24} height={24} alt="" />
     </button>
-    {open && <div className={styles.menu} style={position} role="listbox" aria-label={chatText.source}>
+    {open && <div data-glass="overlay" className={styles.menu} style={position} role="listbox" aria-label={chatText.source}>
       {items.map((entry) => <button key={entry.id} type="button" role="option" aria-selected={value === entry.id} disabled={disabled}
         onClick={() => { onPick(entry.id); setOpen(false); }}>{entry.name}</button>)}
       {!items.length && <span className={styles.note}>{chatText.noConnectedSource}</span>}

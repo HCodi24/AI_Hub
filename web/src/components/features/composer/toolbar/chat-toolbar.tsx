@@ -130,34 +130,36 @@ export function ChatToolbar({ config }: { config?: Config }) {
     ? mutisProviders.filter(entry => entry.kind.endsWith("_cli"))
     : provider && cli ? [provider] : [];
   return <><ChatPermission supportsCommands={!!cli || isAgentSource(provider)} limit={permissionLimit} menuRef={permissions} otherMenuRef={picker} />
-  <details ref={picker} className={styles.picker} onToggle={(event) => {
-    if (event.target === event.currentTarget && event.currentTarget.open && permissions.current) permissions.current.open = false;
-    if (event.target === event.currentTarget && !event.currentTarget.open) { setModelMenuOpen(false); setSourceMenuOpen(false); }
-  }}>
-    <summary>{sourceLogo && <img className={styles.sourceLogo} src={sourceLogo} width={16} height={16} alt="" />}
-      <span>{summaryModelLabel}</span> <span className={styles.effort}>{effortLabel(displayedEffort)}</span><ChevronDown size={14} aria-hidden="true" /></summary>
-    <div ref={panel} className={`${styles.panel} ${styles.effortPanel}`}>
-      <div className={styles.effortHeading}>
-        <SourceMenu providers={config?.providers || []} mutisEnabled={!!mutis.data?.enabled} mutisName={mutisName} value={settings.provider_id} title={name} disabled={streaming}
-          open={sourceMenuOpen} setOpen={(open) => { setSourceMenuOpen(open); setModelMenuOpen(false); }} anchor={panel} onPick={changeProvider} />
-        <strong>{isMutis ? mutisName : effortLabel(displayedEffort)}</strong>
-        {!isMutis && <button type="button" className={styles.resetEffort} disabled={streaming || ((isAntigravity || !!catalogEffort) && !efforts.length)} aria-label={`${chatText.effort}: ${effortLabel(resetEffort)}`} title={`${chatText.effort}: ${effortLabel(resetEffort)}`} onClick={() => pickEffort(resetEffort)}><RotateCcw size={18} /></button>}
+  <div data-glass="model-group" className={styles.modelGroup}>
+    <details ref={picker} data-glass="model-picker" className={styles.picker} onToggle={(event) => {
+      if (event.target === event.currentTarget && event.currentTarget.open && permissions.current) permissions.current.open = false;
+      if (event.target === event.currentTarget && !event.currentTarget.open) { setModelMenuOpen(false); setSourceMenuOpen(false); }
+    }}>
+      <summary>{sourceLogo && <img className={styles.sourceLogo} src={sourceLogo} width={16} height={16} alt="" />}
+        <span>{summaryModelLabel}</span> <span className={styles.effort}>{effortLabel(displayedEffort)}</span><ChevronDown size={14} aria-hidden="true" /></summary>
+      <div ref={panel} data-glass="overlay" className={`${styles.panel} ${styles.effortPanel}`}>
+        <div className={styles.effortHeading}>
+          <SourceMenu providers={config?.providers || []} mutisEnabled={!!mutis.data?.enabled} mutisName={mutisName} value={settings.provider_id} title={name} disabled={streaming}
+            open={sourceMenuOpen} setOpen={(open) => { setSourceMenuOpen(open); setModelMenuOpen(false); }} anchor={panel} onPick={changeProvider} />
+          <strong>{isMutis ? mutisName : effortLabel(displayedEffort)}</strong>
+          {!isMutis && <button type="button" className={styles.resetEffort} disabled={streaming || ((isAntigravity || !!catalogEffort) && !efforts.length)} aria-label={`${chatText.effort}: ${effortLabel(resetEffort)}`} title={`${chatText.effort}: ${effortLabel(resetEffort)}`} onClick={() => pickEffort(resetEffort)}><RotateCcw size={18} /></button>}
+        </div>
+        {isMutis && mutisProviders.length > 0 && <p>{mutisProviders.map(entry => entry.name).join(" · ")}</p>}
+        {!isMutis && efforts.length > 1 && <div className={styles.effortSlider}>
+          <input type="range" min={0} max={efforts.length - 1} step={1} value={effortIndex} disabled={streaming} aria-label={chatText.effort} aria-valuetext={effortLabel(displayedEffort)}
+            style={{ background: `linear-gradient(to right, var(--effort-fill) ${effortIndex / (efforts.length - 1) * 100}%, var(--color-muted) 0%)` }}
+            onChange={event => pickEffort(efforts[Number(event.target.value)])} />
+          <div className={styles.effortTicks} aria-hidden="true">{efforts.map((effort, index) => <span key={effort} data-filled={index < effortIndex} data-selected={index === effortIndex} />)}</div>
+        </div>}
+        {isMutis
+          ? mutis.data && <MutisEfforts mutis={mutis.data} config={config} disabled={streaming} />
+          : <ModelMenu models={isAntigravity ? [...new Set(variants.map(entry => entry.model.id))] : models} value={pickedModel} label={modelLabel} disabled={streaming} open={modelMenuOpen}
+            setOpen={open => { setModelMenuOpen(open); setSourceMenuOpen(false); }} anchor={panel}
+            onPick={pickModel} />}
       </div>
-      {isMutis && mutisProviders.length > 0 && <p>{mutisProviders.map(entry => entry.name).join(" · ")}</p>}
-      {!isMutis && efforts.length > 1 && <div className={styles.effortSlider}>
-        <input type="range" min={0} max={efforts.length - 1} step={1} value={effortIndex} disabled={streaming} aria-label={chatText.effort} aria-valuetext={effortLabel(displayedEffort)}
-          style={{ background: `linear-gradient(to right, var(--effort-fill) ${effortIndex / (efforts.length - 1) * 100}%, var(--color-muted) 0%)` }}
-          onChange={event => pickEffort(efforts[Number(event.target.value)])} />
-        <div className={styles.effortTicks} aria-hidden="true">{efforts.map((effort, index) => <span key={effort} data-filled={index < effortIndex} data-selected={index === effortIndex} />)}</div>
-      </div>}
-      {isMutis
-        ? mutis.data && <MutisEfforts mutis={mutis.data} config={config} disabled={streaming} />
-        : <ModelMenu models={isAntigravity ? [...new Set(variants.map(entry => entry.model.id))] : models} value={pickedModel} label={modelLabel} disabled={streaming} open={modelMenuOpen}
-          setOpen={open => { setModelMenuOpen(open); setSourceMenuOpen(false); }} anchor={panel}
-          onPick={pickModel} />}
-    </div>
-  </details>
-  {limitProviders.map(({ id, name, kind }) => (
-    <CliLimits key={id} providerId={id} name={name} kind={kind} />
-  ))}</>;
+    </details>
+    {limitProviders.map(({ id, name, kind }) => (
+      <CliLimits key={id} providerId={id} name={name} kind={kind} />
+    ))}
+  </div></>;
 }

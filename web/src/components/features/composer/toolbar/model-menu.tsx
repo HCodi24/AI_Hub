@@ -50,7 +50,7 @@ export function ModelMenu({ models, value, label, disabled, open, setOpen, ancho
       aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}>
       <span>{formatModelLabel(label)}</span><ChevronRight size={14} aria-hidden="true" />
     </button>
-    {open && <div ref={menu} id={id} className={styles.menu} style={position} role="menu" aria-label={chatText.selectModel}
+    {open && <div ref={menu} id={id} data-glass="overlay" className={styles.menu} style={position} role="menu" aria-label={chatText.selectModel}
       onKeyDown={event => {
         if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
         if (event.key === "Tab") setOpen(false);

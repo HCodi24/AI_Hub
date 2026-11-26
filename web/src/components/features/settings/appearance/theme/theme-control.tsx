@@ -40,7 +40,7 @@ export function ThemeControl() {
     setTheme(value); apply(value);
     configApi.saveTheme(value).then(() => client.invalidateQueries({ queryKey: ["config"] })).catch(() => undefined);
   }
-  return <div className={styles.control} role="group" aria-label={t.appearance}>
+  return <div data-glass="theme-control" className={styles.control} role="group" aria-label={t.appearance}>
     {THEME_OPTIONS.map(([value, Icon]) =>
       <button key={value} title={t[value]} aria-pressed={theme === value} aria-label={t[value]} onClick={() => change(value)}>
         <Icon size={16} aria-hidden="true" /><span>{t[value]}</span>

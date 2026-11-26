@@ -9,6 +9,7 @@ import { FolderTree } from "./folder-tree";
 import { ScrollArea } from "@/components/scroll-area";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { WindowControls } from "@/components/window-controls/window-controls";
+import { StyleControl } from "@/components/features/settings/appearance/theme/style-control";
 import { ThemeControl } from "@/components/features/settings/appearance/theme/theme-control";
 import { useShallow } from "zustand/react/shallow";
 import type { ChatSummary } from "@/schema/chat.schema";
@@ -168,12 +169,12 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
   }, [drawer, setDrawer]);
   return <>
     {drawer && <button className={styles.backdrop} aria-label={chatText.close} onClick={() => setDrawer(false)} />}
-    <aside ref={panel} className={cn(styles.sidebar, drawer && styles.open, collapsed && styles.collapsed)}
+    <aside ref={panel} data-glass="sidebar" className={cn(styles.sidebar, drawer && styles.open, collapsed && styles.collapsed)}
       style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties} data-resizing={resizing || undefined}
       role={drawer ? "dialog" : undefined} aria-modal={drawer || undefined} aria-label={treeOpen ? chatText.projectTree : chatText.history}>
-      <div className={styles.menuLabels}><span>File</span><span>Edit</span><span>View</span></div>
+      <div data-glass="menu-labels" className={styles.menuLabels}><span>File</span><span>Edit</span><span>View</span></div>
       <WindowControls />
-      <div className={styles.rail}>
+      <div data-glass="rail" className={styles.rail}>
         <div className={styles.collapse}><IconButton className={styles.collapseButton} aria-label={collapsed ? chatText.expandSidebar : chatText.collapseSidebar} aria-expanded={!collapsed} aria-controls="sidebar-content" onClick={() => setCollapsed(!collapsed)}>{collapsed ? <PanelLeftOpen size={23} /> : <PanelLeftClose size={23} />}</IconButton></div>
         <nav className={styles.railNav} aria-label={chatText.navigation}>
           <IconButton className={cn(styles.railButton, !id && !devChat && styles.active)} aria-label={chatText.home} disabled={streaming} onClick={reset}><Home size={23} /></IconButton>
@@ -182,17 +183,17 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
           {openDevChat && <IconButton className={cn(styles.railButton, devChat && styles.active)} aria-label={settingsText.dev.devChat} aria-pressed={devChat} disabled={streaming} onClick={() => { setDrawer(false); openDevChat(); }}><Hammer size={23} /></IconButton>}
         </nav>
         <div className={styles.railBottom}>
-          <details ref={preferences} className={styles.preferences}>
+          <details ref={preferences} data-glass="preferences" className={styles.preferences}>
             <summary className={styles.profile} aria-label={chatText.workspaceMenu} title={chatText.workspaceMenu}><img className={styles.avatar} src={LOGO_DARK} alt="" aria-hidden="true" /></summary>
-            <div className={styles.preferencesPanel}>
+            <div data-glass="preferences-panel" className={styles.preferencesPanel}>
               <div className={styles.identity}><img className={styles.avatar} src={LOGO_DARK} alt="" aria-hidden="true" /><div><strong>{chatText.brand}</strong><span>{chatText.local}</span></div></div>
               <button className={styles.settings} onClick={() => { if (preferences.current) preferences.current.open = false; setDrawer(false); openSettings(); }}><Settings size={20} aria-hidden="true" />{settingsText.open}</button>
-              <div className={styles.appearance}><span>{chatText.appearance}</span><ThemeControl /></div>
+              <div className={styles.appearance}><span>{chatText.style}</span><StyleControl /><span>{chatText.appearance}</span><ThemeControl /></div>
             </div>
           </details>
         </div>
       </div>
-      <div id="sidebar-content" className={styles.content}>
+      <div id="sidebar-content" data-glass="sidebar-content" className={styles.content}>
         <div className={styles.brand}><img className={styles.logo} src={LOGO} alt="" aria-hidden="true" /><strong>{chatText.brand}</strong>
           {!treeOpen && <IconButton aria-label={chatText.searchChats} aria-expanded={searching} aria-controls="sidebar-search" onClick={() => { setSearching(!searching); setQuery(""); }}><Search size={20} /></IconButton>}
           <div className={styles.close}><IconButton aria-label={chatText.close} onClick={() => setDrawer(false)}><X size={20} /></IconButton></div>
@@ -226,7 +227,7 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
         </ScrollArea>
         </>}
       </div>
-      <div className={styles.resizeHandle} role="separator" aria-orientation="vertical" aria-label={chatText.resizeSidebar}
+      <div data-glass="sidebar-resize" className={styles.resizeHandle} role="separator" aria-orientation="vertical" aria-label={chatText.resizeSidebar}
         aria-controls="sidebar-content" aria-valuemin={minWidth} aria-valuemax={maxWidth} aria-valuenow={sidebarWidth} tabIndex={0}
         onPointerDown={event => {
           if (event.button !== 0) return;

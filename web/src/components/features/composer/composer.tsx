@@ -289,7 +289,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
     catch (error) { restore(); notify(error instanceof Error ? error.message : t.error); }
     finally { pending.current = false; input.current?.focus(); }
   }
-  return <><form className={styles.composer} data-dragging={dragging || undefined} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+  return <><form data-glass="composer" className={styles.composer} data-dragging={dragging || undefined} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <label className="sr-only" htmlFor="chat-input">{chatText.placeholder}</label>
     {queue.length > 0 && <div className={styles.queue} aria-label={t.queued}>{queue.map((item, index) => <span key={`${index}-${item.text}`}>
       <span title={item.text}>{item.text}</span>
@@ -305,7 +305,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
       : <span key={file.id} title={file.name}><img src={file.url} alt={file.name || chatText.attachments} />
         <button type="button" disabled={uploading} aria-label={`${chatText.removeFile}: ${file.name}`} onClick={() => updateAttachments(attached.current.filter(item => item.id !== file.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
     {menuOpen && <SkillSuggestions id={skillListId} names={suggestions} activeIndex={activeIndex} onSelect={selectSkill} />}
-    <div className={styles.box}>
+    <div data-glass="composer-box" className={styles.box}>
       <AttachmentMenu
         disabled={streaming || uploading || Boolean(running)}
         memoryDisabled={!folder}
@@ -355,9 +355,9 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         onStop={() => void stop()}
       />
     </div>
-    <div className={styles.toolbar}>
+    <div data-glass="toolbar" className={styles.toolbar}>
       <ChatToolbar config={config} />
-      <button className={styles.debateButton} type="button" aria-label={t.debate} title={t.debate} aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" /><span>{t.debate}</span></button>
+      <button data-glass="debate-button" className={styles.debateButton} type="button" aria-label={t.debate} title={t.debate} aria-pressed={debate} disabled={streaming || Boolean(running)} onClick={() => { setDebate(!debate); try { localStorage.setItem("debateMode", !debate ? "1" : "0"); } catch { /* Storage unavailable. */ } }}><Scale size={16} aria-hidden="true" /><span>{t.debate}</span></button>
     </div>
     {(uploading || dragging) && <p className={styles.fileHint} role="status">{uploading ? chatText.importingFiles : chatText.dropFiles}</p>}
   </form>{memory && <MemoryPanel folder={folder} close={() => setMemory(false)}

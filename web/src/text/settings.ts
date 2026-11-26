@@ -9,7 +9,14 @@ export const settingsText = {
   },
   save: "Lưu", saved: "Đã lưu", delete: "Xoá", cancel: "Hủy", loading: "Đang tải…", error: "Có lỗi xảy ra",
   dashboard: { enabled: "Hiển thị Dashboard" },
-  appearance: { style: "Phong cách", theme: "Chế độ" },
+  appearance: {
+    style: "Phong cách", theme: "Chế độ",
+    transparency: "Độ trong suốt",
+    transparencyLow: "Mờ đục", transparencyBalanced: "Cân bằng", transparencyHigh: "Trong hẳn",
+    resetTransparency: "Đặt lại độ trong suốt mặc định",
+    background: "Hình nền", changeBackground: "Đổi hình nền", resetBackground: "Mặc định",
+    backgroundError: "Không thể lưu hình nền này.",
+  },
   sound: { notice: "Chưa có tùy chọn âm thanh." },
   providers: {
     list: "Danh sách nguồn", add: "Thêm nguồn", newName: "Nguồn mới", name: "Tên hiển thị", kind: "Loại nguồn",

@@ -67,7 +67,7 @@ export function CliLimits({ providerId, name, kind }: { providerId: string; name
         {warning && percent == null && !rejected && <text x="12" y="16" textAnchor="middle">!</text>}
       </svg>
     </summary>
-    <div ref={panel} className={limitStyles.panel} role="region" aria-label={`${t.limits} · ${name}`}>
+    <div ref={panel} data-glass="overlay" className={limitStyles.panel} role="region" aria-label={`${t.limits} · ${name}`}>
       <p className={limitStyles.title}>{name}</p>
       {query.isPending && <p className={limitStyles.note}>{t.loading}</p>}
       {query.isError && <p className={limitStyles.note}>{t.limitError}</p>}
