@@ -41,6 +41,16 @@ pub(super) fn validate(input: &ConfigInput) -> ApiResult<()> {
             "Giao diện không hợp lệ",
         ));
     }
+    if input
+        .style
+        .as_deref()
+        .is_some_and(|style| !matches!(style, "default" | "glass"))
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "Phong cách giao diện không hợp lệ",
+        ));
+    }
     if let Some(pets) = &input.pets {
         if pets.iter().any(|(kind, pet)| {
             !valid_pet_kind(kind)

@@ -5,3 +5,13 @@
 .dialog textarea { width: 100%; min-height: 280px; resize: vertical; }
 .dialog p { overflow-wrap: anywhere; }
 .wide { width: min(980px, calc(100vw - 32px)); height: min(760px, calc(100dvh - 32px)); }
+
+:global([data-style="glass"]) .dialog {
+  border: 1px solid transparent;
+  border-radius: 20px;
+  background: var(--glass-overlay-material);
+  box-shadow: var(--glass-shadow);
+
+  -webkit-backdrop-filter: var(--glass-overlay-blur);
+  backdrop-filter: var(--glass-overlay-blur);
+}

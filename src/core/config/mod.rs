@@ -59,6 +59,9 @@ pub struct Config {
     /// Interface theme: "light", "dark" or "system"; empty until the user picks one.
     #[serde(default)]
     pub theme: String,
+    /// Visual style: "default" or "glass"; empty until the user picks one.
+    #[serde(default)]
+    pub style: String,
     /// MCP servers MutiS runs for in-app (API source) agents.
     #[serde(default)]
     pub mcp_servers: Vec<McpServerConfig>,

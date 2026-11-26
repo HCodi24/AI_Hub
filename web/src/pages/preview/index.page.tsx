@@ -25,6 +25,7 @@ const SAMPLE_TASKS: TaskRow[] = TASK_STATES.map((state, i) => ({
   reason: state === "takeover" ? "vẫn FAIL sau 3/3 lần" : state === "skipped" ? "phụ thuộc «Việc mẫu 1» chưa đạt" : null,
 }));
 const THEMES = ["light", "dark", "system"];
+const STYLES = ["default", "glass"];
 const isProvidersPreview = (query: URLSearchParams) => {
   const tab = query.get("tab");
   return query.get("c") === "settings" && (!isTabId(tab) || tab === "providers");
@@ -48,10 +49,13 @@ export default function PreviewPage() {
   const [taskBoardEnabled, setTaskBoardEnabled] = useTaskBoardPreference();
   // The query string only exists in the browser (static export), so it is read after mount.
   useEffect(() => setQuery(new URLSearchParams(window.location.search)), []);
-  // The dev server runs on another origin, so the app's cached theme is missing here: use `?theme=` or the theme saved in the server config.
-  const savedTheme = useQuery({ queryKey: ["config"], queryFn: ({ signal }) => configApi.get(signal) }).data?.theme;
-  const theme = query?.get("theme") || savedTheme;
+  // Khi chạy khác nguồn, trang xem trước lấy giao diện từ URL hoặc cấu hình máy chủ.
+  const { data } = useQuery({ queryKey: ["config"], queryFn: ({ signal }) => configApi.get(signal) });
+  const theme = query?.get("theme") || data?.theme;
+  const requestedStyle = query?.get("style");
+  const style = requestedStyle && STYLES.includes(requestedStyle) ? requestedStyle : data?.style;
   useEffect(() => { if (theme && THEMES.includes(theme)) document.documentElement.dataset.theme = theme; }, [theme]);
+  useEffect(() => { if (style && STYLES.includes(style)) document.documentElement.dataset.style = style; }, [style]);
   if (!query) return null;
   const screen = query.get("c");
   const tab = query.get("tab");

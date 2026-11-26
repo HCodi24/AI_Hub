@@ -19,6 +19,9 @@ pub(super) fn apply(config: &mut Config, input: ConfigInput) {
     if let Some(theme) = input.theme {
         config.theme = theme;
     }
+    if let Some(style) = input.style {
+        config.style = style;
+    }
     if let Some(servers) = input.mcp_servers {
         config.mcp_servers = servers;
         config.codex.revision = config.codex.revision.wrapping_add(1);

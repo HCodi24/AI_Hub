@@ -2,9 +2,14 @@ import { chatText } from "./chat";
 
 export const settingsText = {
   title: "Cài đặt", open: "Cài đặt",
-  tabs: { providers: "Nguồn AI", general: "Chung", sound: "Âm thanh", mutis: "MutiS", addons: "Plugin & Skill", extensions: "Tiện ích", pets: "Pet", dev: "Phát triển", dashboard: "Dashboard" },
+  tabs: {
+    providers: "Nguồn AI", general: "Chung",
+    appearance: "Giao diện",
+    sound: "Âm thanh", mutis: "MutiS", addons: "Plugin & Skill", extensions: "Tiện ích", pets: "Pet", dev: "Phát triển", dashboard: "Dashboard",
+  },
   save: "Lưu", saved: "Đã lưu", delete: "Xoá", cancel: "Hủy", loading: "Đang tải…", error: "Có lỗi xảy ra",
   dashboard: { enabled: "Hiển thị Dashboard" },
+  appearance: { style: "Phong cách", theme: "Chế độ" },
   sound: { notice: "Chưa có tùy chọn âm thanh." },
   providers: {
     list: "Danh sách nguồn", add: "Thêm nguồn", newName: "Nguồn mới", name: "Tên hiển thị", kind: "Loại nguồn",

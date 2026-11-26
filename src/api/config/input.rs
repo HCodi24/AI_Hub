@@ -8,6 +8,8 @@ pub(crate) struct ConfigInput {
     pub(super) default_folder: Option<String>,
     #[serde(default)]
     pub(super) theme: Option<String>,
+    #[serde(default)]
+    pub(super) style: Option<String>,
     /// The whole MCP list when sent; omitted = unchanged.
     #[serde(default)]
     pub(super) mcp_servers: Option<Vec<config::McpServerConfig>>,

@@ -1,0 +1,3 @@
+.row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border); color: var(--text); }
+/* Icon-only buttons here, like the design; each button keeps its aria-label and title. */
+.row button span { display: none; }

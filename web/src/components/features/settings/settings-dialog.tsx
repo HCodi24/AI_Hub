@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Blocks, Boxes, Hammer, LayoutDashboard, PawPrint, Puzzle, SlidersHorizontal, Users, Volume2 } from "lucide-react";
+import { Blocks, Boxes, Hammer, LayoutDashboard, Palette, PawPrint, Puzzle, SlidersHorizontal, Users, Volume2 } from "lucide-react";
 import { PetsSection } from "@/components/features/pets/pets-section";
 import { Dialog } from "@/components/dialog/dialog";
 import { ScrollArea } from "@/components/scroll-area";
 import { Switch } from "@/components/button/switch";
 import { settingsText as t } from "@/text/settings";
 import { AddonsTab } from "./addons";
+import { AppearanceTab } from "./appearance";
 import { UpdateSection } from "./update-section";
 import { DesktopBuild } from "./desktop-build";
 import { ExtensionsTab } from "./extensions-tab";
@@ -14,7 +15,9 @@ import { MutisTab } from "./mutis";
 import { ProvidersTab } from "./providers";
 import styles from "./settings.module.css";
 const TABS = [
-  { id: "providers", icon: Boxes }, { id: "general", icon: SlidersHorizontal }, { id: "sound", icon: Volume2 }, { id: "mutis", icon: Users },
+  { id: "providers", icon: Boxes }, { id: "general", icon: SlidersHorizontal },
+  { id: "appearance", icon: Palette },
+  { id: "sound", icon: Volume2 }, { id: "mutis", icon: Users },
   { id: "addons", icon: Puzzle }, { id: "extensions", icon: Blocks }, { id: "pets", icon: PawPrint }, { id: "dev", icon: Hammer },
   { id: "dashboard", icon: LayoutDashboard },
 ] as const;
@@ -40,6 +43,7 @@ export function SettingsDialog({ initialTab = "providers", folder, close, dashbo
     </ScrollArea>
     <ScrollArea as="section" id="settings-panel" aria-labelledby={`settings-tab-${tab}`} className={styles.panel} key={tab}>
       {tab !== "addons" && tab !== "providers" && tab !== "pets" && <h3 className={styles.panelTitle}>{t.tabs[tab]}</h3>}
+      {tab === "appearance" && <AppearanceTab />}
       {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab taskBoardEnabled={taskBoardEnabled} onTaskBoardEnabledChange={onTaskBoardEnabledChange} />}{tab === "mutis" && <MutisTab />}
       {tab === "addons" && <AddonsTab />}
       {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "pets" && <PetsSection />}{tab === "dev" && <><UpdateSection /><DesktopBuild /></>}

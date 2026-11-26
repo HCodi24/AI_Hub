@@ -5,6 +5,7 @@ import { TooltipLayer } from "@/components/tooltip/tooltip-layer";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import "@/styles/globals.css";
+import "@/components/features/settings/appearance/theme/glass.css";
 export default function App({ Component, pageProps }: AppProps) {
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: {
     queries: { refetchOnWindowFocus: false, retry: false, staleTime: 30_000 },

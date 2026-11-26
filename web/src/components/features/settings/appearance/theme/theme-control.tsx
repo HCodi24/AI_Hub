@@ -5,7 +5,14 @@ import { configApi } from "@/apis/config.api";
 import { chatText as t } from "@/text/chat";
 import styles from "./theme-control.module.css";
 type Theme = "light" | "dark" | "system";
-const isTheme = (value: unknown): value is Theme => value === "light" || value === "dark" || value === "system";
+const isTheme = (value: unknown): value is Theme =>
+  value === "light" || value === "dark" || value === "system";
+const THEME_OPTIONS = [
+  ["light", Sun],
+  ["dark", Moon],
+  ["system", Monitor],
+] as const;
+
 function apply(value: Theme) {
   document.documentElement.dataset.theme = value;
   // localStorage is only a cache so the first paint has no flash; the server file is the source of truth.
@@ -15,17 +22,26 @@ export function ThemeControl() {
   const client = useQueryClient();
   const [theme, setTheme] = useState<Theme>("dark");
   useEffect(() => {
-    const current = document.documentElement.dataset.theme;
-    if (isTheme(current)) setTheme(current);
+    const { dataset } = document.documentElement;
+    const current = dataset.theme;
+    if (current === "glass" && !dataset.style) {
+      dataset.style = "glass";
+    }
+    const initial = current === "glass" ? "light" : current;
+    if (isTheme(initial)) {
+      setTheme(initial);
+      if (current === "glass") apply(initial);
+    }
   }, []);
-  const saved = useQuery({ queryKey: ["config"], queryFn: ({ signal }) => configApi.get(signal) }).data?.theme;
+  const savedTheme = useQuery({ queryKey: ["config"], queryFn: ({ signal }) => configApi.get(signal) }).data?.theme;
+  const saved = savedTheme === "glass" ? "light" : savedTheme;
   useEffect(() => { if (isTheme(saved)) { setTheme(saved); apply(saved); } }, [saved]);
   function change(value: Theme) {
     setTheme(value); apply(value);
     configApi.saveTheme(value).then(() => client.invalidateQueries({ queryKey: ["config"] })).catch(() => undefined);
   }
   return <div className={styles.control} role="group" aria-label={t.appearance}>
-    {([ ["light", Sun], ["dark", Moon], ["system", Monitor] ] as const).map(([value, Icon]) =>
+    {THEME_OPTIONS.map(([value, Icon]) =>
       <button key={value} title={t[value]} aria-pressed={theme === value} aria-label={t[value]} onClick={() => change(value)}>
         <Icon size={16} aria-hidden="true" /><span>{t[value]}</span>
       </button>)}

@@ -9,7 +9,7 @@ import { FolderTree } from "./folder-tree";
 import { ScrollArea } from "@/components/scroll-area";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { WindowControls } from "@/components/window-controls/window-controls";
-import { ThemeControl } from "@/components/theme-control/theme-control";
+import { ThemeControl } from "@/components/features/settings/appearance/theme/theme-control";
 import { useShallow } from "zustand/react/shallow";
 import type { ChatSummary } from "@/schema/chat.schema";
 import { chatText } from "@/text/chat";

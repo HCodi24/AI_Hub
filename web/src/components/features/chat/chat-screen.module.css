@@ -72,3 +72,18 @@
   .shell:has(> [data-preview]) .main { --terminal-toggle-offset: 0px; border-top-right-radius: 0; border-bottom-right-radius: 0; }
   .main:has(~ [data-preview][data-resizing], ~ [data-preview] > [role="separator"]:is(:hover, :focus-visible)) { border-right-color: var(--preview-divider-highlight); }
 }
+
+:global([data-style="glass"]) .shell,
+:global([data-style="glass"]) .main {
+  background: transparent;
+}
+
+:global([data-style="glass"]) .dock::before {
+  border: 1px solid transparent;
+  border-radius: 28px;
+  background: var(--glass-material);
+  box-shadow: var(--glass-shadow);
+
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}

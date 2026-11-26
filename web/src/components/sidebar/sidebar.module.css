@@ -88,3 +88,29 @@
   .backdrop { display: block; position: fixed; inset: 0; z-index: var(--z-overlay); background: var(--color-overlay); border: 0; border-radius: 0; }
   .preferencesPanel { width: min(264px, calc(100vw - 90px)); }
 }
+
+:global([data-style="glass"]) .sidebar {
+  --sidebar-rail: transparent;
+  --sidebar-panel: transparent;
+
+  background: var(--glass-material);
+  border: 1px solid transparent;
+  border-radius: 28px;
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  margin: var(--space-2);
+  height: calc(100% - 2 * var(--space-2));
+  overflow: hidden;
+}
+
+:global([data-style="glass"]) .sidebar::after { display: none; }
+
+/* Menu tùy chọn cần mở ra ngoài thanh bên khi thanh bên thu gọn. */
+:global([data-style="glass"]) .sidebar:has(.preferences[open]) { overflow: visible; }
+:global([data-style="glass"]) .preferencesPanel { background: var(--glass-overlay-wash); }
+
+@media (min-width: 768px) {
+  :global([data-style="glass"]) .sidebar:has(.preferences[open]) { z-index: var(--z-toolbar); }
+  :global([data-style="glass"]) .resizeHandle { right: 0; }
+}

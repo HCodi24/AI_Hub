@@ -83,6 +83,7 @@ impl Config {
             mutis: MutisConfig::default(),
             self_dev: SelfDevConfig::default(),
             theme: String::new(),
+            style: String::new(),
             mcp_servers: Vec::new(),
             pets: Default::default(),
             pets_enabled: true,

@@ -6,6 +6,7 @@ fn partial_update_only_carries_fields_that_were_sent() {
     let input: ConfigInput = serde_json::from_str(r#"{"default_folder":"C:/TOOL"}"#).unwrap();
     assert_eq!(input.default_folder.as_deref(), Some("C:/TOOL"));
     assert!(input.theme.is_none());
+    assert!(input.style.is_none());
     assert!(input.planner_provider_id.is_none());
     assert!(input.planner_model.is_none());
     assert!(input.chat_idle_timeout_minutes.is_none());
@@ -24,6 +25,8 @@ fn rejects_invalid_config_values() {
         r#"{"approval_wait_seconds":3601}"#,
         r#"{"thread_token_budget":19999}"#,
         r#"{"theme":"unknown"}"#,
+        r#"{"theme":"glass"}"#,
+        r#"{"style":"unknown"}"#,
         r#"{"pets":{"unknown":"valid-pet"}}"#,
         r#"{"pets":{"deepseek":"Invalid Pet"}}"#,
     ] {
@@ -38,6 +41,8 @@ fn accepts_valid_partial_config_and_token_budget_boundaries() {
         r#"{"default_folder":"C:/TOOL"}"#,
         r#"{"thread_token_budget":0}"#,
         r#"{"thread_token_budget":20000}"#,
+        r#"{"style":"glass"}"#,
+        r#"{"style":"default"}"#,
     ] {
         let input: ConfigInput = serde_json::from_str(json).unwrap();
         assert!(validate(&input).is_ok(), "{json}");
