@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { configApi } from "@/apis/config.api";
 import { ChatScreen } from "@/components/features/chat/chat-screen";
-import { DashboardDialog } from "@/components/features/chat/dashboard-dialog";
+import { DashboardDialog } from "@/components/features/chat/dashboard/dashboard-dialog";
 import { TaskBoardView } from "@/components/features/chat/task_board/task-board";
 import { PreviewPanel } from "@/components/features/preview/preview-panel";
 import type { TaskRow } from "@/schema/chat.schema";
-import { useDashboardPreference } from "@/components/features/chat/use-dashboard-preference";
+import { useDashboardPreference } from "@/components/features/chat/dashboard/use-dashboard-preference";
 import { useTaskBoardPreference } from "@/components/features/chat/task_board/use-task-board-preference";
 import { SettingsDialog, isTabId } from "@/components/features/settings/settings-dialog";
 

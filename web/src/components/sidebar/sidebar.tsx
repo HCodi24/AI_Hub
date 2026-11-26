@@ -5,7 +5,7 @@ import { Dialog } from "@/components/dialog/dialog";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
-import { FolderTree } from "@/components/features/chat/folder-tree";
+import { FolderTree } from "./folder-tree";
 import { ScrollArea } from "@/components/scroll-area";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { WindowControls } from "@/components/window-controls/window-controls";

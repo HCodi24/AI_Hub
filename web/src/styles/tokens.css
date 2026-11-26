@@ -7,6 +7,7 @@
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
   --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-12: 48px;
   --radius-xs: 6px; --radius-small: 8px; --radius: 12px;
+  --titlebar-height: 40px; /* desktop window title strip (window-controls) */
   --shadow-1: 0 1px 2px #02061726;
   --shadow-2: 0 4px 12px #02061733;
   --shadow-3: 0 12px 32px #0206174d;

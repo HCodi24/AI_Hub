@@ -62,7 +62,7 @@
   .dashboard { display: block; }
 }
 @media (min-width: 768px) {
-  .shell { --workspace-top: 48px; --workspace-radius: 12px; --preview-toggle-inset: 12px; --preview-divider-highlight: color-mix(in srgb, var(--accent) 40%, var(--border)); position: relative; padding: 0 3px 3px 0; }
+  .shell { --workspace-top: var(--titlebar-height); --workspace-radius: 12px; --preview-toggle-inset: 12px; --preview-divider-highlight: color-mix(in srgb, var(--accent) 40%, var(--border)); position: relative; padding: 0 3px 3px 0; }
   .main { position: relative; --terminal-toggle-offset: 44px; margin-top: var(--workspace-top); height: calc(100% - var(--workspace-top)); border: 1px solid var(--border); border-left: 0; border-radius: 0 var(--workspace-radius) var(--workspace-radius) 0; overflow: hidden; box-shadow: var(--shadow-edge); }
   /* Keep Compact below the top-right controls while it shares their corner. */
   @container chatframe (width < 1140px) {

@@ -1,8 +1,8 @@
 import { PetAvatar } from "@/components/features/pets/pet-avatar";
 import { chatText } from "@/text/chat";
 import { ChatActivity } from "./chat-activity";
-import { useChatStore, type LiveChecker } from "./chat-store";
-import styles from "./chat-message.module.css";
+import { useChatStore, type LiveChecker } from "../chat-store";
+import styles from "../chat-message.module.css";
 
 /** Vietnamese wording of the live Tester cards (kept local: the shared chat text has no live-checker strings). */
 const text = {

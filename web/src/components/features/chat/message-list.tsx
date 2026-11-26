@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/scroll-area";
 import { parseChatQuestions } from "@/lib/chat-questions";
 import { ChatMessage } from "./chat-message";
 import { useChatStore } from "./chat-store";
-import { TesterActivity } from "./tester-activity";
+import { TesterActivity } from "./activity/tester-activity";
 import { ApprovalCard } from "./question/approval-card";
 import { ChatQuestions } from "./question/chat-questions";
 import { PermissionRetry } from "./question/permission-retry";

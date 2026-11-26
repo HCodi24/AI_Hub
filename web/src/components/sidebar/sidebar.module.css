@@ -11,7 +11,7 @@
 .railNav, .railBottom { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; }
 .railBottom { margin-top: auto; padding-top: 16px; }
 .collapse { margin-bottom: 12px; }
-.menuLabels { position: absolute; top: 0; left: 84px; height: 48px; display: flex; align-items: center; gap: 24px; color: var(--muted); font-size: var(--font-14); }
+.menuLabels { position: absolute; top: 0; left: 84px; height: var(--titlebar-height); display: flex; align-items: center; gap: 24px; color: var(--muted); font-size: var(--font-14); }
 .collapseButton { width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 12px; background: transparent; color: var(--muted); }
 .railButton { width: 44px; height: 44px; padding: 0; border-radius: 12px; color: var(--muted); }
 .railButton.active { background: var(--sidebar-hover); color: var(--text); }

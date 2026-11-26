@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { chatText } from "@/text/chat";
 import { chatTokenReplies, chatTokenSeries, chatTokenUsage, formatCompact, formatTokens } from "@/lib/chat-token-usage";
 import type { TokenSample } from "@/lib/chat-token-timeline";
-import { useChatStore } from "./chat-store";
+import { useChatStore } from "../chat-store";
 import { useTokenTimeline, type TokenTimelineStatus } from "./use-token-timeline";
 import styles from "./token-dashboard.module.css";
 

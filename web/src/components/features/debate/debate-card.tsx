@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { debatesApi } from "@/apis/debates.api";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { cancelCard } from "@/components/features/chat/card-actions";
-import { useClock } from "@/components/features/chat/use-clock";
+import { useClock } from "./use-clock";
 import { MarkdownView } from "@/components/markdown-view/markdown-view";
 import { DebateActions } from "./debate-actions";
 import { cardText as t } from "@/text/cards";

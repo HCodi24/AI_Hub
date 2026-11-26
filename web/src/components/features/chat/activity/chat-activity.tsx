@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { chatText } from "@/text/chat";
-import styles from "./chat-message.module.css";
+import styles from "../chat-message.module.css";
 
 /** One activity entry per supplied log, in the original order; `Command:`/`Lệnh:` lines are real shell commands. */
 const COMMAND = /^(?:Command|Lệnh):\s*([\s\S]*)$/i;
