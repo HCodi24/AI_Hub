@@ -1,11 +1,30 @@
-// Plain yes/no replies remain supported alongside structured question cards.
-export function chatChoices(source: string): string[] {
-  const text = source
+function cleanChoiceSource(source: string): string {
+  return source
     .replace(/<memory\b[^>]*>[\s\S]*?(?:<\/memory\s*>|$)/gi, "")
     .replace(/```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)/g, "")
     .replace(/^\s*>.*$/gm, "")
     .replace(/`[^`\n]*`/g, "")
-    .replace(/[*_]/g, "")
+    .replace(/[*_]/g, "");
+}
+
+export function chatChoiceQuestion(source: string): string {
+  const text = cleanChoiceSource(source);
+  const end = text.indexOf("?");
+  if (end === -1 || end !== text.lastIndexOf("?")) return "";
+  return text.slice(0, end + 1).split(/[.!\n]/).at(-1)?.trim() ?? "";
+}
+
+export function stripChatChoiceQuestion(source: string): string {
+  const question = chatChoiceQuestion(source);
+  if (!question) return source;
+  const index = source.lastIndexOf(question);
+  if (index === -1) return source;
+  return (source.slice(0, index) + source.slice(index + question.length)).trimEnd();
+}
+
+// Plain yes/no replies remain supported alongside structured question cards.
+export function chatChoices(source: string): string[] {
+  const text = cleanChoiceSource(source)
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
   // Multiple questions need separate answers, so a single pair of buttons would be ambiguous.
   if ((text.match(/\?/g) || []).length !== 1) return [];

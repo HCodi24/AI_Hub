@@ -16,8 +16,8 @@ import { settingsText as t } from "@/text/settings";
 import { planLabel } from "./account-parts";
 import { LoginOutButton } from "./login_out";
 import { ProviderForm } from "./provider-form";
-import { errorText, useSettingsConfig } from "./use-settings";
-import styles from "./settings.module.css";
+import { errorText, useSettingsConfig } from "../use-settings";
+import styles from "../settings.module.css";
 
 const SUB_TABS = ["cli", "login", "api"] as const;
 type SubTab = (typeof SUB_TABS)[number];

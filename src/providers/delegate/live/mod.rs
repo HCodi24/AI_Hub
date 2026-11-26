@@ -38,6 +38,8 @@ pub(super) struct Live {
     pub(super) tester_busy: tokio::sync::Mutex<()>,
     /// The checker's last "Token:" log line, held until `announce_check` shows it in the Tester turn.
     pub(super) checker_tokens: Mutex<Option<String>>,
+    /// Task title of the latest primary worker turn, or None after another turn intervenes.
+    pub(super) last_worker_turn: Mutex<Option<String>>,
     /// Whether the coordinator may edit files, i.e. can take a task over when the attempts run out.
     pub(super) can_edit: bool,
     /// CodeGraph's MCP server as the lead got it (indexed project, option on); None = no role gets it.

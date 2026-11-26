@@ -2,7 +2,7 @@ use super::{Live, CLI_WORK_NOTE};
 use crate::{
     providers::{
         delegate::{
-            events::{input_tokens, is_token_line, message, turn},
+            events::{input_tokens, is_token_line, message, turn_with_continuation},
             report::{preload, worker_prompt, WorkerResult},
             slot_key, Delegation,
         },
@@ -20,9 +20,16 @@ impl Live {
         let quiet = slot != 0;
         let label = self.actor_name(Actor::Worker(slot));
         let events = &self.events;
-        if self.cancel.is_cancelled() || (!quiet && events.send(turn(&self.worker.kind, &self.model, &label)).await.is_err()) {
+        let same_message = !quiet && attempt > 1
+            && self.last_worker_turn.lock().unwrap().as_deref() == Some(task.title.as_str());
+        if self.cancel.is_cancelled()
+            || (!quiet && events.send(turn_with_continuation(&self.worker.kind, &self.model, &label, same_message)).await.is_err())
+        {
             self.cancel.cancel();
             return WorkerResult { summary: String::new(), diff: String::new(), error: None, refused: Vec::new() };
+        }
+        if !quiet {
+            *self.last_worker_turn.lock().unwrap() = Some(task.title.clone());
         }
         let max = limit(self.can_escalate());
         let _ = events.send(ProviderEvent::text("log", format!("Giao {label}: {} (lần {attempt}/{max})", task.title.trim()))).await;

@@ -135,11 +135,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const last = state.messages.at(-1);
       const empty = last?.role === "assistant" && !last.content && !last.reasoning && !last.logs.length &&
         !last.diff && !last.files.length && !last.tasks?.length && !last.attachments.length && last.error == null && last.plan_id == null && last.debate_id == null;
+      const model = data.model || "";
+      const status = { ...state.status, provider_kind: provider, provider_name: data.provider_name || (provider === "deepseek" ? "DeepSeek" : "Codex"),
+        model, role: data.role, idle_s: 0, last_activity: "" };
+      if (data.same_message === true && last?.role === "assistant" && !empty &&
+        last.provider === provider && last.model.trim() === model.trim()) {
+        if (!last.content || last.content.endsWith("\n\n")) return { status };
+        return { messages: [...state.messages.slice(0, -1), { ...last, content: last.content + "\n\n" }], status };
+      }
       // A new turn starts a fresh reply: the placeholder's previous identity is dropped, never inferred from settings.
-      const next = ChatMessageSchema.parse({ role: "assistant", content: "", provider, model: data.model || "" });
-      return { messages: empty ? [...state.messages.slice(0, -1), next] : [...state.messages, next],
-        status: { ...state.status, provider_kind: provider, provider_name: data.provider_name || (provider === "deepseek" ? "DeepSeek" : "Codex"),
-          model: data.model || "", role: data.role, idle_s: 0, last_activity: "" } };
+      const next = ChatMessageSchema.parse({ role: "assistant", content: "", provider, model });
+      return { messages: empty ? [...state.messages.slice(0, -1), next] : [...state.messages, next], status };
     }
     if (event === "heartbeat") return { status: { ...state.status, ...data } };
     if (event === "permission_denied") return { denied: data.need ?? null, approval: null };

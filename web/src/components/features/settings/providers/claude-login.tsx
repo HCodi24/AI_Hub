@@ -7,8 +7,8 @@ import { Button } from "@/components/button/button";
 import { notify } from "@/components/toast/toast";
 import { settingsText as t } from "@/text/settings";
 import { ReplaceConfirm, type SourceAccount } from "./account-parts";
-import { errorText } from "./use-settings";
-import styles from "./settings.module.css";
+import { errorText } from "../use-settings";
+import styles from "../settings.module.css";
 type LoginSession = { session_id: string; url: string };
 /** Claude Code CLI sign-in: opens the login URL, then the user pastes the confirmation code.
  *  With `replacing` (the account already signed in) it asks before starting. */

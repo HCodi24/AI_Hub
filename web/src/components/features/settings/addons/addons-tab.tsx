@@ -12,8 +12,8 @@ import { settingsText as t } from "@/text/settings";
 import { AddonLink, CodexPlugins } from "./addon-link";
 import { AddonRow, splitId } from "./addon-row";
 import { McpSection } from "./mcp-section";
-import { errorText, useSettingsConfig } from "./use-settings";
-import styles from "./settings.module.css";
+import { errorText, useSettingsConfig } from "../use-settings";
+import styles from "../settings.module.css";
 type Item = { name: string; detail: string; enabled?: boolean };
 const items = (home: AddonHome, kind: AddonKind): Item[] => kind === "plugin"
   ? home.plugins.map(plugin => ({ name: plugin.id, detail: plugin.version, enabled: plugin.enabled }))

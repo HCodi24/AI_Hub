@@ -5,13 +5,13 @@ import { Dialog } from "@/components/dialog/dialog";
 import { ScrollArea } from "@/components/scroll-area";
 import { Switch } from "@/components/button/switch";
 import { settingsText as t } from "@/text/settings";
-import { AddonsTab } from "./addons-tab";
+import { AddonsTab } from "./addons";
 import { UpdateSection } from "./update-section";
 import { DesktopBuild } from "./desktop-build";
 import { ExtensionsTab } from "./extensions-tab";
 import { GeneralTab } from "./general-tab";
-import { MutisTab } from "./mutis-tab";
-import { ProvidersTab } from "./providers-tab";
+import { MutisTab } from "./mutis";
+import { ProvidersTab } from "./providers";
 import styles from "./settings.module.css";
 const TABS = [
   { id: "providers", icon: Boxes }, { id: "general", icon: SlidersHorizontal }, { id: "sound", icon: Volume2 }, { id: "mutis", icon: Users },

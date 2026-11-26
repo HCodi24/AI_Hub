@@ -5,9 +5,9 @@ import { Button } from "@/components/button/button";
 import { notify } from "@/components/toast/toast";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { settingsText as t } from "@/text/settings";
-import { errorText } from "./use-settings";
-import styles from "./settings.module.css";
-import { useSettingsAutosave } from "./use-settings-autosave";
+import { errorText } from "../use-settings";
+import styles from "../settings.module.css";
+import { useSettingsAutosave } from "../use-settings-autosave";
 
 /** The verify command of the folder open in the chat: confirm what was detected, or write your own. */
 export function VerifyProject() {

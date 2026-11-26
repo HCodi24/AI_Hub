@@ -1,4 +1,4 @@
-.streamStatus { color: var(--muted); font-size: var(--font-small); overflow-wrap: anywhere; }
+.streamStatus { color: var(--muted); font-size: var(--font-small); margin-top: var(--space-2); overflow-wrap: anywhere; }
 .streamStatus::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: var(--space-1); vertical-align: text-bottom; background: var(--accent); animation: caret 1s steps(2) infinite; }
 @media (prefers-reduced-motion: reduce) { .streamStatus::after { animation: none; } }
 @keyframes caret { 50% { opacity: 0; } }

@@ -7,8 +7,8 @@ import { notify } from "@/components/toast/toast";
 import type { LinkFound, LinkSkillConflict, LinkTarget } from "@/schema/addons.schema";
 import { settingsText as t } from "@/text/settings";
 import { AddonRow, splitId } from "./addon-row";
-import { errorText } from "./use-settings";
-import styles from "./settings.module.css";
+import { errorText } from "../use-settings";
+import styles from "../settings.module.css";
 const TARGETS: LinkTarget[] = ["claude", "codex"];
 const toggle = <T extends string>(list: T[], value: T, set: (next: T[]) => void) => set(list.includes(value) ? list.filter(item => item !== value) : [...list, value]);
 export function AddonLink({ onOutput }: { onOutput: (text: string) => void }) {

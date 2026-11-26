@@ -2,10 +2,11 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/button/button";
 import { notify } from "@/components/toast/toast";
 import { chatText } from "@/text/chat";
-import { chatChoices } from "@/lib/chat-choices";
+import { chatChoiceQuestion, chatChoices } from "@/lib/chat-choices";
 import { useChatStore } from "../chat-store";
 import { useCardStore } from "../card-store";
 import styles from "../chat-message.module.css";
+import cardStyles from "./chat-questions.module.css";
 
 export type SendReply = (text: string, direct?: boolean) => Promise<boolean>;
 export function QuickReplies({ content, send }: { content: string; send: SendReply }) {
@@ -22,7 +23,11 @@ export function QuickReplies({ content, send }: { content: string; send: SendRep
     finally { pending.current = false; setSending(false); }
   }
   if (streaming || !choices.length) return null;
-  return <div className={styles.choices} role="group" aria-label={chatText.quickReply} aria-busy={sending}>
-    {choices.map(choice => <Button key={choice} disabled={sending || Boolean(running)} onClick={() => void reply(choice)}>{choice}</Button>)}
+  const question = chatChoiceQuestion(content);
+  return <div className={`${cardStyles.card} ${styles.choices}`} style={{ marginTop: "var(--space-4)" }}
+    role="group" aria-label={chatText.quickReply} aria-busy={sending}>
+    {question && <p style={{ margin: 0 }}>{question}</p>}
+    {choices.map((choice, index) => <Button key={choice} variant={index === 0 ? "primary" : undefined}
+      disabled={sending || Boolean(running)} onClick={() => void reply(choice)}>{choice}</Button>)}
   </div>;
 }

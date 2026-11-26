@@ -5,9 +5,9 @@ import { Button } from "@/components/button/button";
 import { AccountSummary } from "./account-parts";
 import { ClaudeLogin } from "./claude-login";
 import { CliProjectOptions } from "./cli-project-options";
-import { errorText, useSettingsConfig } from "./use-settings";
+import { errorText, useSettingsConfig } from "../use-settings";
 import { settingsText as t } from "@/text/settings";
-import styles from "./settings.module.css";
+import styles from "../settings.module.css";
 
 export function AntigravityProjectOptions() {
   const { query, apply } = useSettingsConfig();

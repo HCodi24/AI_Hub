@@ -7,8 +7,8 @@ import { Dropdown } from "@/components/select/select";
 import { notify } from "@/components/toast/toast";
 import { DiagnosisSchema, type Diagnosis } from "@/schema/mutis.schema";
 import { settingsText as t } from "@/text/settings";
-import { errorText } from "./use-settings";
-import styles from "./settings.module.css";
+import { errorText } from "../use-settings";
+import styles from "../settings.module.css";
 const show = (value: unknown) => JSON.stringify(value);
 const field = (data: unknown, key: string) => typeof data === "object" && data !== null ? (data as Record<string, unknown>)[key] : undefined;
 /** AI diagnosis of the MutiS event log, with one-click (confirmed) setting changes. The server validates every change. */

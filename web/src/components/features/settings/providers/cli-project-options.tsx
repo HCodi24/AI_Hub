@@ -1,5 +1,5 @@
 import { Switch } from "@/components/button/switch";
-import styles from "./settings.module.css";
+import styles from "../settings.module.css";
 
 type ProjectOptions = { project_skills: boolean; project_instructions: boolean };
 

@@ -2,6 +2,7 @@ import { forwardRef, memo, useCallback, useMemo, useState, type HTMLAttributes, 
 import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/empty-state/empty-state";
 import { ScrollArea } from "@/components/scroll-area";
+import { chatChoices } from "@/lib/chat-choices";
 import { parseChatQuestions } from "@/lib/chat-questions";
 import { ChatMessage } from "./chat-message";
 import { useChatStore } from "./chat-store";
@@ -39,7 +40,10 @@ const MessageRow = memo(function MessageRow({ index, send, taskBoardEnabled }: {
   const denied = useChatStore(s => latest && !s.streaming ? s.denied : null);
   const approval = useChatStore(s => latest ? s.approval : null);
   const askedText = useChatStore(s => s.messages[index - 1]?.role === "user" ? s.messages[index - 1].content : "");
+  const hideQuestion = latest && canReply && !approval && !(denied && askedText)
+    && questions.length === 0 && chatChoices(message.content).length > 0;
   return message ? <ChatMessage message={message} chatId={id} streaming={streaming} latest={latest} status={status} taskBoardEnabled={taskBoardEnabled}
+    hideQuestion={hideQuestion}
     replies={message.role === "assistant" && approval ? <ApprovalCard key={approval.id} id={approval.id} command={approval.command} />
       : message.role === "assistant" && denied && askedText ? <PermissionRetry key={`${id}:${index}:denied`} need={denied} text={askedText} send={send} />
       : canReply && questions.length > 0

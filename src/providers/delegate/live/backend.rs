@@ -35,6 +35,7 @@ impl Backend for Live {
     async fn announce_check(&self, task: &Delegation, attempt: usize, check: &CheckResult) {
         let Some((provider, model, _)) = &self.checker else { return };
         let name = &provider.name;
+        *self.last_worker_turn.lock().unwrap() = None;
         if self.events.send(turn(&provider.kind, model, name)).await.is_err() {
             self.cancel.cancel();
             return;

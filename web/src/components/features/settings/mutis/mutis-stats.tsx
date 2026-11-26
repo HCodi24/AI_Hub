@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { mutisApi } from "@/apis/mutis.api";
 import type { MutisStats as Stats } from "@/schema/mutis.schema";
 import { settingsText as t } from "@/text/settings";
-import styles from "./settings.module.css";
+import styles from "../settings.module.css";
 const number = (value: number) => value.toLocaleString("vi-VN");
 function Table({ title, groups }: { title: string; groups: Stats["providers"] }) {
   const rows = Object.entries(groups);

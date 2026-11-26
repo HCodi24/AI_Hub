@@ -5,7 +5,7 @@ import { Button } from "@/components/button/button";
 import { CliProjectOptions } from "./cli-project-options";
 import { AccountSummary } from "./account-parts";
 import { ClaudeLogin } from "./claude-login";
-import styles from "./settings.module.css";
+import styles from "../settings.module.css";
 
 /** `mode`: a machine source reuses the installed CLI's account, a web source signs in through the browser. */
 export function ClaudeConnection({ providerId, mode }: { providerId: string; mode: "machine" | "web" }) {

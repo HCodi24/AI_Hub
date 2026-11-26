@@ -44,6 +44,7 @@ export const CheckerActivitySchema = z.object({
 });
 export type CheckerActivity = z.infer<typeof CheckerActivitySchema>;
 export const StreamDataSchema = z.object({
+  same_message: z.boolean().optional(),
   tasks: z.array(TaskRowSchema).optional(),
   checker_activity: CheckerActivitySchema.optional(),
   text: z.string().optional(), message: z.string().optional(), provider_name: z.string().optional(), provider_kind: z.string().optional(), model: z.string().optional(),

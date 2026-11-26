@@ -1,6 +1,6 @@
 import { Button } from "@/components/button/button";
 import { settingsText as t } from "@/text/settings";
-import styles from "./settings.module.css";
+import styles from "../settings.module.css";
 
 export type SourceAccount = { connected: boolean; email?: string | null; plan?: string | null; origin?: "cli" | "web" | null };
 

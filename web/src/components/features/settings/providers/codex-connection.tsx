@@ -5,7 +5,7 @@ import { Button } from "@/components/button/button";
 import { CliProjectOptions } from "./cli-project-options";
 import { settingsText as t } from "@/text/settings";
 import { AccountSummary, ReplaceConfirm } from "./account-parts";
-import styles from "./settings.module.css";
+import styles from "../settings.module.css";
 
 /** `mode`: a machine source reuses the installed CLI's account, a web source signs in through the browser. */
 export function CodexConnection({ providerId, mode }: { providerId: string; mode: "machine" | "web" }) {

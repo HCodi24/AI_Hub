@@ -4,9 +4,18 @@ use crate::core::text::truncate_chars;
 
 /// A new chronological turn: the browser and the saved record start a fresh assistant message for this provider.
 pub(super) fn turn(provider_kind: &str, model: &str, name: &str) -> ProviderEvent {
+    turn_with_continuation(provider_kind, model, name, false)
+}
+
+pub(super) fn turn_with_continuation(
+    provider_kind: &str,
+    model: &str,
+    name: &str,
+    same_message: bool,
+) -> ProviderEvent {
     ProviderEvent {
         name: "turn",
-        data: serde_json::json!({ "provider_kind": provider_kind, "model": model, "provider_name": name }),
+        data: serde_json::json!({ "provider_kind": provider_kind, "model": model, "provider_name": name, "same_message": same_message }),
     }
 }
 

@@ -10,7 +10,7 @@
 .message summary { cursor: pointer; color: var(--muted); }
 .message .activity { border: 0; padding: 0; }
 .message .activitySummary { display: flex; align-items: center; gap: 6px; width: fit-content; max-width: 100%; min-height: 36px; list-style: none; border-radius: 6px; white-space: nowrap; }
-.message .activity:not([open]) { margin-top: var(--space-2); }
+.message .activity:not([open]) { margin-top: var(--space-3); }
 .activity:not([open]) > .activitySummary { font-size: var(--font-12); }
 .activity:not([open]) > .activitySummary:hover { color: var(--text); }
 .activitySummary::-webkit-details-marker { display: none; }
@@ -60,7 +60,7 @@
 .remove, .error { color: var(--danger); background: var(--danger-bg); }
 .error, .card { display: block; padding: var(--space-3); border-radius: var(--radius-small); margin-top: var(--space-3); }
 .card { background: var(--accent-soft); }
-.tokens { color: var(--muted); font-size: var(--font-12); font-variant-numeric: tabular-nums; margin-top: var(--space-1); overflow-wrap: anywhere; }
+.tokens { color: var(--muted); font-size: var(--font-12); font-variant-numeric: tabular-nums; margin-top: var(--space-2); overflow-wrap: anywhere; }
 @media (max-width: 767px) { .message { padding: var(--space-4); } }
 .message { max-width: 820px; }
 .message[data-user=true] { margin-left: auto; }

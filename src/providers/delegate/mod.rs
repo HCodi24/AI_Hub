@@ -149,6 +149,7 @@ impl super::Provider for DelegateProvider {
             checker_session: Mutex::new(request.checker_session_id.clone().filter(|_| self.checker.as_ref().is_some_and(|(p, _, _)| p.kind == "codex_cli"))),
             tester_busy: Default::default(),
             checker_tokens: Mutex::new(None),
+            last_worker_turn: Mutex::new(None),
             can_edit: request.permission != Permission::Read,
             codegraph: request.mcp.iter().find(|server| server.name == "codegraph").cloned(),
         });
@@ -156,6 +157,7 @@ impl super::Provider for DelegateProvider {
         let mut note = self.checker_note.clone();
         for _ in 0..MAX_ROUNDS {
             let (text, session) = self.lead_turn(&request, &events, &cancel).await?;
+            *live.last_worker_turn.lock().unwrap() = None;
             // The option is on but the checker cannot run: say so once, in the coordinator's activity, instead of silently skipping it.
             if let Some(note) = note.take() {
                 let _ = events.send(ProviderEvent::text("log", note)).await;

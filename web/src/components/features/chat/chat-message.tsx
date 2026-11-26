@@ -22,7 +22,7 @@ const mutisRoleLabels = new Map([
   ["worker", "Worker"],
   ["checker", "Checker"],
 ]);
-export const ChatMessage = memo(function ChatMessage({ message, chatId, streaming = false, latest = false, status, replies, taskBoardEnabled = true }: { message: Message; chatId: string; streaming?: boolean; latest?: boolean; status?: StreamData; replies?: ReactNode; taskBoardEnabled?: boolean }) {
+export const ChatMessage = memo(function ChatMessage({ message, chatId, streaming = false, latest = false, status, replies, taskBoardEnabled = true, hideQuestion }: { message: Message; chatId: string; streaming?: boolean; latest?: boolean; status?: StreamData; replies?: ReactNode; taskBoardEnabled?: boolean; hideQuestion?: boolean }) {
   const user = message.role === "user";
   /** Model identity comes only from this message: one chat can mix worker turns with different models. */
   const model = message.model.trim();
@@ -52,8 +52,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
       {imported.files.length > 0 && <section className={styles.attachments} aria-label={chatText.attachedFiles}>
         {imported.files.map((file, index) => <AttachmentCard key={`${index}:${file.name}`} name={file.name} />)}
       </section>}
-    </> : <AiMessageText content={message.content} streaming={streaming} />}
-    {replies}
+    </> : <AiMessageText content={message.content} streaming={streaming} hideQuestion={hideQuestion} />}
     {message.attachments.map((attachment) => <a key={attachment.id} href={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} target="_blank" rel="noreferrer"><img className={styles.thumb} alt={chatText.attachments} src={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} /></a>)}
     {message.reasoning && <details><summary>{chatText.reasoning}</summary><MarkdownView source={message.reasoning} /></details>}
     {!user && streaming && <StreamStatus>
@@ -67,5 +66,6 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
     <div className={styles.fileResults}><FileChanges files={message.files} diff={message.diff} /></div>
     {taskBoardEnabled && !(streaming && latest) && message.tasks && <div className={styles.archivedTaskBoard}><TaskBoardView tasks={message.tasks} /></div>}
     {message.error && <div className={styles.error} role="alert">{message.error}</div>}
+    {replies}
   </article>;
 });

@@ -111,7 +111,18 @@ pub(super) fn persist_event(
         };
         // The turn's own model, never the previous turn's: a missing model stays unknown (empty).
         let model = event.data["model"].as_str().unwrap_or_default().to_owned();
-        if let Some(message) = record
+        let same_message = event.data["same_message"].as_bool() == Some(true);
+        if let Some(message) = record.messages.last_mut().filter(|message| {
+            same_message
+                && message.role == "assistant"
+                && message.provider == kind
+                && message.model.trim() == model.trim()
+                && !message.is_empty_placeholder()
+        }) {
+            if !message.content.is_empty() && !message.content.ends_with("\n\n") {
+                message.content.push_str("\n\n");
+            }
+        } else if let Some(message) = record
             .messages
             .last_mut()
             .filter(|message| message.is_empty_placeholder())
@@ -170,3 +181,28 @@ pub(super) fn persist_event(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[test]
+fn continued_turn_reuses_the_matching_assistant_message() {
+    let directory = std::env::temp_dir().join(format!("mutis-retry-{}", uuid::Uuid::new_v4()));
+    let store = ChatStore::new(directory.clone());
+    let mut record: ChatRecord = serde_json::from_value(serde_json::json!({
+        "id": uuid::Uuid::new_v4().to_string(), "title": "retry test",
+        "provider_id": "codex", "model": "test", "folder": "", "updated_at": 0,
+        "messages": [{"role":"assistant","provider":"codex_cli","model":"test","content":"First"}]
+    }))
+    .unwrap();
+    let event = ProviderEvent {
+        name: TURN,
+        data: serde_json::json!({"provider_kind":"codex_cli","model":" test ","same_message":true}),
+    };
+    let mut last = Instant::now();
+    persist_event(&store, &mut record, &event, &mut last);
+    persist_event(&store, &mut record, &event, &mut last);
+    let saved = store.get(&record.id).unwrap().unwrap();
+    assert_eq!(saved.messages.len(), 1);
+    assert_eq!(saved.messages[0].content, "First\n\n");
+    std::fs::remove_file(directory.join(format!("{}.json", record.id))).unwrap();
+    std::fs::remove_dir(directory).unwrap();
+}
