@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import Head from "next/head";
 import { useShallow } from "zustand/react/shallow";
 import { MessageList } from "./message-list";
-import { TaskBoard } from "./task-board";
+import { TaskBoard } from "./task_board/task-board";
 import { TokenDashboard } from "./token-dashboard";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { Spinner } from "@/components/spinner/spinner";
@@ -12,7 +12,7 @@ import { ChatHeader } from "@/components/features/composer/toolbar/chat-toolbar"
 import { ACTIVE_CHAT_KEY, useChatStore } from "./chat-store";
 import { useChat } from "./use-chat";
 import { useDashboardPreference } from "./use-dashboard-preference";
-import { useTaskBoardPreference } from "./use-task-board-preference";
+import { useTaskBoardPreference } from "./task_board/use-task-board-preference";
 import { useChatPetSize } from "@/components/features/pets/use-chat-pet-size";
 import { chatText } from "@/text/chat";
 import styles from "./chat-screen.module.css";

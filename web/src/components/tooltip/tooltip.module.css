@@ -1,0 +1,26 @@
+.tooltip {
+  position: fixed;
+  margin: 0;
+  inset: auto;
+  overflow: visible;
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  width: max-content;
+  max-width: min(280px, calc(100vw - 16px), var(--tooltip-available-width, 100vw));
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--border) 40%, var(--surface));
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  font-size: var(--font-12);
+  line-height: 1.4;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  pointer-events: none;
+}
+
+.tooltip:popover-open { display: grid; }
+.tooltip:not([data-positioned]) { visibility: hidden; }
+.title { font-size: var(--font-13); font-weight: 500; }

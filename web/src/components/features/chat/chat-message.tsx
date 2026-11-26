@@ -10,7 +10,7 @@ import { stripDevChatPreamble } from "@/lib/dev-chat-preamble";
 import { AttachmentCard } from "./attachment-card";
 import { ChatActivity } from "./chat-activity";
 import { FileChanges } from "./file-changes";
-import { TaskBoardView } from "./task-board";
+import { TaskBoardView } from "./task_board/task-board";
 import { chatPetState } from "@/lib/chat-pet-state";
 import { MessageIdentity } from "./message_ai/message-identity";
 import { AiMessageText } from "./message_ai/message-text";

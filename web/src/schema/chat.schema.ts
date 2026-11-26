@@ -8,6 +8,7 @@ export const TaskRowSchema = z.object({
   title: z.string(), state: z.string(), attempt: z.number().default(0), check: z.string().nullish(),
   actor: z.string().nullish(), model: z.string().nullish(),
   checker: z.string().nullish(), checker_model: z.string().nullish(),
+  reason: z.string().nullish(),
 });
 export const ChatMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]), content: z.string(),

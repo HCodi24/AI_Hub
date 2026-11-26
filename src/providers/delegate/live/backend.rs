@@ -99,6 +99,7 @@ impl Backend for Live {
         let tasks: Vec<_> = rows.iter().map(|row| serde_json::json!({
             "title": row.title, "state": row.state, "attempt": row.attempt, "check": row.check,
             "actor": row.actor, "model": row.model, "checker": row.checker, "checker_model": row.checker_model,
+            "reason": row.reason,
         })).collect();
         let _ = self.events.send(ProviderEvent { name: "tasks", data: serde_json::json!({ "tasks": tasks }) }).await;
     }

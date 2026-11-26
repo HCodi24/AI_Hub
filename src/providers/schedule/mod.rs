@@ -43,6 +43,8 @@ pub(super) struct Row {
     /// Actor and configured model retained for the latest check verdict.
     pub checker: Option<String>,
     pub checker_model: Option<String>,
+    /// Short Vietnamese cause shown for takeover, failed-by-limit, or skipped rows.
+    pub reason: Option<String>,
 }
 
 /// The coordinator's instruction when a task's attempts are spent; without write access it can only report what is left.

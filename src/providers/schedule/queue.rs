@@ -14,7 +14,7 @@ pub(super) fn key(title: &str) -> String {
 
 pub(super) enum Next {
     Run(Delegation),
-    Skip(Delegation, String),
+    Skip(Delegation, String), // The normalized dependency title.
     Wait,
 }
 
@@ -33,7 +33,7 @@ pub(super) fn next_ready(queue: &mut VecDeque<Delegation>, state: &HashMap<Strin
             }
         }
         if let Some(dep) = blocked {
-            return Next::Skip(queue.remove(index).expect("index is in range"), format!("it depends on \"{dep}\", which did not pass"));
+            return Next::Skip(queue.remove(index).expect("index is in range"), dep);
         }
         if !waiting {
             return Next::Run(queue.remove(index).expect("index is in range"));

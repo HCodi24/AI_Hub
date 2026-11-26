@@ -1,3 +1,7 @@
+/** 1 → I, 4 → IV, 12 → XII: attempt numbers on the task board. */
+const roman = (n: number) => [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]]
+  .reduce((out, [value, mark]) => { while (n >= (value as number)) { out += mark; n -= value as number; } return out; }, "");
+
 export const chatText = {
   openChanges: "Xem thay đổi file", changesTitle: "Thay đổi file", closeChanges: "Đóng thay đổi file",
   rawDiff: "Nội dung diff", noDiff: "Chưa có nội dung diff cho file này.",
@@ -53,6 +57,7 @@ export const chatText = {
   chatOnly: "Chỉ trò chuyện", chatOnlyNote: "Nguồn này chỉ trò chuyện, không có công cụ sửa file. Bật chế độ agent cho nguồn trong Cài đặt › Nguồn AI nếu cần.",
   sandboxNote: "Codex chưa thiết lập sandbox Windows nên chưa ghi được file. Vào Cài đặt › Nguồn AI › Codex bấm «Thiết lập sandbox».",
   approveTitle: "AI muốn chạy lệnh ghi này nhưng quyền đang là Chỉ đọc. Cho phép một lần?", approveAllow: "Cho phép lần này", approveDeny: "Từ chối",
+  approveShowCommand: "Xem lệnh đầy đủ",
   denied: "AI bị chặn vì quyền hiện tại của cuộc trò chuyện.", rerun: (permission: string) => `Chạy lại với quyền «${permission}»`,
   default: "Default", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max", ultra: "Ultra",
   fileTools: "Công cụ file", none: "Tắt", noCommands: "Nguồn này không chạy lệnh",
@@ -63,8 +68,9 @@ export const chatText = {
   you: "Bạn", assistant: "Trợ lý", activity: "Activity", noActivity: "No activity yet.", reasoning: "Suy luận", diff: "Thay đổi file", edited: (count: number) => `Đã sửa ${count} file`,
   debate: "Tranh luận — mở trong giao diện cũ", plan: "Kế hoạch — mở trong giao diện cũ",
   copy: "Sao chép", copied: "Đã chép", copyError: "Không thể sao chép", code: "Mã nguồn",
-  taskBoard: { title: "Tiến độ các task", collapse: "Thu nhỏ", expand: "Mở rộng", progress: (done: number, total: number) => `${done}/${total} xong`, attempt: (n: number) => `lần ${n}`, model: "Model", checkerModel: "Model kiểm tra", check: "Kiểm tra",
-    states: { waiting: "Chờ", coding: "Đang code", checking: "Đang kiểm tra", limited: "Hết hạn mức", fixwait: "Chờ sửa", fixing: "Đang sửa", done: "Xong", failed: "Lỗi", takeover: "Đã bàn giao", skipped: "Bỏ qua", stopped: "Đã dừng" } },
+  taskBoard: { title: "Tiến độ các task", collapse: "Thu nhỏ", expand: "Mở rộng", progress: (done: number, total: number) => `${done}/${total} xong`, attempt: (n: number) => roman(n), model: "Model", checkerModel: "Model kiểm tra", check: "Kiểm tra",
+    showReason: "Xem nguyên nhân", hideReason: "Ẩn nguyên nhân", reasonTitle: "Nguyên nhân",
+    states: { waiting: "Chờ", coding: "Đang code", checking: "Đang kiểm tra", limited: "Hết hạn mức", fixwait: "Chờ sửa", fixing: "Đang sửa", done: "Xong", failed: "FAIL", takeover: "Đã bàn giao", skipped: "Bỏ qua", stopped: "Đã dừng" } },
   compact: { label: "Nén ngữ cảnh", busy: "Đang nén…", title: "Nén ngữ cảnh các luồng Codex của chat này (tóm tắt phần cũ, không mở phiên mới)",
     done: (count: number) => `Đã nén ${count} luồng Codex`, none: "Chat chưa có luồng Codex nào để nén", failed: (reason: string) => `Không nén được: ${reason}` },
   loading: "Đang tải…", streaming: "Đang phản hồi…", stopped: "Đã dừng", empty: "Chưa có cuộc trò chuyện",

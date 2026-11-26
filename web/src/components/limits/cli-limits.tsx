@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { http, parseResponse } from "@/lib/http";
@@ -12,8 +12,8 @@ const LimitsSchema = z.object({
 
 export function CliLimits({ providerId, name, kind }: { providerId: string; name: string; kind: string }) {
   const popup = useRef<HTMLDetailsElement>(null);
-  const tooltip = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
   const query = useQuery({
     queryKey: ["cli-limits", providerId],
     queryFn: async ({ signal }) => parseResponse(LimitsSchema, await http.get(`/providers/${encodeURIComponent(providerId)}/limits`, signal)),
@@ -40,11 +40,11 @@ export function CliLimits({ providerId, name, kind }: { providerId: string; name
   useLayoutEffect(() => {
     const anchor = popup.current;
     const summary = anchor?.querySelector("summary");
-    const boxes = [tooltip.current, panel.current].filter((box): box is HTMLElement => box != null);
-    if (!anchor || !summary || !boxes.length) return;
+    const box = panel.current;
+    if (!anchor || !summary || !box) return;
 
     let frame: number | undefined;
-    const offsets = new Map<HTMLElement, number>();
+    let offset = 0;
     const updatePosition = () => {
       const viewport = window.visualViewport;
       let left = viewport?.offsetLeft ?? 0;
@@ -56,26 +56,26 @@ export function CliLimits({ providerId, name, kind }: { providerId: string; name
       if (anchor.style.getPropertyValue("--popup-max-width") !== availableWidth) {
         anchor.style.setProperty("--popup-max-width", availableWidth);
       }
-      const anchorRight = anchor.getBoundingClientRect().right;
-      let visible = false;
-      for (const box of boxes) {
-        const width = box === panel.current && !anchor.open ? 0 : box.getBoundingClientRect().width;
-        if (!width) {
-          delete box.dataset.positioned;
-          continue;
+      const width = anchor.open ? box.getBoundingClientRect().width : 0;
+      if (!width) {
+        delete box.dataset.positioned;
+        if (frame !== undefined) {
+          cancelAnimationFrame(frame);
+          frame = undefined;
         }
-        visible = true;
-        const preferredLeft = anchorRight - width;
-        const fittedLeft = Math.max(left, Math.min(preferredLeft, right - width));
-        const nextOffset = fittedLeft - preferredLeft;
-        if (nextOffset !== (offsets.get(box) ?? 0)) {
-          box.style.setProperty("--popup-right", `${-nextOffset}px`);
-          offsets.set(box, nextOffset);
-        }
-        if (!box.dataset.positioned) box.dataset.positioned = "true";
+        return;
       }
+      const anchorRight = anchor.getBoundingClientRect().right;
+      const preferredLeft = anchorRight - width;
+      const fittedLeft = Math.max(left, Math.min(preferredLeft, right - width));
+      const nextOffset = fittedLeft - preferredLeft;
+      if (nextOffset !== offset) {
+        box.style.setProperty("--popup-right", `${-nextOffset}px`);
+        offset = nextOffset;
+      }
+      if (!box.dataset.positioned) box.dataset.positioned = "true";
       // Wrapping can move the anchor without changing the size of either element.
-      if (visible && frame === undefined) {
+      if (frame === undefined) {
         frame = requestAnimationFrame(() => {
           frame = undefined;
           updatePosition();
@@ -88,11 +88,12 @@ export function CliLimits({ providerId, name, kind }: { providerId: string; name
       event.preventDefault();
       // Native toggle events can be coalesced when the summary is activated rapidly.
       anchor.open = !anchor.open;
+      setOpen(anchor.open);
       updatePosition();
     };
 
     const observer = new ResizeObserver(updatePosition);
-    boxes.forEach(box => observer.observe(box));
+    observer.observe(box);
     summary.addEventListener("click", toggleFromSummary);
     anchor.addEventListener("toggle", updatePosition);
     return () => {
@@ -121,18 +122,14 @@ export function CliLimits({ providerId, name, kind }: { providerId: string; name
   const limitTitle = `Hạn mức ${providerName}`;
   const summaryLabel = `${limitTitle}: ${statusLabel}`;
   const updatedTime = query.data?.updated_at == null ? null : new Date(query.data.updated_at * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-  return <details ref={popup} className={limitStyles.limits}>
-    <summary aria-label={summaryLabel}>
+  return <details ref={popup} className={limitStyles.limits} onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary aria-label={summaryLabel} title={open ? undefined : statusLabel} data-tooltip-title={open ? undefined : limitTitle}>
       <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" className={limitStyles.limitRing} data-state={state} data-stale={stale ? "true" : undefined}>
         <circle cx="12" cy="12" r="9" className={limitStyles.limitTrack} />
         {(percent != null || rejected) && <circle cx="12" cy="12" r="9" pathLength="100" strokeDasharray={`${rejected ? 100 : percent} 100`} className={limitStyles.limitProgress} />}
         {state === "unknown" && <text x="12" y="16" textAnchor="middle">?</text>}
         {warning && percent == null && !rejected && <text x="12" y="16" textAnchor="middle">!</text>}
       </svg>
-      <span ref={tooltip} className={limitStyles.tooltip} aria-hidden="true">
-        <span className={limitStyles.tooltipTitle}>{limitTitle}</span>
-        <span>{statusLabel}</span>
-      </span>
     </summary>
     <div ref={panel} className={limitStyles.panel} role="region" aria-label={`${t.limits} · ${name}`}>
       <p className={limitStyles.title}>{name}</p>

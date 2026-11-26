@@ -9,7 +9,7 @@
 .toggle > svg { margin-inline-start: auto; }
 .toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .board ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.board li { display: grid; grid-template-columns: 16px minmax(0, 1fr) 24px fit-content(40%); grid-template-areas: "icon name avatar details"; align-items: start; gap: 0 var(--space-2); min-width: 0; }
+.board li { display: grid; grid-template-columns: 16px minmax(0, 1fr) 24px fit-content(40%); grid-template-areas: "icon name avatar details" ". reason reason reason"; align-items: start; gap: 0 var(--space-2); min-width: 0; }
 .board li > svg { grid-area: icon; width: 16px; height: 16px; margin-top: 4px; }
 .name, .details { min-width: 0; overflow-wrap: anywhere; white-space: normal; line-height: 24px; }
 .name { grid-area: name; }
@@ -19,8 +19,12 @@
 .board li[data-state="failed"] > svg, .board li[data-state="failed"] .details { color: var(--danger); }
 .details [data-verdict="PASS"] { color: var(--green); }
 .details [data-verdict="FAIL"] { color: var(--danger); }
+/* The cause reads as a note of the row above: indented, a faint rule on its left, one step smaller. */
+.reason { grid-area: reason; min-width: 0; margin: var(--space-1) 0 var(--space-1); padding: 2px 0 2px var(--space-2); border-inline-start: 2px solid var(--border); font-size: var(--font-12); line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; white-space: normal; }
+.reasonToggle { display: inline-flex; vertical-align: middle; border: 0; background: transparent; color: inherit; padding: 0 2px; min-width: 0; min-height: 0; margin-inline-start: var(--space-1); cursor: pointer; }
+.reasonToggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* Narrow panels: the status moves below the name so long names and long status text never overflow. */
 @media (max-width: 767px) {
   .board { width: calc(100% - 2 * var(--space-4)); max-width: calc(820px - 2 * var(--space-4)); }
-  .board li { grid-template-columns: 16px minmax(0, 1fr) 24px; grid-template-areas: "icon name avatar" ". details avatar"; }
+  .board li { grid-template-columns: 16px minmax(0, 1fr) 24px; grid-template-areas: "icon name avatar" ". details avatar" ". reason reason"; }
 }

@@ -62,6 +62,18 @@
 @keyframes caret { 50% { opacity: 0; } }
 .choices { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .choices button { min-width: 88px; min-height: 44px; }
+.choices > p, .choices > pre { flex-basis: 100%; }
+.command { flex-basis: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.command > summary { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.command > summary > code { font-family: var(--font-mono); white-space: pre; }
+.command > pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--color-muted);
+}
 .fileResults, .archivedTaskBoard { margin-top: var(--space-4); min-width: 0; }
 .fileResults:empty, .archivedTaskBoard:empty { display: none; }
 .fileResults > :first-child { margin-top: 0; }

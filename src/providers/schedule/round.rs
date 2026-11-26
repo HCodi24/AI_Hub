@@ -12,6 +12,25 @@ use tokio::sync::mpsc;
 type Finished = (Delegation, usize, CheckResult);
 type Job = (Delegation, usize, WorkerResult);
 
+fn board_detail(detail: &str) -> String {
+    const MAX_CHARS: usize = 160;
+    let detail = detail.replace("\r\n", " ").replace(['\r', '\n'], " ");
+    if detail.chars().count() > MAX_CHARS {
+        truncate_chars(&detail, MAX_CHARS - 1)
+    } else {
+        detail
+    }
+}
+
+fn issue_detail(issue: &Issue) -> String {
+    let file = issue.file.trim();
+    if file.is_empty() {
+        board_detail(&issue.problem)
+    } else {
+        board_detail(&format!("{} ({file})", issue.problem))
+    }
+}
+
 struct Round<'a, B: Backend> {
     backend: &'a Arc<B>,
     queue: VecDeque<Delegation>,
@@ -26,9 +45,14 @@ struct Round<'a, B: Backend> {
 impl<B: Backend> Round<'_, B> {
     /// Updates one row of the board (rows are keyed by the task title) and shows the board.
     async fn mark(&mut self, title: &str, state: &'static str, attempt: usize, check: Option<&'static str>, actor: Option<Actor>, model: Option<String>, checker: Option<Actor>, checker_model: Option<String>) {
+        self.mark_reason(title, state, attempt, check, actor, model, checker, checker_model, None).await;
+    }
+
+    async fn mark_reason(&mut self, title: &str, state: &'static str, attempt: usize, check: Option<&'static str>, actor: Option<Actor>, model: Option<String>, checker: Option<Actor>, checker_model: Option<String>, reason: Option<String>) {
         let wanted = key(title);
         if let Some(row) = self.rows.iter_mut().find(|row| key(&row.title) == wanted) {
             row.state = state;
+            row.reason = reason;
             row.attempt = attempt.max(row.attempt);
             if check.is_some() {
                 row.check = check;
@@ -76,20 +100,22 @@ impl<B: Backend> Round<'_, B> {
         if self.attempts.get(&title).copied().unwrap_or(0) >= max {
             self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
             self.state.insert(title, State::Failed);
-            self.mark(&task.title, self.spent_state(), max, None, None, None, None, None).await;
+            self.mark_reason(&task.title, self.spent_state(), max, None, None, None, None, None, Some(format!("hết lượt thử ({max}/{max})"))).await;
             return None;
         }
         if let Some(why) = self.backend.limited(editor) {
             self.out.reports.push(limit_text(&task.title, &self.backend.actor_name(editor), &why));
             self.state.insert(title, State::Failed);
-            self.mark(&task.title, "limited", 0, None, Some(editor), self.backend.actor_model(editor), None, None).await;
+            let reason = format!("hết hạn mức: {}", board_detail(&why));
+            self.mark_reason(&task.title, "limited", 0, None, Some(editor), self.backend.actor_model(editor), None, None, Some(reason)).await;
             return None;
         }
         let problems = self.backend.path_problems(task);
         if !problems.is_empty() {
             self.out.reports.push(format!("Path check failed for \"{}\": the worker was NOT run and this is not counted as an attempt. {}. Resend the block with correct paths.", task.title.trim(), problems.join("; ")));
             self.state.insert(title, State::Failed);
-            self.mark(&task.title, "failed", 0, None, None, None, None, None).await;
+            let reason = format!("sai đường dẫn: {}", board_detail(&problems.join("; ")));
+            self.mark_reason(&task.title, "failed", 0, None, None, None, None, None, Some(reason)).await;
             return None;
         }
         Some(self.next_attempt(task, editor, 0).await)
@@ -130,13 +156,21 @@ impl<B: Backend> Round<'_, B> {
             self.backend.note_limit(editor, why);
             self.out.reports.push(limit_text(&task.title, &self.backend.actor_name(editor), why));
             self.state.insert(title, State::Failed);
-            self.mark(&task.title, "limited", attempt, None, Some(editor), self.backend.actor_model(editor), None, None).await;
+            let reason = format!("hết hạn mức: {}", board_detail(why));
+            self.mark_reason(&task.title, "limited", attempt, None, Some(editor), self.backend.actor_model(editor), None, None, Some(reason)).await;
             return;
         }
         if auto_retry_reason(&work).is_some() {
             self.state.insert(title, State::Failed);
+            let reason = if let Some(error) = &work.error {
+                format!("worker lỗi: {}", board_detail(error))
+            } else if !work.refused.is_empty() {
+                format!("worker sửa file ngoài danh sách: {}", board_detail(&work.refused.join(", ")))
+            } else {
+                "worker không sửa file nào".to_owned()
+            };
             // No worker on the row: a takeover is the coordinator's now (the worker's pet would say otherwise).
-            self.mark(&task.title, self.spent_state(), attempt, None, None, None, None, None).await;
+            self.mark_reason(&task.title, self.spent_state(), attempt, None, None, None, None, None, Some(reason)).await;
             return;
         }
         self.out.changed = true;
@@ -181,7 +215,8 @@ impl<B: Backend> Round<'_, B> {
         let checker_model = self.backend.actor_model(checker);
         let severe: Vec<&Issue> = check.issues.iter().filter(|i| i.is_severe()).collect();
         self.out.minor.extend(check.issues.iter().filter(|i| !i.is_severe()).map(|i| format!("{}: {} ({})", task.title.trim(), i.problem, i.file)));
-        if check.verdict == Verdict::Fail && !severe.is_empty() {
+        if let Some(issue) = severe.first().filter(|_| check.verdict == Verdict::Fail) {
+            let detail = issue_detail(issue);
             let max = limit(self.backend.can_escalate());
             if self.attempts.get(&title).copied().unwrap_or(0) < max {
                 self.state.remove(&title);
@@ -204,11 +239,11 @@ impl<B: Backend> Round<'_, B> {
                 self.queue.push_back(fix);
                 let next_editor = Actor::Worker(0);
                 // The fix is queued, not started: it shows as waiting to be fixed until a worker takes it (then `work` marks it "fixing").
-                self.mark(&task.title, "fixwait", attempt, Some(shown), Some(next_editor), self.backend.actor_model(next_editor), Some(checker), checker_model).await;
+                self.mark_reason(&task.title, "fixwait", attempt, Some(shown), Some(next_editor), self.backend.actor_model(next_editor), Some(checker), checker_model, Some(format!("FAIL: {detail}"))).await;
             } else {
                 self.out.reports.push(format!("The attempt limit ({max}/{max}) for \"{}\" is spent and the check still fails. {}", task.title.trim(), takeover_text(self.backend.can_edit())));
                 self.state.insert(title, State::Failed);
-                self.mark(&task.title, self.spent_state(), attempt, Some(shown), None, None, Some(checker), checker_model).await;
+                self.mark_reason(&task.title, self.spent_state(), attempt, Some(shown), None, None, Some(checker), checker_model, Some(format!("FAIL sau {max}/{max} lần: {detail}"))).await;
             }
             return;
         }
@@ -237,7 +272,7 @@ pub(in crate::providers) async fn run_round<B: Backend>(backend: &Arc<B>, tasks:
     let mut rows: Vec<Row> = Vec::new();
     for task in &tasks {
         if !rows.iter().any(|row| key(&row.title) == key(&task.title)) {
-            rows.push(Row { title: task.title.trim().to_owned(), state: "waiting", attempt: 0, check: None, actor: None, model: None, checker: None, checker_model: None });
+            rows.push(Row { title: task.title.trim().to_owned(), state: "waiting", attempt: 0, check: None, actor: None, model: None, checker: None, checker_model: None, reason: None });
         }
     }
     let mut round = Round { backend, queue: tasks.into(), state: HashMap::new(), attempts, jobs, pending: 0, out: RoundOutcome::default(), rows };
@@ -257,10 +292,10 @@ pub(in crate::providers) async fn run_round<B: Backend>(backend: &Arc<B>, tasks:
                 }
                 round.run_group(group).await;
             }
-            Next::Skip(task, why) => {
-                round.out.reports.push(format!("Task \"{}\" was skipped: {why}.", task.title.trim()));
+            Next::Skip(task, dep) => {
+                round.out.reports.push(format!("Task \"{}\" was skipped: it depends on \"{dep}\", which did not pass.", task.title.trim()));
                 round.state.insert(key(&task.title), State::Failed);
-                round.mark(&task.title, "skipped", 0, None, None, None, None, None).await;
+                round.mark_reason(&task.title, "skipped", 0, None, None, None, None, None, Some(format!("phụ thuộc «{dep}» chưa đạt"))).await;
             }
             Next::Wait if round.pending > 0 => match done_rx.recv().await {
                 Some(finished) => round.handle_check(finished).await,

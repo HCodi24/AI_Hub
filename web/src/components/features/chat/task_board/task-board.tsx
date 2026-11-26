@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ArrowRightCircle, CheckCircle2, ChevronDown, ChevronUp, Circle, Loader2, MinusCircle, XCircle } from "lucide-react";
 import type { TaskRow } from "@/schema/chat.schema";
 import { chatText } from "@/text/chat";
@@ -6,11 +6,13 @@ import { PetAvatar } from "@/components/features/pets/pet-avatar";
 import { usePetId } from "@/components/features/pets/use-pet-id";
 import { kindFromModel } from "@/lib/pet-choice";
 import type { PetState } from "@/lib/chat-pet-state";
-import { useChatStore } from "./chat-store";
+import { useChatStore } from "../chat-store";
 import styles from "./task-board.module.css";
 
 const ICONS = { waiting: Circle, fixwait: Circle, limited: XCircle, coding: Loader2, checking: Loader2, fixing: Loader2, done: CheckCircle2, failed: XCircle, takeover: ArrowRightCircle, skipped: MinusCircle, stopped: MinusCircle } as const;
 const BUSY = new Set(["coding", "checking", "fixing"]);
+/** Rows that left the workers' hands: the attempt count says nothing there. */
+const NO_ATTEMPT = new Set(["takeover", "skipped"]);
 /** Pose of the pet beside a task: running (the sheet's last row) for every busy state, coded, checked or fixed. */
 const PET_STATE: Record<string, PetState> = { waiting: "waiting", fixwait: "waiting", coding: "coding", checking: "coding", fixing: "coding", failed: "failed" };
 
@@ -21,6 +23,8 @@ function who(name: string | undefined, model: string | undefined) {
 }
 
 function TaskItem({ task }: { task: TaskRow }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
   const t = chatText.taskBoard;
   const Icon = ICONS[task.state as keyof typeof ICONS] ?? Circle;
   const model = task.model?.trim() || undefined;
@@ -33,6 +37,9 @@ function TaskItem({ task }: { task: TaskRow }) {
   const state = t.states[task.state as keyof typeof t.states] ?? task.state;
   const action = actor && BUSY.has(task.state) ? `${actor} ${state.charAt(0).toLowerCase()}${state.slice(1)}` : state;
   const check = task.check?.trim();
+  const reason = task.reason?.trim();
+  const ReasonChevron = open ? ChevronUp : ChevronDown;
+  const reasonLabel = open ? t.hideReason : t.showReason;
   const showAction = task.state !== "done" || !check;
   const modelDetails = [model && `${t.model}: ${model}`, checkerModel && `${t.checkerModel}: ${checkerModel}`].filter(Boolean).join(" · ");
   return <li data-state={task.state}>
@@ -42,11 +49,26 @@ function TaskItem({ task }: { task: TaskRow }) {
       <PetAvatar small provider={petProvider} model={petModel} state={PET_STATE[task.state] ?? "idle"} />
     </span>
     <small className={styles.details} title={modelDetails || undefined}>
-      {showAction ? action : <span className="sr-only">{state}{" · "}</span>}
-      {check && <>{showAction && " · "}{checker || t.check} <strong data-verdict={check.toUpperCase()}>{task.check}</strong></>}
-      {task.attempt > 1 && <>{" · "}{t.attempt(task.attempt)}</>}
+      {showAction ? (task.state === "failed" ? <strong data-verdict="FAIL">{state}</strong> : action) : <span className="sr-only">{state}{" · "}</span>}
+      {check && <>{showAction && " · "}{checker && `${checker} `}<strong data-verdict={check.toUpperCase()}>{task.check}</strong></>}
+      {task.attempt > 1 && !NO_ATTEMPT.has(task.state) && <>{" · "}{t.attempt(task.attempt)}</>}
       {modelDetails && <span className="sr-only">{" · "}{modelDetails}</span>}
+      {reason && (
+        <button
+          type="button"
+          className={styles.reasonToggle}
+          aria-expanded={open}
+          aria-controls={id}
+          aria-label={reasonLabel}
+          title={open ? undefined : reason}
+          data-tooltip-title={t.reasonTitle}
+          onClick={() => setOpen(previous => !previous)}
+        >
+          <ReasonChevron size={14} aria-hidden="true" />
+        </button>
+      )}
     </small>
+    {reason && open && <p id={id} className={styles.reason}>{reason}</p>}
   </li>;
 }
 

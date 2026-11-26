@@ -5,11 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { configApi } from "@/apis/config.api";
 import { ChatScreen } from "@/components/features/chat/chat-screen";
 import { DashboardDialog } from "@/components/features/chat/dashboard-dialog";
-import { TaskBoardView } from "@/components/features/chat/task-board";
+import { TaskBoardView } from "@/components/features/chat/task_board/task-board";
 import { PreviewPanel } from "@/components/features/preview/preview-panel";
 import type { TaskRow } from "@/schema/chat.schema";
 import { useDashboardPreference } from "@/components/features/chat/use-dashboard-preference";
-import { useTaskBoardPreference } from "@/components/features/chat/use-task-board-preference";
+import { useTaskBoardPreference } from "@/components/features/chat/task_board/use-task-board-preference";
 import { SettingsDialog, isTabId } from "@/components/features/settings/settings-dialog";
 
 import { installPreviewMock, installReadOnlyPreview } from "@/lib/preview-mock";
@@ -17,7 +17,13 @@ import { installPreviewMock, installReadOnlyPreview } from "@/lib/preview-mock";
 const noop = () => {};
 // One row per state the board can show; `?c=tasks&mock=many` repeats them.
 const TASK_STATES = ["waiting", "coding", "checking", "fixing", "done", "failed", "limited", "takeover", "skipped", "stopped"];
-const SAMPLE_TASKS: TaskRow[] = TASK_STATES.map((state, i) => ({ title: `Việc mẫu ${i + 1}`, state, attempt: i % 3 + 1, check: state === "done" ? "PASS" : null }));
+const SAMPLE_TASKS: TaskRow[] = TASK_STATES.map((state, i) => ({
+  title: `Việc mẫu ${i + 1}`,
+  state,
+  attempt: state === "takeover" ? 3 : i % 3 + 1,
+  check: state === "done" ? "PASS" : null,
+  reason: state === "takeover" ? "vẫn FAIL sau 3/3 lần" : state === "skipped" ? "phụ thuộc «Việc mẫu 1» chưa đạt" : null,
+}));
 const THEMES = ["light", "dark", "system"];
 const isProvidersPreview = (query: URLSearchParams) => {
   const tab = query.get("tab");
