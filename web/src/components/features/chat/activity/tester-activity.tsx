@@ -23,7 +23,7 @@ function CheckerCard({ card }: { card: LiveChecker }) {
         {state !== "idle" ? <>· {chatText.petStatus[state]}</> : <>· {text.stopped}</>}
       </span>
     </div>
-    <ChatActivity logs={card.progress} />
+    <ChatActivity logs={card.progress} running={card.state === "running"} />
     {card.state === "running" && <div className={styles.streamStatus} role="status" aria-live="polite" aria-atomic="true">
       {card.title}{card.attempt > 0 && ` · ${text.attempt(card.attempt)}`}{card.model && ` · ${card.model}`}
     </div>}

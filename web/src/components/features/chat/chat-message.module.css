@@ -16,7 +16,17 @@
 .activitySummary::-webkit-details-marker { display: none; }
 .activitySummary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .activitySummary > svg { flex-shrink: 0; color: var(--muted); }
-.activity[open] > .activitySummary > svg, .activityEntry[open] > .activitySummary > svg { transform: rotate(90deg); }
+.activity[open] > .activitySummary > svg:last-child, .activityEntry[open] > .activitySummary > svg:last-child { transform: rotate(90deg); }
+.activitySummary svg[data-danger=true] { color: var(--danger); }
+.activityCurrent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 360px; color: var(--muted); }
+.activityCurrent > svg { flex-shrink: 0; }
+/* Activity logo layers bob in turn only while the reply runs; still once it is done. */
+.activity[data-running] > .activitySummary > .activityLogo [data-layer] { animation: activityFloat 1.8s cubic-bezier(.45, 0, .55, 1) infinite; }
+.activity[data-running] > .activitySummary > .activityLogo [data-layer=mid] { animation-delay: .16s; }
+.activity[data-running] > .activitySummary > .activityLogo [data-layer=bot] { animation-name: activityFloatFade; animation-delay: .32s; }
+@keyframes activityFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
+@keyframes activityFloatFade { 0%, 100% { transform: translateY(0); opacity: .45; } 50% { transform: translateY(-8px); opacity: .85; } }
+@media (prefers-reduced-motion: reduce) { .activityLogo [data-layer] { animation: none !important; } }
 .activityList { margin-top: 8px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-edge); }
 .message .activityEntry { margin: 0; padding: 0; border: 0; border-radius: 0; }
 .activityEntry + .activityEntry { border-top: 1px solid var(--border); }
