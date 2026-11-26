@@ -7,8 +7,9 @@
 .limitTrack { stroke: var(--color-muted); }
 .limitProgress { stroke: currentColor; transform: rotate(-90deg); transform-origin: center; }
 .limitRing[data-state="unused"] .limitTrack { stroke: var(--color-success); }
-.limitRing[data-state="warning"] { color: var(--color-warning); }
-.limitRing[data-state="limit"] { color: var(--danger); }
+/* Vivid yellow/red for the ring graphic: the light theme's warning/danger tokens are dark shades tuned for text contrast. */
+.limitRing[data-state="warning"] { color: #eab308; }
+.limitRing[data-state="limit"] { color: #ef4444; }
 .limitRing[data-state="unknown"] { color: var(--muted); }
 .limitRing text { fill: currentColor; stroke: none; font-size: 12px; font-weight: 600; }
 .panel {

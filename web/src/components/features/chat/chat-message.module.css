@@ -66,10 +66,6 @@
 .message[data-user=true] { margin-left: auto; }
 .message[data-user=true] > div:nth-child(2) { background: var(--color-muted); padding: var(--space-3) var(--space-4); border-radius: var(--radius); width: fit-content; max-width: 90%; margin-left: auto; }
 .message[data-user=true] .identity { justify-content: flex-end; }
-.streamStatus { color: var(--muted); font-size: var(--font-small); overflow-wrap: anywhere; }
-.streamStatus::after { content: ''; display: inline-block; width: 2px; height: 1em; margin-left: var(--space-1); vertical-align: text-bottom; background: var(--accent); animation: caret 1s steps(2) infinite; }
-@media (prefers-reduced-motion: reduce) { .streamStatus::after { animation: none; } }
-@keyframes caret { 50% { opacity: 0; } }
 .choices { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .choices button { min-width: 88px; min-height: 44px; }
 .choices > p, .choices > pre { flex-basis: 100%; }

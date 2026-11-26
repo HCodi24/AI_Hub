@@ -1,6 +1,8 @@
 import { PetAvatar } from "@/components/features/pets/pet-avatar";
 import { chatText } from "@/text/chat";
+import { modelDisplayLabel } from "@/lib/model-display-label";
 import { ChatActivity } from "./chat-activity";
+import { StreamStatus } from "../stream_status/stream-status";
 import { useChatStore, type LiveChecker } from "../chat-store";
 import styles from "../chat-message.module.css";
 
@@ -11,7 +13,7 @@ const text = {
   attempt: (attempt: number) => `lần ${attempt}`,
 } as const;
 
-/** One live check drawn exactly like a running chat message: pet + name + status, collapsed Activity, status line. */
+/** One live check drawn exactly like a running chat message: pet + name + status, status line, collapsed Activity. */
 function CheckerCard({ card }: { card: LiveChecker }) {
   const state = card.state === "running" ? "working" : card.state === "failed" ? "failed" : "idle";
   return <article className={styles.message} data-streaming={card.state === "running"} data-checker-id={card.id}>
@@ -23,10 +25,10 @@ function CheckerCard({ card }: { card: LiveChecker }) {
         {state !== "idle" ? <>· {chatText.petStatus[state]}</> : <>· {text.stopped}</>}
       </span>
     </div>
+    {card.state === "running" && <StreamStatus>
+      {card.title}{card.attempt > 0 && ` · ${text.attempt(card.attempt)}`}{card.model && ` · ${modelDisplayLabel(card.model, "codex_cli")}`}
+    </StreamStatus>}
     <ChatActivity logs={card.progress} running={card.state === "running"} />
-    {card.state === "running" && <div className={styles.streamStatus} role="status" aria-live="polite" aria-atomic="true">
-      {card.title}{card.attempt > 0 && ` · ${text.attempt(card.attempt)}`}{card.model && ` · ${card.model}`}
-    </div>}
   </article>;
 }
 

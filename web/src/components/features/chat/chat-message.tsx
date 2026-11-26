@@ -12,13 +12,15 @@ import { ChatActivity } from "./activity/chat-activity";
 import { FileChanges } from "./file_changes/file-changes";
 import { TaskBoardView } from "./task_board/task-board";
 import { chatPetState } from "@/lib/chat-pet-state";
+import { modelDisplayLabel } from "@/lib/model-display-label";
 import { MessageIdentity } from "./message_ai/message-identity";
 import { AiMessageText } from "./message_ai/message-text";
+import { formatElapsed, StreamStatus } from "./stream_status/stream-status";
 import styles from "./chat-message.module.css";
 const mutisRoleLabels = new Map([
-  ["lead", "Trưởng nhóm"],
-  ["worker", "Thực thi"],
-  ["checker", "Kiểm tra"],
+  ["lead", "Lead"],
+  ["worker", "Worker"],
+  ["checker", "Checker"],
 ]);
 export const ChatMessage = memo(function ChatMessage({ message, chatId, streaming = false, latest = false, status, replies, taskBoardEnabled = true }: { message: Message; chatId: string; streaming?: boolean; latest?: boolean; status?: StreamData; replies?: ReactNode; taskBoardEnabled?: boolean }) {
   const user = message.role === "user";
@@ -54,13 +56,13 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
     {replies}
     {message.attachments.map((attachment) => <a key={attachment.id} href={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} target="_blank" rel="noreferrer"><img className={styles.thumb} alt={chatText.attachments} src={`/api/attachments/${encodeURIComponent(chatId)}/${encodeURIComponent(`${attachment.id}.${attachment.mime === "image/jpeg" ? "jpg" : attachment.mime.split("/")[1]}`)}`} /></a>)}
     {message.reasoning && <details><summary>{chatText.reasoning}</summary><MarkdownView source={message.reasoning} /></details>}
-    {!user && <ChatActivity logs={message.logs} provider={message.provider} running={streaming} />}
-    {!user && streaming && <div className={styles.streamStatus} role="status" aria-live="polite" aria-atomic="true">
-      {chatText.streaming} {status?.provider_name} {status?.model}
+    {!user && streaming && <StreamStatus>
+      {chatText.streaming} {status?.model ? modelDisplayLabel(status.model, message.provider) : status?.provider_name}
       {status?.role && mutisRoleLabels.has(status.role) && ` · ${mutisRoleLabels.get(status.role)}`}
-      {status?.elapsed_s !== undefined && ` · ${status.elapsed_s} ${chatText.seconds}`}
-      {status?.idle_s !== undefined && ` · ${chatText.idle}: ${status.idle_s} ${chatText.seconds}`}
-    </div>}
+      {status?.elapsed_s !== undefined && ` · ${formatElapsed(status.elapsed_s)}`}
+      {status?.idle_s !== undefined && ` · ${chatText.idle}: ${formatElapsed(status.idle_s)}`}
+    </StreamStatus>}
+    {!user && <ChatActivity logs={message.logs} provider={message.provider} running={streaming} />}
     {tokenLine && <div className={styles.tokens}>{tokenLine}</div>}
     <div className={styles.fileResults}><FileChanges files={message.files} diff={message.diff} /></div>
     {taskBoardEnabled && !(streaming && latest) && message.tasks && <div className={styles.archivedTaskBoard}><TaskBoardView tasks={message.tasks} /></div>}
