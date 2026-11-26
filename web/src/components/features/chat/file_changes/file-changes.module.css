@@ -10,12 +10,14 @@
 .cardTitle { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
 .cardTotals { display: inline-flex; justify-content: flex-end; flex-shrink: 0; gap: 8px; margin-left: auto; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .fileList { margin: 0; padding: 0; list-style: none; }
+.group { margin: 0; }
+.groupFolder { box-sizing: border-box; width: fit-content; max-width: 100%; padding: 8px 12px 2px; font-family: var(--font-mono); font-size: var(--font-12); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: start; }
 .fileItem { margin: 0; }
 .fileRow { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 12px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--font-small); text-align: left; cursor: pointer; }
 .fileRow:hover { background: var(--color-muted); }
+.group .fileRow { padding-left: 20px; }
 .fileRowPath { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .fileRowName { font-weight: 600; }
-.fileRowDirectory { display: block; color: var(--muted); }
 .fileRowCounts { display: inline-flex; justify-content: flex-end; flex-shrink: 0; gap: 6px; margin-left: auto; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
 .fileRowCounts > span { padding: 0 6px; border-radius: var(--radius-xs); }
 .fileRowCounts > .added { background: var(--green-bg); }

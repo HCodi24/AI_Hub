@@ -66,6 +66,7 @@ export const chatText = {
   skillSuggestions: "Gợi ý kỹ năng",
   skillNavigate: "Di chuyển", skillSelect: "Chọn",
   you: "Bạn", assistant: "Trợ lý", activity: "Activity", noActivity: "No activity yet.", reasoning: "Suy luận", diff: "Thay đổi file", edited: (count: number) => `Đã sửa ${count} file`,
+  rootFolder: "Thư mục gốc",
   debate: "Tranh luận — mở trong giao diện cũ", plan: "Kế hoạch — mở trong giao diện cũ",
   copy: "Sao chép", copied: "Đã chép", copyError: "Không thể sao chép", code: "Mã nguồn",
   taskBoard: { title: "Tiến độ các task", collapse: "Thu nhỏ", expand: "Mở rộng", progress: (done: number, total: number) => `${done}/${total} xong`, attempt: (n: number) => roman(n), model: "Model", checkerModel: "Model kiểm tra", check: "Kiểm tra",

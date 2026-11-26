@@ -9,7 +9,7 @@ import { splitPreviewSelectionText } from "@/lib/preview-selection";
 import { stripDevChatPreamble } from "@/lib/dev-chat-preamble";
 import { AttachmentCard } from "./attachment-card";
 import { ChatActivity } from "./chat-activity";
-import { FileChanges } from "./file-changes";
+import { FileChanges } from "./file_changes/file-changes";
 import { TaskBoardView } from "./task_board/task-board";
 import { chatPetState } from "@/lib/chat-pet-state";
 import { MessageIdentity } from "./message_ai/message-identity";
