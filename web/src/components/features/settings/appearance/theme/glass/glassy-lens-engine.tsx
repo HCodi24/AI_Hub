@@ -10,13 +10,13 @@ import {
 } from "./refraction-map";
 
 /**
- * Surfaces that receive the Chromium Snell's-law edge refraction lens when
- * data-style="glass" is active. Oversized surfaces (> 720,000 px^2) are
- * automatically skipped to keep scrolling smooth at 60 fps.
+ * Small glass pills and controls that receive the Chromium Snell's-law edge
+ * refraction lens when data-style="glass" is active.
+ * Large panes (main, sidebar, rail, preview-panel, dialogs, cards) stay on
+ * GPU backdrop-filter blur() so scrolling, streaming, and iframe previews stay
+ * crisp and lightweight.
  */
 const LENS_SELECTOR = [
-  '[data-glass="main"]',
-  '[data-glass="preview-panel"]',
   '[data-glass="composer-box"]',
   '[data-glass="model-group"]',
   '[data-glass="debate-button"]',
@@ -27,21 +27,13 @@ const LENS_SELECTOR = [
   '[data-glass="window-controls"]',
   '[data-glass="menu-labels"]',
   '[data-glass="theme-control"]',
-  '[data-glass="skill-menu"]',
-  '[data-glass="preferences-panel"]',
-  '[data-glass="overlay"]',
   '[data-glass="tooltip"]',
-  '[data-glass="card"]',
-  'aside[data-glass="dashboard"]',
-  'dialog[data-glass="dialog"]',
-  '[data-glass="diff-panel"]',
-  '[data-glass="rail"]',
-  '[data-glass="sidebar-content"]',
 ].join(", ");
 
 const LENS_BEVEL = 36;
 const LENS_THICKNESS_RATIO = 1.4;
 const MIN_FROST = 0.5;
+const RESIZE_DEBOUNCE_MS = 160;
 
 type LensEntry = {
   id: string;
@@ -75,6 +67,11 @@ function readRadius(value: string, width: number, height: number): number {
   const parsed = Number.parseFloat(first);
   if (first.endsWith("%")) return clamp((parsed / 100) * Math.min(width, height), 0, largest);
   return clamp(Number.isFinite(parsed) ? parsed : largest, 0, largest);
+}
+
+function hasLensElement(node: Node): boolean {
+  if (!(node instanceof Element)) return false;
+  return node.matches(LENS_SELECTOR) || node.querySelector(LENS_SELECTOR) !== null;
 }
 
 function measureElementLens(el: HTMLElement, id: string): LensEntry | null {
@@ -236,7 +233,7 @@ function LensFilterDef({ lens }: { lens: LensEntry }) {
 
 /**
  * Global Glassy UI refraction lens host for MutiS.
- * Measures every eligible [data-glass] element in glass mode and binds a
+ * Measures eligible small [data-glass] pills/controls in glass mode and binds a
  * real Snell's-law rim displacement filter via --glass-lens-filter.
  */
 export function GlassyLensEngine() {
@@ -254,6 +251,7 @@ export function GlassyLensEngine() {
     const observed = new Set<HTMLElement>();
     let nextId = 1;
     let raf = 0;
+    let resizeTimer = 0;
 
     const clearElement = (el: HTMLElement) => {
       delete el.dataset.glassLens;
@@ -339,15 +337,38 @@ export function GlassyLensEngine() {
       if (!raf) raf = window.requestAnimationFrame(sync);
     };
 
-    const resizeObserver = new ResizeObserver(schedule);
+    const scheduleDebounced = () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(schedule, RESIZE_DEBOUNCE_MS);
+    };
+
+    const resizeObserver = new ResizeObserver(scheduleDebounced);
     const rootObserver = new MutationObserver(schedule);
     const bodyObserver = new MutationObserver(records => {
-      // Ignore mutations inside our own hidden SVG defs container.
       for (const record of records) {
         const target = record.target;
         if (target instanceof Element && target.closest("[data-mutis-glass-defs]")) continue;
-        schedule();
-        return;
+
+        if (record.type === "attributes") {
+          if (target instanceof Element && target.matches(LENS_SELECTOR)) {
+            schedule();
+            return;
+          }
+          continue;
+        }
+
+        for (const node of record.addedNodes) {
+          if (hasLensElement(node)) {
+            schedule();
+            return;
+          }
+        }
+        for (const node of record.removedNodes) {
+          if (hasLensElement(node)) {
+            schedule();
+            return;
+          }
+        }
       }
     });
 
@@ -364,17 +385,18 @@ export function GlassyLensEngine() {
 
     transparencyQuery.addEventListener("change", schedule);
     contrastQuery.addEventListener("change", schedule);
-    window.addEventListener("resize", schedule, { passive: true });
+    window.addEventListener("resize", scheduleDebounced, { passive: true });
     schedule();
 
     return () => {
       window.cancelAnimationFrame(raf);
+      window.clearTimeout(resizeTimer);
       rootObserver.disconnect();
       bodyObserver.disconnect();
       resizeObserver.disconnect();
       transparencyQuery.removeEventListener("change", schedule);
       contrastQuery.removeEventListener("change", schedule);
-      window.removeEventListener("resize", schedule);
+      window.removeEventListener("resize", scheduleDebounced);
       clearAll();
     };
   }, []);

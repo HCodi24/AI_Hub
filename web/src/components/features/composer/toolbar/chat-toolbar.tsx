@@ -39,13 +39,22 @@ export function ChatToolbar({ config }: { config?: Config }) {
   const picker = useRef<HTMLDetailsElement>(null);
   const permissions = useRef<HTMLDetailsElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const sourceMenu = useRef<HTMLDivElement>(null);
+  const modelMenu = useRef<HTMLDivElement>(null);
   // Keep the panel mounted so the hook can observe it while the picker is closed.
   usePopupFit(picker, panel);
   useEffect(() => {
     function closeOutside(event: PointerEvent) {
-      if (picker.current?.open && !picker.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        picker.current?.open &&
+        !picker.current.contains(target) &&
+        !sourceMenu.current?.contains(target) &&
+        !modelMenu.current?.contains(target)
+      ) {
         picker.current.open = false;
         setModelMenuOpen(false);
+        setSourceMenuOpen(false);
       }
     }
     function closeOnEscape(event: KeyboardEvent) {
@@ -54,6 +63,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
       event.preventDefault();
       picker.current.open = false;
       setModelMenuOpen(false);
+      setSourceMenuOpen(false);
       picker.current.querySelector("summary")?.focus();
     }
     document.addEventListener("pointerdown", closeOutside, true);
@@ -140,7 +150,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
       <div ref={panel} data-glass="overlay" className={`${styles.panel} ${styles.effortPanel}`}>
         <div className={styles.effortHeading}>
           <SourceMenu providers={config?.providers || []} mutisEnabled={!!mutis.data?.enabled} mutisName={mutisName} value={settings.provider_id} title={name} disabled={streaming}
-            open={sourceMenuOpen} setOpen={(open) => { setSourceMenuOpen(open); setModelMenuOpen(false); }} anchor={panel} onPick={changeProvider} />
+            open={sourceMenuOpen} setOpen={(open) => { setSourceMenuOpen(open); setModelMenuOpen(false); }} anchor={panel} menuRef={sourceMenu} onPick={changeProvider} />
           <strong>{isMutis ? mutisName : effortLabel(displayedEffort)}</strong>
           {!isMutis && <button type="button" className={styles.resetEffort} disabled={streaming || ((isAntigravity || !!catalogEffort) && !efforts.length)} aria-label={`${chatText.effort}: ${effortLabel(resetEffort)}`} title={`${chatText.effort}: ${effortLabel(resetEffort)}`} onClick={() => pickEffort(resetEffort)}><RotateCcw size={18} /></button>}
         </div>
@@ -154,7 +164,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
         {isMutis
           ? mutis.data && <MutisEfforts mutis={mutis.data} config={config} disabled={streaming} />
           : <ModelMenu models={isAntigravity ? [...new Set(variants.map(entry => entry.model.id))] : models} value={pickedModel} label={modelLabel} disabled={streaming} open={modelMenuOpen}
-            setOpen={open => { setModelMenuOpen(open); setSourceMenuOpen(false); }} anchor={panel}
+            setOpen={open => { setModelMenuOpen(open); setSourceMenuOpen(false); }} anchor={panel} menuRef={modelMenu}
             onPick={pickModel} />}
       </div>
     </details>

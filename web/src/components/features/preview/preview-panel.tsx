@@ -83,7 +83,7 @@ function ServerStatus({ address, folder, dev, onUp }: { address: URL | null; fol
   const canStop = owned || running === true;
   const label = server.isError ? t.serverUnknown : running === undefined ? t.serverChecking
     : managed && owned && !running ? t.starting : running ? t.serverRunning : t.serverStopped;
-  return <div className={styles.server}>
+  return <div data-glass="preview-chrome" className={styles.server}>
     <span className={styles.dot} data-on={running || undefined} aria-hidden="true" />
     <span role="status">{address ? `${hostname}:${port}` : t.server(7880)}
       {running ? <span className="sr-only"> · {label}</span> : ` · ${label}`}
@@ -262,7 +262,7 @@ export function PreviewPanel() {
           if (event.key === "ArrowLeft") { event.preventDefault(); resize(panelWidth + KEY_STEP); }
           else if (event.key === "ArrowRight") { event.preventDefault(); resize(panelWidth - KEY_STEP); }
         }} />
-      <form className={styles.bar} onSubmit={submit}>
+      <form data-glass="preview-chrome" className={styles.bar} onSubmit={submit}>
         <div className={styles.address}>
           <input aria-label={t.url} value={draft} placeholder={t.placeholder} onChange={event => setDraft(event.target.value)} spellCheck={false} />
           <IconButton type="submit" size="sm" className={styles.reload} aria-label={t.reload}><RotateCw size={18} /></IconButton>
@@ -275,7 +275,7 @@ export function PreviewPanel() {
         <IconButton type="button" aria-label={t.pick} aria-pressed={picking} disabled={!pickerReady} title={pickerReady ? (picking ? t.picking : t.pick) : t.noPicker} onClick={pick}><MousePointerClick size={18} /></IconButton>
       </form>
       <ServerStatus key={address?.origin} address={address} folder={folder} dev={dev} onUp={() => setVersion(v => v + 1)} />
-      {folder && demoFiles && demoFiles.files > 0 && <div className={styles.server}>
+      {folder && demoFiles && demoFiles.files > 0 && <div data-glass="preview-chrome" className={styles.server}>
         <span title={demoFiles.dirs.map(dir => dir.path).join("\n")}>
           {t.demoFiles(demoFiles.files, demoSize(demoFiles.bytes))}
         </span>

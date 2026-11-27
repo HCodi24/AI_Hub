@@ -39,8 +39,8 @@ const SLAB_MIN_RISE = 0.3;
 const SLAB_RISE_SPAN = 0.7;
 const SLAB_MAX_SLOPE = 12;
 
-const MAX_LENS_MAP_PIXELS = 360_000;
-export const MAX_LENS_SURFACE_AREA = 1_800_000;
+const MAX_LENS_MAP_PIXELS = 240_000;
+export const MAX_LENS_SURFACE_AREA = 200_000;
 
 const LENS_REACH = 0.7;
 const LENS_FOLD = 0.75;

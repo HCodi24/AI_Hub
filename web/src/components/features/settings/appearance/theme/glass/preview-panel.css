@@ -19,6 +19,7 @@
     var(--glass-control-material);
 }
 
+/* Không đặt backdrop-filter lên khung bọc iframe để tránh lỗi Chromium làm mờ cả thanh địa chỉ lẫn nội dung trang xem trước. */
 [data-style="glass"] [data-glass="preview-panel"] {
   margin: var(--titlebar-height) var(--space-1) var(--space-1) 0;
   height: calc(100% - var(--titlebar-height) - var(--space-1));
@@ -26,6 +27,13 @@
   border-radius: 28px;
   background: var(--glass-material);
   box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Chỉ làm mờ kính ở phần thanh địa chỉ và thanh trạng thái phía trên, giữ iframe hiển thị sắc nét tuyệt đối. */
+[data-style="glass"] [data-glass="preview-chrome"] {
+  background: var(--glass-titlebar-scrim);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
 }

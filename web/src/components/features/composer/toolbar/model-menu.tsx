@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronRight } from "lucide-react";
 import { chatText } from "@/text/chat";
 import styles from "./model-menu.module.css";
@@ -10,10 +11,10 @@ function formatModelLabel(label: string) {
 type Props = {
   models: string[]; value: string; label: string; disabled: boolean;
   open: boolean; setOpen: (open: boolean) => void;
-  anchor: RefObject<HTMLElement | null>; onPick: (model: string) => void;
+  anchor: RefObject<HTMLElement | null>; menuRef?: RefObject<HTMLDivElement | null>; onPick: (model: string) => void;
 };
 
-export function ModelMenu({ models, value, label, disabled, open, setOpen, anchor, onPick }: Props) {
+export function ModelMenu({ models, value, label, disabled, open, setOpen, anchor, menuRef, onPick }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -39,35 +40,43 @@ export function ModelMenu({ models, value, label, disabled, open, setOpen, ancho
   useEffect(() => {
     if (!open) return;
     function closeOutside(event: PointerEvent) {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!root.current?.contains(target) && !menu.current?.contains(target)) setOpen(false);
     }
     document.addEventListener("pointerdown", closeOutside);
     return () => document.removeEventListener("pointerdown", closeOutside);
   }, [open, setOpen]);
+  function setMenuNode(node: HTMLDivElement | null) {
+    menu.current = node;
+    if (menuRef) menuRef.current = node;
+  }
   function close() { setOpen(false); trigger.current?.focus(); }
   return <div ref={root}>
     <button ref={trigger} type="button" className={styles.trigger} disabled={disabled} aria-haspopup="menu"
       aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}>
       <span>{formatModelLabel(label)}</span><ChevronRight size={14} aria-hidden="true" />
     </button>
-    {open && <div ref={menu} id={id} data-glass="overlay" className={styles.menu} style={position} role="menu" aria-label={chatText.selectModel}
-      onKeyDown={event => {
-        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
-        if (event.key === "Tab") setOpen(false);
-        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
-        event.preventDefault();
-        const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
-        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
-        const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
-          : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
-        buttons[next]?.focus();
-      }}>
-      <div className={styles.heading}>{chatText.selectModel}</div>
-      {models.map(model => <button key={model} type="button" role="menuitemradio" aria-checked={model === value} disabled={disabled}
-        onClick={() => { onPick(model); close(); }}>
-        <span>{formatModelLabel(model)}</span>{model === value && <Check size={18} aria-hidden="true" />}
-      </button>)}
-      {!models.length && <div className={styles.heading}>{chatText.noModels}</div>}
-    </div>}
+    {open && typeof document !== "undefined" && createPortal(
+      <div ref={setMenuNode} id={id} data-glass="overlay" className={styles.menu} style={position} role="menu" aria-label={chatText.selectModel}
+        onKeyDown={event => {
+          if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
+          if (event.key === "Tab") setOpen(false);
+          if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
+          const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+          const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+            : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+          buttons[next]?.focus();
+        }}>
+        <div className={styles.heading}>{chatText.selectModel}</div>
+        {models.map(model => <button key={model} type="button" role="menuitemradio" aria-checked={model === value} disabled={disabled}
+          onClick={() => { onPick(model); close(); }}>
+          <span>{formatModelLabel(model)}</span>{model === value && <Check size={18} aria-hidden="true" />}
+        </button>)}
+        {!models.length && <div className={styles.heading}>{chatText.noModels}</div>}
+      </div>,
+      document.body,
+    )}
   </div>;
 }
