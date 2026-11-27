@@ -10,7 +10,7 @@
 
 [data-style="glass"] [data-glass="rail"],
 [data-style="glass"] [data-glass="sidebar-content"] {
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   border-radius: 28px;
   background: var(--glass-material);
   box-shadow: var(--glass-shadow);
@@ -39,10 +39,10 @@
   height: 26px;
   padding: 0 12px;
   gap: 18px;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: 9999px;
   background: var(--glass-titlebar-scrim);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: var(--glass-dock-blur);
   backdrop-filter: var(--glass-dock-blur);
   color: var(--text);
@@ -55,9 +55,10 @@
 }
 
 [data-style="glass"] [data-glass="preferences-panel"] {
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
+  border-radius: 22px;
   background: var(--glass-overlay-material);
-  box-shadow: var(--glass-shadow);
+  box-shadow: var(--glass-shadow-raised);
   -webkit-backdrop-filter: var(--glass-overlay-blur);
   backdrop-filter: var(--glass-overlay-blur);
 }

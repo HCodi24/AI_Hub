@@ -1,0 +1,196 @@
+/*
+ * Glassy UI optical surface enhancements:
+ * 1. Specular hairline ring (::after with mask-composite: exclude) on non-scrolling frames.
+ * 2. Nested-glass saturation guard so glass inside glass never over-saturates.
+ * 3. Chromium Snell's-law 3-channel RGB prism backdrop-filter lens activation ([data-glass-lens="active"]).
+ * 4. Slab press physics (resting elevated, settling down on press instead of fading opacity).
+ */
+
+/* Ensure non-scrolling glass surfaces create a local positioning context for the specular ring. */
+[data-style="glass"] :is(
+  [data-glass="composer-box"],
+  [data-glass="debate-button"],
+  [data-glass="permission-picker"] > summary,
+  [data-glass="theme-control"],
+  [data-glass="skill-menu"],
+  [data-glass="card"],
+  [data-glass="sidebar-content"]
+) {
+  position: relative;
+}
+
+/* Masked 1px specular hairline ring (bright top-left entry light + softer bottom-right counter-highlight). */
+[data-style="glass"] :is(
+  [data-glass="main"],
+  [data-glass="rail"],
+  [data-glass="sidebar-content"],
+  [data-glass="preview-panel"],
+  [data-glass="composer-box"],
+  [data-glass="model-group"],
+  [data-glass="toolbar"] [data-glass="debate-button"],
+  [data-glass="permission-picker"] > summary,
+  button[data-glass="terminal-toggle"],
+  button[data-glass="compact-button"],
+  button[data-glass="preview-toggle"],
+  [data-glass="window-controls"],
+  [data-glass="menu-labels"],
+  [data-glass="theme-control"],
+  [data-glass="skill-menu"],
+  [data-glass="preferences-panel"],
+  [data-glass="card"],
+  dialog[data-glass="dialog"]:has([data-glass="settings-tabs"]),
+  dialog[data-glass="dialog"]:has([data-glass="dashboard-body"])
+)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--glass-specular-ring);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* Nested glass samples an already-saturated parent backdrop, so keep nested saturation gentle. */
+[data-style="glass"] :is([data-glass="main"], [data-glass="sidebar-content"], dialog[data-glass="dialog"]) [data-glass] {
+  --lg-lens-saturation: 1.08;
+}
+
+/* Floating slab overlays (popovers, menus, tooltips, diff) keep crisp low-blur glass with dimmed body and bright bending rim. */
+[data-style="glass"] :is(
+  [data-glass="overlay"],
+  [data-glass="tooltip"],
+  [data-glass="skill-menu"],
+  [data-glass="preferences-panel"],
+  [data-glass="diff-panel"]
+) {
+  --lg-lens-blur: calc(8 - var(--glass-t-clamped) * 4.5);
+  --lg-lens-body-brightness: calc(0.7 - var(--glass-t-clamped) * 0.24);
+  --lg-lens-rim-brightness: calc(0.96 - var(--glass-t-clamped) * 0.08);
+  --lg-lens-dispersion: calc(0.2 + var(--glass-t-clamped) * 0.22);
+}
+
+/* Modal dialogs (Settings, Dashboard) frost stronger so chat text behind never bleeds through, while keeping Glassy UI's refracting curved rim. */
+[data-style="glass"] dialog[data-glass="dialog"] {
+  --lg-lens-blur: calc(15 - var(--glass-t-clamped) * 6);
+  --lg-lens-body-brightness: calc(0.56 - var(--glass-t-clamped) * 0.14);
+  --lg-lens-rim-brightness: calc(0.86 - var(--glass-t-clamped) * 0.1);
+  --lg-lens-dispersion: calc(0.18 + var(--glass-t-clamped) * 0.18);
+}
+
+[data-style="glass"][data-theme="light"] :is(
+  dialog[data-glass="dialog"],
+  [data-glass="overlay"],
+  [data-glass="tooltip"],
+  [data-glass="skill-menu"],
+  [data-glass="preferences-panel"],
+  [data-glass="diff-panel"]
+) {
+  --lg-lens-body-brightness: 1;
+  --lg-lens-rim-brightness: 1;
+}
+
+@media (prefers-color-scheme: light) {
+  [data-style="glass"][data-theme="system"] :is(
+    dialog[data-glass="dialog"],
+    [data-glass="overlay"],
+    [data-glass="tooltip"],
+    [data-glass="skill-menu"],
+    [data-glass="preferences-panel"],
+    [data-glass="diff-panel"]
+  ) {
+    --lg-lens-body-brightness: 1;
+    --lg-lens-rim-brightness: 1;
+  }
+}
+
+/* Controls and pills stay crystal-sharp so the curved rim refraction and RGB fringe pop vividly. */
+[data-style="glass"] :is(
+  [data-glass="composer-box"],
+  [data-glass="model-group"],
+  [data-glass="debate-button"],
+  [data-glass="permission-picker"] > summary,
+  button[data-glass="terminal-toggle"],
+  button[data-glass="compact-button"],
+  button[data-glass="preview-toggle"],
+  [data-glass="window-controls"],
+  [data-glass="menu-labels"],
+  [data-glass="theme-control"]
+) {
+  --lg-lens-blur: calc(4.2 - var(--glass-t-clamped) * 3.2);
+  --lg-lens-dispersion: calc(0.2 + var(--glass-t-clamped) * 0.24);
+}
+
+/* Chromium measured Snell's-law refraction lens replaces plain CSS frost when active. */
+[data-style="glass"] [data-glass-lens="active"][data-glass],
+[data-style="glass"] [data-glass="toolbar"] [data-glass-lens="active"],
+[data-style="glass"] [data-glass="permission-picker"] > summary[data-glass-lens="active"] {
+  -webkit-backdrop-filter: var(--glass-lens-filter);
+  backdrop-filter: var(--glass-lens-filter);
+}
+
+/* Glassy UI slab interaction: controls rest slightly raised and settle down on press instead of fading opacity. */
+[data-style="glass"] :is(
+  [data-glass="toolbar"] [data-glass="debate-button"],
+  [data-glass="permission-picker"] > summary,
+  button[data-glass="terminal-toggle"],
+  button[data-glass="compact-button"],
+  button[data-glass="preview-toggle"]
+) {
+  transition:
+    background 180ms var(--glass-ease-out),
+    color 180ms var(--glass-ease-out),
+    box-shadow 180ms var(--glass-ease-out),
+    transform 180ms var(--glass-ease-out);
+}
+
+[data-style="glass"] :is(
+  [data-glass="toolbar"] [data-glass="debate-button"]:active:enabled,
+  [data-glass="permission-picker"] > summary:active,
+  button[data-glass="terminal-toggle"]:active:enabled,
+  button[data-glass="compact-button"]:active:enabled,
+  button[data-glass="preview-toggle"]:active:enabled
+) {
+  opacity: 1;
+  transform: translateY(0.5px);
+  box-shadow: var(--glass-shadow-pressed);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  [data-style="glass"] [data-glass-lens="active"][data-glass],
+  [data-style="glass"] [data-glass="toolbar"] [data-glass-lens="active"],
+  [data-style="glass"] [data-glass="permission-picker"] > summary[data-glass-lens="active"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-style="glass"] :is(
+    [data-glass="toolbar"] [data-glass="debate-button"],
+    [data-glass="permission-picker"] > summary,
+    button[data-glass="terminal-toggle"],
+    button[data-glass="compact-button"],
+    button[data-glass="preview-toggle"]
+  ) {
+    transition: none;
+  }
+
+  [data-style="glass"] :is(
+    [data-glass="toolbar"] [data-glass="debate-button"]:active:enabled,
+    [data-glass="permission-picker"] > summary:active,
+    button[data-glass="terminal-toggle"]:active:enabled,
+    button[data-glass="compact-button"]:active:enabled,
+    button[data-glass="preview-toggle"]:active:enabled
+  ) {
+    transform: none;
+  }
+}

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { AppProps } from "next/app";
 import { useState } from "react";
 import { TooltipLayer } from "@/components/tooltip/tooltip-layer";
+import { GlassyLensEngine } from "@/components/features/settings/appearance/theme/glass/glassy-lens-engine";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import "@/styles/globals.css";
@@ -14,6 +15,7 @@ export default function App({ Component, pageProps }: AppProps) {
     <QueryClientProvider client={queryClient}>
       <Component {...pageProps} />
       <TooltipLayer />
+      <GlassyLensEngine />
     </QueryClientProvider>
   );
 }

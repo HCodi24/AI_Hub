@@ -7,6 +7,7 @@ export default function Document() {
         var style = localStorage.getItem('ai-hub-style');
         var bg = localStorage.getItem('ai-hub-glass-bg');
         var tr = localStorage.getItem('ai-hub-glass-transparency');
+        var th = localStorage.getItem('ai-hub-glass-thickness');
         var dataset = document.documentElement.dataset;
         dataset.theme = theme === 'glass' ? 'light' : ['light', 'dark', 'system'].includes(theme) ? theme : 'dark';
         dataset.style = theme === 'glass' ? 'glass' : ['default', 'glass'].includes(style) ? style : 'default';
@@ -18,6 +19,13 @@ export default function Document() {
           if (isFinite(n)) {
             var clamped = Math.min(100, Math.max(0, Math.round(n)));
             document.documentElement.style.setProperty('--glass-t', (clamped / 100).toFixed(2));
+          }
+        }
+        if (th !== null) {
+          var t = Number(th);
+          if (isFinite(t)) {
+            var clampedTh = Math.min(2, Math.max(0.25, Math.round(t * 20) / 20));
+            document.documentElement.style.setProperty('--glass-thickness', clampedTh.toFixed(2));
           }
         }
       } catch {}

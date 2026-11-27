@@ -1,58 +1,239 @@
+/* Segmented control kiểu Glassy UI: rãnh kính lõm nhẹ + giọt kính đàn hồi lò xo có viền specular. */
 [data-style="glass"] [data-glass="theme-control"] {
-  border: 1px solid var(--glass-border);
+  position: relative;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid transparent;
   border-radius: 9999px;
   background: var(--glass-control-material);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-dock-blur);
+  backdrop-filter: var(--glass-dock-blur);
+  touch-action: pan-y;
+}
+
+/* Ở chế độ Sáng, rãnh segmented hạ xuống tông đá nhạt để giọt kính trắng nổi bật rõ ràng như Glassy UI. */
+[data-style="glass"][data-theme="light"] [data-glass="theme-control"] {
+  background:
+    var(--glass-sheen) padding-box,
+    linear-gradient(rgb(100 108 140 / 0.14), rgb(100 108 140 / 0.14)) padding-box;
+}
+
+@media (prefers-color-scheme: light) {
+  [data-style="glass"][data-theme="system"] [data-glass="theme-control"] {
+    background:
+      var(--glass-sheen) padding-box,
+      linear-gradient(rgb(100 108 140 / 0.14), rgb(100 108 140 / 0.14)) padding-box;
+  }
 }
 
 [data-style="glass"] [data-glass="theme-control"] button {
+  position: relative;
+  z-index: 2;
   border-radius: 9999px;
-  transition:
-    scale .45s cubic-bezier(0.34, 1.56, 0.64, 1),
-    background .2s;
+  transition: color 180ms var(--glass-ease-out), background 180ms var(--glass-ease-out);
 }
 
 [data-style="glass"] [data-glass="theme-control"] button:hover:enabled:not([aria-pressed="true"]) {
-  background: var(--color-muted);
+  background: rgb(255 255 255 / 0.08);
+  color: var(--text);
 }
 
-[data-style="glass"] [data-glass="theme-control"] button[aria-pressed="true"] {
+[data-style="glass"][data-theme="light"] [data-glass="theme-control"] button:hover:enabled:not([aria-pressed="true"]) {
+  background: rgb(0 0 0 / 0.05);
+}
+
+[data-style="glass"] [data-glass="theme-control"][data-liquid-ready="true"] button[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text);
+}
+
+[data-style="glass"] [data-glass="theme-control"]:not([data-liquid-ready="true"]) button[aria-pressed="true"] {
   background: var(--glass-highlight);
+  box-shadow: var(--glass-shadow);
+  color: var(--text);
+}
+
+/* Giọt kính đàn hồi chạy theo lò xo 4 cạnh (Glassy UI .lg-segmented-indicator). */
+[data-glass="liquid-indicator"] {
+  display: none;
+}
+
+[data-style="glass"] [data-glass="theme-control"][data-liquid-ready="true"] [data-glass="liquid-indicator"] {
+  --bubble-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.26),
+    inset 0 -1px 0 rgb(0 0 0 / 0.14),
+    0 1px 3px rgb(0 0 0 / 0.24),
+    0 4px 12px -4px rgb(0 0 0 / 0.42);
+
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / calc((var(--glass-bubble-alpha) + 0.08) * (1 - var(--lg-lift, 0) * 0.55))),
+    rgb(255 255 255 / calc(var(--glass-bubble-alpha) * (1 - var(--lg-lift, 0) * 0.55)))
+  );
+  -webkit-backdrop-filter: blur(2px) saturate(1.5) brightness(calc(1.08 + var(--lg-lift, 0) * 0.14));
+  backdrop-filter: blur(2px) saturate(1.5) brightness(calc(1.08 + var(--lg-lift, 0) * 0.14));
+  box-shadow:
+    inset 0 0 0 calc(var(--lg-lift, 0) * 0.75px) rgb(255 255 255 / calc(var(--lg-lift, 0) * 0.52)),
+    inset 0 0 calc(var(--lg-lift, 0) * 12px) rgb(255 255 255 / calc(var(--lg-lift, 0) * 0.22)),
+    0 calc(var(--lg-lift, 0) * 8px) calc(var(--lg-lift, 0) * 22px) rgb(0 0 0 / calc(var(--lg-lift, 0) * 0.26)),
+    var(--bubble-shadow);
+  transition: opacity 200ms ease;
+  will-change: translate, width, height;
+}
+
+[data-style="glass"][data-theme="light"] [data-glass="theme-control"][data-liquid-ready="true"] [data-glass="liquid-indicator"] {
+  --bubble-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.94),
+    0 1px 3px rgb(0 0 0 / 0.1),
+    0 4px 12px -4px rgb(0 0 0 / 0.16);
+}
+
+@media (prefers-color-scheme: light) {
+  [data-style="glass"][data-theme="system"] [data-glass="theme-control"][data-liquid-ready="true"] [data-glass="liquid-indicator"] {
+    --bubble-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.94),
+      0 1px 3px rgb(0 0 0 / 0.1),
+      0 4px 12px -4px rgb(0 0 0 / 0.16);
+  }
+}
+
+/* Viền specular 1px trên chính giọt kính giống Glassy UI. */
+[data-style="glass"] [data-glass="theme-control"][data-liquid-ready="true"] [data-glass="liquid-indicator"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom right,
+    rgb(255 255 255 / var(--glass-specular-peak)),
+    rgb(255 255 255 / var(--glass-specular-floor)) 38% 62%,
+    rgb(255 255 255 / var(--glass-specular-counter))
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+[data-style="glass"] [data-glass="theme-control"][data-liquid-ready="true"] [data-glass="liquid-indicator"][data-empty] {
+  opacity: 0;
+}
+
+[data-style="glass"] [data-glass="theme-control"][data-dragging] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* Thanh trượt kiểu Glassy UI: rãnh kính mỏng + núm viên nang trắng biến thành kính trong khi kéo. */
+[data-style="glass"] [data-glass="transparency-control"] input[type="range"],
+[data-style="glass"] [data-glass="thickness-control"] input[type="range"] {
+  height: 6px;
+  margin-top: 9px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-accent) 0%,
+    var(--color-accent) var(--slider-pct, 50%),
+    var(--glass-track) var(--slider-pct, 50%),
+    var(--glass-track) 100%
+  );
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.18);
+}
+
+[data-style="glass"] [data-glass="transparency-control"] input[type="range"]::-webkit-slider-thumb,
+[data-style="glass"] [data-glass="thickness-control"] input[type="range"]::-webkit-slider-thumb {
+  width: 34px;
+  height: 20px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--glass-knob);
+  box-shadow: var(--glass-knob-shadow);
+  cursor: grab;
+  transition:
+    transform 300ms var(--glass-spring),
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+[data-style="glass"] [data-glass="transparency-control"] input[type="range"]:hover::-webkit-slider-thumb,
+[data-style="glass"] [data-glass="thickness-control"] input[type="range"]:hover::-webkit-slider-thumb {
+  transform: scale(1.06);
+}
+
+[data-style="glass"] [data-glass="transparency-control"] input[type="range"]:active::-webkit-slider-thumb,
+[data-style="glass"] [data-glass="thickness-control"] input[type="range"]:active::-webkit-slider-thumb {
+  background: rgb(255 255 255 / 0.18);
+  box-shadow:
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.6),
+    inset 1.5px 2px 1px -1px rgb(255 255 255 / 0.92),
+    inset -1.5px -2px 1px -1px rgb(255 255 255 / 0.58),
+    inset 0 0 8px rgb(255 255 255 / 0.3),
+    0 4px 14px rgb(0 0 0 / 0.24);
+  cursor: grabbing;
+  transform: scale(1.2, 1.28);
+}
+
+[data-style="glass"] [data-glass="transparency-control"] input[type="range"]::-moz-range-thumb,
+[data-style="glass"] [data-glass="thickness-control"] input[type="range"]::-moz-range-thumb {
+  width: 34px;
+  height: 20px;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--glass-knob);
+  box-shadow: var(--glass-knob-shadow);
+  cursor: grab;
+  transition:
+    transform 300ms var(--glass-spring),
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+[data-style="glass"] [data-glass="transparency-control"] input[type="range"]:active::-moz-range-thumb,
+[data-style="glass"] [data-glass="thickness-control"] input[type="range"]:active::-moz-range-thumb {
+  background: rgb(255 255 255 / 0.18);
+  box-shadow:
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.6),
+    inset 1.5px 2px 1px -1px rgb(255 255 255 / 0.92),
+    inset -1.5px -2px 1px -1px rgb(255 255 255 / 0.58),
+    inset 0 0 8px rgb(255 255 255 / 0.3),
+    0 4px 14px rgb(0 0 0 / 0.24);
+  cursor: grabbing;
+  transform: scale(1.2, 1.28);
+}
+
+[data-style="glass"] [data-glass="transparency-control"] > button,
+[data-style="glass"] [data-glass="thickness-control"] > button {
+  border: 1px solid transparent;
+  background: var(--glass-control-material);
   box-shadow: var(--glass-shadow);
 }
 
-[data-style="glass"] [data-glass="theme-control"] button:active {
-  scale: 1.04 0.96;
-}
-
-[data-style="glass"] [data-glass="transparency-control"] input[type="range"]::-webkit-slider-thumb {
-  border-color: var(--glass-rim-hi);
-  background: #ffffff;
-  box-shadow: 0 0 0 2px var(--accent), var(--glass-shadow);
-}
-
-[data-style="glass"] [data-glass="transparency-control"] input[type="range"]::-moz-range-thumb {
-  border-color: var(--glass-rim-hi);
-  background: #ffffff;
-  box-shadow: 0 0 0 2px var(--accent), var(--glass-shadow);
-}
-
-[data-style="glass"] [data-glass="transparency-control"] > button {
-  border: 1px solid var(--glass-border);
-  background: var(--glass-control-material);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
-}
-
-[data-style="glass"] [data-glass="transparency-control"] > button:hover:enabled {
+[data-style="glass"] [data-glass="transparency-control"] > button:hover:enabled,
+[data-style="glass"] [data-glass="thickness-control"] > button:hover:enabled {
   background: var(--glass-hover-material);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-style="glass"] [data-glass="theme-control"] button {
+  [data-style="glass"] [data-glass="theme-control"] button,
+  [data-style="glass"] [data-glass="transparency-control"] input[type="range"]::-webkit-slider-thumb,
+  [data-style="glass"] [data-glass="thickness-control"] input[type="range"]::-webkit-slider-thumb,
+  [data-style="glass"] [data-glass="transparency-control"] input[type="range"]::-moz-range-thumb,
+  [data-style="glass"] [data-glass="thickness-control"] input[type="range"]::-moz-range-thumb {
     transition: none;
-  }
-
-  [data-style="glass"] [data-glass="theme-control"] button:active {
-    scale: none;
   }
 }

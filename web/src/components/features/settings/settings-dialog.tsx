@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Blocks, Boxes, Hammer, LayoutDashboard, Palette, PawPrint, Puzzle, SlidersHorizontal, Users, Volume2 } from "lucide-react";
 import { PetsSection } from "@/components/features/pets/pets-section";
 import { Dialog } from "@/components/dialog/dialog";
 import { ScrollArea } from "@/components/scroll-area";
 import { Switch } from "@/components/button/switch";
+import { useLiquidIndicator } from "@/components/features/settings/appearance/theme/glass/use-liquid-indicator";
 import { settingsText as t } from "@/text/settings";
 import { AddonsTab } from "./addons";
 import { AppearanceTab } from "./appearance";
@@ -35,9 +36,17 @@ type SettingsDialogProps = {
 };
 export function SettingsDialog({ initialTab = "providers", folder, close, dashboardEnabled, onDashboardEnabledChange, taskBoardEnabled, onTaskBoardEnabledChange }: SettingsDialogProps) {
   const [tab, setTab] = useState<TabId>(initialTab);
+  const tabsRef = useRef<HTMLElement>(null);
+  const tabIndicatorRef = useRef<HTMLSpanElement>(null);
+  useLiquidIndicator(tabsRef, tabIndicatorRef, {
+    selected: 'button[aria-current="page"]',
+    item: "button",
+    draggable: false,
+  });
   return <Dialog title={t.title} close={close} wide className={styles.settingsDialog} iconClose>
     <div className={styles.layout}>
-    <ScrollArea as="nav" data-glass="settings-tabs" className={styles.tabs} aria-label={t.title}>
+    <ScrollArea ref={tabsRef} as="nav" data-glass="settings-tabs" className={styles.tabs} aria-label={t.title}>
+      <span ref={tabIndicatorRef} data-glass="settings-tab-indicator" aria-hidden="true" />
       {TABS.map(({ id, icon: Icon }) => <button key={id} id={`settings-tab-${id}`} aria-current={tab === id ? "page" : undefined}
         aria-controls="settings-panel" onClick={() => setTab(id)}><Icon size={20} aria-hidden="true" />{t.tabs[id]}</button>)}
     </ScrollArea>

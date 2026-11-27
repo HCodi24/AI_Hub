@@ -1,12 +1,11 @@
 [data-style="glass"] button[data-glass="preview-toggle"] {
   right: calc(var(--space-1) + var(--preview-toggle-inset, 12px));
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   border-radius: 9999px;
   background: var(--glass-control-material);
   box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: var(--glass-dock-blur);
   backdrop-filter: var(--glass-dock-blur);
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
 [data-style="glass"] button[data-glass="preview-toggle"]:hover:enabled {
@@ -23,7 +22,7 @@
 [data-style="glass"] [data-glass="preview-panel"] {
   margin: var(--titlebar-height) var(--space-1) var(--space-1) 0;
   height: calc(100% - var(--titlebar-height) - var(--space-1));
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   border-radius: 28px;
   background: var(--glass-material);
   box-shadow: var(--glass-shadow);

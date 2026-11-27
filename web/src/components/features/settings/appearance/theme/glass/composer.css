@@ -1,5 +1,5 @@
 [data-style="glass"] [data-glass="composer-box"] {
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   background: var(--glass-control-material);
   box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: var(--glass-dock-blur);
@@ -7,10 +7,10 @@
 }
 
 [data-style="glass"] [data-glass="skill-menu"] {
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   border-radius: 20px;
   background: var(--glass-overlay-material);
-  box-shadow: var(--glass-shadow);
+  box-shadow: var(--glass-shadow-raised);
   -webkit-backdrop-filter: var(--glass-overlay-blur);
   backdrop-filter: var(--glass-overlay-blur);
 }
@@ -21,13 +21,12 @@
 
 [data-style="glass"] [data-glass="toolbar"] [data-glass="debate-button"] {
   height: 42px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   border-radius: 9999px;
   background: var(--glass-control-material);
   box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: var(--glass-dock-blur);
   backdrop-filter: var(--glass-dock-blur);
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
 [data-style="glass"] [data-glass="toolbar"] [data-glass="debate-button"]:hover:enabled {
@@ -55,13 +54,13 @@
   padding: 2px 4px;
   position: relative;
   z-index: var(--z-toolbar);
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   border-radius: 9999px;
   background: var(--glass-control-material);
   box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: var(--glass-dock-blur);
   backdrop-filter: var(--glass-dock-blur);
-  transition: background var(--duration-fast) var(--ease-out);
+  transition: background 180ms var(--glass-ease-out);
 }
 
 [data-style="glass"] [data-glass="model-group"]:hover {
@@ -79,13 +78,12 @@
 [data-style="glass"] [data-glass="permission-picker"] > summary {
   height: 42px;
   padding: 4px 12px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   border-radius: 9999px;
   background: var(--glass-control-material);
   box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: var(--glass-dock-blur);
   backdrop-filter: var(--glass-dock-blur);
-  transition: background var(--duration-fast) var(--ease-out);
 }
 
 [data-style="glass"] [data-glass="permission-picker"] > summary:hover {

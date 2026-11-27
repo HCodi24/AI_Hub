@@ -92,7 +92,7 @@ export function BackgroundControl() {
     try { saveBackground(null); } catch { /* Storage unavailable. */ }
   }
 
-  return <div className={styles.control}>
+  return <div data-glass="background-control" className={styles.control}>
     <input ref={inputRef} type="file" accept="image/*" hidden onChange={event => void onPick(event)} />
     <div className={styles.preview}>
       {/* eslint-disable-next-line @next/next/no-img-element -- local static/data-URL wallpaper preview */}

@@ -1,65 +1,200 @@
+/* Register numeric lens/physics properties so calc() resolves to plain numbers for getComputedStyle(). */
+@property --glass-t {
+  syntax: "<number>";
+  initial-value: 0.5;
+  inherits: true;
+}
+
+@property --glass-t-clamped {
+  syntax: "<number>";
+  initial-value: 0.5;
+  inherits: true;
+}
+
+@property --glass-thickness {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --glass-thickness-clamped {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --lg-lens-depth {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --lg-lens-ior {
+  syntax: "<number>";
+  initial-value: 1.5;
+  inherits: true;
+}
+
+@property --lg-lens-bevel {
+  syntax: "<number>";
+  initial-value: 0;
+  inherits: true;
+}
+
+@property --lg-lens-thickness {
+  syntax: "<number>";
+  initial-value: 0;
+  inherits: true;
+}
+
+@property --lg-lens-blur {
+  syntax: "<number>";
+  initial-value: 5;
+  inherits: true;
+}
+
+@property --lg-lens-saturation {
+  syntax: "<number>";
+  initial-value: 1.7;
+  inherits: true;
+}
+
+@property --lg-lens-dispersion {
+  syntax: "<number>";
+  initial-value: 0.28;
+  inherits: true;
+}
+
+@property --lg-lens-body-brightness {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
+@property --lg-lens-rim-brightness {
+  syntax: "<number>";
+  initial-value: 1;
+  inherits: true;
+}
+
 :root[data-style="glass"] {
   /*
-   * Dải độ trong suốt lấy Liquid Glass trong veo (100% = Trong hẳn) làm gốc tới 0% (Mờ đục):
-   * 1. Không dùng lớp rim ở border-box (tránh phủ trắng mờ vào ruột kính); viền kính dựng bằng border 1px + inset bevel 1px.
-   * 2. Chỉ lọc backdrop bằng blur + saturate (tuyệt đối không dùng contrast < 1 hay brightness đẩy cháy vì sẽ kéo nền sáng/trắng về xám đục cháo, lệch màu hình nền).
-   * 3. 100% (Trong hẳn): giữ trọn sắc màu hình nền (scrim 0%, wash mỏng, blur 8–14px), chữ hiển thị sắc nét tự nhiên không phủ bóng.
+   * Glassy UI optical calibration for MutiS:
+   * - True clear-glass material (low veil alpha + crisp refraction + high saturation) instead of opaque gray paint.
+   * - --glass-t (0..1): 0% Frosted Tinted Glass -> 50% Balanced Liquid Glass -> 100% Ultra-Clear Crystal Glass.
+   * - --glass-thickness (0.25..2): scales Snell bevel width, ray bend reach, 3-channel RGB prism split, and rim glow.
    */
   --glass-t-clamped: clamp(0, var(--glass-t, 0.5), 1);
+  --glass-thickness-clamped: clamp(0.25, var(--glass-thickness, 1), 2);
+  --glass-rim-scale: calc(0.65 + var(--glass-thickness-clamped) * 0.38);
 
-  /* Bảng màu kính tối mặc định (chữ trắng rõ nét, chữ phụ đậm dần khi kính càng trong). */
+  /* Dark Liquid Glass palette (Glassy UI charcoal-obsidian #1c1c1e + crisp white ink + Apple blue accent). */
   color-scheme: dark;
   --color-background: transparent;
-  --color-foreground: #ffffff;
-  --color-card: rgb(12 16 24 / calc(0.9 - var(--glass-t-clamped) * 0.78));
-  --color-card-foreground: #ffffff;
-  --color-muted: rgba(255, 255, 255, 0.14);
-  --color-muted-foreground: rgb(255 255 255 / calc(0.74 + var(--glass-t-clamped) * 0.21));
-  --color-surface-raised: rgb(10 14 22 / calc(0.98 - var(--glass-t-clamped) * 0.8));
-  --color-overlay: rgb(2 6 23 / calc(0.46 - var(--glass-t-clamped) * 0.42));
-  --color-code: rgba(8, 12, 20, 0.48);
-  --color-border: rgba(255, 255, 255, 0.2);
-  --color-accent: #60a5fa;
-  --color-on-accent: #0b1220;
-  --color-link: #7cc0ff;
-  --color-focus: #60a5fa;
-  --color-ring: #93c5fd;
+  --color-foreground: #f5f5f7;
+  --color-card: rgb(255 255 255 / calc(0.16 - var(--glass-t-clamped) * 0.11));
+  --color-card-foreground: #f5f5f7;
+  --color-muted: rgb(255 255 255 / 0.11);
+  --color-muted-foreground: rgb(235 235 242 / calc(0.8 + var(--glass-t-clamped) * 0.14));
+  --color-surface-raised: rgb(28 28 32 / calc(0.72 - var(--glass-t-clamped) * 0.44));
+  --color-overlay: rgb(0 0 0 / calc(0.42 - var(--glass-t-clamped) * 0.2));
+  --color-code: rgb(14 16 22 / 0.44);
+  --color-border: rgb(245 245 247 / 0.22);
+  --color-accent: #0a84ff;
+  --color-on-accent: #ffffff;
+  --color-link: #64b5ff;
+  --color-focus: #b8b8be;
+  --color-ring: #60a5fa;
 
-  /* Phân tầng độ đục tối (0% Mờ đục → 100% Trong veo): base (0.94→0.12) < control (0.96→0.16) < overlay (0.98→0.18) < hover (0.98→0.26). */
-  --glass-wash: rgb(8 12 20 / calc(0.94 - var(--glass-t-clamped) * 0.82));
-  --glass-control-wash: rgb(14 20 32 / calc(0.96 - var(--glass-t-clamped) * 0.8));
-  --glass-hover-wash: rgb(36 46 64 / calc(0.98 - var(--glass-t-clamped) * 0.72));
-  --glass-overlay-wash: rgb(10 14 22 / calc(0.98 - var(--glass-t-clamped) * 0.8));
-  --glass-titlebar-scrim: rgb(10 14 22 / calc(0.94 - var(--glass-t-clamped) * 0.78));
-  --glass-scrim: rgb(10 12 18 / calc(0.56 - var(--glass-t-clamped) * 0.56));
-  --glass-terminal-bg: #141822;
+  /* Clear optical glass tint tiers (matched to Glassy UI --lg-glass-alpha / --lg-slab-tint). */
+  --glass-wash: rgb(22 24 30 / calc(0.56 - var(--glass-t-clamped) * 0.48));
+  --glass-control-wash: rgb(255 255 255 / calc(0.14 - var(--glass-t-clamped) * 0.08));
+  --glass-hover-wash: rgb(255 255 255 / calc(0.22 - var(--glass-t-clamped) * 0.08));
+  --glass-overlay-wash: rgb(24 26 32 / calc(0.84 - var(--glass-t-clamped) * 0.24));
+  --glass-titlebar-scrim: rgb(28 28 32 / calc(0.46 - var(--glass-t-clamped) * 0.34));
+  --glass-scrim: rgb(16 18 24 / calc(0.28 - var(--glass-t-clamped) * 0.28));
+  --glass-terminal-bg: #1c1c1e;
 
-  /* Viền kính mảnh 1px và ánh bóng nhẹ theo độ trong. */
-  --glass-border: rgb(255 255 255 / calc(0.16 + var(--glass-t-clamped) * 0.16));
-  --glass-sheen-hi: rgb(255 255 255 / calc(0.02 + var(--glass-t-clamped) * 0.05));
-  --glass-sheen-lo: rgb(255 255 255 / calc(var(--glass-t-clamped) * 0.015));
-  --glass-rim-hi: rgb(255 255 255 / calc(0.16 + var(--glass-t-clamped) * 0.24));
-  --glass-rim-lo: rgb(255 255 255 / calc(0.05 + var(--glass-t-clamped) * 0.08));
-  --glass-highlight: rgb(255 255 255 / calc(0.14 + var(--glass-t-clamped) * 0.18));
-  --glass-edge-shadow: rgba(0, 0, 0, 0.2);
-  --glass-drop: rgba(0, 0, 0, 0.46);
+  /* Glassy UI recessed inputs, track & knob tokens. */
+  --glass-track: rgb(118 118 128 / 0.38);
+  --glass-knob: #ffffff;
+  --glass-knob-shadow:
+    0 2px 6px rgb(0 0 0 / 0.26),
+    0 1px 2px rgb(0 0 0 / 0.16),
+    0 0 0 0.5px rgb(255 255 255 / 0.22);
+  --glass-input-bg: rgb(255 255 255 / calc(0.1 - var(--glass-t-clamped) * 0.04));
+  --glass-input-hover-bg: rgb(255 255 255 / calc(0.16 - var(--glass-t-clamped) * 0.04));
+  --glass-input-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 0.28),
+    inset 0 -1px 0 rgb(255 255 255 / 0.08);
+  --glass-bubble-alpha: 0.16;
+
+  /* Crisp Glassy UI lighting, 9-layer bevel, and chromatic edge fringe. */
+  --glass-border: rgb(255 255 255 / calc(0.2 + var(--glass-t-clamped) * 0.14));
+  --glass-sheen-hi: rgb(255 255 255 / calc(0.06 + var(--glass-t-clamped) * 0.07));
+  --glass-sheen-lo: rgb(255 255 255 / calc(0.015 + var(--glass-t-clamped) * 0.025));
+  --glass-rim-hi: rgb(255 255 255 / calc(0.28 + var(--glass-t-clamped) * 0.26));
+  --glass-rim-lo: rgb(255 255 255 / calc(0.1 + var(--glass-t-clamped) * 0.1));
+  --glass-highlight: rgb(255 255 255 / calc(0.16 + var(--glass-t-clamped) * 0.12));
+
+  --glass-reflex-light: calc(0.5 + var(--glass-t-clamped) * 0.3);
+  --glass-reflex-dark: 1.4;
+  --glass-glow-alpha: calc(0.06 + var(--glass-t-clamped) * 0.07);
+  --glass-rim-ca-offset: calc(2.2px * var(--glass-rim-scale));
+  --glass-rim-ca-alpha: calc((0.055 + var(--glass-t-clamped) * 0.075) * var(--glass-rim-scale));
+
+  --glass-specular-peak: calc(0.54 + var(--glass-t-clamped) * 0.26);
+  --glass-specular-counter: calc(0.26 + var(--glass-t-clamped) * 0.18);
+  --glass-specular-floor: calc(0.08 + var(--glass-t-clamped) * 0.08);
+
+  --glass-edge-shadow: rgb(0 0 0 / 0.22);
+  --glass-drop: rgb(0 0 0 / 0.32);
+  --glass-drop-raised: rgb(0 0 0 / 0.56);
+
+  --glass-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --glass-ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Crisp CSS fallback backdrop-filter (non-Chromium or ultra-huge panes). */
   --glass-blur:
-    blur(calc(28px - var(--glass-t-clamped) * 18px))
-    saturate(calc(1.25 + var(--glass-t-clamped) * 0.45));
+    blur(calc(16px - var(--glass-t-clamped) * 11px))
+    contrast(0.94)
+    saturate(calc(1.45 + var(--glass-t-clamped) * 0.45));
   --glass-dock-blur:
-    blur(calc(20px - var(--glass-t-clamped) * 12px))
-    saturate(calc(1.2 + var(--glass-t-clamped) * 0.45));
+    blur(calc(11px - var(--glass-t-clamped) * 8px))
+    saturate(calc(1.45 + var(--glass-t-clamped) * 0.45));
   --glass-overlay-blur:
-    blur(calc(32px - var(--glass-t-clamped) * 18px))
-    saturate(calc(1.25 + var(--glass-t-clamped) * 0.45));
+    blur(calc(26px - var(--glass-t-clamped) * 10px))
+    brightness(calc(0.62 - var(--glass-t-clamped) * 0.14))
+    saturate(calc(1.35 + var(--glass-t-clamped) * 0.35));
 
-  --glass-sheen: linear-gradient(
-    135deg,
-    var(--glass-sheen-hi) 0%,
-    transparent 38%,
-    var(--glass-sheen-lo) 100%
-  );
+  /* Chromium Snell's-law 3-channel RGB prism lens tokens (Glassy UI stdDeviation scale). */
+  --lg-lens-depth: 1;
+  --lg-lens-ior: 1.52;
+  --lg-lens-bevel: 0;
+  --lg-lens-thickness: 0;
+  --lg-lens-blur: calc(7 - var(--glass-t-clamped) * 5.2);
+  --lg-lens-saturation: calc(1.45 + var(--glass-t-clamped) * 0.45);
+  --lg-lens-dispersion: calc(0.16 + var(--glass-t-clamped) * 0.22);
+  --lg-lens-body-brightness: 1;
+  --lg-lens-rim-brightness: 1;
+
+  --glass-noise-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23g)' opacity='0.032'/%3E%3C/svg%3E");
+
+  --glass-sheen:
+    radial-gradient(
+      110% 75% at 14% 0%,
+      var(--glass-sheen-hi) 0%,
+      transparent 54%
+    ),
+    linear-gradient(
+      180deg,
+      var(--glass-sheen-hi) 0%,
+      transparent 44%,
+      var(--glass-sheen-lo) 100%
+    );
+
   --glass-material:
+    var(--glass-noise-image) padding-box,
     var(--glass-sheen) padding-box,
     linear-gradient(var(--glass-wash), var(--glass-wash)) padding-box;
   --glass-control-material:
@@ -69,164 +204,279 @@
     var(--glass-sheen) padding-box,
     linear-gradient(var(--glass-hover-wash), var(--glass-hover-wash)) padding-box;
   --glass-overlay-material:
+    var(--glass-noise-image) padding-box,
     var(--glass-sheen) padding-box,
     linear-gradient(var(--glass-overlay-wash), var(--glass-overlay-wash)) padding-box;
+
+  /* 9-layer Glassy UI edge bevel (caught glow, bright top-left bevel, counter-bevel, inner reflex, RGB fringe). */
+  --glass-rim:
+    inset 0 0 calc(14px * var(--glass-rim-scale)) calc(-4px * var(--glass-rim-scale))
+      rgb(255 255 255 / var(--glass-glow-alpha)),
+    inset calc(1.5px * var(--glass-rim-scale)) calc(2.5px * var(--glass-rim-scale))
+      calc(1px * var(--glass-rim-scale)) -1.5px
+      rgb(255 255 255 / calc(var(--glass-reflex-light) * 0.78)),
+    inset calc(-1.5px * var(--glass-rim-scale)) calc(-2px * var(--glass-rim-scale))
+      calc(1px * var(--glass-rim-scale)) -1.5px
+      rgb(255 255 255 / calc(var(--glass-reflex-light) * 0.56)),
+    inset -0.3px -1px 4px 0 rgb(0 0 0 / calc(var(--glass-reflex-dark) * 0.1)),
+    inset -1.5px 2.5px 0 -2px rgb(0 0 0 / calc(var(--glass-reflex-dark) * 0.14)),
+    inset 0 3px 4px -2px rgb(0 0 0 / calc(var(--glass-reflex-dark) * 0.14)),
+    inset var(--glass-rim-ca-offset) 0 3px -1px rgb(80 160 255 / var(--glass-rim-ca-alpha)),
+    inset calc(-1 * var(--glass-rim-ca-offset)) 0 3px -1px rgb(255 90 150 / var(--glass-rim-ca-alpha));
+
   --glass-shadow:
-    inset 1px 1px 0 0 var(--glass-rim-hi),
-    inset -1px -1px 0 0 var(--glass-rim-lo),
+    var(--glass-rim),
+    0 1px 2px var(--glass-edge-shadow),
+    0 10px 28px -6px var(--glass-drop);
+
+  --glass-shadow-raised:
+    var(--glass-rim),
     0 2px 6px var(--glass-edge-shadow),
-    0 20px 48px -16px var(--glass-drop);
+    0 28px 56px -16px var(--glass-drop-raised);
+
+  --glass-shadow-pressed:
+    var(--glass-rim),
+    0 1px 2px var(--glass-edge-shadow),
+    0 3px 10px -4px var(--glass-drop);
+
+  /* Specular hairline ring (masked to 1px border in specular.css). */
+  --glass-specular-ring:
+    radial-gradient(
+      circle at 18% 0%,
+      rgb(255 255 255 / calc(var(--glass-specular-peak) * 0.92)),
+      transparent 44%
+    ),
+    linear-gradient(
+      to bottom right,
+      rgb(255 255 255 / var(--glass-specular-peak)) 0%,
+      rgb(255 255 255 / var(--glass-specular-floor)) 32%,
+      rgb(255 255 255 / var(--glass-specular-floor)) 68%,
+      rgb(255 255 255 / var(--glass-specular-counter)) 100%
+    );
 }
 
 :root[data-style="glass"][data-theme="light"] {
-  /* Chỉ ghi đè các token kính và bề mặt; màu ngữ nghĩa khác kế thừa từ tokens.css sáng. */
   color-scheme: light;
   --color-background: transparent;
-  --color-foreground: #090b10;
-  --color-card: rgb(255 255 255 / calc(0.92 - var(--glass-t-clamped) * 0.82));
-  --color-card-foreground: #090b10;
-  --color-muted: rgba(15, 23, 42, 0.08);
-  --color-muted-foreground: rgb(14 18 26 / calc(0.7 + var(--glass-t-clamped) * 0.24));
-  --color-surface-raised: rgb(255 255 255 / calc(0.98 - var(--glass-t-clamped) * 0.84));
-  --color-overlay: rgb(15 23 42 / calc(0.3 - var(--glass-t-clamped) * 0.27));
-  --color-code: rgba(15, 23, 42, 0.07);
-  --color-border: rgba(15, 23, 42, 0.16);
-  --color-accent: #1d4ed8;
+  --color-foreground: #1d1d1f;
+  --color-card: rgb(255 255 255 / calc(0.68 - var(--glass-t-clamped) * 0.44));
+  --color-card-foreground: #1d1d1f;
+  --color-muted: rgb(15 23 42 / 0.08);
+  --color-muted-foreground: rgb(34 36 42 / calc(0.74 + var(--glass-t-clamped) * 0.18));
+  --color-surface-raised: rgb(255 255 255 / calc(0.8 - var(--glass-t-clamped) * 0.44));
+  --color-overlay: rgb(15 23 42 / calc(0.24 - var(--glass-t-clamped) * 0.12));
+  --color-code: rgb(15 23 42 / 0.07);
+  --color-border: rgb(15 23 42 / 0.14);
+  --color-accent: #0067d9;
   --color-on-accent: #ffffff;
-  --color-link: #1d4ed8;
-  --color-focus: #1d4ed8;
+  --color-link: #005ec6;
+  --color-focus: #66666a;
   --color-ring: #2563eb;
 
-  /* Phân tầng độ đục sáng (0% Mờ đục → 100% Trong veo, giữ nguyên sắc nền thật không xám hóa): base (0.95→0.08) < control (0.97→0.12) < overlay (0.98→0.14) < hover (0.99→0.26). */
-  --glass-wash: rgb(255 255 255 / calc(0.95 - var(--glass-t-clamped) * 0.87));
-  --glass-control-wash: rgb(255 255 255 / calc(0.97 - var(--glass-t-clamped) * 0.85));
-  --glass-hover-wash: rgb(255 255 255 / calc(0.99 - var(--glass-t-clamped) * 0.73));
-  --glass-overlay-wash: rgb(255 255 255 / calc(0.98 - var(--glass-t-clamped) * 0.84));
-  --glass-titlebar-scrim: rgb(255 255 255 / calc(0.95 - var(--glass-t-clamped) * 0.83));
-  --glass-scrim: rgb(242 245 250 / calc(0.52 - var(--glass-t-clamped) * 0.52));
-  --glass-terminal-bg: #f4f6fa;
+  --glass-wash: rgb(255 255 255 / calc(0.72 - var(--glass-t-clamped) * 0.6));
+  --glass-control-wash: rgb(255 255 255 / calc(0.7 - var(--glass-t-clamped) * 0.52));
+  --glass-hover-wash: rgb(255 255 255 / calc(0.86 - var(--glass-t-clamped) * 0.46));
+  --glass-overlay-wash: rgb(255 255 255 / calc(0.92 - var(--glass-t-clamped) * 0.16));
+  --glass-titlebar-scrim: rgb(255 255 255 / calc(0.72 - var(--glass-t-clamped) * 0.52));
+  --glass-scrim: rgb(246 245 242 / calc(0.26 - var(--glass-t-clamped) * 0.26));
+  --glass-terminal-bg: #f6f6f8;
 
-  --glass-border: rgb(255 255 255 / calc(0.34 + var(--glass-t-clamped) * 0.22));
-  --glass-sheen-hi: rgb(255 255 255 / calc(0.03 + var(--glass-t-clamped) * 0.06));
-  --glass-sheen-lo: rgb(255 255 255 / calc(var(--glass-t-clamped) * 0.02));
-  --glass-rim-hi: rgb(255 255 255 / calc(0.45 + var(--glass-t-clamped) * 0.25));
-  --glass-rim-lo: rgb(255 255 255 / calc(0.14 + var(--glass-t-clamped) * 0.1));
-  --glass-highlight: rgb(255 255 255 / calc(0.54 + var(--glass-t-clamped) * 0.18));
-  --glass-edge-shadow: rgba(15, 23, 42, 0.08);
-  --glass-drop: rgba(15, 23, 42, 0.16);
+  --glass-track: rgb(118 118 128 / 0.24);
+  --glass-knob-shadow:
+    0 2px 6px rgb(28 28 30 / 0.18),
+    0 1px 2px rgb(28 28 30 / 0.1),
+    0 0 0 0.5px rgb(28 28 30 / 0.06);
+  --glass-input-bg: rgb(255 255 255 / calc(0.72 - var(--glass-t-clamped) * 0.34));
+  --glass-input-hover-bg: rgb(255 255 255 / calc(0.9 - var(--glass-t-clamped) * 0.28));
+  --glass-input-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 0.08),
+    inset 0 -1px 0 rgb(255 255 255 / 0.85);
+  --glass-bubble-alpha: 0.9;
+
+  --glass-border: rgb(255 255 255 / calc(0.55 + var(--glass-t-clamped) * 0.25));
+  --glass-sheen-hi: rgb(255 255 255 / calc(0.1 + var(--glass-t-clamped) * 0.12));
+  --glass-sheen-lo: rgb(255 255 255 / calc(0.02 + var(--glass-t-clamped) * 0.04));
+  --glass-rim-hi: rgb(255 255 255 / calc(0.68 + var(--glass-t-clamped) * 0.24));
+  --glass-rim-lo: rgb(255 255 255 / calc(0.32 + var(--glass-t-clamped) * 0.16));
+  --glass-highlight: rgb(255 255 255 / calc(0.72 + var(--glass-t-clamped) * 0.18));
+
+  --glass-reflex-light: calc(0.84 + var(--glass-t-clamped) * 0.16);
+  --glass-reflex-dark: 0.78;
+  --glass-glow-alpha: calc(0.12 + var(--glass-t-clamped) * 0.1);
+  --glass-rim-ca-alpha: calc((0.045 + var(--glass-t-clamped) * 0.06) * var(--glass-rim-scale));
+
+  --glass-specular-peak: calc(0.78 + var(--glass-t-clamped) * 0.18);
+  --glass-specular-counter: calc(0.5 + var(--glass-t-clamped) * 0.22);
+  --glass-specular-floor: calc(0.28 + var(--glass-t-clamped) * 0.18);
+
+  --glass-edge-shadow: rgb(15 23 42 / 0.08);
+  --glass-drop: rgb(15 23 42 / 0.15);
+  --glass-drop-raised: rgb(15 23 42 / 0.26);
+
   --glass-blur:
-    blur(calc(28px - var(--glass-t-clamped) * 18px))
-    saturate(calc(1.25 + var(--glass-t-clamped) * 0.45));
-  --glass-dock-blur:
-    blur(calc(20px - var(--glass-t-clamped) * 12px))
-    saturate(calc(1.2 + var(--glass-t-clamped) * 0.45));
+    blur(calc(15px - var(--glass-t-clamped) * 10px))
+    brightness(1.04)
+    saturate(calc(1.4 + var(--glass-t-clamped) * 0.45));
   --glass-overlay-blur:
-    blur(calc(32px - var(--glass-t-clamped) * 18px))
-    saturate(calc(1.25 + var(--glass-t-clamped) * 0.45));
+    blur(calc(26px - var(--glass-t-clamped) * 10px))
+    brightness(1.03)
+    saturate(calc(1.3 + var(--glass-t-clamped) * 0.3));
 }
 
 @media (prefers-color-scheme: light) {
   :root[data-style="glass"][data-theme="system"] {
     color-scheme: light;
     --color-background: transparent;
-    --color-foreground: #090b10;
-    --color-card: rgb(255 255 255 / calc(0.92 - var(--glass-t-clamped) * 0.82));
-    --color-card-foreground: #090b10;
-    --color-muted: rgba(15, 23, 42, 0.08);
-    --color-muted-foreground: rgb(14 18 26 / calc(0.7 + var(--glass-t-clamped) * 0.24));
-    --color-surface-raised: rgb(255 255 255 / calc(0.98 - var(--glass-t-clamped) * 0.84));
-    --color-overlay: rgb(15 23 42 / calc(0.3 - var(--glass-t-clamped) * 0.27));
-    --color-code: rgba(15, 23, 42, 0.07);
-    --color-border: rgba(15, 23, 42, 0.16);
-    --color-accent: #1d4ed8;
+    --color-foreground: #1d1d1f;
+    --color-card: rgb(255 255 255 / calc(0.68 - var(--glass-t-clamped) * 0.44));
+    --color-card-foreground: #1d1d1f;
+    --color-muted: rgb(15 23 42 / 0.08);
+    --color-muted-foreground: rgb(34 36 42 / calc(0.74 + var(--glass-t-clamped) * 0.18));
+    --color-surface-raised: rgb(255 255 255 / calc(0.8 - var(--glass-t-clamped) * 0.44));
+    --color-overlay: rgb(15 23 42 / calc(0.24 - var(--glass-t-clamped) * 0.12));
+    --color-code: rgb(15 23 42 / 0.07);
+    --color-border: rgb(15 23 42 / 0.14);
+    --color-accent: #0067d9;
     --color-on-accent: #ffffff;
-    --color-link: #1d4ed8;
-    --color-focus: #1d4ed8;
+    --color-link: #005ec6;
+    --color-focus: #66666a;
     --color-ring: #2563eb;
 
-    --glass-wash: rgb(255 255 255 / calc(0.95 - var(--glass-t-clamped) * 0.87));
-    --glass-control-wash: rgb(255 255 255 / calc(0.97 - var(--glass-t-clamped) * 0.85));
-    --glass-hover-wash: rgb(255 255 255 / calc(0.99 - var(--glass-t-clamped) * 0.73));
-    --glass-overlay-wash: rgb(255 255 255 / calc(0.98 - var(--glass-t-clamped) * 0.84));
-    --glass-titlebar-scrim: rgb(255 255 255 / calc(0.95 - var(--glass-t-clamped) * 0.83));
-    --glass-scrim: rgb(242 245 250 / calc(0.52 - var(--glass-t-clamped) * 0.52));
-    --glass-terminal-bg: #f4f6fa;
+    --glass-wash: rgb(255 255 255 / calc(0.72 - var(--glass-t-clamped) * 0.6));
+    --glass-control-wash: rgb(255 255 255 / calc(0.7 - var(--glass-t-clamped) * 0.52));
+    --glass-hover-wash: rgb(255 255 255 / calc(0.86 - var(--glass-t-clamped) * 0.46));
+    --glass-overlay-wash: rgb(255 255 255 / calc(0.92 - var(--glass-t-clamped) * 0.16));
+    --glass-titlebar-scrim: rgb(255 255 255 / calc(0.72 - var(--glass-t-clamped) * 0.52));
+    --glass-scrim: rgb(246 245 242 / calc(0.26 - var(--glass-t-clamped) * 0.26));
+    --glass-terminal-bg: #f6f6f8;
 
-    --glass-border: rgb(255 255 255 / calc(0.34 + var(--glass-t-clamped) * 0.22));
-    --glass-sheen-hi: rgb(255 255 255 / calc(0.03 + var(--glass-t-clamped) * 0.06));
-    --glass-sheen-lo: rgb(255 255 255 / calc(var(--glass-t-clamped) * 0.02));
-    --glass-rim-hi: rgb(255 255 255 / calc(0.45 + var(--glass-t-clamped) * 0.25));
-    --glass-rim-lo: rgb(255 255 255 / calc(0.14 + var(--glass-t-clamped) * 0.1));
-    --glass-highlight: rgb(255 255 255 / calc(0.54 + var(--glass-t-clamped) * 0.18));
-    --glass-edge-shadow: rgba(15, 23, 42, 0.08);
-    --glass-drop: rgba(15, 23, 42, 0.16);
+    --glass-track: rgb(118 118 128 / 0.24);
+    --glass-knob-shadow:
+      0 2px 6px rgb(28 28 30 / 0.18),
+      0 1px 2px rgb(28 28 30 / 0.1),
+      0 0 0 0.5px rgb(28 28 30 / 0.06);
+    --glass-input-bg: rgb(255 255 255 / calc(0.72 - var(--glass-t-clamped) * 0.34));
+    --glass-input-hover-bg: rgb(255 255 255 / calc(0.9 - var(--glass-t-clamped) * 0.28));
+    --glass-input-shadow:
+      inset 0 1px 2px rgb(0 0 0 / 0.08),
+      inset 0 -1px 0 rgb(255 255 255 / 0.85);
+    --glass-bubble-alpha: 0.9;
+
+    --glass-border: rgb(255 255 255 / calc(0.55 + var(--glass-t-clamped) * 0.25));
+    --glass-sheen-hi: rgb(255 255 255 / calc(0.1 + var(--glass-t-clamped) * 0.12));
+    --glass-sheen-lo: rgb(255 255 255 / calc(0.02 + var(--glass-t-clamped) * 0.04));
+    --glass-rim-hi: rgb(255 255 255 / calc(0.68 + var(--glass-t-clamped) * 0.24));
+    --glass-rim-lo: rgb(255 255 255 / calc(0.32 + var(--glass-t-clamped) * 0.16));
+    --glass-highlight: rgb(255 255 255 / calc(0.72 + var(--glass-t-clamped) * 0.18));
+
+    --glass-reflex-light: calc(0.84 + var(--glass-t-clamped) * 0.16);
+    --glass-reflex-dark: 0.78;
+    --glass-glow-alpha: calc(0.12 + var(--glass-t-clamped) * 0.1);
+    --glass-rim-ca-alpha: calc((0.045 + var(--glass-t-clamped) * 0.06) * var(--glass-rim-scale));
+
+    --glass-specular-peak: calc(0.78 + var(--glass-t-clamped) * 0.18);
+    --glass-specular-counter: calc(0.5 + var(--glass-t-clamped) * 0.22);
+    --glass-specular-floor: calc(0.28 + var(--glass-t-clamped) * 0.18);
+
+    --glass-edge-shadow: rgb(15 23 42 / 0.08);
+    --glass-drop: rgb(15 23 42 / 0.15);
+    --glass-drop-raised: rgb(15 23 42 / 0.26);
+
     --glass-blur:
-      blur(calc(28px - var(--glass-t-clamped) * 18px))
-      saturate(calc(1.25 + var(--glass-t-clamped) * 0.45));
-    --glass-dock-blur:
-      blur(calc(20px - var(--glass-t-clamped) * 12px))
-      saturate(calc(1.2 + var(--glass-t-clamped) * 0.45));
+      blur(calc(15px - var(--glass-t-clamped) * 10px))
+      brightness(1.04)
+      saturate(calc(1.4 + var(--glass-t-clamped) * 0.45));
     --glass-overlay-blur:
-      blur(calc(32px - var(--glass-t-clamped) * 18px))
-      saturate(calc(1.25 + var(--glass-t-clamped) * 0.45));
+      blur(calc(26px - var(--glass-t-clamped) * 10px))
+      brightness(1.03)
+      saturate(calc(1.3 + var(--glass-t-clamped) * 0.3));
+  }
+}
+
+/* Increased contrast: keeps translucent Glassy feel while ensuring 7:1 text legibility. */
+@media (prefers-contrast: more) {
+  :root[data-style="glass"] {
+    --color-muted-foreground: var(--color-foreground);
+    --glass-wash: rgb(20 22 28 / 0.84);
+    --glass-control-wash: rgb(26 28 34 / 0.88);
+    --glass-overlay-wash: rgb(22 24 30 / 0.92);
+    --glass-border: rgb(255 255 255 / 0.56);
+    --lg-lens-body-brightness: 0.4;
+    --lg-lens-rim-brightness: 0.58;
+  }
+
+  :root[data-style="glass"][data-theme="light"] {
+    --color-muted-foreground: var(--color-foreground);
+    --glass-wash: rgb(255 255 255 / 0.88);
+    --glass-control-wash: rgb(255 255 255 / 0.92);
+    --glass-overlay-wash: rgb(255 255 255 / 0.94);
+    --glass-border: rgb(15 23 42 / 0.46);
+    --lg-lens-body-brightness: 1;
+    --lg-lens-rim-brightness: 1;
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   :root[data-style="glass"] {
-    --color-card: rgba(28, 32, 42, 0.96);
-    --color-surface-raised: rgba(24, 28, 36, 0.98);
+    --color-card: rgba(34, 36, 44, 0.98);
+    --color-surface-raised: rgba(28, 30, 38, 0.99);
     --color-overlay: rgba(2, 6, 23, 0.64);
     --color-muted-foreground: #d4d8e1;
-    --glass-wash: rgba(24, 28, 36, 0.96);
-    --glass-control-wash: rgba(30, 35, 46, 0.96);
-    --glass-hover-wash: rgba(44, 51, 66, 0.98);
-    --glass-overlay-wash: rgba(24, 28, 36, 0.98);
-    --glass-titlebar-scrim: rgba(24, 28, 36, 0.96);
-    --glass-scrim: rgba(12, 14, 18, 0.56);
-    --glass-border: rgba(255, 255, 255, 0.16);
+    --glass-wash: rgba(32, 34, 42, 0.98);
+    --glass-control-wash: rgba(40, 42, 52, 0.98);
+    --glass-hover-wash: rgba(54, 58, 70, 0.99);
+    --glass-overlay-wash: rgba(32, 34, 42, 0.99);
+    --glass-titlebar-scrim: rgba(32, 34, 42, 0.98);
+    --glass-scrim: rgba(18, 20, 26, 0.56);
+    --glass-border: rgba(255, 255, 255, 0.18);
     --glass-sheen-hi: transparent;
     --glass-sheen-lo: transparent;
+    --glass-rim: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+    --glass-specular-ring: linear-gradient(var(--glass-border), var(--glass-border));
     --glass-blur: none;
     --glass-dock-blur: none;
     --glass-overlay-blur: none;
+    --lg-lens-depth: 0;
   }
 
   :root[data-style="glass"][data-theme="light"] {
-    --color-card: rgba(248, 249, 252, 0.96);
-    --color-surface-raised: rgba(248, 249, 252, 0.98);
+    --color-card: rgba(250, 250, 252, 0.98);
+    --color-surface-raised: rgba(250, 250, 252, 0.99);
     --color-overlay: rgba(15, 23, 42, 0.42);
     --color-muted-foreground: #45474f;
-    --glass-wash: rgba(245, 246, 249, 0.96);
-    --glass-control-wash: rgba(250, 251, 253, 0.96);
-    --glass-hover-wash: rgba(235, 238, 244, 0.98);
-    --glass-overlay-wash: rgba(248, 249, 252, 0.98);
-    --glass-titlebar-scrim: rgba(245, 246, 249, 0.96);
+    --glass-wash: rgba(248, 248, 250, 0.98);
+    --glass-control-wash: rgba(252, 252, 254, 0.98);
+    --glass-hover-wash: rgba(236, 238, 244, 0.99);
+    --glass-overlay-wash: rgba(250, 250, 252, 0.99);
+    --glass-titlebar-scrim: rgba(248, 248, 250, 0.98);
     --glass-scrim: rgba(242, 245, 250, 0.5);
-    --glass-border: rgba(15, 23, 42, 0.12);
+    --glass-border: rgba(15, 23, 42, 0.14);
+    --glass-rim: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
   }
 }
 
 @media (prefers-reduced-transparency: reduce) and (prefers-color-scheme: light) {
   :root[data-style="glass"][data-theme="system"] {
-    --color-card: rgba(248, 249, 252, 0.96);
-    --color-surface-raised: rgba(248, 249, 252, 0.98);
+    --color-card: rgba(250, 250, 252, 0.98);
+    --color-surface-raised: rgba(250, 250, 252, 0.99);
     --color-overlay: rgba(15, 23, 42, 0.42);
     --color-muted-foreground: #45474f;
-    --glass-wash: rgba(245, 246, 249, 0.96);
-    --glass-control-wash: rgba(250, 251, 253, 0.96);
-    --glass-hover-wash: rgba(235, 238, 244, 0.98);
-    --glass-overlay-wash: rgba(248, 249, 252, 0.98);
-    --glass-titlebar-scrim: rgba(245, 246, 249, 0.96);
+    --glass-wash: rgba(248, 248, 250, 0.98);
+    --glass-control-wash: rgba(252, 252, 254, 0.98);
+    --glass-hover-wash: rgba(236, 238, 244, 0.99);
+    --glass-overlay-wash: rgba(250, 250, 252, 0.99);
+    --glass-titlebar-scrim: rgba(248, 248, 250, 0.98);
     --glass-scrim: rgba(242, 245, 250, 0.5);
-    --glass-border: rgba(15, 23, 42, 0.12);
+    --glass-border: rgba(15, 23, 42, 0.14);
+    --glass-rim: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
   }
 }
 
 html[data-style="glass"] {
   --glass-default-bg: url("/app/backgrounds/default-glass.webp");
 
-  background-color: #141822;
+  /* Charcoal fallback instead of pure black so glass always has contrast to refract. */
+  background-color: #1c1c1e;
   background-image:
     linear-gradient(var(--glass-scrim), var(--glass-scrim)),
     var(--glass-bg-image, var(--glass-default-bg));
@@ -237,11 +487,11 @@ html[data-style="glass"] {
 }
 
 html[data-style="glass"][data-theme="light"] {
-  background-color: #d9dde5;
+  background-color: #faf9f7;
 }
 
 @media (prefers-color-scheme: light) {
   html[data-style="glass"][data-theme="system"] {
-    background-color: #d9dde5;
+    background-color: #faf9f7;
   }
 }

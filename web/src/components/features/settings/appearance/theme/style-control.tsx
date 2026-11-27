@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sparkles, Square } from "lucide-react";
 import { configApi } from "@/apis/config.api";
+import { useLiquidIndicator } from "@/components/features/settings/appearance/theme/glass/use-liquid-indicator";
 import { chatText as t } from "@/text/chat";
 import styles from "./theme-control.module.css";
 
@@ -21,6 +22,13 @@ function apply(value: Style) {
 export function StyleControl() {
   const client = useQueryClient();
   const [style, setStyle] = useState<Style>("default");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const indicatorRef = useRef<HTMLSpanElement>(null);
+  useLiquidIndicator(rootRef, indicatorRef, {
+    selected: 'button[aria-pressed="true"]',
+    item: "button",
+    draggable: true,
+  });
   useEffect(() => {
     const { style: current, theme } = document.documentElement.dataset;
     let initial = isStyle(current) ? current : undefined;
@@ -49,7 +57,8 @@ export function StyleControl() {
     apply(value);
     configApi.saveStyle(value).then(() => client.invalidateQueries({ queryKey: ["config"] })).catch(() => undefined);
   }
-  return <div data-glass="theme-control" className={styles.control} role="group" aria-label={t.style}>
+  return <div ref={rootRef} data-glass="theme-control" className={styles.control} role="group" aria-label={t.style}>
+    <span ref={indicatorRef} data-glass="liquid-indicator" aria-hidden="true" />
     {STYLE_OPTIONS.map(([value, Icon, label]) =>
       <button key={value} type="button" title={label} aria-pressed={style === value} aria-label={label} onClick={() => change(value)}>
         <Icon size={16} aria-hidden="true" /><span>{label}</span>

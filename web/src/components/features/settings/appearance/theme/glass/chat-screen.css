@@ -6,7 +6,7 @@
 [data-style="glass"] [data-glass="main"] {
   margin: var(--workspace-top, var(--titlebar-height)) var(--space-1) var(--space-1) 0;
   height: calc(100% - var(--workspace-top, var(--titlebar-height)) - var(--space-1));
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   border-radius: 28px;
   background: var(--glass-material);
   box-shadow: var(--glass-shadow);
@@ -29,13 +29,12 @@
 /* Nút nổi góc trên/phải bên trong thẻ chat (Terminal, Nén ngữ cảnh). */
 [data-style="glass"] button[data-glass="terminal-toggle"],
 [data-style="glass"] button[data-glass="compact-button"] {
-  border: 1px solid var(--glass-border);
+  border: 1px solid transparent;
   border-radius: 9999px;
   background: var(--glass-control-material);
   box-shadow: var(--glass-shadow);
   -webkit-backdrop-filter: var(--glass-dock-blur);
   backdrop-filter: var(--glass-dock-blur);
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
 [data-style="glass"] button[data-glass="terminal-toggle"]:hover:enabled,
