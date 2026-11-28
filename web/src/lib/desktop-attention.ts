@@ -1,3 +1,5 @@
+import { notify } from "@/components/toast/toast";
+
 type TauriWindow = {
   setIcon(icon: Uint8Array): Promise<void>;
   requestUserAttention(kind: 2 | null): Promise<void>;
@@ -10,13 +12,14 @@ const tauriWindow = () => (window as Window & {
 let count = 0;
 let asking = false;
 let listening = false;
+let iconFailureNotified = false;
 let badgeVersion = 0;
 let originalBytes: Uint8Array | undefined;
 let iconImage: Promise<ImageBitmap> | undefined;
 
 async function loadIcon(): Promise<ImageBitmap> {
   const response = await fetch("/brand/app-icon-128.png");
-  if (!response.ok) throw new Error("App icon unavailable");
+  if (!response.ok) throw new Error(`App icon unavailable (HTTP ${response.status})`);
   const blob = await response.blob();
   originalBytes = new Uint8Array(await blob.arrayBuffer());
   return createImageBitmap(blob);
@@ -24,22 +27,38 @@ async function loadIcon(): Promise<ImageBitmap> {
 
 async function updateAttention(kind: 2 | null) {
   try { await tauriWindow()?.getCurrentWindow().requestUserAttention(kind); }
-  catch { /* Attention may be unavailable. */ }
+  catch (error) { console.error("[desktop-attention] attention failed", error); }
 }
 
-async function updateIcon(icon: Uint8Array) {
-  try { await tauriWindow()?.getCurrentWindow().setIcon(icon); }
-  catch { /* The window icon may be unavailable. */ }
+async function updateIcon(bytes: Uint8Array) {
+  try {
+    const api = tauriWindow();
+    if (!api) return;
+    await api.getCurrentWindow().setIcon(bytes);
+    console.info("[desktop-attention] setIcon ok", bytes.length);
+  } catch (error) {
+    console.error("[desktop-attention] setIcon failed", error);
+    if (!iconFailureNotified) {
+      iconFailureNotified = true;
+      notify("Không thể cập nhật biểu tượng thanh tác vụ.");
+    }
+  }
 }
 
 async function drawBadge(version: number) {
   try {
     const image = await (iconImage ??= loadIcon());
-    if (version !== badgeVersion || document.hasFocus()) return;
+    if (version !== badgeVersion || document.hasFocus()) {
+      console.warn("[desktop-attention] drawBadge skipped before drawing: stale version or window focused");
+      return;
+    }
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 128;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn("[desktop-attention] drawBadge skipped: missing 2D canvas context");
+      return;
+    }
 
     ctx.drawImage(image, 0, 0, 128, 128);
     ctx.fillStyle = asking ? "#f59e0b" : "#e5484d";
@@ -56,10 +75,17 @@ async function drawBadge(version: number) {
     ctx.fillText(count > 9 ? "9+" : String(count), 98, 30);
 
     const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
-    if (!blob) return;
+    if (!blob) {
+      console.warn("[desktop-attention] drawBadge skipped: canvas returned a null PNG blob");
+      return;
+    }
     const bytes = new Uint8Array(await blob.arrayBuffer());
-    if (version === badgeVersion && !document.hasFocus()) await updateIcon(bytes);
-  } catch { /* Badge rendering is best effort. */ }
+    if (version !== badgeVersion || document.hasFocus()) {
+      console.warn("[desktop-attention] drawBadge skipped before setIcon: stale version or window focused");
+      return;
+    }
+    await updateIcon(bytes);
+  } catch (error) { console.error("[desktop-attention] drawBadge failed", error); }
 }
 
 export function desktopAttention(kind: "done" | "question"): void {
