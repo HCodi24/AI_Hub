@@ -1,10 +1,22 @@
 import { chatText } from "@/text/chat";
 
 export const MAX_IMPORT_BYTES = 200 * 1024;
+export const LONG_PASTE_LINES = 15;
+export const LONG_PASTE_CHARS = 1500;
 export const MAX_FOLDER_BYTES = 1024 * 1024;
 export const MAX_FOLDER_FILES = 100;
 export type ImportedFile = { name: string; content: string };
 export type DroppedFile = File | FileSystemDirectoryEntry;
+
+export function isSvgMarkup(text: string): boolean {
+  return /^(?:<\?xml\s[^?]*\?>\s*)?<svg(?=[\s>])[\s\S]*<\/svg>$/i.test(text.trim());
+}
+
+export function isLongPaste(text: string): boolean {
+  return text.trim().length > 0 &&
+    (text.length >= LONG_PASTE_CHARS || text.split("\n").length >= LONG_PASTE_LINES);
+}
+
 export function droppedFiles(data: DataTransfer): DroppedFile[] {
   const files: DroppedFile[] = [];
   const items = Array.from(data.items).filter(item => item.kind === "file");

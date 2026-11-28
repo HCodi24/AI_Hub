@@ -10,6 +10,7 @@ import { PillTabs } from "@/components/pill-tabs/pill-tabs";
 import { Dropdown } from "@/components/select/select";
 import { Switch } from "@/components/button/switch";
 import { Skeleton } from "@/components/skeleton/skeleton";
+import { MutisSlider } from "@/components/slider/mutis-slider";
 import { notify } from "@/components/toast/toast";
 import { PET_FAMILIES, PET_FAMILY, petForSlot, petKind } from "@/lib/pet-choice";
 import { modelGroup } from "@/lib/model-group";
@@ -95,10 +96,10 @@ function ChatPets({ busy, run }: { busy: string; run: (key: string, action: () =
     </li><li className={`${styles.addonRow} ${styles.petSizeRow}`}>
       <label className={styles.addonText} htmlFor={sizeSliderId}><span className={styles.addonName}><strong>{t.pets.size}</strong></span></label>
       <div className={styles.petSizeControl}>
-        <input id={sizeSliderId} type="range" min={0} max={CHAT_PET_SIZES.length - 1} step={1}
+        <MutisSlider variant="pill" showTooltip={false} id={sizeSliderId} min={0} max={CHAT_PET_SIZES.length - 1} step={1}
           value={Math.max(0, CHAT_PET_SIZES.indexOf(size))} aria-valuetext={t.pets.sizes[size]}
-          onChange={event => {
-            const selected = CHAT_PET_SIZES[event.currentTarget.valueAsNumber];
+          onChange={i => {
+            const selected = CHAT_PET_SIZES[i];
             if (selected) setSize(selected);
           }} />
         <span aria-hidden="true">{t.pets.sizes[size]}</span>

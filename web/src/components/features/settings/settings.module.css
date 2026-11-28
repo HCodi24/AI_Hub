@@ -235,8 +235,7 @@ label.addonSearch { position: relative; display: block; align-self: flex-end; wi
 .addonRow.petEnableRow { grid-template-columns: minmax(0, 1fr) auto; }
 .addonRow.petSizeRow { flex-wrap: wrap; }
 .petSizeRow > label { flex-basis: auto; }
-.petSizeControl { --pet-slider-blue: #568ee3; display: grid; grid-template-columns: minmax(0, 1fr) 84px; align-items: center; column-gap: var(--space-2); flex: 0 1 100%; max-width: calc(509px + 84px + var(--space-2)); margin-inline-start: auto; }
-.petSizeControl input[type="range"] { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; accent-color: var(--pet-slider-blue); cursor: pointer; }
+.petSizeControl { display: grid; grid-template-columns: minmax(0, 1fr) 84px; align-items: center; column-gap: var(--space-2); flex: 0 1 100%; max-width: calc(509px + 84px + var(--space-2)); margin-inline-start: auto; }
 .petSizeControl > span { text-align: end; color: var(--muted); font-size: var(--font-13); }
 .petSizeTicks { display: flex; justify-content: space-between; padding-inline: 8px; }
 .petSizeTicks span { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 0; color: var(--text); font-size: var(--font-12); }

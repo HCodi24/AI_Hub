@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { z } from "zod";
 import { Scale, X, FileEdit, MousePointerClick } from "lucide-react";
-import { droppedFiles, fileReadError, importDirectory, importTextFile, importedFileText, type DroppedFile, type ImportedFile } from "@/lib/import-file";
+import { droppedFiles, fileReadError, importDirectory, importTextFile, importedFileText, isLongPaste, isSvgMarkup, MAX_IMPORT_BYTES, type DroppedFile, type ImportedFile } from "@/lib/import-file";
 import { http } from "@/lib/http";
+import { markdownHtml } from "@/lib/markdown";
 import { skillHighlightParts, UNICODE_WHITESPACE, useKnownSkills } from "@/lib/skill-tokens";
 import { chatText } from "@/text/chat";
 import { previewText } from "@/text/preview";
@@ -42,7 +43,9 @@ function syncHighlight(textarea: HTMLTextAreaElement | null, highlight: HTMLDivE
 }
 const UploadSchema = z.object({ id: z.string(), mime: z.string(), url: z.string() });
 type Image = z.infer<typeof UploadSchema>;
-type Attachment = (Image & { kind: "image"; name: string }) | (ImportedFile & { kind: "text"; id: string });
+type Attachment = (Image & { kind: "image"; name: string })
+  | (ImportedFile & { kind: "text"; id: string })
+  | { kind: "svg"; id: string; content: string };
 const readBase64 = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
   reader.onerror = () => reject(reader.error);
@@ -254,7 +257,8 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         ? `${prompt}\n\n${context}`
         : `${context}\n\n${prompt}`;
     }
-    const text = [prompt, previewSelectionText(sentSelections), importedFileText(sent.filter((file): file is Extract<Attachment, { kind: "text" }> => file.kind === "text"))].filter(Boolean).join("\n\n");
+    const svgs = sent.flatMap(file => file.kind === "svg" ? [file.content] : []);
+    const text = [prompt, ...svgs, previewSelectionText(sentSelections), importedFileText(sent.filter((file): file is Extract<Attachment, { kind: "text" }> => file.kind === "text"))].filter(Boolean).join("\n\n");
     const restore = () => { if (useChatStore.getState().id === origin) {
       setValue(draft); updateAttachments(sent); setRecalled(picked);
       setPreviewSelections(current => [...sentSelections, ...current]);
@@ -276,6 +280,11 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
       <button type="button" aria-label={`${previewText.removeElement}: ${item.label}`} onClick={() => setPreviewSelections(current => current.filter(selection => selection.id !== item.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
     {attachments.length > 0 && <div className={styles.tray} aria-label={chatText.attachedFiles}>{attachments.map(file => file.kind === "text"
       ? <AttachmentCard key={file.id} name={file.name} disabled={uploading} remove={() => updateAttachments(attached.current.filter(item => item.id !== file.id))} />
+      : file.kind === "svg"
+      ? <span key={file.id} className={styles.svgPreview} title="SVG">
+        <span className={styles.svgArt} dangerouslySetInnerHTML={{ __html: markdownHtml(file.content) }} />
+        <button type="button" disabled={uploading} aria-label={chatText.removeFile + ": SVG"} onClick={() => updateAttachments(attached.current.filter(item => item.id !== file.id))}><X size={12} aria-hidden="true" /></button>
+      </span>
       : <span key={file.id} title={file.name}><img src={file.url} alt={file.name || chatText.attachments} />
         <button type="button" disabled={uploading} aria-label={`${chatText.removeFile}: ${file.name}`} onClick={() => updateAttachments(attached.current.filter(item => item.id !== file.id))}><X size={12} aria-hidden="true" /></button></span>)}</div>}
     {menuOpen && <SkillSuggestions id={skillListId} names={suggestions} activeIndex={activeIndex} onSelect={selectSkill} />}
@@ -317,7 +326,29 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         setComposing(false);
         trackSelection(event.currentTarget);
       }}
-      onPaste={(event) => { const files = [...event.clipboardData.items].flatMap(item => item.kind === "file" ? [item.getAsFile()] : []).filter((file): file is File => file !== null); if (files.length) { event.preventDefault(); void addFiles(files); } }}
+      onPaste={(event) => {
+        const files = [...event.clipboardData.items].flatMap(item => item.kind === "file" ? [item.getAsFile()] : []).filter((file): file is File => file !== null);
+        if (files.length) { event.preventDefault(); void addFiles(files); return; }
+        const text = event.clipboardData.getData("text/plain");
+        if (isSvgMarkup(text)) {
+          event.preventDefault();
+          if (importing.current || pending.current || useChatStore.getState().streaming || useCardStore.getState().running) return;
+          if (attached.current.length >= MAX_FILES) { notify(chatText.maxFiles); return; }
+          if (new TextEncoder().encode(text).length > MAX_IMPORT_BYTES) { notify(chatText.fileTooLarge); return; }
+          // A blank line inside the SVG would end its markdown HTML block and break the render.
+          const content = text.trim().replace(/^<\?xml\s[^?]*\?>\s*/i, "").replace(/\n\s*\n/g, "\n");
+          updateAttachments([...attached.current, { kind: "svg", id: crypto.randomUUID(), content }]);
+          return;
+        }
+        if (!isLongPaste(text)) return;
+        event.preventDefault();
+        if (importing.current || pending.current || useChatStore.getState().streaming || useCardStore.getState().running) return;
+        if (attached.current.length >= MAX_FILES) { notify(chatText.maxFiles); return; }
+        if (new TextEncoder().encode(text).length > MAX_IMPORT_BYTES) { notify(chatText.fileTooLarge); return; }
+        updateAttachments([...attached.current, {
+          kind: "text", id: crypto.randomUUID(), name: chatText.pastedText(text.split("\n").length), content: text,
+        }]);
+      }}
       onKeyDown={handleInputKeyDown}
       onScroll={(event) => {
         syncHighlight(event.currentTarget, highlight.current);

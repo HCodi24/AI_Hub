@@ -1,0 +1,126 @@
+.wrap { width: 100%; }
+.trackBox { position: relative; display: flex; align-items: center; }
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  margin: 0;
+  /* Undo the global input box (globals.css: border, padding, min-height 36px, edge shadow). */
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 0;
+}
+.range:disabled { cursor: not-allowed; opacity: .5; }
+
+.smooth { height: 24px; }
+.smooth::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #8ce0fa 0%, #6e7bf2 var(--val, 0%), rgba(148, 163, 184, .28) var(--val, 0%), rgba(148, 163, 184, .28) 100%);
+}
+.smooth::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  margin-top: -6px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 3px solid #6e7bf2;
+  box-shadow: 0 2px 6px rgba(110, 123, 242, .32);
+  transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), box-shadow .16s ease;
+}
+.smooth:enabled:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 5px rgba(110, 123, 242, .14), 0 2px 8px rgba(110, 123, 242, .38);
+}
+.smooth:enabled:active::-webkit-slider-thumb {
+  transform: scale(1.06);
+  box-shadow: 0 0 0 7px rgba(110, 123, 242, .2), 0 2px 8px rgba(110, 123, 242, .42);
+}
+.smooth::-moz-range-track { height: 8px; border-radius: 9999px; background: rgba(148, 163, 184, .28); }
+.smooth::-moz-range-progress { height: 8px; border-radius: 9999px; background: linear-gradient(to right, #8ce0fa, #6e7bf2); }
+.smooth::-moz-range-thumb {
+  box-sizing: content-box;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 3px solid #6e7bf2;
+  box-shadow: 0 2px 6px rgba(110, 123, 242, .32);
+}
+
+.pill { height: 28px; }
+.pill::-webkit-slider-runnable-track {
+  height: 10px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, #8ce0fa 0%, #6e7bf2 var(--val, 0%), rgba(148, 163, 184, .24) var(--val, 0%), rgba(148, 163, 184, .24) 100%);
+}
+.pill::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: 14px;
+  height: 24px;
+  margin-top: -7px;
+  border-radius: 9999px;
+  background: #6e7bf2;
+  border: 2.5px solid #fff;
+  box-shadow: 0 2px 8px rgba(110, 123, 242, .4);
+  transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), background-color .15s ease;
+}
+.pill:enabled:hover::-webkit-slider-thumb { transform: scale(1.1); background: #5b68e6; }
+.pill:enabled:active::-webkit-slider-thumb { transform: scaleY(1.14) scaleX(.96); }
+.pill::-moz-range-track { height: 10px; border-radius: 9999px; background: rgba(148, 163, 184, .24); }
+.pill::-moz-range-progress { height: 10px; border-radius: 9999px; background: linear-gradient(to right, #8ce0fa, #6e7bf2); }
+.pill::-moz-range-thumb {
+  box-sizing: content-box;
+  width: 10px;
+  height: 20px;
+  border-radius: 9999px;
+  background: #6e7bf2;
+  border: 2.5px solid #fff;
+  box-shadow: 0 2px 8px rgba(110, 123, 242, .4);
+}
+
+.range.range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--focus, #6e7bf2); }
+.range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--focus, #6e7bf2); }
+
+.tooltip {
+  position: absolute;
+  top: -30px;
+  transform: translateX(-50%) translateY(4px);
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #6e7bf2;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  opacity: 0;
+  white-space: nowrap;
+  transition: opacity .15s ease, transform .15s ease;
+}
+.trackBox:hover .tooltip, .trackBox:focus-within .tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding: 0 2px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #94a3b8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .range::-webkit-slider-thumb { transition: none; }
+  .range::-moz-range-thumb { transition: none; }
+}

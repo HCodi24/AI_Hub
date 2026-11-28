@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Menu, ChevronDown, RotateCcw } from "lucide-react";
 import { useChatStore } from "@/components/features/chat/chat-store";
 import { IconButton } from "@/components/icon-button/icon-button";
+import { MutisSlider } from "@/components/slider/mutis-slider";
 import { chatText } from "@/text/chat";
 import { modelEffortOptions, effortsFor, effortFor } from "@/constants/chat";
 import { SOURCE_LOGOS } from "@/constants/source-logos";
@@ -172,9 +173,9 @@ export function ChatToolbar({ config }: { config?: Config }) {
         </div>
         {isMutis && mutisProviders.length > 0 && <p>{mutisProviders.map(entry => entry.name).join(" · ")}</p>}
         {!isMutis && efforts.length > 1 && <div className={styles.effortSlider}>
-          <input type="range" min={0} max={efforts.length - 1} step={1} value={effortIndex} disabled={streaming} aria-label={chatText.effort} aria-valuetext={effortLabel(displayedEffort)}
-            style={{ background: `linear-gradient(to right, var(--effort-fill) ${effortIndex / (efforts.length - 1) * 100}%, var(--color-muted) 0%)` }}
-            onChange={event => pickEffort(efforts[Number(event.target.value)])} />
+          <MutisSlider variant="pill" showTooltip={false} min={0} max={efforts.length - 1} step={1}
+            value={effortIndex} disabled={streaming} aria-label={chatText.effort} aria-valuetext={effortLabel(displayedEffort)}
+            onChange={i => pickEffort(efforts[i])} />
           <div className={styles.effortTicks} aria-hidden="true">{efforts.map((effort, index) => <span key={effort} data-filled={index < effortIndex} data-selected={index === effortIndex} />)}</div>
         </div>}
         {isMutis

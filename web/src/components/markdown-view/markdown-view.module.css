@@ -10,6 +10,7 @@
 .markdown th, .markdown tbody tr:nth-child(even) { background: var(--color-muted); }
 .markdown blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: var(--space-4); color: var(--muted); }
 .markdown img { max-width: 100%; height: auto; }
+.markdown svg { max-width: 100%; height: auto; }
 .markdown h1 { font-size: var(--font-24); } .markdown h2 { font-size: var(--font-20); } .markdown h3 { font-size: var(--font-18); }
 .codeHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); background: var(--code); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-small) var(--radius-small) 0 0; font-size: var(--font-small); color: var(--muted); font-family: var(--font-mono); }
 /* GitHub / GitHub Dark syntax roles mapped to semantic, theme-aware tokens. */

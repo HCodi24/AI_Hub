@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Config } from "@/schema/config.schema";
 import type { Mutis } from "@/schema/mutis.schema";
 import { mutisApi } from "@/apis/mutis.api";
+import { MutisSlider } from "@/components/slider/mutis-slider";
 import { roleEffortOptions } from "@/constants/chat";
 import { modelDisplayLabel } from "@/lib/model-display-label";
 import { chatText } from "@/text/chat";
@@ -37,10 +38,9 @@ function RoleSlider({ role, provider, disabled, save }: {
   return <div className={styles.modelEffort}>
     <div className={styles.modelEffortHeading}><span title={title}>{label}</span><strong>{chatText[displayedEffort]}</strong></div>
     <div className={styles.effortSlider}>
-      <input type="range" min={0} max={lastIndex} step={1} value={index} disabled={disabled || !provider}
+      <MutisSlider variant="pill" showTooltip={false} min={0} max={lastIndex} step={1} value={index} disabled={disabled || !provider}
         aria-label={`${label}: ${chatText.effort}`} aria-valuetext={chatText[displayedEffort]}
-        style={{ background: `linear-gradient(to right, var(--effort-fill) ${index / Math.max(1, lastIndex) * 100}%, var(--color-muted) 0%)` }}
-        onChange={event => setDraft(choices[Number(event.target.value)])}
+        onChange={i => setDraft(choices[i])}
         onPointerUp={event => void commit(event.currentTarget.value)}
         onPointerCancel={() => setDraft(selected)}
         onKeyUp={event => { if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(event.key)) void commit(event.currentTarget.value); }}

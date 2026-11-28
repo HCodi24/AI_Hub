@@ -14,57 +14,6 @@
   min-width: 150px;
 }
 
-.slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 6px;
-  min-height: 0;
-  margin: 7px 0 0;
-  padding: 0;
-  border: 0;
-  border-radius: 9999px;
-  background: linear-gradient(
-    to right,
-    var(--accent) 0%,
-    var(--accent) var(--slider-pct, 50%),
-    var(--color-muted) var(--slider-pct, 50%),
-    var(--color-muted) 100%
-  );
-  box-shadow: none;
-  cursor: pointer;
-}
-
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--text);
-  box-shadow: var(--shadow-1);
-  transition: transform var(--duration-fast) var(--ease-out);
-}
-
-.slider:hover::-webkit-slider-thumb {
-  transform: scale(1.1);
-}
-
-.slider:active::-webkit-slider-thumb {
-  transform: scale(1.16);
-}
-
-.slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--text);
-  box-shadow: var(--shadow-1);
-  transition: transform var(--duration-fast) var(--ease-out);
-}
-
 .ticks {
   display: flex;
   align-items: center;

@@ -20,7 +20,11 @@ export const settingsText = {
     background: "Hình nền", changeBackground: "Đổi hình nền", resetBackground: "Mặc định",
     backgroundError: "Không thể lưu hình nền này.",
   },
-  sound: { notice: "Chưa có tùy chọn âm thanh." },
+  sound: {
+    enabled: "Phát âm báo khi AI trả lời xong hoặc cần bạn trả lời",
+    volume: "Âm lượng",
+    hint: "Hai nốt khi AI trả lời xong, ba nốt khi AI hỏi bạn hoặc xin quyền chạy lệnh.",
+  },
   providers: {
     list: "Danh sách nguồn", add: "Thêm nguồn", newName: "Nguồn mới", name: "Tên hiển thị", kind: "Loại nguồn",
     kinds: { codex_cli: "Codex CLI", claude_cli: "Claude Code CLI", antigravity_cli: "Antigravity CLI", openai_compat: "OpenAI-compatible (DeepSeek…)", anthropic: "Anthropic API" },

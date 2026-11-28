@@ -1,5 +1,6 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { RotateCcw } from "lucide-react";
+import { MutisSlider } from "@/components/slider/mutis-slider";
 import { settingsText as t } from "@/text/settings";
 import styles from "./transparency-control.module.css";
 
@@ -54,22 +55,18 @@ export function ThicknessControl({ id }: { id: string }) {
     try { saveThickness(clamped); } catch { /* Storage unavailable. */ }
   }
 
-  const percent = ((value - MIN_THICKNESS) / (MAX_THICKNESS - MIN_THICKNESS)) * 100;
-  const sliderStyle = { "--slider-pct": `${percent.toFixed(1)}%` } as CSSProperties;
-
   return <div data-glass="thickness-control" className={styles.control}>
     <div className={styles.sliderWrap}>
-      <input
+      <MutisSlider
         id={id}
-        className={styles.slider}
-        style={sliderStyle}
-        type="range"
+        variant="smooth"
+        showTooltip={false}
         min={MIN_THICKNESS}
         max={MAX_THICKNESS}
         step={0.05}
         value={value}
         aria-valuetext={`${value.toFixed(2)}x`}
-        onChange={event => update(event.currentTarget.valueAsNumber)}
+        onChange={v => update(v)}
       />
       <div className={styles.ticks}>
         {PRESETS.map(preset => (

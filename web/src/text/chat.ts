@@ -18,6 +18,7 @@ export const chatText = {
   folderSummary: (count: number, skipped: number, limited: boolean) => `Đã đọc ${count} file văn bản/mã nguồn trong thư mục và thư mục con.${skipped ? ` Bỏ qua ${skipped} file hoặc thư mục không đọc được, không hỗ trợ hoặc thuộc .git/node_modules/target/.next/__pycache__.` : ""}${limited ? " Đã dừng do giới hạn: tối đa 100 file, 1 MB nội dung, 2.000 mục hoặc 32 cấp thư mục; nội dung chưa đầy đủ." : ""}`,
   fileUnavailable: "Không đọc được file trên máy. Hãy tải file về máy nếu đang ở đám mây, rồi chọn lại bằng nút +.",
   fileTooLarge: "File văn bản tối đa 200 KB mỗi file.", maxFiles: "Mỗi tin nhắn tối đa 5 file đính kèm.",
+  pastedText: (lines: number) => `Đoạn dán · ${lines} dòng`,
   unsupportedFile: "Hiện hỗ trợ ảnh và file văn bản/mã nguồn UTF-8 hoặc UTF-16. Chưa đọc trực tiếp PDF, Word, Excel hay file nén.",
   emptyFile: "File không có nội dung văn bản.", importingFiles: "Đang đọc file/thư mục…", dropFiles: "Thả file hoặc thư mục để đính kèm",
   quickReply: "Trả lời nhanh",

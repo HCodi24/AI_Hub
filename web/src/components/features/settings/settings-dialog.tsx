@@ -1,10 +1,12 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Blocks, Boxes, Hammer, LayoutDashboard, Palette, PawPrint, Puzzle, SlidersHorizontal, Users, Volume2 } from "lucide-react";
 import { PetsSection } from "@/components/features/pets/pets-section";
 import { Dialog } from "@/components/dialog/dialog";
 import { ScrollArea } from "@/components/scroll-area";
 import { Switch } from "@/components/button/switch";
+import { MutisSlider } from "@/components/slider/mutis-slider";
 import { useLiquidIndicator } from "@/components/features/settings/appearance/theme/glass/use-liquid-indicator";
+import { chatSoundEnabled, chatSoundVolume, playChatSound, setChatSoundEnabled, setChatSoundVolume } from "@/lib/chat-sound";
 import { settingsText as t } from "@/text/settings";
 import { AddonsTab } from "./addons";
 import { AppearanceTab } from "./appearance";
@@ -36,6 +38,10 @@ type SettingsDialogProps = {
 };
 export function SettingsDialog({ initialTab = "providers", folder, close, dashboardEnabled, onDashboardEnabledChange, taskBoardEnabled, onTaskBoardEnabledChange }: SettingsDialogProps) {
   const [tab, setTab] = useState<TabId>(initialTab);
+  const [soundEnabled, setSoundEnabled] = useState(chatSoundEnabled);
+  const [volume, setVolume] = useState(chatSoundVolume);
+  const volumeId = useId();
+  const preview = () => { void playChatSound("done"); };
   const tabsRef = useRef<HTMLElement>(null);
   const tabIndicatorRef = useRef<HTMLSpanElement>(null);
   useLiquidIndicator(tabsRef, tabIndicatorRef, {
@@ -56,7 +62,25 @@ export function SettingsDialog({ initialTab = "providers", folder, close, dashbo
       {tab === "providers" && <ProvidersTab />}{tab === "general" && <GeneralTab taskBoardEnabled={taskBoardEnabled} onTaskBoardEnabledChange={onTaskBoardEnabledChange} />}{tab === "mutis" && <MutisTab />}
       {tab === "addons" && <AddonsTab />}
       {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "pets" && <PetsSection />}{tab === "dev" && <><UpdateSection /><DesktopBuild /></>}
-      {tab === "sound" && <p className={styles.note}>{t.sound.notice}</p>}
+      {tab === "sound" && <form className={styles.form}>
+        <label className={styles.check}><Switch checked={soundEnabled}
+          onChange={event => {
+            const enabled = event.target.checked;
+            setChatSoundEnabled(enabled);
+            setSoundEnabled(enabled);
+          }} /><span>{t.sound.enabled}</span></label>
+        <label htmlFor={volumeId}>{t.sound.volume}</label>
+        <div>
+          <MutisSlider variant="smooth" formatValue={v => `${v}%`}
+            id={volumeId} min={0} max={100} step={5} value={volume} disabled={!soundEnabled}
+            aria-label={t.sound.volume} aria-valuetext={`${volume}%`}
+            onChange={v => {
+              setChatSoundVolume(v);
+              setVolume(v);
+            }} onPointerUp={preview} onKeyUp={preview} />
+        </div>
+        <p className={styles.note}>{t.sound.hint}</p>
+      </form>}
       {tab === "dashboard" && <form className={styles.form}>
         <label className={styles.check}><Switch checked={dashboardEnabled}
           onChange={event => onDashboardEnabledChange(event.target.checked)} /><span>{t.dashboard.enabled}</span></label>
