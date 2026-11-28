@@ -49,6 +49,8 @@
 .marker[aria-current="true"]::before { width: 14px; }
 .marker[aria-current="true"]::before, .marker:hover::before, .marker:focus-visible::before { opacity: 1; }
 .marker:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.marker[data-marked="true"] { color: var(--link); }
+.marker[data-marked="true"]::before { width: 14px; height: 3px; opacity: 1; }
 
 .preview {
   position: absolute;
@@ -66,6 +68,8 @@
   font-size: var(--font-13);
   pointer-events: none;
 }
+
+.markedTag { display: block; margin-bottom: 2px; color: var(--link); font-size: var(--font-small, 12px); font-weight: 600; }
 
 .preview strong {
   display: -webkit-box;
