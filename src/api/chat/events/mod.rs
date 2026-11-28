@@ -15,7 +15,7 @@ pub(super) fn should_emit_empty_reply(has_delta: bool, has_error: bool, cancelle
 
 /// Provider kinds allowed to open a turn: the Codex coordinator and the DeepSeek worker.
 fn turn_provider(kind: &str) -> Option<&str> {
-    matches!(kind, "codex_cli" | "deepseek").then_some(kind)
+    matches!(kind, "codex_cli" | "claude_cli" | "antigravity_cli" | "anthropic" | "openai_compat" | "deepseek" | "deepseek_agent").then_some(kind)
 }
 
 /// Strip memory protocol blocks from assistant messages on disk while preserving the in-memory record.

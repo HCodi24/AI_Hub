@@ -11,6 +11,8 @@ export type LiveChecker = {
 };
 /** Retained progress lines per card: enough to see what Tester is doing, never an unbounded log. */
 const MAX_CHECKER_PROGRESS = 6;
+/** Sources whose "turn" event opens a new reply: must match `turn_provider` in src/api/chat/events/mod.rs. */
+const TURN_PROVIDERS = new Set(["codex_cli", "claude_cli", "antigravity_cli", "anthropic", "openai_compat", "deepseek", "deepseek_agent"]);
 /** Applies one `checker_activity` event to the cards: start/progress/error merge by id, done removes only that card. */
 export function applyCheckerActivity(cards: LiveChecker[], activity: CheckerActivity): LiveChecker[] {
   if (activity.phase === "done") return cards.filter(card => card.id !== activity.id);
@@ -131,12 +133,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   event: (event, data) => set((state) => {
     if (event === "turn") {
       const provider = data.provider_kind;
-      if (provider !== "codex_cli" && provider !== "deepseek") return {};
+      if (!provider || !TURN_PROVIDERS.has(provider)) return {};
       const last = state.messages.at(-1);
       const empty = last?.role === "assistant" && !last.content && !last.reasoning && !last.logs.length &&
         !last.diff && !last.files.length && !last.tasks?.length && !last.attachments.length && last.error == null && last.plan_id == null && last.debate_id == null;
       const model = data.model || "";
-      const status = { ...state.status, provider_kind: provider, provider_name: data.provider_name || (provider === "deepseek" ? "DeepSeek" : "Codex"),
+      const status = { ...state.status, provider_kind: provider, provider_name: data.provider_name || provider,
         model, role: data.role, idle_s: 0, last_activity: "" };
       if (data.same_message === true && last?.role === "assistant" && !empty &&
         last.provider === provider && last.model.trim() === model.trim()) {

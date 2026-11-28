@@ -1,5 +1,5 @@
 import { UserRound } from "lucide-react";
-import { PetAvatar } from "@/components/features/pets/pet-avatar";
+import { PetAvatar } from "@/components/features/settings/pet/sprite/pet-avatar";
 import type { ChatPetState } from "@/lib/chat-pet-state";
 import { modelDisplayLabel } from "@/lib/model-display-label";
 import { chatText } from "@/text/chat";

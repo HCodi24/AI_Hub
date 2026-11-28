@@ -1,0 +1,78 @@
+/* Companion overlay strip, GPU-translated pet container, and fading speech bubble. */
+
+/* Same horizontal span as the composer box (max 820px, side padding --space-6); follows its width. */
+.strip {
+  position: absolute;
+  inset-inline: 0;
+  margin-inline: auto;
+  width: calc(min(100%, 820px) - 2 * var(--space-6));
+  container-type: inline-size;
+  bottom: calc(var(--chat-dock-height, 0px) - var(--space-3) - 6px);
+  height: 64px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.pet {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: flex-end;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  border-radius: var(--radius-small);
+  /* Clamp to the strip so a narrowing chat pulls the pet back immediately. */
+  transform: translateX(min(var(--x, 0px), calc(100cqw - 56px)));
+  transition: transform 1s cubic-bezier(0.25, 0.05, 0.75, 0.95);
+  will-change: transform;
+}
+
+.pet[data-dragging='true'] {
+  cursor: grabbing;
+  transition: none;
+}
+
+.pet:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 200px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: var(--font-12);
+  line-height: 1.35;
+  text-align: center;
+  text-wrap: balance;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms var(--ease-out);
+}
+
+.bubble[data-align='start'] {
+  left: 0;
+  transform: none;
+}
+
+.bubble[data-open='true'] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet,
+  .bubble {
+    transition: none;
+  }
+}

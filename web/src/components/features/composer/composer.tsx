@@ -18,6 +18,7 @@ import { SkillSuggestions } from "./skill-suggestions";
 import { AttachmentCard } from "@/components/features/chat/attachment-card";
 import { previewSelectionText } from "@/lib/preview-selection";
 import { MemoryPanel } from "@/components/features/memory/memory-panel";
+import { companionReact, setCompanionMode } from "@/components/features/settings/pet/companion/companion-store";
 import type { Config } from "@/schema/config.schema";
 import styles from "./composer.module.css";
 const MAX_FILES = 5;
@@ -70,6 +71,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
       if (typeof label !== "string" || typeof text !== "string" || !text) return;
       const item = { id: crypto.randomUUID(), label: label || previewText.selectedElements, text };
       setPreviewSelections(current => [...current, item]);
+      companionReact("attached");
       input.current?.focus();
     };
     window.addEventListener("mutis-preview-selection", attach);
@@ -187,6 +189,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
     importing.current = true; setUploading(true);
     let id = useChatStore.getState().id;
     if (!id) { id = crypto.randomUUID(); owner.current = id; useChatStore.setState({ id }); }
+    let added = false;
     try {
       for (const file of files) {
         if (useChatStore.getState().id !== id) break;
@@ -206,9 +209,10 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
           } else {
             attachment = { ...await importTextFile(file), id: crypto.randomUUID(), kind: "text" };
           }
-          if (useChatStore.getState().id === id) updateAttachments([...attached.current, attachment]);
+          if (useChatStore.getState().id === id) { updateAttachments([...attached.current, attachment]); added = true; }
         } catch (error) { notify(`${file.name}: ${fileReadError(error)}`); }
       }
+      if (added) companionReact("attached");
     } finally {
       importing.current = false; setUploading(false);
     }
@@ -263,7 +267,12 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
       setValue(draft); updateAttachments(sent); setRecalled(picked);
       setPreviewSelections(current => [...sentSelections, ...current]);
     } };
-    try { if (!(await send(text, false, sent.filter((file): file is Extract<Attachment, { kind: "image" }> => file.kind === "image").map(({ id, mime }) => ({ id, mime }))))) restore(); }
+    try {
+      if (await send(text, false, sent.filter((file): file is Extract<Attachment, { kind: "image" }> => file.kind === "image").map(({ id, mime }) => ({ id, mime })))) {
+        setCompanionMode(null);
+        companionReact("sent");
+      } else restore();
+    }
     catch (error) { restore(); notify(error instanceof Error ? error.message : t.error); }
     finally { pending.current = false; input.current?.focus(); }
   }
@@ -316,7 +325,9 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
       onBlur={() => { setFocused(false); setComposing(false); }}
       onSelect={(event) => trackSelection(event.currentTarget)}
       onChange={(event) => {
-        setValue(event.currentTarget.value);
+        const nextValue = event.currentTarget.value;
+        setValue(nextValue);
+        setCompanionMode(nextValue ? "typing" : null);
         trackSelection(event.currentTarget);
         setSuggestionsDismissed(false);
         setActiveSkill(null);
@@ -338,6 +349,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
           // A blank line inside the SVG would end its markdown HTML block and break the render.
           const content = text.trim().replace(/^<\?xml\s[^?]*\?>\s*/i, "").replace(/\n\s*\n/g, "\n");
           updateAttachments([...attached.current, { kind: "svg", id: crypto.randomUUID(), content }]);
+          companionReact("attached");
           return;
         }
         if (!isLongPaste(text)) return;
@@ -348,6 +360,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
         updateAttachments([...attached.current, {
           kind: "text", id: crypto.randomUUID(), name: chatText.pastedText(text.split("\n").length), content: text,
         }]);
+        companionReact("attached");
       }}
       onKeyDown={handleInputKeyDown}
       onScroll={(event) => {

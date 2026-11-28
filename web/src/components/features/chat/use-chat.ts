@@ -12,7 +12,9 @@ import { mutisApi } from "@/apis/mutis.api";
 import { startDebate, cancelActiveCard } from "./card-actions";
 import { useCardStore } from "./card-store";
 import { memoryNotice } from "@/components/features/memory/memory-events";
+import { companionReact, setCompanionMode, useCompanion } from "@/components/features/settings/pet/companion/companion-store";
 import { useToast } from "@/components/toast/toast";
+const WORKING_EVENTS = new Set(["log", "diff", "files", "tasks", "task_snapshot", "checker_activity"]);
 let activeChatAbort: AbortController | null = null;
 export function useChat() {
   const client = useQueryClient();
@@ -33,7 +35,7 @@ export function useChat() {
     const mutis = state.settings.provider_id === "mutis" ? await mutisApi.get() : undefined;
     const settings = state.settings;
     if (!mutis && (!settings.provider_id || !settings.model.trim())) {
-      useChatStore.setState({ error: chatText.selectRequired }); return false;
+      useChatStore.setState({ error: chatText.selectRequired }); companionReact("error"); return false;
     }
     // MutiS shows its lead first; a single model shows itself. The identity (and so the pet) is on screen at once,
     // before the server says anything; backend events may replace this prediction.
@@ -42,6 +44,7 @@ export function useChat() {
     const initialModel = (lead ? lead.model || initialSource?.models[0] || "" : settings.model).trim();
     // The message goes on screen at once; everything that waits for the server happens after it, while "streaming" blocks other actions.
     state.begin(text, attachments, initialSource?.kind || "", initialModel);
+    setCompanionMode("thinking");
     const current = useChatStore.getState();
     const controller = new AbortController(); activeChatAbort = controller;
     try {
@@ -50,23 +53,32 @@ export function useChat() {
       await chatApi.send({ ...settings, effort: mutis ? "default" : settings.effort, file_tools: mutis || !settings.folder.trim() ? "none" : fileToolsFor(source, settings.permission), folder: settings.folder.trim(), model: settings.model.trim(),
         chat_id: current.id, messages: current.messages.slice(0, -1) }, controller.signal, (event, data) => {
         current.event(event, data);
+        if (WORKING_EVENTS.has(event)) {
+          if (useCompanion.getState().mode !== "working") setCompanionMode("working");
+        } else if (event === "delta" && useCompanion.getState().mode === "working") {
+          setCompanionMode("thinking");
+        }
         if (event === "permission_request" && data.id) {
           void playChatSound("question");
           desktopAttention("question");
+          companionReact("question");
         }
-        if (event === "memory") useToast.getState().show(memoryNotice(data, settings.folder));
+        if (event === "memory") { useToast.getState().show(memoryNotice(data, settings.folder)); companionReact("remembered"); }
       });
       current.finish();
     } catch (error: unknown) {
       current.finish(controller.signal.aborted ? chatText.stopped : error instanceof Error ? error.message : chatText.requestError);
     } finally {
       activeChatAbort = null;
+      setCompanionMode(null);
       if (!controller.signal.aborted) {
         const last = useChatStore.getState().messages.at(-1);
         const hasQuestions = last?.role === "assistant" && parseChatQuestions(last.content).questions.length > 0;
         const kind = hasQuestions ? "question" : "done";
         void playChatSound(kind);
         desktopAttention(kind);
+        if (useChatStore.getState().error) companionReact("error");
+        else companionReact(kind === "question" ? "question" : "done");
       }
       await client.invalidateQueries({ queryKey: ["chats"] });
     }
@@ -76,9 +88,9 @@ export function useChat() {
     return true;
   }
   async function stop() {
-    if (cancelActiveCard()) return;
+    if (cancelActiveCard()) { companionReact("stopped"); return; }
     useChatStore.getState().clearQueue();
-    try { await chatApi.stop(useChatStore.getState().id); activeChatAbort?.abort(); }
+    try { await chatApi.stop(useChatStore.getState().id); activeChatAbort?.abort(); setCompanionMode(null); companionReact("stopped"); }
     catch (error: unknown) { useChatStore.setState({ error: error instanceof Error ? error.message : chatText.requestError }); }
   }
   async function load(id: string) {
@@ -86,7 +98,7 @@ export function useChat() {
     useChatStore.setState({ error: "" });
     try {
       const record = await client.fetchQuery({ queryKey: ["chat", id], queryFn: ({ signal }) => chatApi.get(id, signal), staleTime: 0 });
-      if (!deleting.current && !useChatStore.getState().streaming) useChatStore.getState().load(record);
+      if (!deleting.current && !useChatStore.getState().streaming) { useChatStore.getState().load(record); companionReact("switchChat"); }
     } catch (error: unknown) { useChatStore.setState({ error: error instanceof Error ? error.message : chatText.requestError }); }
   }
   async function remove(id: string) {
@@ -96,6 +108,7 @@ export function useChat() {
       await client.cancelQueries({ queryKey: ["chat", id] });
       await chatApi.delete(id);
       if (useChatStore.getState().id === id) useChatStore.getState().reset();
+      companionReact("deleted");
       client.removeQueries({ queryKey: ["chat", id] });
       client.setQueryData<NonNullable<typeof chats.data>>(["chats"], current => current?.filter(chat => chat.id !== id));
       try { localStorage.removeItem(`ai-hub-chat-selection:${id}`); } catch { /* Storage unavailable. */ }

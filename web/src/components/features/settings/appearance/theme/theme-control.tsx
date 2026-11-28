@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { configApi } from "@/apis/config.api";
+import { companionReact } from "@/components/features/settings/pet/companion/companion-store";
 import { HorizonThemeToggle } from "./horizon-theme-toggle";
 import { applyStyle, isStyle, resolveSavedStyle } from "./style-control";
 
@@ -54,6 +55,7 @@ export function ThemeControl({ compact = false }: { compact?: boolean } = {}) {
   }, [savedStyle]);
   function change(value: Theme) {
     setTheme(value); apply(value);
+    companionReact("themeChanged");
     configApi.saveTheme(value).then(() => client.invalidateQueries({ queryKey: ["config"] })).catch(() => undefined);
   }
   return (

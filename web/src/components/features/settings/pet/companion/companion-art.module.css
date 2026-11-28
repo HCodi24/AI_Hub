@@ -1,0 +1,1143 @@
+/* Styling, brand palette, pose visibility, and CSS-only animations for the cloud-head robot mascot. */
+
+.root {
+  --pet-body: #4F73E8;
+  --pet-body-light: #6C93F5;
+  --pet-body-dark: #3A55C4;
+  --pet-visor: #1B2250;
+  --pet-glow: #7BE8F5;
+  --pet-ink: #12163A;
+  --pet-blush: #FF9DBB;
+  --rig-flip: 1;
+
+  display: block;
+  width: var(--companion-size, 56px);
+  height: var(--companion-size, 56px);
+  overflow: visible;
+  user-select: none;
+}
+
+.root[data-facing='left'] {
+  --rig-flip: -1;
+}
+
+/* Ground shadow */
+.shadow {
+  fill: var(--pet-ink);
+  opacity: 0.16;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease;
+}
+
+/* Movable anatomical groups with fill-box joint origins */
+.rig {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  transform: scaleX(var(--rig-flip));
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.head {
+  transform-box: fill-box;
+  transform-origin: 50% 88%;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.visor {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.antennaOrBump {
+  transform-box: fill-box;
+  transform-origin: 50% 85%;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.body {
+  transform-box: fill-box;
+  transform-origin: 50% 75%;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Counter-flipped when data-facing='left' so '>_' always reads left-to-right */
+.chestGlyph {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transform: scaleX(var(--rig-flip));
+  transition: transform 180ms ease, opacity 200ms ease;
+}
+
+.armLeft {
+  transform-box: fill-box;
+  transform-origin: 78% 18%;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.armRight {
+  transform-box: fill-box;
+  transform-origin: 22% 18%;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.footLeft {
+  transform-box: fill-box;
+  transform-origin: 50% 15%;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.footRight {
+  transform-box: fill-box;
+  transform-origin: 50% 15%;
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Flat palette surfaces (outline feel via layered dark-navy fill shapes, no filters) */
+.inkFill {
+  fill: var(--pet-ink);
+}
+
+.bodyFill {
+  fill: var(--pet-body);
+}
+
+.bodyLightFill {
+  fill: var(--pet-body-light);
+}
+
+.bodyDarkFill {
+  fill: var(--pet-body-dark);
+}
+
+.visorScreen {
+  fill: var(--pet-visor);
+}
+
+/* Chest terminal prompt '>_' */
+.chestStroke {
+  fill: none;
+  stroke: #e8fcff;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Visor glowing facial features */
+.eyeGlowStroke {
+  fill: none;
+  stroke: var(--pet-glow);
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.eyeGlowFill {
+  fill: var(--pet-glow);
+}
+
+.eyeSpark {
+  fill: #ffffff;
+}
+
+.mouthGlowStroke {
+  fill: none;
+  stroke: var(--pet-glow);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sadTear {
+  fill: var(--pet-glow);
+  transform-box: fill-box;
+  transform-origin: 50% 25%;
+}
+
+.blush {
+  fill: var(--pet-blush);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+/* Pose-specific face groups & badges (hidden by default, toggled via data-pose) */
+.eyesNormal,
+.eyesHappy,
+.eyesSurprised,
+.eyesSad,
+.eyesSleep,
+.rememberBadge,
+.surprisedBadge,
+.sleepMarks {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transition: opacity 180ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Remember lightbulb badge */
+.rememberBadge {
+  transform-origin: 50% 85%;
+}
+
+.bulbGlass {
+  fill: var(--pet-glow);
+  stroke: var(--pet-ink);
+  stroke-width: 1.25;
+}
+
+.bulbBase {
+  fill: var(--pet-ink);
+}
+
+.bulbRay {
+  fill: none;
+  stroke: var(--pet-glow);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+/* Surprised '!' badge */
+.surprisedBadge {
+  transform-origin: 50% 90%;
+}
+
+.exclaimMark {
+  fill: var(--pet-glow);
+  stroke: var(--pet-ink);
+  stroke-width: 1.1;
+}
+
+/* Sleep 'z' marks */
+.sleepZ1,
+.sleepZ2,
+.sleepZ3 {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+
+.sleepZStroke {
+  fill: none;
+  stroke: var(--pet-body);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ==========================================================================
+   Pose-driven face, badge visibility, static posture, and animations
+   ========================================================================== */
+
+/* --- idle: gentle breathing, slight head bob, slow blink via opacity swap, soft arm sway --- */
+.root[data-pose='idle'] .eyesNormal {
+  opacity: 1;
+  animation: robot-idle-blink-open 4.2s ease-in-out infinite;
+}
+
+.root[data-pose='idle'] .eyesSleep {
+  opacity: 0;
+  animation: robot-idle-blink-closed 4.2s ease-in-out infinite;
+}
+
+.root[data-pose='idle'] .eyesSleep .mouthGlowStroke {
+  opacity: 0;
+}
+
+.root[data-pose='idle'] .body {
+  animation: robot-idle-body 3.2s ease-in-out infinite;
+}
+
+.root[data-pose='idle'] .head {
+  animation: robot-idle-head 3.2s ease-in-out infinite;
+}
+
+.root[data-pose='idle'] .antennaOrBump {
+  animation: robot-idle-bump 3.2s ease-in-out infinite;
+}
+
+.root[data-pose='idle'] .armLeft {
+  animation: robot-idle-arm-left 3.2s ease-in-out infinite;
+}
+
+.root[data-pose='idle'] .armRight {
+  animation: robot-idle-arm-right 3.2s ease-in-out infinite;
+}
+
+.root[data-pose='idle'] .shadow {
+  animation: robot-idle-shadow 3.2s ease-in-out infinite;
+}
+
+.root[data-pose='idle'] .chestGlyph {
+  animation: robot-idle-glyph 3.2s ease-in-out infinite;
+}
+
+/* --- walk: alternating feet lift, opposite arm swing, body bounce, head tilt, shadow squash --- */
+.root[data-pose='walk'] .eyesNormal {
+  opacity: 1;
+}
+
+.root[data-pose='walk'] .rig {
+  animation: robot-walk-rig 0.56s ease-in-out infinite;
+}
+
+.root[data-pose='walk'] .body {
+  animation: robot-walk-body 0.56s ease-in-out infinite;
+}
+
+.root[data-pose='walk'] .head {
+  animation: robot-walk-head 0.56s ease-in-out infinite;
+}
+
+.root[data-pose='walk'] .footLeft {
+  animation: robot-walk-foot-left 0.56s ease-in-out infinite;
+}
+
+.root[data-pose='walk'] .footRight {
+  animation: robot-walk-foot-right 0.56s ease-in-out infinite;
+}
+
+.root[data-pose='walk'] .armLeft {
+  animation: robot-walk-arm-left 0.56s ease-in-out infinite;
+}
+
+.root[data-pose='walk'] .armRight {
+  animation: robot-walk-arm-right 0.56s ease-in-out infinite;
+}
+
+.root[data-pose='walk'] .shadow {
+  animation: robot-walk-shadow 0.56s ease-in-out infinite;
+}
+
+/* --- happy: energetic hop, both arms raised, joyful head wiggle --- */
+.root[data-pose='happy'] .eyesHappy {
+  opacity: 1;
+}
+
+.root[data-pose='happy'] .blush {
+  opacity: 0.72;
+  animation: robot-happy-blush 0.64s ease-in-out infinite;
+}
+
+.root[data-pose='happy'] .rig {
+  animation: robot-happy-rig 0.64s ease-in-out infinite;
+}
+
+.root[data-pose='happy'] .head {
+  animation: robot-happy-head 0.64s ease-in-out infinite;
+}
+
+.root[data-pose='happy'] .armLeft {
+  transform: rotate(72deg);
+  animation: robot-happy-arm-left 0.64s ease-in-out infinite;
+}
+
+.root[data-pose='happy'] .armRight {
+  transform: rotate(-72deg);
+  animation: robot-happy-arm-right 0.64s ease-in-out infinite;
+}
+
+.root[data-pose='happy'] .footLeft {
+  animation: robot-happy-foot-left 0.64s ease-in-out infinite;
+}
+
+.root[data-pose='happy'] .footRight {
+  animation: robot-happy-foot-right 0.64s ease-in-out infinite;
+}
+
+.root[data-pose='happy'] .shadow {
+  animation: robot-happy-shadow 0.64s ease-in-out infinite;
+}
+
+/* --- remember: small nod, one arm raised toward head, lightbulb badge pop --- */
+.root[data-pose='remember'] .eyesNormal {
+  opacity: 1;
+}
+
+.root[data-pose='remember'] .rememberBadge {
+  opacity: 1;
+  animation:
+    robot-remember-badge-pop 0.42s cubic-bezier(0.22, 1.4, 0.36, 1) both,
+    robot-remember-badge-float 1.8s ease-in-out 0.42s infinite;
+}
+
+.root[data-pose='remember'] .head {
+  animation: robot-remember-head 1.5s ease-in-out infinite;
+}
+
+.root[data-pose='remember'] .body {
+  animation: robot-remember-body 1.5s ease-in-out infinite;
+}
+
+.root[data-pose='remember'] .armRight {
+  transform: translateY(-1px) rotate(-72deg);
+  animation: robot-remember-arm-right 1.5s ease-in-out infinite;
+}
+
+.root[data-pose='remember'] .armLeft {
+  transform: rotate(6deg);
+  animation: robot-remember-arm-left 1.5s ease-in-out infinite;
+}
+
+/* --- surprised: quick jump scale-up then hold, arms flung out, wide eyes & '!' pop --- */
+.root[data-pose='surprised'] .eyesSurprised {
+  opacity: 1;
+  animation: robot-surprised-eyes 0.36s cubic-bezier(0.2, 1.4, 0.35, 1) both;
+}
+
+.root[data-pose='surprised'] .surprisedBadge {
+  opacity: 1;
+  animation: robot-surprised-badge 0.38s cubic-bezier(0.2, 1.45, 0.35, 1) both;
+}
+
+.root[data-pose='surprised'] .rig {
+  animation: robot-surprised-rig 0.42s cubic-bezier(0.2, 1.35, 0.35, 1) forwards;
+}
+
+.root[data-pose='surprised'] .head {
+  transform: translateY(-1px) scale(1.03);
+  animation: robot-surprised-head 0.42s ease-out forwards;
+}
+
+.root[data-pose='surprised'] .armLeft {
+  transform: rotate(48deg);
+  animation: robot-surprised-arm-left 0.38s cubic-bezier(0.2, 1.35, 0.35, 1) forwards;
+}
+
+.root[data-pose='surprised'] .armRight {
+  transform: rotate(-48deg);
+  animation: robot-surprised-arm-right 0.38s cubic-bezier(0.2, 1.35, 0.35, 1) forwards;
+}
+
+.root[data-pose='surprised'] .shadow {
+  animation: robot-surprised-shadow 0.42s ease-out forwards;
+}
+
+/* --- sad: lowered head, slumped body, drooping arms, slow tear drip --- */
+.root[data-pose='sad'] .eyesSad {
+  opacity: 1;
+}
+
+.root[data-pose='sad'] .rig {
+  animation: robot-sad-rig 3.6s ease-in-out infinite;
+}
+
+.root[data-pose='sad'] .head {
+  transform: translateY(2.6px) rotate(4.5deg);
+  animation: robot-sad-head 3.6s ease-in-out infinite;
+}
+
+.root[data-pose='sad'] .body {
+  transform: translateY(1.4px) scale(1.04, 0.93);
+  animation: robot-sad-body 3.6s ease-in-out infinite;
+}
+
+.root[data-pose='sad'] .armLeft {
+  transform: translateY(1.6px) rotate(-14deg);
+  animation: robot-sad-arm-left 3.6s ease-in-out infinite;
+}
+
+.root[data-pose='sad'] .armRight {
+  transform: translateY(1.6px) rotate(14deg);
+  animation: robot-sad-arm-right 3.6s ease-in-out infinite;
+}
+
+.root[data-pose='sad'] .sadTear {
+  animation: robot-sad-tear 2.2s ease-in infinite;
+}
+
+.root[data-pose='sad'] .shadow {
+  transform: scale(1.06, 1.03);
+  opacity: 0.18;
+}
+
+/* --- sleep: slow deep breathing, dropped head, staggered floating 'z' marks --- */
+.root[data-pose='sleep'] .eyesSleep,
+.root[data-pose='sleep'] .sleepMarks {
+  opacity: 1;
+}
+
+.root[data-pose='sleep'] .rig {
+  animation: robot-sleep-rig 4.2s ease-in-out infinite;
+}
+
+.root[data-pose='sleep'] .body {
+  transform: translateY(1px) scale(1.02, 0.96);
+  animation: robot-sleep-body 4.2s ease-in-out infinite;
+}
+
+.root[data-pose='sleep'] .head {
+  transform: translateY(3px) rotate(-6deg);
+  animation: robot-sleep-head 4.2s ease-in-out infinite;
+}
+
+.root[data-pose='sleep'] .armLeft {
+  transform: translateY(1.4px) rotate(-10deg);
+  animation: robot-sleep-arm-left 4.2s ease-in-out infinite;
+}
+
+.root[data-pose='sleep'] .armRight {
+  transform: translateY(1.4px) rotate(10deg);
+  animation: robot-sleep-arm-right 4.2s ease-in-out infinite;
+}
+
+.root[data-pose='sleep'] .chestGlyph {
+  opacity: 0.55;
+}
+
+.root[data-pose='sleep'] .shadow {
+  animation: robot-sleep-shadow 4.2s ease-in-out infinite;
+}
+
+.root[data-pose='sleep'] .sleepZ1 {
+  animation: robot-sleep-z 2.7s ease-in-out 0s infinite both;
+}
+
+.root[data-pose='sleep'] .sleepZ2 {
+  animation: robot-sleep-z 2.7s ease-in-out 0.9s infinite both;
+}
+
+.root[data-pose='sleep'] .sleepZ3 {
+  animation: robot-sleep-z 2.7s ease-in-out 1.8s infinite both;
+}
+
+/* ==========================================================================
+   Robot keyframes (transform and opacity only)
+   ========================================================================== */
+
+/* idle keyframes */
+@keyframes robot-idle-body {
+  0%,
+  100% {
+    transform: translateY(0px) scale(1, 1);
+  }
+  50% {
+    transform: translateY(0.45px) scale(1.025, 0.975);
+  }
+}
+
+@keyframes robot-idle-head {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  35% {
+    transform: translateY(0.85px) rotate(0.9deg);
+  }
+  70% {
+    transform: translateY(-0.35px) rotate(-0.7deg);
+  }
+}
+
+@keyframes robot-idle-bump {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  40% {
+    transform: rotate(-2.2deg);
+  }
+  75% {
+    transform: rotate(1.6deg);
+  }
+}
+
+@keyframes robot-idle-arm-left {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(4.5deg);
+  }
+}
+
+@keyframes robot-idle-arm-right {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-4.5deg);
+  }
+}
+
+@keyframes robot-idle-shadow {
+  0%,
+  100% {
+    transform: scale(1, 1);
+    opacity: 0.16;
+  }
+  50% {
+    transform: scale(1.03, 1.01);
+    opacity: 0.175;
+  }
+}
+
+@keyframes robot-idle-glyph {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.86;
+  }
+}
+
+@keyframes robot-idle-blink-open {
+  0%,
+  90%,
+  98%,
+  100% {
+    opacity: 1;
+  }
+  92.5%,
+  95.5% {
+    opacity: 0;
+  }
+}
+
+@keyframes robot-idle-blink-closed {
+  0%,
+  90%,
+  98%,
+  100% {
+    opacity: 0;
+  }
+  92.5%,
+  95.5% {
+    opacity: 1;
+  }
+}
+
+/* walk keyframes (symmetric 2-step cycle; 0% === 100% for seamless looping) */
+@keyframes robot-walk-rig {
+  0%,
+  50%,
+  100% {
+    transform: scaleX(var(--rig-flip)) translateY(0.5px) scale(1.03, 0.97);
+  }
+  25%,
+  75% {
+    transform: scaleX(var(--rig-flip)) translateY(-2.4px) scale(0.985, 1.02);
+  }
+}
+
+@keyframes robot-walk-body {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0.35px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-0.55px) rotate(-2.5deg);
+  }
+  75% {
+    transform: translateY(-0.55px) rotate(2.5deg);
+  }
+}
+
+@keyframes robot-walk-head {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0.5px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-0.45px) rotate(3.2deg);
+  }
+  75% {
+    transform: translateY(-0.45px) rotate(-3.2deg);
+  }
+}
+
+@keyframes robot-walk-foot-left {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-2.8px) rotate(-14deg);
+  }
+  75% {
+    transform: translateY(0.6px) rotate(10deg);
+  }
+}
+
+@keyframes robot-walk-foot-right {
+  0%,
+  50%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(0.6px) rotate(10deg);
+  }
+  75% {
+    transform: translateY(-2.8px) rotate(-14deg);
+  }
+}
+
+@keyframes robot-walk-arm-left {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-12deg);
+  }
+  75% {
+    transform: rotate(22deg);
+  }
+}
+
+@keyframes robot-walk-arm-right {
+  0%,
+  50%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-22deg);
+  }
+  75% {
+    transform: rotate(12deg);
+  }
+}
+
+@keyframes robot-walk-shadow {
+  0%,
+  50%,
+  100% {
+    transform: scale(1.06, 1.04);
+    opacity: 0.19;
+  }
+  25%,
+  75% {
+    transform: scale(0.84, 0.88);
+    opacity: 0.11;
+  }
+}
+
+/* happy keyframes */
+@keyframes robot-happy-rig {
+  0%,
+  100% {
+    transform: scaleX(var(--rig-flip)) translateY(0.6px) scale(1.05, 0.95);
+  }
+  42% {
+    transform: scaleX(var(--rig-flip)) translateY(-5.4px) scale(0.97, 1.04);
+  }
+  82% {
+    transform: scaleX(var(--rig-flip)) translateY(1px) scale(1.06, 0.94);
+  }
+}
+
+@keyframes robot-happy-head {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(-4.5deg);
+  }
+  50% {
+    transform: translateY(-0.9px) rotate(4.5deg);
+  }
+}
+
+@keyframes robot-happy-arm-left {
+  0%,
+  100% {
+    transform: rotate(62deg);
+  }
+  45% {
+    transform: rotate(86deg);
+  }
+}
+
+@keyframes robot-happy-arm-right {
+  0%,
+  100% {
+    transform: rotate(-62deg);
+  }
+  45% {
+    transform: rotate(-86deg);
+  }
+}
+
+@keyframes robot-happy-foot-left {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  42% {
+    transform: rotate(12deg);
+  }
+}
+
+@keyframes robot-happy-foot-right {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  42% {
+    transform: rotate(-12deg);
+  }
+}
+
+@keyframes robot-happy-shadow {
+  0%,
+  100% {
+    transform: scale(1.06, 1.04);
+    opacity: 0.18;
+  }
+  42% {
+    transform: scale(0.68, 0.78);
+    opacity: 0.08;
+  }
+  82% {
+    transform: scale(1.08, 1.05);
+    opacity: 0.19;
+  }
+}
+
+@keyframes robot-happy-blush {
+  0%,
+  100% {
+    opacity: 0.64;
+  }
+  50% {
+    opacity: 0.88;
+  }
+}
+
+/* remember keyframes */
+@keyframes robot-remember-head {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  28% {
+    transform: translateY(1.4px) rotate(4.2deg);
+  }
+  58% {
+    transform: translateY(-0.5px) rotate(-1.6deg);
+  }
+}
+
+@keyframes robot-remember-body {
+  0%,
+  100% {
+    transform: translateY(0px) scale(1, 1);
+  }
+  28% {
+    transform: translateY(0.5px) scale(1.02, 0.98);
+  }
+}
+
+@keyframes robot-remember-arm-right {
+  0%,
+  100% {
+    transform: translateY(-1px) rotate(-68deg);
+  }
+  45% {
+    transform: translateY(-1.6px) rotate(-79deg);
+  }
+}
+
+@keyframes robot-remember-arm-left {
+  0%,
+  100% {
+    transform: rotate(6deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+}
+
+@keyframes robot-remember-badge-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.35);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-1.6px) scale(1.14);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+}
+
+@keyframes robot-remember-badge-float {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    opacity: 0.88;
+    transform: translateY(-1.8px) scale(1.06);
+  }
+}
+
+/* surprised keyframes */
+@keyframes robot-surprised-rig {
+  0% {
+    transform: scaleX(var(--rig-flip)) translateY(0px) scale(1, 1);
+  }
+  38% {
+    transform: scaleX(var(--rig-flip)) translateY(-5.4px) scale(1.06, 1.08);
+  }
+  72% {
+    transform: scaleX(var(--rig-flip)) translateY(-1.2px) scale(1.03, 1.03);
+  }
+  100% {
+    transform: scaleX(var(--rig-flip)) translateY(-0.8px) scale(1.02, 1.02);
+  }
+}
+
+@keyframes robot-surprised-head {
+  0% {
+    transform: translateY(0px) scale(1);
+  }
+  40% {
+    transform: translateY(-1.8px) scale(1.05);
+  }
+  100% {
+    transform: translateY(-1px) scale(1.03);
+  }
+}
+
+@keyframes robot-surprised-arm-left {
+  0% {
+    transform: rotate(0deg);
+  }
+  45% {
+    transform: rotate(64deg);
+  }
+  100% {
+    transform: rotate(48deg);
+  }
+}
+
+@keyframes robot-surprised-arm-right {
+  0% {
+    transform: rotate(0deg);
+  }
+  45% {
+    transform: rotate(-64deg);
+  }
+  100% {
+    transform: rotate(-48deg);
+  }
+}
+
+@keyframes robot-surprised-eyes {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes robot-surprised-badge {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.3);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.22);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+}
+
+@keyframes robot-surprised-shadow {
+  0% {
+    transform: scale(1, 1);
+    opacity: 0.16;
+  }
+  38% {
+    transform: scale(0.72, 0.8);
+    opacity: 0.09;
+  }
+  100% {
+    transform: scale(0.92, 0.94);
+    opacity: 0.14;
+  }
+}
+
+/* sad keyframes */
+@keyframes robot-sad-rig {
+  0%,
+  100% {
+    transform: scaleX(var(--rig-flip)) translateY(1.1px);
+  }
+  50% {
+    transform: scaleX(var(--rig-flip)) translateY(1.7px);
+  }
+}
+
+@keyframes robot-sad-head {
+  0%,
+  100% {
+    transform: translateY(2.4px) rotate(4deg);
+  }
+  50% {
+    transform: translateY(3.2px) rotate(5.6deg);
+  }
+}
+
+@keyframes robot-sad-body {
+  0%,
+  100% {
+    transform: translateY(1.2px) scale(1.03, 0.94);
+  }
+  50% {
+    transform: translateY(1.7px) scale(1.05, 0.915);
+  }
+}
+
+@keyframes robot-sad-arm-left {
+  0%,
+  100% {
+    transform: translateY(1.5px) rotate(-13deg);
+  }
+  50% {
+    transform: translateY(2px) rotate(-16deg);
+  }
+}
+
+@keyframes robot-sad-arm-right {
+  0%,
+  100% {
+    transform: translateY(1.5px) rotate(13deg);
+  }
+  50% {
+    transform: translateY(2px) rotate(16deg);
+  }
+}
+
+@keyframes robot-sad-tear {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.8px) scale(0.75);
+  }
+  20% {
+    opacity: 0.95;
+    transform: translateY(0px) scale(1);
+  }
+  65% {
+    opacity: 0.95;
+    transform: translateY(2.2px) scale(1);
+  }
+  90%,
+  100% {
+    opacity: 0;
+    transform: translateY(4.4px) scale(0.8);
+  }
+}
+
+/* sleep keyframes */
+@keyframes robot-sleep-rig {
+  0%,
+  100% {
+    transform: scaleX(var(--rig-flip)) translateY(1.4px) scale(1, 1);
+  }
+  50% {
+    transform: scaleX(var(--rig-flip)) translateY(2px) scale(1.03, 0.97);
+  }
+}
+
+@keyframes robot-sleep-body {
+  0%,
+  100% {
+    transform: translateY(0.8px) scale(1.01, 0.98);
+  }
+  50% {
+    transform: translateY(1.5px) scale(1.05, 0.94);
+  }
+}
+
+@keyframes robot-sleep-head {
+  0%,
+  100% {
+    transform: translateY(2.6px) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(3.6px) rotate(-7.2deg);
+  }
+}
+
+@keyframes robot-sleep-arm-left {
+  0%,
+  100% {
+    transform: translateY(1.2px) rotate(-9deg);
+  }
+  50% {
+    transform: translateY(1.8px) rotate(-12deg);
+  }
+}
+
+@keyframes robot-sleep-arm-right {
+  0%,
+  100% {
+    transform: translateY(1.2px) rotate(9deg);
+  }
+  50% {
+    transform: translateY(1.8px) rotate(12deg);
+  }
+}
+
+@keyframes robot-sleep-shadow {
+  0%,
+  100% {
+    transform: scale(1.04, 1.02);
+    opacity: 0.17;
+  }
+  50% {
+    transform: scale(1.09, 1.04);
+    opacity: 0.19;
+  }
+}
+
+@keyframes robot-sleep-z {
+  0% {
+    opacity: 0;
+    transform: translate(0px, 3px) scale(0.65);
+  }
+  22% {
+    opacity: 0.95;
+    transform: translate(0.8px, 0.5px) scale(0.95);
+  }
+  68% {
+    opacity: 0.85;
+    transform: translate(2.2px, -3.5px) scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(3.2px, -6.5px) scale(1.12);
+  }
+}
+
+/* ==========================================================================
+   Reduced motion — disable all animations and transitions, show static poses
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .root,
+  .root * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

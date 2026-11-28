@@ -12,7 +12,8 @@ import { ACTIVE_CHAT_KEY, useChatStore } from "./chat-store";
 import { useChat } from "./use-chat";
 import { useDashboardPreference } from "./dashboard/use-dashboard-preference";
 import { useTaskBoardPreference } from "./task_board/use-task-board-preference";
-import { useChatPetSize } from "@/components/features/pets/use-chat-pet-size";
+import { useChatPetSize } from "@/components/features/settings/pet/sprite/use-chat-pet-size";
+import { Companion } from "@/components/features/settings/pet/companion/companion";
 import { chatText } from "@/text/chat";
 import styles from "./chat-screen.module.css";
 import { Toast, useToast } from "@/components/toast/toast";
@@ -54,6 +55,7 @@ export function ChatScreen() {
     let overflowFrame = 0;
     const updateDock = () => {
       frame.style.setProperty("--chat-dock-height", `${dock.getBoundingClientRect().height}px`);
+      frame.style.setProperty("--chat-composer-height", `${composerSlot.getBoundingClientRect().height}px`);
       cancelAnimationFrame(overflowFrame);
       overflowFrame = requestAnimationFrame(() => {
         composerSlot.toggleAttribute("data-overflow", composer.offsetHeight > composerSlot.clientHeight);
@@ -117,6 +119,7 @@ export function ChatScreen() {
               <MessageList send={send} taskBoardEnabled={taskBoardEnabled} />
             </section>
           </div>
+          <Companion className={styles.companionStrip} />
           <div ref={dockRef} data-glass="dock" className={styles.dock}>
             <div className={styles.dockBoard}><TaskBoard enabled={taskBoardEnabled} /></div>
             <div ref={composerSlotRef} className={styles.dockComposer}>

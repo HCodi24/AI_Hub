@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from "react";
 import { Blocks, Boxes, Hammer, LayoutDashboard, Palette, PawPrint, Puzzle, SlidersHorizontal, Users, Volume2 } from "lucide-react";
-import { PetsSection } from "@/components/features/pets/pets-section";
+import { PetsSection } from "@/components/features/settings/pet/sprite/pets-section";
 import { Dialog } from "@/components/dialog/dialog";
 import { ScrollArea } from "@/components/scroll-area";
 import { Switch } from "@/components/button/switch";

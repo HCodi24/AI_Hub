@@ -1,4 +1,4 @@
-import { PetAvatar } from "@/components/features/pets/pet-avatar";
+import { PetAvatar } from "@/components/features/settings/pet/sprite/pet-avatar";
 import { chatText } from "@/text/chat";
 import { modelDisplayLabel } from "@/lib/model-display-label";
 import { ChatActivity } from "./chat-activity";

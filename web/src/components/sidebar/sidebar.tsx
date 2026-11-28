@@ -5,6 +5,7 @@ import { Dialog } from "@/components/dialog/dialog";
 import { useCardStore } from "@/components/features/chat/card-store";
 import { IconButton } from "@/components/icon-button/icon-button";
 import { useChatStore } from "@/components/features/chat/chat-store";
+import { companionReact } from "@/components/features/settings/pet/companion/companion-store";
 import { FolderTree } from "./folder-tree";
 import { ScrollArea } from "@/components/scroll-area";
 import { Skeleton } from "@/components/skeleton/skeleton";
@@ -199,7 +200,7 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
           {!treeOpen && <IconButton aria-label={chatText.searchChats} aria-expanded={searching} aria-controls="sidebar-search" onClick={() => { setSearching(!searching); setQuery(""); }}><Search size={20} /></IconButton>}
           <div className={styles.close}><IconButton aria-label={chatText.close} onClick={() => setDrawer(false)}><X size={20} /></IconButton></div>
         </div>
-        <button className={styles.newChat} disabled={streaming} onClick={reset}><PenSquare size={18} aria-hidden="true" />{chatText.newChat}</button>
+        <button className={styles.newChat} disabled={streaming} onClick={() => { reset(); companionReact("newChat"); }}><PenSquare size={18} aria-hidden="true" />{chatText.newChat}</button>
         {treeOpen ? <section id="sidebar-files" tabIndex={-1} className={styles.files} aria-label={chatText.projectTree}>
           {settingsFolder ? <FolderTree key={settingsFolder} folder={settingsFolder} />
             : <><h2>{chatText.projectTree}</h2><p>{chatText.treeNoFolder}</p></>}

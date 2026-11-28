@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { memoryApi } from "@/apis/memory.api";
 import { Dialog } from "@/components/dialog/dialog";
+import { companionReact } from "@/components/features/settings/pet/companion/companion-store";
 import { notify } from "@/components/toast/toast";
 import { cardText as t } from "@/text/cards";
 import { folderName } from "@/lib/utils";
@@ -18,13 +19,13 @@ export function MemoryPanel({ folder, close, attach }: { folder: string; close: 
   async function run(action: () => Promise<unknown>, refresh = false) {
     setBusy(true);
     try { await action(); if (refresh) { await client.invalidateQueries({ queryKey: ["memory", folder] }); setSelected(null); setConfirm(null); } }
-    catch (error) { notify(error instanceof Error ? error.message : t.error); } finally { setBusy(false); }
+    catch (error) { notify(error instanceof Error ? error.message : t.error); companionReact("error"); } finally { setBusy(false); }
   }
   async function open(scope: string, archived: boolean) {
     await run(async () => { const result = await memoryApi.get(folder, scope); setSelected({ scope, archived }); setText(result.text); setConfirm(null); });
   }
   function recall(label: string, target: Parameters<typeof memoryApi.recall>[0]) {
-    void run(async () => { attach(label, await memoryApi.recall(target)); notify(t.attached(label)); close(); });
+    void run(async () => { attach(label, await memoryApi.recall(target)); notify(t.attached(label)); companionReact("remembered"); close(); });
   }
   const others = projects.data?.filter(project => project.path.toLowerCase() !== folder.toLowerCase()) || [];
   return <Dialog title={t.memoryTitle} close={close}><p><FileEdit size={16} aria-hidden="true" /> {folder}</p>
@@ -40,7 +41,7 @@ export function MemoryPanel({ folder, close, attach }: { folder: string; close: 
       <button disabled={busy} aria-label={`${t.attachMemory}: ${folderName(project.path)}`} title={t.attachMemory}
         onClick={() => recall(folderName(project.path), { project: project.slug })}><Paperclip size={16} aria-hidden="true" /></button></div>)}</div></section>}
     {selected && <section><label>{t.scope}<textarea value={text} disabled={busy} onChange={event => setText(event.target.value)} /></label>
-      <div className={styles.actions}><button disabled={busy} onClick={() => void run(async () => { await memoryApi.put(folder, selected.scope, text); notify(t.saved); }, true)}>{t.save}</button>
+      <div className={styles.actions}><button disabled={busy} onClick={() => void run(async () => { await memoryApi.put(folder, selected.scope, text); notify(t.saved); companionReact("remembered"); }, true)}>{t.save}</button>
         <button disabled={busy} onClick={() => setConfirm(selected.archived ? "restore" : "archive")}>{selected.archived ? t.restore : t.archive}</button>
         {selected.archived && <button disabled={busy} onClick={() => setConfirm("delete")}>{t.delete}</button>}</div>
       {confirm && <div role="group" aria-label={t.confirmMemory(t[confirm], selected.scope)}><p>{t.confirmMemory(t[confirm], selected.scope)}</p>
