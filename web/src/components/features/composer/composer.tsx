@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { Scale, X, FileEdit, MousePointerClick } from "lucide-react";
-import { addonsApi } from "@/apis/addons.api";
 import { droppedFiles, fileReadError, importDirectory, importTextFile, importedFileText, type DroppedFile, type ImportedFile } from "@/lib/import-file";
 import { http } from "@/lib/http";
+import { skillHighlightParts, UNICODE_WHITESPACE, useKnownSkills } from "@/lib/skill-tokens";
 import { chatText } from "@/text/chat";
 import { previewText } from "@/text/preview";
 import { cardText as t } from "@/text/cards";
@@ -23,9 +22,7 @@ import styles from "./composer.module.css";
 const MAX_FILES = 5;
 // Match the whitespace used by Rust's trim_start and char::is_whitespace.
 const FIRST_SLASH_TOKEN = new RegExp("^(\\p{White_Space}*)/([^\\p{White_Space}]*)", "u");
-const UNICODE_WHITESPACE = /^\p{White_Space}$/u;
 type SuggestionToken = { start: number; end: number; prefix: string };
-type HighlightPart = { text: string; highlighted: boolean };
 function suggestionTokenAt(value: string, caret: number): SuggestionToken | null {
   let start = caret;
   while (start > 0 && !UNICODE_WHITESPACE.test(value[start - 1])) start--;
@@ -36,23 +33,6 @@ function suggestionTokenAt(value: string, caret: number): SuggestionToken | null
   // A second separator indicates a URL or path rather than a skill command.
   if (token.includes("/") || token.includes("\\")) return null;
   return { start, end, prefix: value.slice(start + 1, caret).toLowerCase() };
-}
-function skillHighlightParts(value: string, knownSkills: ReadonlySet<string>): HighlightPart[] {
-  const parts: HighlightPart[] = [];
-  const tokenPattern = /\/([^\p{White_Space}]*)/gu;
-  let cursor = 0;
-  for (const match of value.matchAll(tokenPattern)) {
-    const start = match.index;
-    const token = match[1];
-    const end = start + match[0].length;
-    const hasBoundary = start === 0 || UNICODE_WHITESPACE.test(value[start - 1]);
-    if (!hasBoundary || token.includes("/") || token.includes("\\") || !knownSkills.has(token)) continue;
-    if (cursor < start) parts.push({ text: value.slice(cursor, start), highlighted: false });
-    parts.push({ text: match[0], highlighted: true });
-    cursor = end;
-  }
-  if (cursor < value.length || parts.length === 0) parts.push({ text: value.slice(cursor), highlighted: false });
-  return parts;
 }
 function syncHighlight(textarea: HTMLTextAreaElement | null, highlight: HTMLDivElement | null) {
   if (!textarea || !highlight) return;
@@ -98,13 +78,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
   const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
   const [activeSkill, setActiveSkill] = useState<string | null>(null);
   const skillListId = useId();
-  const addons = useQuery({ queryKey: ["addons"], queryFn: ({ signal }) => addonsApi.overview(signal) });
-  const { shared_skills: sharedSkills, builtin_skills: builtinSkills } =
-    (addons.isSuccess ? addons.data : undefined) ?? {};
-  const knownSkills = useMemo(
-    () => new Set<string>([...(sharedSkills ?? []), ...(builtinSkills ?? [])]),
-    [sharedSkills, builtinSkills],
-  );
+  const knownSkills = useKnownSkills();
   const highlightParts = useMemo(() => skillHighlightParts(value, knownSkills), [value, knownSkills]);
   const firstSlashToken = FIRST_SLASH_TOKEN.exec(value);
   const suggestionToken = selection.start === selection.end ? suggestionTokenAt(value, selection.start) : null;
@@ -319,7 +293,7 @@ export function Composer({ dropTarget, config, streaming, send, stop }: { dropTa
           : <span key={index}>{part.text}</span>)}
         {value.endsWith("\n") && "\u200b"}
       </div>
-      <textarea id="chat-input" ref={input} value={value} rows={1}
+      <textarea id="chat-input" ref={input} value={value} rows={1} spellCheck={false}
       placeholder={chatText.placeholder}
       aria-autocomplete="list" aria-controls={menuOpen ? skillListId : undefined}
       aria-activedescendant={menuOpen ? `${skillListId}-${activeIndex}` : undefined}

@@ -11,18 +11,30 @@ type Props = {
   menuRef: RefObject<HTMLDetailsElement | null>; onOpen: () => void; onPick: (permission: Permission) => void;
   /** A caveat about the current source: `chatOnly` replaces the chip and locks the choices; otherwise it is only a warning. */
   limit?: { note: string; chatOnly?: boolean };
+  /** Extra heading/scope description shown when the chat permission only controls a subset of roles (e.g. MutiS Lead). */
+  scope?: { heading: string; note: string };
 };
 
-export function PermissionMenu({ value, disabled, cli, menuRef, onOpen, onPick, limit }: Props) {
-  const Icon = limit && !limit.chatOnly ? AlertTriangle : ICONS[value];
+export function PermissionMenu({ value, disabled, cli, menuRef, onOpen, onPick, limit, scope }: Props) {
+  const hasWarning = Boolean(limit && !limit.chatOnly);
+  const Icon = hasWarning ? AlertTriangle : ICONS[value];
   return <details ref={menuRef} data-glass="permission-picker" className={styles.picker} onToggle={event => {
     if (event.target === event.currentTarget && event.currentTarget.open) onOpen();
   }}>
-    <summary aria-label={chatText.permission} title={limit?.note ?? chatText.permission} data-full={value === "full"} data-permission={limit ? undefined : value}>
+    <summary aria-label={chatText.permission} title={limit?.note ?? scope?.note ?? chatText.permission} data-full={value === "full"} data-permission={limit ? undefined : value} data-warning={hasWarning || undefined}>
       <Icon size={16} aria-hidden="true" /><span>{limit?.chatOnly ? chatText.chatOnly : chatText[value]}</span>
     </summary>
     <div data-glass="overlay" className={styles.panel} role="group" aria-label={chatText.permission}>
-      <p>{limit?.note ?? chatText.permissionHeading}</p>
+      {hasWarning && limit && <div className={styles.warning} role="note">
+        <AlertTriangle size={14} aria-hidden="true" />
+        <span>{limit.note}</span>
+      </div>}
+      {limit?.chatOnly
+        ? <p>{limit.note}</p>
+        : <>
+          <p className={styles.heading}>{scope?.heading ?? chatText.permissionHeading}</p>
+          {scope?.note && <p className={styles.scope}>{scope.note}</p>}
+        </>}
       {PERMISSIONS.map(permission => {
         const OptionIcon = ICONS[permission];
         return <button key={permission} type="button" aria-pressed={value === permission} data-full={permission === "full"}

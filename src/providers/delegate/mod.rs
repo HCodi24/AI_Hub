@@ -17,6 +17,7 @@ mod events;
 mod live;
 mod parse;
 mod report;
+mod snapshot;
 
 use events::{message, turn};
 use live::Live;

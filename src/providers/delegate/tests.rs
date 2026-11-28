@@ -87,6 +87,36 @@ fn check_files_accepts_real_files_and_new_files_in_real_folders_only() {
 }
 
 #[test]
+fn snapshot_reports_edits_and_creations_in_listed_paths() {
+    use super::snapshot::Snapshot;
+    use std::fs;
+
+    let root = std::env::temp_dir().join(format!("ai-hub-snapshot-{}", std::process::id()));
+    fs::create_dir_all(root.join("web/node_modules")).unwrap();
+    fs::write(root.join("web/old.txt"), "old line\n").unwrap();
+    let folder = root.to_str().unwrap();
+    let before = Snapshot::take(
+        folder,
+        &["web".into(), "listed.txt".into(), "web/../ignored.txt".into()],
+    );
+    assert!(before.diff(folder).is_empty());
+
+    fs::write(root.join("web/old.txt"), "new line\n").unwrap();
+    fs::write(root.join("web/created.txt"), "new directory entry\n").unwrap();
+    fs::write(root.join("listed.txt"), "new listed entry\n").unwrap();
+    fs::write(root.join("ignored.txt"), "ignored entry\n").unwrap();
+    fs::write(root.join("web/node_modules/ignored.txt"), "ignored directory\n").unwrap();
+    let diff = before.diff(folder);
+    fs::remove_dir_all(root).unwrap();
+
+    assert!(diff.contains("--- a/web/old.txt\n+++ b/web/old.txt\n"));
+    assert!(diff.contains("-old line\n") && diff.contains("+new line\n"));
+    assert!(diff.contains("--- /dev/null\n+++ b/web/created.txt\n"));
+    assert!(diff.contains("--- /dev/null\n+++ b/listed.txt\n"));
+    assert!(!diff.contains("ignored") && !diff.contains("ai-hub-diff"));
+}
+
+#[test]
 fn only_cli_roles_get_the_codegraph_tool_and_only_when_the_lead_has_it() {
     let server = McpServerConfig { name: "codegraph".into(), command: "codegraph".into(), args: vec![], env: Default::default(), enabled: true };
     for kind in ["codex_cli", "claude_cli"] {

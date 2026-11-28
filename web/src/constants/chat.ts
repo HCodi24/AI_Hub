@@ -1,7 +1,7 @@
 export const EFFORTS = ["default", "low", "medium", "high", "xhigh", "max"] as const;
 export const CODEX_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
 export const CHAT_EFFORTS = ["default", ...CODEX_EFFORTS] as const;
-type ChatEffort = (typeof CHAT_EFFORTS)[number];
+export type ChatEffort = (typeof CHAT_EFFORTS)[number];
 export const PERMISSIONS = ["read", "write", "full"] as const;
 export const FILE_TOOLS = ["none", "read", "write"] as const;
 
@@ -29,4 +29,18 @@ export function modelEffortOptions(metadata: { supported: string[]; default?: st
   if (!choices.length && reportedDefault) choices.push(reportedDefault);
   const reset = choices.find(effort => effort === reportedDefault) ?? choices[0] ?? "default";
   return { choices, selected: choices.find(effort => effort === selected) ?? reset, reset };
+}
+
+export function roleEffortOptions(
+  provider: { kind?: string; model_efforts?: Record<string, { supported: string[]; default?: string }> } | undefined,
+  model: string,
+  effort: ChatEffort,
+): { choices: readonly ChatEffort[]; selected: ChatEffort } {
+  const { kind, model_efforts } = provider ?? {};
+  if (kind === "codex_cli" || kind === "claude_cli") {
+    const { choices, selected } = modelEffortOptions(model_efforts?.[model], effort, kind);
+    if (choices.length > 0) return { choices, selected };
+    return { choices: ["default"], selected: "default" };
+  }
+  return { choices: effortsFor(model, kind), selected: effortFor(model, effort, kind) };
 }

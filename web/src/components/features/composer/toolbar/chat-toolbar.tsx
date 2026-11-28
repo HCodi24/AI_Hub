@@ -75,17 +75,33 @@ export function ChatToolbar({ config }: { config?: Config }) {
   }, []);
   const mutis = useQuery({ queryKey: ["mutis"], queryFn: () => mutisApi.get() });
   const lead = mutis.data?.lead;
+  const worker = mutis.data?.worker;
+  const checker = mutis.data?.delegate_checker ? mutis.data?.checker : undefined;
   const isMutis = settings.provider_id === "mutis";
   const provider = config?.providers.find((entry) => entry.id === (isMutis ? lead?.provider_id : settings.provider_id));
+  const workerProvider = isMutis ? config?.providers.find((entry) => entry.id === worker?.provider_id) : undefined;
+  const checkerProvider = isMutis ? config?.providers.find((entry) => entry.id === checker?.provider_id) : undefined;
   const models = provider ? [...new Set(provider.models)]
     .filter(model => model && isModelVisible(hiddenModels, provider.id, model)) : [];
   const cli = provider?.kind.endsWith("_cli");
-  // Codex cannot write files on Windows until its sandbox is set up; ask only when the chat could write.
-  const codexSandbox = useQuery({ queryKey: ["codex-sandbox", provider?.id], enabled: provider?.kind === "codex_cli" && settings.permission !== "read",
+  // Codex cannot write files on Windows until its sandbox is set up; check Lead plus MutiS Worker/Checker when they can write.
+  const leadNeedsSandbox = provider?.kind === "codex_cli" && settings.permission !== "read";
+  const workerNeedsSandbox = isMutis && workerProvider?.kind === "codex_cli" && worker?.permission !== "read";
+  const checkerNeedsSandbox = isMutis && checkerProvider?.kind === "codex_cli" && checker?.permission !== "read";
+  const codexSandbox = useQuery({ queryKey: ["codex-sandbox", provider?.id], enabled: leadNeedsSandbox,
     queryFn: ({ signal }) => codexApi.status(provider!.id, signal), staleTime: 30_000 });
+  const workerCodexSandbox = useQuery({ queryKey: ["codex-sandbox", workerProvider?.id], enabled: workerNeedsSandbox,
+    queryFn: ({ signal }) => codexApi.status(workerProvider!.id, signal), staleTime: 30_000 });
+  const checkerCodexSandbox = useQuery({ queryKey: ["codex-sandbox", checkerProvider?.id], enabled: checkerNeedsSandbox,
+    queryFn: ({ signal }) => codexApi.status(checkerProvider!.id, signal), staleTime: 30_000 });
+  const needsSandboxSetup = (status?: { sandbox: string }) => Boolean(status && ["notConfigured", "updateRequired"].includes(status.sandbox));
   const chatOnly = !!provider && settings.provider_id !== "mutis" && !cli && !isAgentSource(provider);
   const permissionLimit = chatOnly ? { note: chatText.chatOnlyNote, chatOnly: true }
-    : codexSandbox.data && ["notConfigured", "updateRequired"].includes(codexSandbox.data.sandbox) ? { note: chatText.sandboxNote } : undefined;
+    : leadNeedsSandbox && needsSandboxSetup(codexSandbox.data) ? { note: chatText.sandboxNote }
+    : workerNeedsSandbox && needsSandboxSetup(workerCodexSandbox.data) ? { note: chatText.workerSandboxNote }
+    : checkerNeedsSandbox && needsSandboxSetup(checkerCodexSandbox.data) ? { note: chatText.checkerSandboxNote }
+    : undefined;
+  const permissionScope = isMutis ? { heading: chatText.mutisPermissionHeading, note: chatText.mutisPermissionScope } : undefined;
   useEffect(() => {
     if (!config) return;
     const first = config.providers[0];
@@ -139,7 +155,7 @@ export function ChatToolbar({ config }: { config?: Config }) {
   const limitProviders = isMutis
     ? mutisProviders.filter(entry => entry.kind.endsWith("_cli"))
     : provider && cli ? [provider] : [];
-  return <><ChatPermission supportsCommands={!!cli || isAgentSource(provider)} limit={permissionLimit} menuRef={permissions} otherMenuRef={picker} />
+  return <><ChatPermission supportsCommands={!!cli || isAgentSource(provider)} limit={permissionLimit} scope={permissionScope} menuRef={permissions} otherMenuRef={picker} />
   <div data-glass="model-group" className={styles.modelGroup}>
     <details ref={picker} data-glass="model-picker" className={styles.picker} onToggle={(event) => {
       if (event.target === event.currentTarget && event.currentTarget.open && permissions.current) permissions.current.open = false;

@@ -21,17 +21,17 @@ export function AppearanceTab() {
     return () => observer.disconnect();
   }, []);
 
-  return <>
-    <div className={styles.row}><span>{t.appearance.style}</span><StyleControl /></div>
-    <div className={styles.row}><span>{t.appearance.theme}</span><ThemeControl /></div>
-    {isGlass && <div className={styles.transparencyRow}>
+  return <ul className={styles.card} aria-label={t.tabs.appearance}>
+    <li className={styles.row}><span>{t.appearance.style}</span><StyleControl /></li>
+    <li className={styles.row}><span>{t.appearance.theme}</span><ThemeControl /></li>
+    {isGlass && <li className={styles.transparencyRow}>
       <label htmlFor={transparencyId}>{t.appearance.transparency}</label>
       <TransparencyControl id={transparencyId} />
-    </div>}
-    {isGlass && <div className={styles.transparencyRow}>
+    </li>}
+    {isGlass && <li className={styles.transparencyRow}>
       <label htmlFor={thicknessId}>{t.appearance.thickness}</label>
       <ThicknessControl id={thicknessId} />
-    </div>}
-    {isGlass && <div className={styles.backgroundRow}><span>{t.appearance.background}</span><BackgroundControl /></div>}
-  </>;
+    </li>}
+    {isGlass && <li className={styles.backgroundRow}><span>{t.appearance.background}</span><BackgroundControl /></li>}
+  </ul>;
 }

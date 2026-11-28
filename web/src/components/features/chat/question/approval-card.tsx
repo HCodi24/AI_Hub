@@ -5,6 +5,7 @@ import { notify } from "@/components/toast/toast";
 import { chatText } from "@/text/chat";
 import { useChatStore } from "../chat-store";
 import styles from "../chat-message.module.css";
+import cardStyles from "./chat-questions.module.css";
 
 const LONG_COMMAND = 80;
 
@@ -20,8 +21,9 @@ export function ApprovalCard({ id, command }: { id: string; command: string }) {
     catch (error) { notify(error instanceof Error ? error.message : chatText.requestError); useChatStore.setState({ approval: null }); }
     finally { setSending(false); }
   }
-  return <div className={styles.choices} role="group" aria-label={chatText.approveTitle} aria-busy={sending}>
-    <p>{chatText.approveTitle}</p>
+  return <div className={`${cardStyles.card} ${styles.choices}`} style={{ marginTop: "var(--space-4)" }}
+    role="group" aria-label={chatText.approveTitle} aria-busy={sending}>
+    <p style={{ fontWeight: 600 }}>{chatText.approveTitle}</p>
     {isLongCommand ? (
       <details key={id} className={styles.command}>
         <summary>

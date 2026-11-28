@@ -15,7 +15,7 @@ import { VerifyProject } from "./verify-project";
 import { errorText, useSettingsConfig } from "../use-settings";
 import styles from "../settings.module.css";
 import { useSettingsAutosave } from "../use-settings-autosave";
-import { effortsFor, effortFor } from "@/constants/chat";
+import { roleEffortOptions } from "@/constants/chat";
 const DEFAULT_SETTINGS = MutisSchema.parse({});
 type RoleKey = "lead" | "worker" | "checker";
 type Permission = Mutis["worker"]["permission"];
@@ -35,30 +35,36 @@ const modelsOf = (providers: Provider[], id: string) => providers.find(p => p.id
 /** Model options for a select: the provider's models, plus the saved value when it is not in that list so it is never lost. */
 const modelOptions = (providers: Provider[], id: string, current: string) => {
   const models = modelsOf(providers, id);
-  return <>{current && !models.includes(current) && <option value={current}>{current}</option>}{!current && <option value="" />}
+  return <>{current && !models.includes(current) && <option value={current}>{current}</option>}{!current && <option value="">{t.mutis.modelPlaceholder}</option>}
     {models.map(m => <option key={m} value={m}>{m}</option>)}</>;
 };
-function RoleRow({ title, providers, value, disabled = false, change, children }: {
+function RoleRow({ title, control, providers, value, disabled = false, change, children }: {
   title: string;
+  control?: ReactNode;
   providers: Provider[];
   value: Mutis["lead"];
   disabled?: boolean;
   change: (patch: Partial<Mutis["lead"]>) => void;
   children: ReactNode;
 }) {
-  const kind = providers.find(provider => provider.id === value.provider_id)?.kind;
-  return <div className={styles.row} aria-disabled={disabled || undefined}><strong>{title}</strong>
-    <label><span className="sr-only">{t.mutis.provider}</span><Dropdown disabled={disabled} value={value.provider_id} onChange={event => change({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" })}>
-      <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Dropdown></label>
-    <label><span className="sr-only">{t.mutis.model}</span><Dropdown disabled={disabled} value={value.model} onChange={event => change({ model: event.target.value })}>
+  const provider = providers.find(provider => provider.id === value.provider_id);
+  const { choices: effortChoices, selected: selectedEffort } = roleEffortOptions(provider, value.model, value.effort);
+  return <div className={styles.row} aria-disabled={disabled || undefined}>
+    <div className={styles.roleCell}><strong>{title}</strong>{control}</div>
+    <label><span className="sr-only">{t.mutis.provider}</span><Dropdown disabled={disabled} data-empty={!value.provider_id || undefined} value={value.provider_id} onChange={event => change({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" })}>
+      <option value="">{t.mutis.providerPlaceholder}</option>{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Dropdown></label>
+    <label><span className="sr-only">{t.mutis.model}</span><Dropdown disabled={disabled} data-empty={!value.model || undefined} value={value.model} onChange={event => change({ model: event.target.value })}>
       {modelOptions(providers, value.provider_id, value.model)}</Dropdown></label>
-    <label><span className="sr-only">{t.mutis.effort}</span><Dropdown disabled={disabled} value={effortFor(value.model, value.effort, kind)} onChange={event => change({ effort: event.target.value as Mutis["lead"]["effort"] })}>
-      {effortsFor(value.model, kind).map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</Dropdown></label>
-    <div className={styles.grid} style={{ gridColumn: "1 / -1" }}>{children}</div>
+    <label><span className="sr-only">{t.mutis.effort}</span><Dropdown disabled={disabled} value={selectedEffort} onChange={event => {
+      const effort = effortChoices.find(choice => choice === event.target.value);
+      if (effort) change({ effort });
+    }}>
+      {effortChoices.map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</Dropdown></label>
+    <div className={styles.roleSubRow}>{children}</div>
   </div>;
 }
-function RolePermission({ value, disabled, change }: { value: Permission; disabled?: boolean; change: (permission: Permission) => void }) {
-  return <label>{t.mutis.permission}<Dropdown value={value} disabled={disabled} onChange={event => change(event.target.value as Permission)}>
+function RolePermission({ value, disabled, className, change }: { value: Permission; disabled?: boolean; className?: string; change: (permission: Permission) => void }) {
+  return <label className={className}>{t.mutis.permission}<Dropdown value={value} disabled={disabled} onChange={event => change(event.target.value as Permission)}>
     {Object.entries(t.mutis.permissions).map(([permission, label]) => <option key={permission} value={permission}>{label}</option>)}
   </Dropdown></label>;
 }
@@ -86,21 +92,32 @@ export function MutisTab() {
   const checker = draft.checker ?? DEFAULT_SETTINGS.checker;
   return <form className={styles.form} onSubmit={event => { event.preventDefault(); void autosave.flush(); }}>
     <div className={styles.roleTable}>
-      <div className={`${styles.row} ${styles.roleHead}`} aria-hidden="true"><span /><span>{t.mutis.provider}</span><span>{t.mutis.model}</span><span>{t.mutis.effort}</span></div>
+      <div className={`${styles.row} ${styles.roleHead}`} aria-hidden="true"><span>{t.mutis.role}</span><span>{t.mutis.provider}</span><span>{t.mutis.model}</span><span>{t.mutis.effort}</span></div>
       <RoleRow title={t.mutis.leadRole} providers={providers} value={lead} change={patch => setRole("lead", patch)}>
-        <small style={{ gridColumn: "1 / -1" }}>Lead dùng quyền của cuộc trò chuyện.</small>
+        <p className={styles.roleNote}>{t.mutis.leadPermissionNote}</p>
       </RoleRow>
       <RoleRow title={t.mutis.workerRole} providers={providers} value={worker} change={patch => setRole("worker", patch)}>
-        <RolePermission value={worker.permission} change={permission => setRole("worker", { permission })} />
+        <RolePermission className={styles.rolePermSpan} value={worker.permission} change={permission => setRole("worker", { permission })} />
         <label>{t.mutis.workerCount}<Dropdown value={worker.count} onChange={event => setRole("worker", { count: Number(event.target.value) })}>
           {[1, 2, 3].map(count => <option key={count} value={count}>{count}</option>)}
         </Dropdown></label>
+        <p className={styles.roleNote}>{t.mutis.workerPermissionNote(worker.count)}</p>
       </RoleRow>
-      <RoleRow title={t.mutis.checkerRole} providers={providers} value={checker} disabled={!draft.delegate_checker} change={patch => setRole("checker", patch)}>
-        <RolePermission value={checker.permission} disabled={!draft.delegate_checker} change={permission => setRole("checker", { permission })} />
+      <RoleRow
+        title={t.mutis.checkerRole}
+        control={<label className={styles.roleToggle}>
+          <Switch checked={draft.delegate_checker} aria-label={t.mutis.delegate_checker} onChange={event => edit({ delegate_checker: event.target.checked }, true)} />
+          <span>{draft.delegate_checker ? t.mutis.checkerOn : t.mutis.checkerOff}</span>
+        </label>}
+        providers={providers}
+        value={checker}
+        disabled={!draft.delegate_checker}
+        change={patch => setRole("checker", patch)}
+      >
+        <RolePermission className={styles.rolePermSpan} value={checker.permission} disabled={!draft.delegate_checker} change={permission => setRole("checker", { permission })} />
+        <p className={styles.roleNote}>{draft.delegate_checker ? t.mutis.checkerActiveNote : t.mutis.checkerDisabledNote}</p>
       </RoleRow>
     </div>
-    <label className={styles.check}><Switch checked={draft.delegate_checker} onChange={event => edit({ delegate_checker: event.target.checked }, true)} /><span>{t.mutis.delegate_checker}</span></label>
     <h3>{t.mutis.sharedSettings}</h3>
     <fieldset className={styles.group}><legend>{t.mutis.switches}</legend>
       {SWITCHES.map(item => <div key={item.key} className={styles.switch}>

@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { Config } from "@/schema/config.schema";
 import type { Mutis } from "@/schema/mutis.schema";
 import { mutisApi } from "@/apis/mutis.api";
-import { effortFor, effortsFor } from "@/constants/chat";
+import { roleEffortOptions } from "@/constants/chat";
 import { modelDisplayLabel } from "@/lib/model-display-label";
 import { chatText } from "@/text/chat";
 import styles from "./chat-toolbar.module.css";
@@ -19,25 +19,27 @@ function RoleSlider({ role, provider, disabled, save }: {
   role: Role; provider?: Config["providers"][number]; disabled: boolean;
   save: (effort: Role["effort"]) => Promise<boolean>;
 }) {
-  const choices = effortsFor(role.model, provider?.kind);
-  const selected = effortFor(role.model, role.effort, provider?.kind);
+  const { choices, selected } = roleEffortOptions(provider, role.model, role.effort);
   const [draft, setDraft] = useState(selected);
   useEffect(() => setDraft(selected), [selected]);
-  const index = Math.max(0, choices.indexOf(draft));
+  const displayedEffort = choices.includes(draft) ? draft : selected;
+  const index = choices.indexOf(displayedEffort);
+  const lastIndex = choices.length - 1;
   const label = role.model ? modelDisplayLabel(role.model, provider?.kind) : provider?.name || chatText.source;
   const providerName = provider?.name;
   const title = providerName && role.model && providerName !== role.model
     ? `${providerName} · ${role.model}`
     : providerName || role.model || undefined;
   async function commit(value: string) {
-    if (!await save(choices[Number(value)])) setDraft(selected);
+    const effort = choices[Number(value)];
+    if (effort && !await save(effort)) setDraft(selected);
   }
   return <div className={styles.modelEffort}>
-    <div className={styles.modelEffortHeading}><span title={title}>{label}</span><strong>{chatText[draft]}</strong></div>
+    <div className={styles.modelEffortHeading}><span title={title}>{label}</span><strong>{chatText[displayedEffort]}</strong></div>
     <div className={styles.effortSlider}>
-      <input type="range" min={0} max={choices.length - 1} step={1} value={index} disabled={disabled || !provider}
-        aria-label={`${label}: ${chatText.effort}`} aria-valuetext={chatText[draft]}
-        style={{ background: `linear-gradient(to right, var(--effort-fill) ${index / (choices.length - 1) * 100}%, var(--color-muted) 0%)` }}
+      <input type="range" min={0} max={lastIndex} step={1} value={index} disabled={disabled || !provider}
+        aria-label={`${label}: ${chatText.effort}`} aria-valuetext={chatText[displayedEffort]}
+        style={{ background: `linear-gradient(to right, var(--effort-fill) ${index / Math.max(1, lastIndex) * 100}%, var(--color-muted) 0%)` }}
         onChange={event => setDraft(choices[Number(event.target.value)])}
         onPointerUp={event => void commit(event.currentTarget.value)}
         onPointerCancel={() => setDraft(selected)}

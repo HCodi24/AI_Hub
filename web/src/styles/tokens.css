@@ -59,6 +59,13 @@
   --color-syntax-keyword: #ffabb5;
   --color-syntax-string: #a5d6ff;
   --color-syntax-number: #d2a8ff;
+  --segmented-track: color-mix(in srgb, var(--color-muted) 65%, var(--color-background));
+  --segmented-border: color-mix(in srgb, var(--color-border) 65%, transparent);
+  --segmented-track-shadow: inset 0 1px 2px rgb(0 0 0 / 0.3);
+  --segmented-thumb: #334155;
+  --segmented-thumb-shadow: inset 0 1px 0 rgb(255 255 255 / 0.1), 0 1px 3px rgb(0 0 0 / 0.35);
+  --segmented-hover: rgb(255 255 255 / 0.06);
+  --segmented-accent: #818cf8;
 }
 [data-theme="light"] { color-scheme: light; }
 [data-theme="light"] {
@@ -91,6 +98,13 @@
   --color-syntax-keyword: #a62032;
   --color-syntax-string: #164780;
   --color-syntax-number: #6e329c;
+  --segmented-track: #f1f3f6;
+  --segmented-border: rgb(0 0 0 / 0.08);
+  --segmented-track-shadow: inset 0 1px 2px rgb(0 0 0 / 0.05);
+  --segmented-thumb: #ffffff;
+  --segmented-thumb-shadow: 0 1px 3px rgb(0 0 0 / 0.1), 0 1px 1px rgb(0 0 0 / 0.05), inset 0 1px 0 rgb(255 255 255 / 0.9);
+  --segmented-hover: rgb(0 0 0 / 0.04);
+  --segmented-accent: #4f46e5;
 }
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {

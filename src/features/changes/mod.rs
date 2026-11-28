@@ -1,7 +1,7 @@
 //! Per-file line counts of what an AI run changed, taken from git before and after the run.
 use crate::core::process::git_output;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::Path};
+use std::{collections::{BTreeMap, BTreeSet}, path::Path};
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct FileChange {
@@ -74,6 +74,89 @@ pub async fn diff_of(folder: &Path, files: &[FileChange]) -> String {
         }
     }
     diff.chars().take(MAX_DIFF).collect()
+}
+
+/// Replace sections whose line counts disagree with the changes recorded for the run.
+pub async fn reconcile_diff(folder: &Path, diff: &str, files: &[FileChange]) -> String {
+    let (kept, mismatched) = reconcile_sections(diff, files);
+    if mismatched.is_empty() {
+        return kept;
+    }
+    kept + &diff_of(folder, &mismatched).await
+}
+
+fn reconcile_sections(diff: &str, files: &[FileChange]) -> (String, Vec<FileChange>) {
+    let mut starts = diff.match_indices("diff --git ")
+        .map(|(offset, _)| offset)
+        .filter(|&offset| offset == 0 || diff.as_bytes()[offset - 1] == b'\n')
+        .peekable();
+    let prefix = &diff[..starts.peek().copied().unwrap_or(diff.len())];
+    let mut sections = Vec::new();
+    let mut counts = BTreeMap::<String, (usize, usize)>::new();
+    while let Some(start) = starts.next() {
+        let section = &diff[start..starts.peek().copied().unwrap_or(diff.len())];
+        let path = section_path(section);
+        if let Some(path) = &path {
+            let (added, removed) = counts.entry(path.clone()).or_default();
+            for line in section.lines() {
+                if line.starts_with('+') && !line.starts_with("+++ ") {
+                    *added += 1;
+                } else if line.starts_with('-') && !line.starts_with("--- ") {
+                    *removed += 1;
+                }
+            }
+        }
+        sections.push((path, section));
+    }
+
+    let mut mismatched_paths = BTreeSet::new();
+    let mut mismatched = Vec::new();
+    for file in files {
+        let path = file.path.replace('\\', "/");
+        if counts.get(&path).copied().unwrap_or_default() != (file.added, file.removed) {
+            mismatched_paths.insert(path);
+            mismatched.push(file.clone());
+        }
+    }
+    if mismatched.is_empty() {
+        return (diff.to_owned(), mismatched);
+    }
+    let mut kept = prefix.to_owned();
+    for (path, section) in sections {
+        if !path.is_some_and(|path| mismatched_paths.contains(&path)) {
+            kept.push_str(section);
+        }
+    }
+    (kept, mismatched)
+}
+
+fn section_path(section: &str) -> Option<String> {
+    fn header_path(path: &str, prefix: &str) -> Option<String> {
+        path.trim_end_matches('\t')
+            .trim_matches('"')
+            .replace('\\', "/")
+            .strip_prefix(prefix)
+            .map(str::to_owned)
+    }
+
+    let mut lines = section.lines();
+    let header = lines.next()?.strip_prefix("diff --git ")?;
+    let mut old_path = None;
+    for line in lines.take_while(|line| !line.starts_with("@@")) {
+        if let Some(path) = line.strip_prefix("--- ") {
+            old_path = header_path(path, "a/");
+        } else if let Some(path) = line.strip_prefix("+++ ") {
+            if path == "/dev/null" && old_path.is_some() {
+                return old_path;
+            }
+            if let Some(path) = header_path(path, "b/") {
+                return Some(path);
+            }
+        }
+    }
+    let header = header.replace('\\', "/");
+    let (_, path) = header.split_once("\" \"b/").or_else(|| header.split_once(" b/"))?;
+    Some(path.trim_end_matches('"').to_owned())
 }
 
 /// Files whose counts moved between the two snapshots, with the difference.

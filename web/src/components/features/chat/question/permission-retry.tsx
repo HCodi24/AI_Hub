@@ -6,6 +6,7 @@ import { useChatStore } from "../chat-store";
 import { useCardStore } from "../card-store";
 import type { SendReply } from "./quick-replies";
 import styles from "../chat-message.module.css";
+import cardStyles from "./chat-questions.module.css";
 
 /** The run was blocked by the chat's permission: offer the same message again one level up (the user's click is the approval). */
 export function PermissionRetry({ need, text, send }: { need: "write" | "full"; text: string; send: SendReply }) {
@@ -21,8 +22,9 @@ export function PermissionRetry({ need, text, send }: { need: "write" | "full"; 
     } catch (error) { notify(error instanceof Error ? error.message : chatText.requestError); }
     finally { pending.current = false; setSending(false); }
   }
-  return <div className={styles.choices} role="group" aria-label={chatText.denied} aria-busy={sending}>
-    <p>{chatText.denied}</p>
+  return <div className={`${cardStyles.card} ${styles.choices}`} style={{ marginTop: "var(--space-4)" }}
+    role="group" aria-label={chatText.denied} aria-busy={sending}>
+    <p style={{ fontWeight: 600 }}>{chatText.denied}</p>
     <Button variant="primary" disabled={sending || Boolean(running)} onClick={() => void rerun()}>{chatText.rerun(chatText[need])}</Button>
   </div>;
 }

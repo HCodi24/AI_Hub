@@ -1,4 +1,4 @@
-.row, .backgroundRow, .transparencyRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border); color: var(--text); }
+.card { list-style: none; margin: 0; padding: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); box-shadow: var(--shadow-edge); }
+.row, .backgroundRow, .transparencyRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; padding: var(--space-3) var(--space-4); color: var(--text); }
+.card > li + li { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
 .backgroundRow, .transparencyRow { flex-wrap: wrap; }
-/* Icon-only buttons here, like the design; each button keeps its aria-label and title. */
-.row button span { display: none; }

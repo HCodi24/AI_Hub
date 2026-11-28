@@ -2,6 +2,11 @@ import { z } from "zod";
 export const ProviderSchema = z.object({
   id: z.string(), name: z.string(), kind: z.string(), base_url: z.string().default(""), api_key: z.string().default(""),
   executable: z.string().default(""), models: z.array(z.string()).default([]), agent_capable: z.boolean().default(false),
+  /** Downloaded effort options, keyed by model ID. */
+  model_efforts: z.record(z.object({
+    supported: z.array(z.string()),
+    default: z.string().optional(),
+  })).optional(),
   /** CLI sources: signs in through the web (tab "Web") instead of the machine's CLI account. */
   web_login: z.boolean().default(false),
 });

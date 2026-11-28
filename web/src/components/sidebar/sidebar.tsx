@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { PenSquare, Home, History, Search, X, PanelLeftClose, PanelLeftOpen, Settings, Hammer, ChevronDown, ChevronRight, Folder, Trash2 } from "lucide-react";
+import { PenSquare, Home, History, Search, X, PanelLeftClose, PanelLeftOpen, Settings, SunMoon, Hammer, ChevronDown, ChevronRight, Folder, Trash2 } from "lucide-react";
 import { Button } from "@/components/button/button";
 import { Dialog } from "@/components/dialog/dialog";
 import { useCardStore } from "@/components/features/chat/card-store";
@@ -9,7 +9,6 @@ import { FolderTree } from "./folder-tree";
 import { ScrollArea } from "@/components/scroll-area";
 import { Skeleton } from "@/components/skeleton/skeleton";
 import { WindowControls } from "@/components/window-controls/window-controls";
-import { StyleControl } from "@/components/features/settings/appearance/theme/style-control";
 import { ThemeControl } from "@/components/features/settings/appearance/theme/theme-control";
 import { useShallow } from "zustand/react/shallow";
 import type { ChatSummary } from "@/schema/chat.schema";
@@ -187,8 +186,10 @@ export function Sidebar({ chats, loading, load, remove, openSettings, openDevCha
             <summary className={styles.profile} aria-label={chatText.workspaceMenu} title={chatText.workspaceMenu}><img className={styles.avatar} src={LOGO_DARK} alt="" aria-hidden="true" /></summary>
             <div data-glass="preferences-panel" className={styles.preferencesPanel}>
               <div className={styles.identity}><img className={styles.avatar} src={LOGO_DARK} alt="" aria-hidden="true" /><div><strong>{chatText.brand}</strong><span>{chatText.local}</span></div></div>
-              <button className={styles.settings} onClick={() => { if (preferences.current) preferences.current.open = false; setDrawer(false); openSettings(); }}><Settings size={20} aria-hidden="true" />{settingsText.open}</button>
-              <div className={styles.appearance}><span>{chatText.style}</span><StyleControl /><span>{chatText.appearance}</span><ThemeControl /></div>
+              <div className={styles.preferencesMenu}>
+                <button className={styles.settings} onClick={() => { if (preferences.current) preferences.current.open = false; setDrawer(false); openSettings(); }}><Settings size={18} aria-hidden="true" /><span>{settingsText.open}</span></button>
+                <div className={styles.appearance}><span className={styles.appearanceLabel}><SunMoon size={18} aria-hidden="true" /><span>{chatText.appearance}</span></span><ThemeControl compact /></div>
+              </div>
             </div>
           </details>
         </div>

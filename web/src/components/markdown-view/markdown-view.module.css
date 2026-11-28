@@ -1,4 +1,6 @@
 .markdown { overflow-wrap: anywhere; min-width: 0; line-height: 1.6; }
+/* Same look as the composer's skill mark (composer.module.css .inputHighlight mark). */
+.skillPill { padding: 2px 4px; margin: 0 2px; border: 1px solid color-mix(in srgb, var(--link) 35%, var(--color-surface-raised)); border-radius: 6px; background: color-mix(in srgb, var(--link) 10%, var(--color-surface-raised)); color: var(--link); white-space: nowrap; }
 .markdown > :first-child { margin-top: 0; }
 .markdown > :last-child { margin-bottom: 0; }
 .markdown pre { overflow-x: auto; max-width: 100%; background: var(--code); padding: var(--space-4); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--radius-small) var(--radius-small); margin-top: 0; white-space: pre; overflow-wrap: normal; }

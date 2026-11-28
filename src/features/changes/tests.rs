@@ -1,5 +1,45 @@
 use super::*;
 
+fn file_change(path: &str, added: usize, removed: usize) -> FileChange {
+    FileChange { path: path.into(), added, removed, status: modified() }
+}
+
+#[test]
+fn reconcile_keeps_matching_sections_byte_for_byte() {
+    let diff = "preamble\r\ndiff --git a/sub/a b/sub/a\r\n--- a/sub/a\r\n+++ b/sub/a\r\n@@ -1 +1 @@\r\n-old\r\n+new\r\ndiff --git a/sub/a b/sub/a\n--- a/sub/a\n+++ b/sub/a\n@@ -1 +1,2 @@\n new\n+more";
+    let (kept, mismatched) = reconcile_sections(diff, &[file_change("sub\\a", 2, 1)]);
+    assert_eq!(kept, diff);
+    assert!(mismatched.is_empty());
+}
+
+#[test]
+fn reconcile_removes_partial_sections_and_keeps_other_text() {
+    let partial = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -0,0 +1 @@\n+partial\n";
+    let other = "diff --git a/other b/other\n--- a/other\n+++ /dev/null\n@@ -1 +0,0 @@\n-line\n";
+    let diff = format!("preamble\n{partial}{other}");
+    let file = file_change("a", 3, 0);
+    let (kept, mismatched) = reconcile_sections(&diff, std::slice::from_ref(&file));
+    assert_eq!(kept, format!("preamble\n{other}"));
+    assert_eq!(mismatched, vec![file]);
+}
+
+#[test]
+fn reconcile_excludes_headers_from_counts() {
+    let diff = "diff --git a/a b/a\n--- a/a\n+++ b/a\n";
+    let (kept, mismatched) = reconcile_sections(diff, &[file_change("a", 0, 0)]);
+    assert_eq!(kept, diff);
+    assert!(mismatched.is_empty());
+}
+
+#[test]
+fn reconcile_marks_missing_sections_only_for_nonzero_counts() {
+    let diff = "preamble without sections";
+    let file = file_change("missing", 2, 0);
+    let (kept, mismatched) = reconcile_sections(diff, &[file.clone(), file_change("binary", 0, 0)]);
+    assert_eq!(kept, diff);
+    assert_eq!(mismatched, vec![file]);
+}
+
 #[test]
 fn distinguishes_creation_deletion_and_line_only_edits() {
     let before = Snapshot::from([

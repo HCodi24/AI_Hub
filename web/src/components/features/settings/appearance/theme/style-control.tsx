@@ -1,22 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Sparkles, Square } from "lucide-react";
+import { AppWindow, Sparkles } from "lucide-react";
 import { configApi } from "@/apis/config.api";
 import { useLiquidIndicator } from "@/components/features/settings/appearance/theme/glass/use-liquid-indicator";
 import { chatText as t } from "@/text/chat";
 import styles from "./theme-control.module.css";
 
-type Style = "default" | "glass";
-const isStyle = (value: unknown): value is Style => value === "default" || value === "glass";
+export type Style = "default" | "glass";
+export const isStyle = (value: unknown): value is Style => value === "default" || value === "glass";
 const STYLE_STORAGE_KEY = "ai-hub-style";
 const STYLE_OPTIONS = [
-  ["default", Square, t.styleDefault],
+  ["default", AppWindow, t.styleDefault],
   ["glass", Sparkles, t.glass],
 ] as const;
 
-function apply(value: Style) {
+export function applyStyle(value: Style) {
   document.documentElement.dataset.style = value;
   try { localStorage.setItem(STYLE_STORAGE_KEY, value); } catch { /* Giữ lựa chọn trong bộ nhớ. */ }
+}
+
+export function resolveSavedStyle(data?: { style?: string; theme?: string }): Style | undefined {
+  const saved = data?.style === "" && data.theme === "glass" ? "glass" : data?.style;
+  return isStyle(saved) ? saved : undefined;
 }
 
 export function StyleControl() {
@@ -41,27 +46,34 @@ export function StyleControl() {
     if (!initial && theme === "glass") initial = "glass";
     if (isStyle(initial)) {
       setStyle(initial);
-      apply(initial);
+      applyStyle(initial);
     }
   }, []);
   const { data } = useQuery({ queryKey: ["config"], queryFn: ({ signal }) => configApi.get(signal) });
-  const saved = data?.style === "" && data.theme === "glass" ? "glass" : data?.style;
+  const saved = resolveSavedStyle(data);
   useEffect(() => {
-    if (isStyle(saved)) {
+    if (saved) {
       setStyle(saved);
-      apply(saved);
+      applyStyle(saved);
     }
   }, [saved]);
   function change(value: Style) {
     setStyle(value);
-    apply(value);
+    applyStyle(value);
     configApi.saveStyle(value).then(() => client.invalidateQueries({ queryKey: ["config"] })).catch(() => undefined);
   }
-  return <div ref={rootRef} data-glass="theme-control" className={styles.control} role="group" aria-label={t.style}>
-    <span ref={indicatorRef} data-glass="liquid-indicator" aria-hidden="true" />
+  return <div ref={rootRef} data-glass="theme-control" data-surface={style} className={styles.control} role="group" aria-label={t.style}>
+    <span ref={indicatorRef} data-glass="liquid-indicator" className={styles.indicator} aria-hidden="true" />
     {STYLE_OPTIONS.map(([value, Icon, label]) =>
-      <button key={value} type="button" title={label} aria-pressed={style === value} aria-label={label} onClick={() => change(value)}>
-        <Icon size={16} aria-hidden="true" /><span>{label}</span>
+      <button
+        key={value}
+        type="button"
+        data-style-option={value}
+        title={label}
+        aria-pressed={style === value}
+        onClick={() => change(value)}
+      >
+        <Icon size={14} strokeWidth={1.9} aria-hidden="true" /><span>{label}</span>
       </button>)}
   </div>;
 }

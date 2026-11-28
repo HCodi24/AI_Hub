@@ -6,12 +6,13 @@ import { PermissionMenu } from "./permission-menu";
 type Props = {
   supportsCommands: boolean;
   limit?: { note: string; chatOnly?: boolean };
+  scope?: { heading: string; note: string };
   menuRef: RefObject<HTMLDetailsElement | null>;
   otherMenuRef: RefObject<HTMLDetailsElement | null>;
 };
 
 /** The shared Claude/Codex permission control, including chat state and menu interaction. */
-export function ChatPermission({ supportsCommands, limit, menuRef, otherMenuRef }: Props) {
+export function ChatPermission({ supportsCommands, limit, scope, menuRef, otherMenuRef }: Props) {
   const { permission, streaming, configure } = useChatStore(useShallow(state => ({
     permission: state.settings.permission, streaming: state.streaming, configure: state.configure,
   })));
@@ -34,7 +35,7 @@ export function ChatPermission({ supportsCommands, limit, menuRef, otherMenuRef 
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [menuRef]);
-  return <PermissionMenu value={permission} disabled={streaming} cli={supportsCommands} limit={limit} menuRef={menuRef}
+  return <PermissionMenu value={permission} disabled={streaming} cli={supportsCommands} limit={limit} scope={scope} menuRef={menuRef}
     onOpen={() => { if (otherMenuRef.current) otherMenuRef.current.open = false; }}
     onPick={permission => configure({ permission })} />;
 }

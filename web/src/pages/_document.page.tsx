@@ -9,7 +9,8 @@ export default function Document() {
         var tr = localStorage.getItem('ai-hub-glass-transparency');
         var th = localStorage.getItem('ai-hub-glass-thickness');
         var dataset = document.documentElement.dataset;
-        dataset.theme = theme === 'glass' ? 'light' : ['light', 'dark', 'system'].includes(theme) ? theme : 'dark';
+        var systemTheme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        dataset.theme = theme === 'glass' ? 'light' : theme === 'system' ? systemTheme : ['light', 'dark'].includes(theme) ? theme : 'dark';
         dataset.style = theme === 'glass' ? 'glass' : ['default', 'glass'].includes(style) ? style : 'default';
         if (bg && bg.indexOf('data:image/') === 0) {
           document.documentElement.style.setProperty('--glass-bg-image', 'url(' + JSON.stringify(bg) + ')');

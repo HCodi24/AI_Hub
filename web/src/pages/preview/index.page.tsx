@@ -24,7 +24,7 @@ const SAMPLE_TASKS: TaskRow[] = TASK_STATES.map((state, i) => ({
   check: state === "done" ? "PASS" : null,
   reason: state === "takeover" ? "vẫn FAIL sau 3/3 lần" : state === "skipped" ? "phụ thuộc «Việc mẫu 1» chưa đạt" : null,
 }));
-const THEMES = ["light", "dark", "system"];
+const THEMES = ["light", "dark"];
 const STYLES = ["default", "glass"];
 const isProvidersPreview = (query: URLSearchParams) => {
   const tab = query.get("tab");
@@ -51,7 +51,10 @@ export default function PreviewPage() {
   useEffect(() => setQuery(new URLSearchParams(window.location.search)), []);
   // Khi chạy khác nguồn, trang xem trước lấy giao diện từ URL hoặc cấu hình máy chủ.
   const { data } = useQuery({ queryKey: ["config"], queryFn: ({ signal }) => configApi.get(signal) });
-  const theme = query?.get("theme") || data?.theme;
+  const rawTheme = query?.get("theme") || data?.theme;
+  const theme = rawTheme === "system"
+    ? (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark")
+    : rawTheme;
   const requestedStyle = query?.get("style");
   const style = requestedStyle && STYLES.includes(requestedStyle) ? requestedStyle : data?.style;
   useEffect(() => { if (theme && THEMES.includes(theme)) document.documentElement.dataset.theme = theme; }, [theme]);

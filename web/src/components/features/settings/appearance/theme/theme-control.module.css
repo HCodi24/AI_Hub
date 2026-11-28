@@ -1,3 +1,99 @@
-.control { display: flex; padding: var(--space-1); gap: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-small); }
-.control button { flex: 1; padding: var(--space-1); border: 0; background: transparent; color: var(--muted); font-size: var(--font-12); white-space: nowrap; }
-.control button[aria-pressed=true] { background: var(--color-muted); color: var(--text); }
+.control {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+}
+
+.control[data-surface="default"] {
+  border-color: var(--segmented-border);
+  background: var(--segmented-track);
+  box-shadow: var(--segmented-track-shadow);
+}
+
+.indicator {
+  display: none;
+}
+
+.control[data-liquid-ready="true"] .indicator {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  transition: opacity 180ms var(--ease-out);
+  will-change: translate, width, height;
+}
+
+.control[data-surface="default"][data-liquid-ready="true"] .indicator {
+  background: var(--segmented-thumb);
+  box-shadow: var(--segmented-thumb-shadow);
+}
+
+.control[data-liquid-ready="true"] .indicator[data-empty] {
+  opacity: 0;
+}
+
+.control button {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--font-13);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color 180ms var(--ease-out), background-color 180ms var(--ease-out);
+}
+
+.control button:active:enabled {
+  opacity: 1;
+}
+
+.control[data-surface="default"] button:hover:enabled:not([aria-pressed="true"]) {
+  background: var(--segmented-hover);
+  color: var(--text);
+}
+
+.control button[aria-pressed="true"] {
+  color: var(--text);
+}
+
+.control[data-liquid-ready="true"] button[aria-pressed="true"],
+.control[data-liquid-ready="true"] button[aria-pressed="true"]:hover:enabled {
+  background: transparent;
+  box-shadow: none;
+}
+
+.control[data-surface="default"]:not([data-liquid-ready="true"]) button[aria-pressed="true"],
+.control[data-surface="default"]:not([data-liquid-ready="true"]) button[aria-pressed="true"]:hover:enabled {
+  background: var(--segmented-thumb);
+  box-shadow: var(--segmented-thumb-shadow);
+}
+
+.control button[data-style-option="glass"][aria-pressed="true"] svg {
+  color: var(--segmented-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control button,
+  .control[data-liquid-ready="true"] .indicator {
+    transition: none;
+  }
+}

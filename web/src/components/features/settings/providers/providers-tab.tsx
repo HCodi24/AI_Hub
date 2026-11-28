@@ -16,6 +16,7 @@ import { settingsText as t } from "@/text/settings";
 import { planLabel } from "./account-parts";
 import { LoginOutButton } from "./login_out";
 import { ProviderForm } from "./provider-form";
+import { useAutoLoadModels } from "./use-auto-load-models";
 import { errorText, useSettingsConfig } from "../use-settings";
 import styles from "../settings.module.css";
 
@@ -134,6 +135,17 @@ export function ProvidersTab() {
     ? { queryKey: ["codex-connection", provider.id], queryFn: ({ signal }: { signal: AbortSignal }) => codexApi.status(provider.id, signal),
         refetchInterval: (query: { state: { data?: { pending?: boolean } } }) => query.state.data?.pending ? 2000 : false }
     : { queryKey: ["claude-connection", provider.id], queryFn: ({ signal }: { signal: AbortSignal }) => claudeApi.status(provider.id, signal) }) });
+  const cliModelLoadEntries = cliSources.map(({ id }, index) => {
+    const account = accounts[index]?.data;
+    return { id, connected: account?.connected, email: account?.email };
+  });
+  useAutoLoadModels([
+    ...cliModelLoadEntries,
+    ...providers.filter(provider => provider.kind === "antigravity_cli").map(({ id }) => {
+      const status = statuses[id];
+      return { id, connected: status?.ok, email: status?.email };
+    }),
+  ]);
   const plans: Record<string, string | null | undefined> = Object.fromEntries(cliSources.map((provider, index) => {
     const data = accounts[index]?.data;
     return [provider.id, data?.connected ? data.plan : null];

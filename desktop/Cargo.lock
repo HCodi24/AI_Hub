@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "ai-hub-desktop"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "open",
  "serde",

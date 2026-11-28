@@ -4,6 +4,7 @@ use crate::{
         delegate::{
             events::{input_tokens, is_token_line, message, turn_with_continuation},
             report::{preload, worker_prompt, WorkerResult},
+            snapshot::Snapshot,
             slot_key, Delegation,
         },
         for_kind,
@@ -45,7 +46,27 @@ impl Live {
             write_scope: Vec::new(), checker_session_id: None,
         };
         let size = (self.worker.kind == "codex_cli").then_some(tokens);
-        let result = self.run_cli(&self.worker.kind, request, &label, session, size, quiet).await;
+        let folder = self.folder.clone();
+        let files = task.files.clone();
+        let snapshot = tokio::task::spawn_blocking(move || Snapshot::take(&folder, &files)).await;
+        let mut result = self.run_cli(&self.worker.kind, request, &label, session, size, quiet).await;
+        if result.diff.trim().is_empty() {
+            if let Ok(snapshot) = snapshot {
+                let folder = self.folder.clone();
+                if let Ok(diff) = tokio::task::spawn_blocking(move || snapshot.diff(&folder)).await {
+                    if !diff.is_empty() {
+                        let _ = events.send(ProviderEvent::text(
+                            "log",
+                            format!("{label}: diff lấy từ so sánh file (CLI không báo diff)"),
+                        )).await;
+                        if !quiet {
+                            let _ = events.send(ProviderEvent::text("diff", diff.clone())).await;
+                        }
+                    }
+                    result.diff = diff;
+                }
+            }
+        }
         // Kept in the chat record, so the next message resumes this thread instead of re-reading the project.
         let id = session.lock().unwrap().clone();
         if let Some(id) = id {

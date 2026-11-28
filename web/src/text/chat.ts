@@ -33,6 +33,8 @@ export const chatText = {
     seven_day: "Weekly",
   },
   permissionHeading: "AI được phép thực hiện những thao tác nào?",
+  mutisPermissionHeading: "Quyền của Lead trong MutiS",
+  mutisPermissionScope: "Chỉ áp dụng cho Lead. Worker và Checker dùng quyền riêng trong Cài đặt › MutiS.",
   permissionDescriptions: {
     read: "Chỉ đọc và phân tích nội dung, không thay đổi file.",
     write: "Cho phép sửa file trong thư mục làm việc; chạy lệnh theo cơ chế của nguồn AI.",
@@ -58,6 +60,8 @@ export const chatText = {
   read: "Chỉ đọc", write: "Được sửa file", full: "Toàn quyền (chạy lệnh)",
   chatOnly: "Chỉ trò chuyện", chatOnlyNote: "Nguồn này chỉ trò chuyện, không có công cụ sửa file. Bật chế độ agent cho nguồn trong Cài đặt › Nguồn AI nếu cần.",
   sandboxNote: "Codex chưa thiết lập sandbox Windows nên chưa ghi được file. Vào Cài đặt › Nguồn AI › Codex bấm «Thiết lập sandbox».",
+  workerSandboxNote: "Worker (Codex) chưa thiết lập sandbox Windows nên chưa ghi được file. Vào Cài đặt › Nguồn AI › Codex bấm «Thiết lập sandbox».",
+  checkerSandboxNote: "Checker (Codex) chưa thiết lập sandbox Windows nên chưa chạy được lệnh kiểm tra ghi file. Vào Cài đặt › Nguồn AI › Codex bấm «Thiết lập sandbox».",
   approveTitle: "AI muốn chạy lệnh ghi này nhưng quyền đang là Chỉ đọc. Cho phép một lần?", approveAllow: "Cho phép lần này", approveDeny: "Từ chối",
   approveShowCommand: "Xem lệnh đầy đủ",
   denied: "AI bị chặn vì quyền hiện tại của cuộc trò chuyện.", rerun: (permission: string) => `Chạy lại với quyền «${permission}»`,

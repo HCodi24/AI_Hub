@@ -7,6 +7,7 @@ import { DebateCard } from "@/components/features/debate/debate-card";
 import { splitImportedFileText } from "@/lib/import-file";
 import { splitPreviewSelectionText } from "@/lib/preview-selection";
 import { stripDevChatPreamble } from "@/lib/dev-chat-preamble";
+import { useKnownSkills } from "@/lib/skill-tokens";
 import { AttachmentCard } from "./attachment-card";
 import { ChatActivity } from "./activity/chat-activity";
 import { FileChanges } from "./file_changes/file-changes";
@@ -24,6 +25,7 @@ const mutisRoleLabels = new Map([
 ]);
 export const ChatMessage = memo(function ChatMessage({ message, chatId, streaming = false, latest = false, status, replies, taskBoardEnabled = true, hideQuestion }: { message: Message; chatId: string; streaming?: boolean; latest?: boolean; status?: StreamData; replies?: ReactNode; taskBoardEnabled?: boolean; hideQuestion?: boolean }) {
   const user = message.role === "user";
+  const knownSkills = useKnownSkills();
   /** Model identity comes only from this message: one chat can mix worker turns with different models. */
   const model = message.model.trim();
   const petState = useMemo(() => chatPetState(message, streaming, latest), [message, streaming, latest]);
@@ -42,7 +44,7 @@ export const ChatMessage = memo(function ChatMessage({ message, chatId, streamin
       petState={petState}
     />
     {message.debate_id ? <DebateCard id={message.debate_id} /> : imported ? <>
-      {imported.text && <MarkdownView source={imported.text} />}
+      {imported.text && <MarkdownView source={imported.text} skills={knownSkills} />}
       {imported.selections.length > 0 && <section className={styles.selections} aria-label="Phần tử đã chọn">
         {imported.selections.map((item, index) => <details key={index} className={styles.selection}>
           <summary title={item.label}><MousePointerClick size={16} aria-hidden="true" /><span>{item.label.split(" > ").pop()}</span><ChevronRight className={styles.selectionArrow} size={16} aria-hidden="true" /></summary>

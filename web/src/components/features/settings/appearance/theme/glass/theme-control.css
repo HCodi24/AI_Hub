@@ -43,7 +43,8 @@
   background: rgb(0 0 0 / 0.05);
 }
 
-[data-style="glass"] [data-glass="theme-control"][data-liquid-ready="true"] button[aria-pressed="true"] {
+[data-style="glass"] [data-glass="theme-control"][data-liquid-ready="true"] button[aria-pressed="true"],
+[data-style="glass"] [data-glass="theme-control"][data-liquid-ready="true"] button[aria-pressed="true"]:hover:enabled {
   background: transparent;
   box-shadow: none;
   color: var(--text);
@@ -56,10 +57,6 @@
 }
 
 /* Giọt kính đàn hồi chạy theo lò xo 4 cạnh (Glassy UI .lg-segmented-indicator). */
-[data-glass="liquid-indicator"] {
-  display: none;
-}
-
 [data-style="glass"] [data-glass="theme-control"][data-liquid-ready="true"] [data-glass="liquid-indicator"] {
   --bubble-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.26),
