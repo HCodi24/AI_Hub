@@ -6,7 +6,6 @@ import { TaskBoard } from "./task_board/task-board";
 import { TokenDashboard } from "./dashboard/token-dashboard";
 import { Sidebar } from "@/components/sidebar/sidebar";
 import { Spinner } from "@/components/spinner/spinner";
-import { CompactButton } from "@/components/features/composer/compact-button";
 import { Composer } from "@/components/features/composer/composer";
 import { ChatHeader } from "@/components/features/composer/toolbar/chat-toolbar";
 import { ACTIVE_CHAT_KEY, useChatStore } from "./chat-store";
@@ -124,7 +123,6 @@ export function ChatScreen() {
               <Composer dropTarget={dropTarget} config={config.data} streaming={state.streaming} send={send} stop={stop} />
             </div>
           </div>
-          <div className={styles.compactSlot}><CompactButton disabled={state.streaming} /></div>
         </div>
         <TerminalPanel />
       </main>

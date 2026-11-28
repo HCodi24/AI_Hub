@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fileToolsFor } from "@/lib/agent-source";
 import { parseChatQuestions } from "@/lib/chat-questions";
 import { playChatSound } from "@/lib/chat-sound";
+import { desktopAttention } from "@/lib/desktop-attention";
 import { useRef } from "react";
 import { chatApi } from "@/apis/chat.api";
 import { configApi } from "@/apis/config.api";
@@ -49,7 +50,10 @@ export function useChat() {
       await chatApi.send({ ...settings, effort: mutis ? "default" : settings.effort, file_tools: mutis || !settings.folder.trim() ? "none" : fileToolsFor(source, settings.permission), folder: settings.folder.trim(), model: settings.model.trim(),
         chat_id: current.id, messages: current.messages.slice(0, -1) }, controller.signal, (event, data) => {
         current.event(event, data);
-        if (event === "permission_request" && data.id) void playChatSound("question");
+        if (event === "permission_request" && data.id) {
+          void playChatSound("question");
+          desktopAttention("question");
+        }
         if (event === "memory") useToast.getState().show(memoryNotice(data, settings.folder));
       });
       current.finish();
@@ -60,7 +64,9 @@ export function useChat() {
       if (!controller.signal.aborted) {
         const last = useChatStore.getState().messages.at(-1);
         const hasQuestions = last?.role === "assistant" && parseChatQuestions(last.content).questions.length > 0;
-        void playChatSound(hasQuestions ? "question" : "done");
+        const kind = hasQuestions ? "question" : "done";
+        void playChatSound(kind);
+        desktopAttention(kind);
       }
       await client.invalidateQueries({ queryKey: ["chats"] });
     }

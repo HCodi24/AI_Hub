@@ -5,9 +5,6 @@
 .chatFrame[data-pet-size="large"] { --chat-pet-width: 48px; }
 /* Chừa hai mép cho thanh cuộn gốc và giữ lại một phần chiều cao để đọc tin nhắn. */
 .dock { position: absolute; inset: auto 0 0; z-index: 1; display: flex; flex-direction: column; max-block-size: calc(100% - min(30%, 5rem)); pointer-events: none; }
-.compactSlot { position: absolute; z-index: 2; right: var(--space-4); top: var(--space-2); }
-/* Bottom-right only where the blank beside the 820px composer is wide enough for the button. */
-@container chatframe (min-width: 1140px) { .compactSlot { top: auto; bottom: var(--space-2); } }
 .dock::before { content: ""; position: absolute; inset: 0 var(--space-4); z-index: -1; background: var(--bg); pointer-events: auto; }
 /* Bảng tiến độ lấy phần chiều cao còn lại sau ô nhập và có thể co về 0. */
 .dockBoard { display: flex; flex: 0 1 auto; flex-direction: column; min-block-size: 0; overflow: clip; }
@@ -64,10 +61,6 @@
 @media (min-width: 768px) {
   .shell { --workspace-top: var(--titlebar-height); --workspace-radius: 12px; --preview-toggle-inset: 12px; --preview-divider-highlight: color-mix(in srgb, var(--accent) 40%, var(--border)); position: relative; padding: 0 3px 3px 0; }
   .main { position: relative; --terminal-toggle-offset: 44px; margin-top: var(--workspace-top); height: calc(100% - var(--workspace-top)); border: 1px solid var(--border); border-left: 0; border-radius: 0 var(--workspace-radius) var(--workspace-radius) 0; overflow: hidden; box-shadow: var(--shadow-edge); }
-  /* Keep Compact below the top-right controls while it shares their corner. */
-  @container chatframe (width < 1140px) {
-    .compactSlot { top: calc(36px + 2 * var(--preview-toggle-inset)); }
-  }
   /* The preview panel sits flush on the right, so the chat's right corners become square. */
   .shell:has(> [data-preview]) .main { --terminal-toggle-offset: 0px; border-top-right-radius: 0; border-bottom-right-radius: 0; }
   .main:has(~ [data-preview][data-resizing], ~ [data-preview] > [role="separator"]:is(:hover, :focus-visible)) { border-right-color: var(--preview-divider-highlight); }

@@ -35,6 +35,9 @@ function describeLog(text: string): { Icon: ComponentType<LucideProps>; label: R
   else if (/(?:từ chối|Đã chặn)/i.test(text)) Icon = ShieldX;
   else if (/^Token:/.test(text)) Icon = TokenIcon;
   else if (/nén ngữ cảnh/.test(text)) Icon = Shrink;
+  else if (/^Công cụ:[ \t]*(?:(?:read|view)_\w+|list_dir(?:ectory)?|(?:grep|search|find)(?:_\w+)?)[ \t]*(?=\r?\n|$)/i.test(text)) Icon = FileText;
+  else if (/^Công cụ:[ \t]*(?:write_file|edit_file|replace_\w+|write_to_file|apply_patch|multi_edit|create_file)[ \t]*(?=\r?\n|$)/i.test(text)) Icon = FileEdit;
+  else if (/^Công cụ:[ \t]*(?:run_command|run_shell(?:_\w+)?|bash|shell)[ \t]*(?=\r?\n|$)/i.test(text)) Icon = CommandIcon;
   else if (/^Công cụ:/.test(text)) Icon = Wrench;
 
   return { Icon, label, danger, command };

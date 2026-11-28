@@ -63,23 +63,25 @@ export function SettingsDialog({ initialTab = "providers", folder, close, dashbo
       {tab === "addons" && <AddonsTab />}
       {tab === "extensions" && <ExtensionsTab folder={folder} />}{tab === "pets" && <PetsSection />}{tab === "dev" && <><UpdateSection /><DesktopBuild /></>}
       {tab === "sound" && <form className={styles.form}>
-        <label className={styles.check}><Switch checked={soundEnabled}
-          onChange={event => {
-            const enabled = event.target.checked;
-            setChatSoundEnabled(enabled);
-            setSoundEnabled(enabled);
-          }} /><span>{t.sound.enabled}</span></label>
-        <label htmlFor={volumeId}>{t.sound.volume}</label>
-        <div>
-          <MutisSlider variant="smooth" formatValue={v => `${v}%`}
-            id={volumeId} min={0} max={100} step={5} value={volume} disabled={!soundEnabled}
-            aria-label={t.sound.volume} aria-valuetext={`${volume}%`}
-            onChange={v => {
-              setChatSoundVolume(v);
-              setVolume(v);
-            }} onPointerUp={preview} onKeyUp={preview} />
-        </div>
-        <p className={styles.note}>{t.sound.hint}</p>
+        <fieldset className={styles.group}><legend>{t.sound.title}</legend>
+          <label className={styles.check}><Switch checked={soundEnabled}
+            onChange={event => {
+              const enabled = event.target.checked;
+              setChatSoundEnabled(enabled);
+              setSoundEnabled(enabled);
+            }} /><span>{t.sound.enabled}</span></label>
+          <label htmlFor={volumeId}>{t.sound.volume}</label>
+          <div>
+            <MutisSlider variant="smooth" formatValue={v => `${v}%`}
+              id={volumeId} min={0} max={100} step={5} value={volume} disabled={!soundEnabled}
+              aria-label={t.sound.volume} aria-valuetext={`${volume}%`}
+              onChange={v => {
+                setChatSoundVolume(v);
+                setVolume(v);
+              }} onPointerUp={preview} onKeyUp={preview} />
+          </div>
+          <p className={styles.note}>{t.sound.hint}</p>
+        </fieldset>
       </form>}
       {tab === "dashboard" && <form className={styles.form}>
         <label className={styles.check}><Switch checked={dashboardEnabled}

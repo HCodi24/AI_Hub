@@ -16,6 +16,7 @@ import { errorText, useSettingsConfig } from "../use-settings";
 import styles from "../settings.module.css";
 import { useSettingsAutosave } from "../use-settings-autosave";
 import { roleEffortOptions } from "@/constants/chat";
+import { antigravityModel, antigravityVariants, ANTIGRAVITY_EFFORTS } from "@/lib/antigravity-models";
 const DEFAULT_SETTINGS = MutisSchema.parse({});
 type RoleKey = "lead" | "worker" | "checker";
 type Permission = Mutis["worker"]["permission"];
@@ -33,11 +34,11 @@ const SWITCHES: { key: BoolKey; numbers?: { key: NumKey; min: number; max: numbe
 ];
 const modelsOf = (providers: Provider[], id: string) => providers.find(p => p.id === id)?.models || [];
 /** Model options for a select: the provider's models, plus the saved value when it is not in that list so it is never lost. */
-const modelOptions = (providers: Provider[], id: string, current: string) => {
-  const models = modelsOf(providers, id);
+const modelOptions = (models: string[], current: string) => {
   return <>{current && !models.includes(current) && <option value={current}>{current}</option>}{!current && <option value="">{t.mutis.modelPlaceholder}</option>}
     {models.map(m => <option key={m} value={m}>{m}</option>)}</>;
 };
+const effortLabel = (effort: keyof typeof t.efforts | "thinking") => effort === "thinking" ? "Suy luận" : t.efforts[effort];
 function RoleRow({ title, control, providers, value, disabled = false, change, children }: {
   title: string;
   control?: ReactNode;
@@ -48,18 +49,41 @@ function RoleRow({ title, control, providers, value, disabled = false, change, c
   children: ReactNode;
 }) {
   const provider = providers.find(provider => provider.id === value.provider_id);
-  const { choices: effortChoices, selected: selectedEffort } = roleEffortOptions(provider, value.model, value.effort);
+  const groups = provider?.kind === "antigravity_cli" ? antigravityVariants(provider.models) : undefined;
+  const model = groups ? antigravityModel(value.model) : undefined;
+  const selectedModel = model?.id ?? value.model;
+  const variants = groups?.get(selectedModel);
+  const standardEfforts = roleEffortOptions(provider, value.model, value.effort);
+  const effortChoices = groups
+    ? (["default", ...ANTIGRAVITY_EFFORTS] as const).filter(effort => variants?.has(effort))
+    : standardEfforts.choices;
+  const selectedEffort = groups ? model?.effort ?? "default" : standardEfforts.selected;
   return <div className={styles.row} aria-disabled={disabled || undefined}>
     <div className={styles.roleCell}><strong>{title}</strong>{control}</div>
     <label><span className="sr-only">{t.mutis.provider}</span><Dropdown disabled={disabled} data-empty={!value.provider_id || undefined} value={value.provider_id} onChange={event => change({ provider_id: event.target.value, model: modelsOf(providers, event.target.value)[0] || "" })}>
       <option value="">{t.mutis.providerPlaceholder}</option>{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Dropdown></label>
-    <label><span className="sr-only">{t.mutis.model}</span><Dropdown disabled={disabled} data-empty={!value.model || undefined} value={value.model} onChange={event => change({ model: event.target.value })}>
-      {modelOptions(providers, value.provider_id, value.model)}</Dropdown></label>
+    <label><span className="sr-only">{t.mutis.model}</span><Dropdown disabled={disabled} data-empty={!value.model || undefined} value={selectedModel}
+      title={groups && value.model && !provider?.models.includes(value.model) ? value.model : undefined}
+      onChange={event => {
+        if (!groups) { change({ model: event.target.value }); return; }
+        const next = groups.get(event.target.value);
+        const variant = next?.get(model?.effort ?? "default") ?? next?.values().next().value;
+        if (variant) change({ model: variant, effort: "default" });
+      }}>
+      {modelOptions(groups ? [...groups.keys()] : provider?.models ?? [], selectedModel)}</Dropdown></label>
     <label><span className="sr-only">{t.mutis.effort}</span><Dropdown disabled={disabled} value={selectedEffort} onChange={event => {
-      const effort = effortChoices.find(choice => choice === event.target.value);
-      if (effort) change({ effort });
+      if (groups) {
+        const effort = (["default", ...ANTIGRAVITY_EFFORTS] as const).find(choice => choice === event.target.value);
+        const variant = effort && variants?.get(effort);
+        if (variant) change({ model: variant, effort: "default" });
+      } else {
+        const effort = standardEfforts.choices.find(choice => choice === event.target.value);
+        if (effort) change({ effort });
+      }
     }}>
-      {effortChoices.map(effort => <option key={effort} value={effort}>{t.efforts[effort]}</option>)}</Dropdown></label>
+      {groups && !effortChoices.some(effort => effort === selectedEffort) &&
+        <option value={selectedEffort} hidden disabled>{value.model ? effortLabel(selectedEffort) : ""}</option>}
+      {effortChoices.map(effort => <option key={effort} value={effort}>{effortLabel(effort)}</option>)}</Dropdown></label>
     <div className={styles.roleSubRow}>{children}</div>
   </div>;
 }
@@ -82,6 +106,9 @@ export function MutisTab() {
   if (query.isPending && !query.data) return <Skeleton card />;
   if (query.error) return <p role="alert">{query.error.message}</p>;
   const providers = config.data?.providers || [];
+  const reviewerProvider = providers.find(provider => provider.id === draft.reviewer_provider_id);
+  const reviewerGroups = reviewerProvider?.kind === "antigravity_cli" ? antigravityVariants(reviewerProvider.models) : undefined;
+  const reviewerModel = reviewerGroups ? antigravityModel(draft.reviewer_model).id : draft.reviewer_model;
   const edit = (patch: Partial<Mutis>, immediate = false) => autosave.update(current => ({ ...current, ...patch }), immediate);
   const setRole = <K extends RoleKey>(role: K, patch: Partial<Mutis[K]>) => autosave.update(current => ({
     ...current, [role]: { ...(current[role] ?? DEFAULT_SETTINGS[role]), ...patch }
@@ -133,8 +160,13 @@ export function MutisTab() {
       <div className={styles.grid}>
         <label>{t.mutis.reviewer}<Dropdown value={draft.reviewer_provider_id} onChange={event => edit({ reviewer_provider_id: event.target.value, reviewer_model: modelsOf(providers, event.target.value)[0] || "" }, true)}>
           <option value="" />{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Dropdown></label>
-        <label>{t.mutis.reviewerModel}<Dropdown value={draft.reviewer_model} onChange={event => edit({ reviewer_model: event.target.value }, true)}>
-          {modelOptions(providers, draft.reviewer_provider_id, draft.reviewer_model)}</Dropdown></label>
+        <label>{t.mutis.reviewerModel}<Dropdown value={reviewerModel}
+          title={reviewerGroups && draft.reviewer_model && !reviewerProvider?.models.includes(draft.reviewer_model) ? draft.reviewer_model : undefined}
+          onChange={event => {
+            const model = reviewerGroups ? reviewerGroups.get(event.target.value)?.values().next().value : event.target.value;
+            if (model !== undefined) edit({ reviewer_model: model }, true);
+          }}>
+          {modelOptions(reviewerGroups ? [...reviewerGroups.keys()] : reviewerProvider?.models ?? [], reviewerModel)}</Dropdown></label>
       </div>
     </fieldset>
     <fieldset className={styles.group}><legend>{t.mutis.debate}</legend><div className={styles.grid}>

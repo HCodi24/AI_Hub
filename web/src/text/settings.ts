@@ -21,6 +21,7 @@ export const settingsText = {
     backgroundError: "Không thể lưu hình nền này.",
   },
   sound: {
+    title: "Âm báo",
     enabled: "Phát âm báo khi AI trả lời xong hoặc cần bạn trả lời",
     volume: "Âm lượng",
     hint: "Hai nốt khi AI trả lời xong, ba nốt khi AI hỏi bạn hoặc xin quyền chạy lệnh.",
